@@ -175,6 +175,7 @@ public class Bootstrapper : MonoBehaviour
         EventBusService.ResetGlobal();
         PrimitiveSpriteLibrary.ClearCache();
         AntAtlasLibrary.ClearCache();
+        ArenaBuilder.Build(simulationRoot.transform, currentConfig);
         SpawnRunner(currentConfig);
 
         if (IsReplayMode)
