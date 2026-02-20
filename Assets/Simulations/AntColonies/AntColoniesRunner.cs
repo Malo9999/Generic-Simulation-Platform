@@ -2,29 +2,33 @@ using UnityEngine;
 
 public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int DotCount = 12;
+    private const int QueenCount = 1;
+    private const int WorkerCount = 8;
+    private const int WarriorCount = 3;
+    private const int AntCount = QueenCount + WorkerCount + WarriorCount;
 
-    private Transform[] dots;
+    private Transform[] ants;
     private Vector2[] positions;
     private Vector2[] velocities;
+    private AntRole[] roles;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
 
     public void Initialize(ScenarioConfig config)
     {
         EnsureMainCamera();
-        BuildDots(config);
+        BuildAnts(config);
         Debug.Log($"{nameof(AntColoniesRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
     }
 
     public void Tick(int tickIndex, float dt)
     {
-        if (dots == null)
+        if (ants == null)
         {
             return;
         }
 
-        for (var i = 0; i < dots.Length; i++)
+        for (var i = 0; i < ants.Length; i++)
         {
             positions[i] += velocities[i] * dt;
 
@@ -40,71 +44,97 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
                 velocities[i].y *= -1f;
             }
 
-            dots[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            ants[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
         }
     }
 
     public void Shutdown()
     {
-        if (dots != null)
+        if (ants != null)
         {
-            for (var i = 0; i < dots.Length; i++)
+            for (var i = 0; i < ants.Length; i++)
             {
-                if (dots[i] != null)
+                if (ants[i] != null)
                 {
-                    Destroy(dots[i].gameObject);
+                    Destroy(ants[i].gameObject);
                 }
             }
         }
 
-        dots = null;
+        ants = null;
         positions = null;
         velocities = null;
+        roles = null;
         Debug.Log("AntColoniesRunner Shutdown");
     }
 
-    private void BuildDots(ScenarioConfig config)
+    private void BuildAnts(ScenarioConfig config)
     {
         Shutdown();
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
-        dots = new Transform[DotCount];
-        positions = new Vector2[DotCount];
-        velocities = new Vector2[DotCount];
+        ants = new Transform[AntCount];
+        positions = new Vector2[AntCount];
+        velocities = new Vector2[AntCount];
+        roles = new AntRole[AntCount];
 
-        var sprite = CreateDotSprite();
-
-        for (var i = 0; i < DotCount; i++)
+        for (var i = 0; i < AntCount; i++)
         {
-            var dot = new GameObject($"Dot_{i}");
-            dot.transform.SetParent(transform, false);
+            var role = i == 0 ? AntRole.Queen : (i <= WorkerCount ? AntRole.Worker : AntRole.Warrior);
+            roles[i] = role;
 
-            var renderer = dot.AddComponent<SpriteRenderer>();
-            renderer.sprite = sprite;
-            renderer.color = new Color(RngService.Global.Value(), RngService.Global.Value(), RngService.Global.Value());
+            var ant = new GameObject($"Ant_{role}_{i}");
+            ant.transform.SetParent(transform, false);
+
+            var renderer = ant.AddComponent<SpriteRenderer>();
+            renderer.sprite = ProceduralSpriteLibrary.GetAnt(role, 64);
+            renderer.color = GetRoleColor(role);
+
+            ant.transform.localScale = Vector3.one * GetRoleScale(role);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
-            var speed = RngService.Global.Range(5f, 14f);
+            var speed = GetRoleSpeed(role);
             var angle = RngService.Global.Range(0f, Mathf.PI * 2f);
 
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
+            ant.transform.localPosition = new Vector3(startX, startY, 0f);
 
-            dot.transform.localPosition = new Vector3(startX, startY, 0f);
-            dot.transform.localScale = Vector3.one * RngService.Global.Range(0.8f, 1.8f);
-            dots[i] = dot.transform;
+            ants[i] = ant.transform;
         }
     }
 
-    private static Sprite CreateDotSprite()
+    private static float GetRoleSpeed(AntRole role)
     {
-        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-        texture.SetPixel(0, 0, Color.white);
-        texture.Apply();
-        return Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return role switch
+        {
+            AntRole.Queen => RngService.Global.Range(3f, 6f),
+            AntRole.Worker => RngService.Global.Range(8f, 13f),
+            _ => RngService.Global.Range(6f, 10f)
+        };
+    }
+
+    private static float GetRoleScale(AntRole role)
+    {
+        return role switch
+        {
+            AntRole.Queen => 1.4f,
+            AntRole.Warrior => 1.2f,
+            _ => 1f
+        };
+    }
+
+    private static Color GetRoleColor(AntRole role)
+    {
+        return role switch
+        {
+            AntRole.Queen => new Color(0.28f, 0.22f, 0.4f),
+            AntRole.Worker => new Color(0.45f, 0.28f, 0.18f),
+            _ => new Color(0.5f, 0.12f, 0.12f)
+        };
     }
 
     private void EnsureMainCamera()
