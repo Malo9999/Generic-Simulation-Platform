@@ -11,11 +11,13 @@ using UnityEditor;
 public class Bootstrapper : MonoBehaviour
 {
     [SerializeField] private BootstrapOptions options;
+    [SerializeField, Min(0.0001f)] private float tickDeltaTime = 1f / 60f;
 
     private const string SimulationRootName = "SimulationRoot";
 
     private GameObject simulationRoot;
     private ISimulationRunner activeRunner;
+    private SimDriver simDriver;
     private ScenarioConfig currentConfig;
     private string currentPresetSource = "<defaults>";
     private bool isPaused;
@@ -29,6 +31,9 @@ public class Bootstrapper : MonoBehaviour
     public bool IsPaused => isPaused;
     public int TickCount => tickCount;
     public float CurrentFps => smoothedFps;
+    public int CurrentTick => simDriver?.CurrentTick ?? 0;
+    public bool IsPaused => simDriver?.IsPaused ?? false;
+    public float TimeScale => simDriver?.TimeScale ?? 1f;
 
 #if UNITY_EDITOR
     private void OnValidate()
@@ -48,6 +53,7 @@ public class Bootstrapper : MonoBehaviour
 
     private void Awake()
     {
+        simDriver = new SimDriver(tickDeltaTime);
         ResolveOptions();
         EnsureSimulationCatalogReference();
 
@@ -61,7 +67,9 @@ public class Bootstrapper : MonoBehaviour
 
     private void Update()
     {
-        if (isPaused)
+        simDriver?.Advance(Time.unscaledDeltaTime);
+
+        if (options == null || !options.allowHotkeySwitch)
         {
             return;
         }
@@ -159,6 +167,7 @@ public class Bootstrapper : MonoBehaviour
         currentConfig = resolved;
         tickCount = 0;
 
+        ConfigureDeterminism(currentConfig.seed);
         SpawnRunner(currentConfig);
         WriteRunManifest(currentConfig, currentPresetSource);
 
@@ -332,15 +341,29 @@ public class Bootstrapper : MonoBehaviour
     {
         if (options == null)
         {
-            return UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            return Environment.TickCount;
         }
 
         return options.seedPolicy switch
         {
             SeedPolicy.Fixed => options.fixedSeed,
             SeedPolicy.FromSystemTime => Environment.TickCount,
-            _ => UnityEngine.Random.Range(int.MinValue, int.MaxValue)
+            _ => Environment.TickCount
         };
+    }
+
+
+    private void ConfigureDeterminism(int seed)
+    {
+        UnityEngine.Random.InitState(seed);
+
+        var sampleA = UnityEngine.Random.value;
+        var sampleB = UnityEngine.Random.value;
+        var sampleC = UnityEngine.Random.value;
+        Debug.Log($"Bootstrapper: RNG sanity check seed={seed} values=[{sampleA:F6}, {sampleB:F6}, {sampleC:F6}]");
+
+        UnityEngine.Random.InitState(seed);
+        RngService.SetGlobal(new SeededRng(seed));
     }
 
     private void SpawnRunner(ScenarioConfig config)
@@ -368,6 +391,7 @@ public class Bootstrapper : MonoBehaviour
         }
 
         activeRunner.Initialize(config);
+        simDriver?.SetRunner(activeRunner);
     }
 
     private void EnsureSimulationRoot()
@@ -396,6 +420,27 @@ public class Bootstrapper : MonoBehaviour
     {
         activeRunner?.Shutdown();
         activeRunner = null;
+        simDriver?.SetRunner(null);
+    }
+
+    public void PauseSimulation()
+    {
+        simDriver?.Pause();
+    }
+
+    public void ResumeSimulation()
+    {
+        simDriver?.Resume();
+    }
+
+    public void StepSimulationOnce()
+    {
+        simDriver?.RequestSingleStep();
+    }
+
+    public void SetSimulationTimeScale(float timeScale)
+    {
+        simDriver?.SetTimeScale(timeScale);
     }
 
     private void WriteRunManifest(ScenarioConfig config, string presetSource)
