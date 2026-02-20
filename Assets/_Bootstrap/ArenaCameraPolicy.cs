@@ -23,7 +23,7 @@ public class ArenaCameraPolicy : MonoBehaviour
     public bool cropFrameY = false;
 
     [Header("Optional: draw arena border")]
-    public bool drawBorder = true;
+    public bool drawBorder = false;
     public float borderWidthWorld = 0.05f;
     public int borderSortingOrder = 1000;
 
@@ -74,7 +74,30 @@ public class ArenaCameraPolicy : MonoBehaviour
         _cam.transform.position = pos;
 
         if (drawBorder)
+        {
             EnsureBorder(w, h);
+        }
+        else
+        {
+            RemoveBorder();
+        }
+    }
+
+    void RemoveBorder()
+    {
+        var go = GameObject.Find("__ArenaBorder");
+        if (go == null)
+        {
+            return;
+        }
+
+        if (Application.isPlaying)
+        {
+            Destroy(go);
+            return;
+        }
+
+        DestroyImmediate(go);
     }
 
     void EnsureBorder(float w, float h)

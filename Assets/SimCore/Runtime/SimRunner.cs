@@ -4,6 +4,10 @@ public class SimRunner : MonoBehaviour
 {
     private const string SimRootName = "SimRoot";
 
+    [Header("Arena Visual Debug")]
+    [SerializeField] private bool showBackground = true;
+    [SerializeField] private bool showBounds = true;
+
     private ISimulation currentSimulation;
     private Transform simRoot;
 
@@ -85,13 +89,24 @@ public class SimRunner : MonoBehaviour
 
         var sortingLayer = ResolveSortingLayer();
 
-        CreateOrUpdateBackground(arenaVisuals, width, height, center, sortingLayer);
-        CreateOrUpdateBounds(arenaVisuals, width, height, sortingLayer);
+        CreateOrUpdateBackground(arenaVisuals, width, height, center, sortingLayer, showBackground);
+        CreateOrUpdateBounds(arenaVisuals, width, height, sortingLayer, showBounds);
     }
 
-    private static void CreateOrUpdateBackground(Transform parent, float width, float height, Vector3 center, string sortingLayer)
+    private static void CreateOrUpdateBackground(Transform parent, float width, float height, Vector3 center, string sortingLayer, bool enabled)
     {
         var background = parent.Find("Background");
+
+        if (!enabled)
+        {
+            if (background != null)
+            {
+                background.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
         SpriteRenderer renderer;
         if (background == null)
         {
@@ -102,24 +117,37 @@ public class SimRunner : MonoBehaviour
         }
         else
         {
+            background.gameObject.SetActive(true);
             renderer = background.GetComponent<SpriteRenderer>() ?? background.gameObject.AddComponent<SpriteRenderer>();
         }
 
         renderer.sprite ??= Sprite.Create(
             Texture2D.whiteTexture,
-            new Rect(0f, 0f, Texture2D.whiteTexture.width, Texture2D.whiteTexture.height),
+            new Rect(0f, 0f, 1f, 1f),
             new Vector2(0.5f, 0.5f),
-            100f);
+            1f);
         renderer.color = new Color(0.08f, 0.09f, 0.12f, 1f);
         renderer.sortingLayerName = sortingLayer;
         renderer.sortingOrder = -20;
+        renderer.drawMode = SpriteDrawMode.Simple;
         renderer.transform.localScale = new Vector3(width, height, 1f);
         renderer.transform.localPosition = new Vector3(center.x, center.y, 2f);
     }
 
-    private static void CreateOrUpdateBounds(Transform parent, float width, float height, string sortingLayer)
+    private static void CreateOrUpdateBounds(Transform parent, float width, float height, string sortingLayer, bool enabled)
     {
         var bounds = parent.Find("Bounds");
+
+        if (!enabled)
+        {
+            if (bounds != null)
+            {
+                bounds.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
         LineRenderer lineRenderer;
         if (bounds == null)
         {
@@ -129,6 +157,7 @@ public class SimRunner : MonoBehaviour
         }
         else
         {
+            bounds.gameObject.SetActive(true);
             lineRenderer = bounds.GetComponent<LineRenderer>() ?? bounds.gameObject.AddComponent<LineRenderer>();
         }
 
