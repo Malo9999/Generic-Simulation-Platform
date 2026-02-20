@@ -51,10 +51,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             athletes[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            if (velocities[i].sqrMagnitude > 0.0001f)
-            {
-                athletes[i].right = velocities[i].normalized;
-            }
+            FaceVelocity(athletes[i], velocities[i]);
         }
     }
 
@@ -118,11 +115,17 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             athlete.transform.localPosition = new Vector3(startX, startY, 0f);
             athlete.transform.localScale = Vector3.one * RngService.Global.Range(0.95f, 1.1f);
-            if (velocities[i].sqrMagnitude > 0.0001f)
-            {
-                athlete.transform.right = velocities[i].normalized;
-            }
+            FaceVelocity(athlete.transform, velocities[i]);
             athletes[i] = athlete.transform;
+        }
+    }
+
+    private static void FaceVelocity(Transform target, Vector2 velocity)
+    {
+        if (velocity.sqrMagnitude > 0.0001f)
+        {
+            var angle = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
+            target.localRotation = Quaternion.Euler(0f, 0f, angle);
         }
     }
 
