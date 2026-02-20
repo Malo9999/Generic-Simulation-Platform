@@ -24,6 +24,16 @@ public class Bootstrapper : MonoBehaviour
     public string CurrentPresetSource => currentPresetSource;
     public bool ShowOverlay => options == null || options.showOverlay;
 
+#if UNITY_EDITOR
+    private void OnValidate()
+    {
+        if (options == null)
+        {
+            options = EnsureBootstrapOptionsAsset();
+        }
+    }
+#endif
+
     private void Awake()
     {
         ResolveOptions();
@@ -91,17 +101,7 @@ public class Bootstrapper : MonoBehaviour
         }
 
 #if UNITY_EDITOR
-        const string assetPath = "Assets/_Bootstrap/BootstrapOptions.asset";
-        options = AssetDatabase.LoadAssetAtPath<BootstrapOptions>(assetPath);
-        if (options == null)
-        {
-            var guid = AssetDatabase.FindAssets("t:BootstrapOptions BootstrapOptions");
-            if (guid.Length > 0)
-            {
-                var foundPath = AssetDatabase.GUIDToAssetPath(guid[0]);
-                options = AssetDatabase.LoadAssetAtPath<BootstrapOptions>(foundPath);
-            }
-        }
+        options = EnsureBootstrapOptionsAsset();
 #endif
 
         if (options == null)
@@ -110,6 +110,41 @@ public class Bootstrapper : MonoBehaviour
             Debug.LogWarning("Bootstrapper: BootstrapOptions missing, using safe in-memory defaults.");
         }
     }
+
+#if UNITY_EDITOR
+    private static BootstrapOptions EnsureBootstrapOptionsAsset()
+    {
+        const string assetPath = "Assets/_Bootstrap/BootstrapOptions.asset";
+        var resolvedOptions = AssetDatabase.LoadAssetAtPath<BootstrapOptions>(assetPath);
+        if (resolvedOptions != null)
+        {
+            return resolvedOptions;
+        }
+
+        var guid = AssetDatabase.FindAssets("t:BootstrapOptions BootstrapOptions");
+        if (guid.Length > 0)
+        {
+            var foundPath = AssetDatabase.GUIDToAssetPath(guid[0]);
+            resolvedOptions = AssetDatabase.LoadAssetAtPath<BootstrapOptions>(foundPath);
+            if (resolvedOptions != null)
+            {
+                return resolvedOptions;
+            }
+        }
+
+        var folderPath = "Assets/_Bootstrap";
+        if (!AssetDatabase.IsValidFolder(folderPath))
+        {
+            AssetDatabase.CreateFolder("Assets", "_Bootstrap");
+        }
+
+        resolvedOptions = ScriptableObject.CreateInstance<BootstrapOptions>();
+        AssetDatabase.CreateAsset(resolvedOptions, assetPath);
+        AssetDatabase.SaveAssets();
+        Debug.Log($"Bootstrapper: Created BootstrapOptions asset at {assetPath}");
+        return resolvedOptions;
+    }
+#endif
 
     private string LoadPresetJson(string simulationId, out string source)
     {
