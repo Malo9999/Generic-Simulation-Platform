@@ -172,6 +172,7 @@ public class Bootstrapper : MonoBehaviour
 
         ConfigureDeterminism(currentConfig.seed);
         EventBusService.ResetGlobal();
+        PrimitiveSpriteLibrary.ClearCache();
         SpawnRunner(currentConfig);
 
         if (IsReplayMode)

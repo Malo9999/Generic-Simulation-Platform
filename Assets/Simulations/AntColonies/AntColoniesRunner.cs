@@ -7,6 +7,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private const int WarriorCount = 3;
     private const int AntCount = QueenCount + WorkerCount + WarriorCount;
 
+    private const float RotationEpsilonSqr = 0.0001f;
+
     private Transform[] ants;
     private Vector2[] positions;
     private Vector2[] velocities;
@@ -111,11 +113,20 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
     private static void FaceVelocity(Transform target, Vector2 velocity)
     {
-        if (velocity.sqrMagnitude > 0.0001f)
+        if (velocity.sqrMagnitude <= RotationEpsilonSqr)
         {
-            var angle = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
-            target.localRotation = Quaternion.Euler(0f, 0f, angle);
+            return;
         }
+
+        var angle = SnapAngleDeg(velocity, 16);
+        target.localRotation = Quaternion.Euler(0f, 0f, angle);
+    }
+
+    private static float SnapAngleDeg(Vector2 v, int directions = 16)
+    {
+        var angle = Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg;
+        var step = 360f / directions;
+        return Mathf.Round(angle / step) * step;
     }
 
     private static float GetRoleSpeed(AntRole role)
