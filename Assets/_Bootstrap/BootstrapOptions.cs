@@ -4,6 +4,7 @@ using UnityEngine;
 public class BootstrapOptions : ScriptableObject
 {
     public string simulationId = "MarbleRace";
+    public SimulationCatalog simulationCatalog;
     public TextAsset presetJson;
     public SeedPolicy seedPolicy = SeedPolicy.RandomEveryRun;
     public int fixedSeed = 12345;
