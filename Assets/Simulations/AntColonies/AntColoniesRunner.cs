@@ -45,10 +45,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             ants[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            if (velocities[i].sqrMagnitude > 0.0001f)
-            {
-                ants[i].right = velocities[i].normalized;
-            }
+            FaceVelocity(ants[i], velocities[i]);
         }
     }
 
@@ -106,12 +103,18 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
             ant.transform.localPosition = new Vector3(startX, startY, 0f);
-            if (velocities[i].sqrMagnitude > 0.0001f)
-            {
-                ant.transform.right = velocities[i].normalized;
-            }
+            FaceVelocity(ant.transform, velocities[i]);
 
             ants[i] = ant.transform;
+        }
+    }
+
+    private static void FaceVelocity(Transform target, Vector2 velocity)
+    {
+        if (velocity.sqrMagnitude > 0.0001f)
+        {
+            var angle = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
+            target.localRotation = Quaternion.Euler(0f, 0f, angle);
         }
     }
 
