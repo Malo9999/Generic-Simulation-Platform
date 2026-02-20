@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "scenarioName": "Quad PoC",
+  "mode": "Sim",
+  "seed": 12345,
+  "activeSimulation": "MarbleRace",
+  "world": {
+    "arenaWidth": 64,
+    "arenaHeight": 64,
+    "walls": true,
+    "obstacleDensity": 0.1
+  },
+  "recording": {
+    "enabled": true,
+    "snapshotEveryNTicks": 30,
+    "eventsEnabled": true,
+    "outputRoot": "Runs"
+  },
+  "rendering": {
+    "targetUpscale": 4,
+    "targetFps": 60
+  }
+}
