@@ -23,6 +23,27 @@ public static class PrimitiveSpriteLibrary
     public static Sprite RoundedRectFill(int sizePx = 64) => GetOrCreate(PrimitiveKind.RoundedRectFill, sizePx);
     public static Sprite RoundedRectOutline(int sizePx = 64) => GetOrCreate(PrimitiveKind.RoundedRectOutline, sizePx);
 
+    public static void ClearCache()
+    {
+        foreach (var sprite in SpriteCache.Values)
+        {
+            if (sprite == null)
+            {
+                continue;
+            }
+
+            var texture = sprite.texture;
+            if (texture != null)
+            {
+                UnityEngine.Object.Destroy(texture);
+            }
+
+            UnityEngine.Object.Destroy(sprite);
+        }
+
+        SpriteCache.Clear();
+    }
+
     private static Sprite GetOrCreate(PrimitiveKind kind, int sizePx)
     {
         sizePx = Mathf.Max(8, sizePx);
@@ -61,7 +82,7 @@ public static class PrimitiveSpriteLibrary
 
         var texture = new Texture2D(sizePx, sizePx, TextureFormat.RGBA32, false)
         {
-            filterMode = FilterMode.Bilinear,
+            filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp
         };
         texture.SetPixels32(pixels);
