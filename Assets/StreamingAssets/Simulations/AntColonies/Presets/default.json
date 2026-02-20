@@ -1,0 +1,9 @@
+{
+  "simulationId": "AntColonies",
+  "world": {
+    "arenaWidth": 64,
+    "arenaHeight": 64,
+    "walls": true,
+    "obstacleDensity": 0.1
+  }
+}

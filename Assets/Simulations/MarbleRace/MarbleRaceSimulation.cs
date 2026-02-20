@@ -5,7 +5,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class MarbleRaceSimulation : ISimulation
+public class MarbleRaceSimulation : ISimulation, IRecordable
 {
     private const int DefaultMarbleCount = 32;
     private const int MaxMarbleCount = 200;
@@ -21,7 +21,7 @@ public class MarbleRaceSimulation : ISimulation
     private ScenarioConfig config;
     private Transform simRoot;
     private Transform raceRoot;
-    private System.Random random;
+    private IRng rng;
 
     private Sprite pixelSprite;
     private string agentsSortingLayer;
@@ -38,11 +38,11 @@ public class MarbleRaceSimulation : ISimulation
 
     public string Id => "MarbleRace";
 
-    public void Initialize(ScenarioConfig cfg, Transform root)
+    public void Initialize(ScenarioConfig cfg, Transform root, IRng randomService)
     {
         config = cfg ?? new ScenarioConfig();
         simRoot = root;
-        random = new System.Random(config.seed);
+        rng = randomService ?? new SeededRng(config.seed);
         finishOrder = new List<MarbleAgent>();
 
         raceRoot = new GameObject("MarbleRace").transform;
@@ -89,6 +89,31 @@ public class MarbleRaceSimulation : ISimulation
             fallbackLogTimer = 0f;
             Debug.Log(BuildScoreboardText());
         }
+    }
+
+
+    public object CaptureState()
+    {
+        var marbleStates = marbles
+            .Select(m => new MarbleSnapshot
+            {
+                name = m.Name,
+                x = m.Root != null ? m.Root.position.x : 0f,
+                y = m.Root != null ? m.Root.position.y : 0f,
+                lap = m.LapCount,
+                nextWaypoint = m.NextWaypointIndex,
+                finished = m.Finished
+            })
+            .ToList();
+
+        return new MarbleRaceSnapshot
+        {
+            elapsedTime = elapsedTime,
+            raceFinished = raceFinished,
+            marbleCount = marbles.Count,
+            waypoints = waypoints.Count,
+            marbles = marbleStates
+        };
     }
 
     public void Dispose()
@@ -211,6 +236,13 @@ public class MarbleRaceSimulation : ISimulation
             Debug.Log($"MarbleRace winner: {winner.Name} at {winner.FinishTime:0.00}s");
         }
 
+        EventBusService.Global?.Publish("marble_race_finished", new
+        {
+            elapsedTime,
+            winner = winner?.Name,
+            finishCount = finishOrder.Count
+        });
+
         WriteRunOutput();
     }
 
@@ -235,15 +267,15 @@ public class MarbleRaceSimulation : ISimulation
             var offset = (-perp * (col - 3.5f) * 0.6f) - (startDirection * row * 0.6f);
             marbleRoot.position = (Vector3)(startPoint + offset);
 
-            var baseColor = Color.HSVToRGB((float)random.NextDouble(), 0.6f + (float)random.NextDouble() * 0.25f, 0.85f + (float)random.NextDouble() * 0.15f);
+            var baseColor = Color.HSVToRGB((float)rng.NextDouble(), 0.6f + (float)rng.NextDouble() * 0.25f, 0.85f + (float)rng.NextDouble() * 0.15f);
             BuildMarbleVisual(marbleRoot, baseColor, i);
 
             marbles.Add(new MarbleAgent
             {
                 Name = marbleName,
                 Root = marbleRoot,
-                Speed = 2.8f + (float)random.NextDouble() * 1.2f,
-                TurnRateRadians = Mathf.Deg2Rad * (120f + (float)random.NextDouble() * 110f),
+                Speed = 2.8f + (float)rng.NextDouble() * 1.2f,
+                TurnRateRadians = Mathf.Deg2Rad * (120f + (float)rng.NextDouble() * 110f),
                 NextWaypointIndex = 1,
                 Forward = startDirection,
                 LapCount = 0
@@ -556,5 +588,26 @@ public class MarbleRaceSimulation : ISimulation
         public int lapCount;
         public int waypointIndex;
         public float finishTime;
+    }
+
+    [Serializable]
+    private sealed class MarbleRaceSnapshot
+    {
+        public float elapsedTime;
+        public bool raceFinished;
+        public int marbleCount;
+        public int waypoints;
+        public List<MarbleSnapshot> marbles;
+    }
+
+    [Serializable]
+    private sealed class MarbleSnapshot
+    {
+        public string name;
+        public float x;
+        public float y;
+        public int lap;
+        public int nextWaypoint;
+        public bool finished;
     }
 }

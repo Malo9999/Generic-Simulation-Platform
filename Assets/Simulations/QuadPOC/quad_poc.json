@@ -19,5 +19,9 @@
   "rendering": {
     "targetUpscale": 4,
     "targetFps": 60
+  },
+  "replay": {
+    "runFolder": "",
+    "rendererOnly": false
   }
 }

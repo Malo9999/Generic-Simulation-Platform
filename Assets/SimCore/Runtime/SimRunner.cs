@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class SimRunner : MonoBehaviour
+public class SimRunner : MonoBehaviour, ITickableSimulationRunner, IRecordable, IReplayableSimulationRunner
 {
     private const string SimRootName = "SimRoot";
 
@@ -29,7 +29,7 @@ public class SimRunner : MonoBehaviour
         if (SimRegistry.TryCreate(selectedSimulationId, out var simulation))
         {
             currentSimulation = simulation;
-            currentSimulation?.Initialize(cfg, simRoot);
+            currentSimulation?.Initialize(cfg, simRoot, RngService.Global);
         }
         else
         {
@@ -38,15 +38,56 @@ public class SimRunner : MonoBehaviour
         }
     }
 
-    private void FixedUpdate()
+    public void Tick(int tickIndex, float dt)
     {
-        currentSimulation?.Tick(Time.fixedDeltaTime);
+        currentSimulation?.Tick(dt);
+    }
+
+    public void Shutdown()
+    {
+        currentSimulation?.Dispose();
+        currentSimulation = null;
+    }
+
+    public object CaptureState()
+    {
+        if (currentSimulation is IRecordable recordable)
+        {
+            return recordable.CaptureState();
+        }
+
+        return new FallbackSnapshot
+        {
+            simulationId = currentSimulation?.Id,
+            status = currentSimulation == null ? "not_initialized" : "recordable_not_implemented"
+        };
+    }
+
+    public void ApplyReplaySnapshot(int tick, object state)
+    {
+        if (currentSimulation is IReplayableState replayable)
+        {
+            replayable.ApplyReplayState(state);
+            return;
+        }
+
+        if (tick == 0)
+        {
+            Debug.Log($"SimRunner: Replay snapshot feed active but simulation '{currentSimulation?.Id ?? "<none>"}' does not implement IReplayableState.");
+        }
+    }
+
+    public void ApplyReplayEvent(int tick, string eventType, object payload)
+    {
+        if (currentSimulation is IReplayableState replayable)
+        {
+            replayable.ApplyReplayEvent(eventType, payload);
+        }
     }
 
     private void OnDestroy()
     {
-        currentSimulation?.Dispose();
-        currentSimulation = null;
+        Shutdown();
     }
 
     private void EnsureSimRoot()
@@ -188,5 +229,11 @@ public class SimRunner : MonoBehaviour
         }
 
         return "Default";
+    }
+
+    private sealed class FallbackSnapshot
+    {
+        public string simulationId;
+        public string status;
     }
 }
