@@ -5,7 +5,7 @@ public static class SimRegistry
 {
     private static readonly Dictionary<string, Func<ISimulation>> Registry = new()
     {
-        ["AntColonies"] = () => null,
+        ["AntColonies"] = () => new AntColoniesSimulation(),
         ["MarbleRace"] = () => null
     };
 
