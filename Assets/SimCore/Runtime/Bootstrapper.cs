@@ -17,6 +17,7 @@ public class Bootstrapper : MonoBehaviour
     private static readonly string[] KnownSimulationIds = { "AntColonies", "MarbleRace", "RaceCar", "FantasySport" };
 
     private GameObject simulationRoot;
+    private GameObject activeRunnerObject;
     private ISimulationRunner activeRunner;
     private SimDriver simDriver;
     private ReplayDriver replayDriver;
@@ -180,7 +181,16 @@ public class Bootstrapper : MonoBehaviour
         {
             currentRunFolder = currentConfig.replay?.runFolder;
             replayDriver?.SetRunner(activeRunner);
-            replayDriver?.Load(currentConfig);
+            var replayLoaded = replayDriver?.Load(currentConfig) ?? false;
+            if (replayLoaded && replayDriver != null && !replayDriver.ValidateRunnerForLoadedConfig(currentConfig.simulationId))
+            {
+                var required = currentConfig.replay != null && currentConfig.replay.rendererOnly
+                    ? "IReplayableSimulationRunner"
+                    : "IReplayableSimulationRunner or ITickableSimulationRunner";
+                LogRunnerContractError(currentConfig.simulationId, required);
+                replayDriver.SetRunner(null);
+            }
+
             simDriver?.SetRunner(null);
             simDriver?.ConfigureRecording(currentConfig, null, EventBusService.Global);
         }
@@ -188,7 +198,18 @@ public class Bootstrapper : MonoBehaviour
         {
             currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
             simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
-            simDriver?.SetRunner(activeRunner);
+
+            var tickableRunner = activeRunner as ITickableSimulationRunner;
+            if (tickableRunner == null)
+            {
+                LogRunnerContractError(currentConfig.simulationId, "ITickableSimulationRunner");
+                simDriver?.SetRunner(null);
+            }
+            else
+            {
+                simDriver?.SetRunner(tickableRunner);
+            }
+
             replayDriver?.SetRunner(null);
         }
 
@@ -452,10 +473,11 @@ public class Bootstrapper : MonoBehaviour
             Debug.LogWarning($"Bootstrapper: Missing prefab for {config.simulationId} at Resources/{SimulationRegistry.GetResourcePath(config.simulationId)}.prefab");
         }
 
+        activeRunnerObject = runnerObject;
         activeRunner = runnerObject.GetComponent<ISimulationRunner>();
         if (activeRunner == null)
         {
-            Debug.LogWarning($"Bootstrapper: Runner GameObject '{runnerObject.name}' does not implement ISimulationRunner.");
+            Debug.LogWarning($"Bootstrapper: Runner GameObject '{runnerObject.name}' does not implement ISimulationRunner. Attached components: {DescribeComponents(runnerObject)}");
             return;
         }
 
@@ -488,8 +510,40 @@ public class Bootstrapper : MonoBehaviour
     {
         activeRunner?.Shutdown();
         activeRunner = null;
+        activeRunnerObject = null;
         simDriver?.SetRunner(null);
         replayDriver?.SetRunner(null);
+    }
+
+    private void LogRunnerContractError(string simulationId, string requiredInterface)
+    {
+        var runnerName = activeRunnerObject != null ? activeRunnerObject.name : "<null>";
+        Debug.LogError(
+            $"Bootstrapper: Runner contract mismatch for simulation '{simulationId}'. " +
+            $"Runner GameObject='{runnerName}' must implement {requiredInterface}. " +
+            $"Attached components: {DescribeComponents(activeRunnerObject)}");
+    }
+
+    private static string DescribeComponents(GameObject runnerObject)
+    {
+        if (runnerObject == null)
+        {
+            return "<none>";
+        }
+
+        var components = runnerObject.GetComponents<Component>();
+        if (components == null || components.Length == 0)
+        {
+            return "<none>";
+        }
+
+        var names = new string[components.Length];
+        for (var i = 0; i < components.Length; i++)
+        {
+            names[i] = components[i] == null ? "<MissingScript>" : components[i].GetType().FullName;
+        }
+
+        return string.Join(", ", names);
     }
 
     public void PauseSimulation()
