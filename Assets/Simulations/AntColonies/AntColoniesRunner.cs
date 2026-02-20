@@ -45,6 +45,10 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             ants[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            if (velocities[i].sqrMagnitude > 0.0001f)
+            {
+                ants[i].right = velocities[i];
+            }
         }
     }
 
@@ -88,9 +92,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             var ant = new GameObject($"Ant_{role}_{i}");
             ant.transform.SetParent(transform, false);
 
-            var renderer = ant.AddComponent<SpriteRenderer>();
-            renderer.sprite = ProceduralSpriteLibrary.GetAnt(role, 64);
-            renderer.color = GetRoleColor(role);
+            EntityIconFactory.CreateAntIcon(ant.transform, role, GetRoleColor(role), 64);
 
             ant.transform.localScale = Vector3.one * GetRoleScale(role);
 
@@ -102,6 +104,10 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
             ant.transform.localPosition = new Vector3(startX, startY, 0f);
+            if (velocities[i].sqrMagnitude > 0.0001f)
+            {
+                ant.transform.right = velocities[i];
+            }
 
             ants[i] = ant.transform;
         }
