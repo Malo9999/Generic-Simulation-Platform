@@ -51,6 +51,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             athletes[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            if (velocities[i].sqrMagnitude > 0.0001f)
+            {
+                athletes[i].right = velocities[i];
+            }
         }
     }
 
@@ -84,33 +88,23 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         positions = new Vector2[AthleteCount];
         velocities = new Vector2[AthleteCount];
 
-        var baseSprite = ProceduralSpriteLibrary.GetAthleteBase(64);
-
         for (var i = 0; i < AthleteCount; i++)
         {
             var athlete = new GameObject($"Athlete_{i}");
             athlete.transform.SetParent(transform, false);
 
-            var baseRenderer = athlete.AddComponent<SpriteRenderer>();
-            baseRenderer.sprite = baseSprite;
-            baseRenderer.color = new Color(
+            var jerseyTint = new Color(
                 RngService.Global.Range(0.15f, 1f),
                 RngService.Global.Range(0.15f, 1f),
                 RngService.Global.Range(0.15f, 1f),
                 1f);
-
             var kit = (AthleteKit)RngService.Global.Range(0, 3);
-            var padsGo = new GameObject("Shoulderpads");
-            padsGo.transform.SetParent(athlete.transform, false);
-
-            var padsRenderer = padsGo.AddComponent<SpriteRenderer>();
-            padsRenderer.sprite = ProceduralSpriteLibrary.GetAthleteShoulderpads(kit, 64);
-            padsRenderer.color = new Color(
+            var padsTint = new Color(
                 RngService.Global.Range(0.8f, 1f),
                 RngService.Global.Range(0.8f, 1f),
                 RngService.Global.Range(0.8f, 1f),
                 1f);
-            padsRenderer.sortingOrder = baseRenderer.sortingOrder + 1;
+            EntityIconFactory.CreateAthleteIcon(athlete.transform, kit, jerseyTint, padsTint, 64);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -122,6 +116,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             athlete.transform.localPosition = new Vector3(startX, startY, 0f);
             athlete.transform.localScale = Vector3.one * RngService.Global.Range(0.95f, 1.1f);
+            if (velocities[i].sqrMagnitude > 0.0001f)
+            {
+                athlete.transform.right = velocities[i];
+            }
             athletes[i] = athlete.transform;
         }
     }

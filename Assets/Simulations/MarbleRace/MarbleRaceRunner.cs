@@ -74,24 +74,15 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         positions = new Vector2[MarbleCount];
         velocities = new Vector2[MarbleCount];
 
-        var baseSprite = ProceduralSpriteLibrary.GetMarbleBase(64);
-
         for (var i = 0; i < MarbleCount; i++)
         {
             var marble = new GameObject($"Marble_{i}");
             marble.transform.SetParent(transform, false);
 
-            var baseRenderer = marble.AddComponent<SpriteRenderer>();
-            baseRenderer.sprite = baseSprite;
-            baseRenderer.color = RandomBrightColor();
-
-            var stripeGo = new GameObject("Stripe");
-            stripeGo.transform.SetParent(marble.transform, false);
-
-            var stripeRenderer = stripeGo.AddComponent<SpriteRenderer>();
-            stripeRenderer.sprite = ProceduralSpriteLibrary.GetMarbleStripe((MarbleStripe)RngService.Global.Range(0, 4), 64);
-            stripeRenderer.color = RandomContrastingColor(baseRenderer.color);
-            stripeRenderer.sortingOrder = baseRenderer.sortingOrder + 1;
+            var baseTint = RandomBrightColor();
+            var stripe = (MarbleStripe)RngService.Global.Range(0, 4);
+            var stripeTint = RandomContrastingColor(baseTint);
+            EntityIconFactory.CreateMarbleIcon(marble.transform, stripe, baseTint, stripeTint, 64);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);

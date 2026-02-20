@@ -27,13 +27,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < cars.Length; i++)
         {
+            var previousY = positions[i].y;
             positions[i].x += velocities[i].x * dt;
 
             if (positions[i].x < -halfWidth || positions[i].x > halfWidth)
             {
                 positions[i].x = Mathf.Clamp(positions[i].x, -halfWidth, halfWidth);
                 velocities[i].x *= -1f;
-                cars[i].localScale = new Vector3(Mathf.Sign(velocities[i].x), 1f, 1f);
             }
 
             var targetY = laneTargets[i] + Mathf.Sin((tickIndex * 0.08f) + i) * 0.25f;
@@ -41,6 +41,11 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
 
             cars[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            var velocity = new Vector2(velocities[i].x, dt > 0f ? (positions[i].y - previousY) / dt : 0f);
+            if (velocity.sqrMagnitude > 0.0001f)
+            {
+                cars[i].right = velocity;
+            }
         }
     }
 
@@ -76,32 +81,23 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         velocities = new Vector2[CarCount];
         laneTargets = new float[CarCount];
 
-        var baseSprite = ProceduralSpriteLibrary.GetCarBase(64);
-
         for (var i = 0; i < CarCount; i++)
         {
             var car = new GameObject($"Car_{i}");
             car.transform.SetParent(transform, false);
 
-            var baseRenderer = car.AddComponent<SpriteRenderer>();
-            baseRenderer.sprite = baseSprite;
-            baseRenderer.color = new Color(
+            var bodyTint = new Color(
                 RngService.Global.Range(0.2f, 1f),
                 RngService.Global.Range(0.2f, 1f),
                 RngService.Global.Range(0.2f, 1f),
                 1f);
-
-            var liveryGo = new GameObject("Livery");
-            liveryGo.transform.SetParent(car.transform, false);
-
-            var liveryRenderer = liveryGo.AddComponent<SpriteRenderer>();
-            liveryRenderer.sprite = ProceduralSpriteLibrary.GetCarLivery((CarLivery)RngService.Global.Range(0, 4), 64);
-            liveryRenderer.color = new Color(
+            var livery = (CarLivery)RngService.Global.Range(0, 4);
+            var liveryTint = new Color(
                 RngService.Global.Range(0.8f, 1f),
                 RngService.Global.Range(0.8f, 1f),
                 RngService.Global.Range(0.8f, 1f),
                 1f);
-            liveryRenderer.sortingOrder = baseRenderer.sortingOrder + 1;
+            EntityIconFactory.CreateCarIcon(car.transform, livery, bodyTint, liveryTint, 64);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / CarCount);
@@ -117,7 +113,10 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             laneTargets[i] = lane;
 
             car.transform.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            car.transform.localScale = new Vector3(Mathf.Sign(speed), 1f, 1f);
+            if (Mathf.Abs(speed) > 0.001f)
+            {
+                car.transform.right = new Vector2(Mathf.Sign(speed), 0f);
+            }
             cars[i] = car.transform;
         }
     }
