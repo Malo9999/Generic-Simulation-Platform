@@ -3,42 +3,49 @@ using UnityEngine;
 public static class EntityIconFactory
 {
     private const int DefaultSizePx = 64;
+    private const int AntSegmentSizePx = 256;
+    private const int AntAppendageSizePx = 128;
 
     public static void BuildAnt(Transform root, AntRole role, Color bodyTint)
     {
-        var abdomenScale = role == AntRole.Queen ? new Vector3(0.48f, 0.36f, 1f) : new Vector3(0.4f, 0.3f, 1f);
-        var headScale = role == AntRole.Warrior ? new Vector3(0.3f, 0.28f, 1f) : new Vector3(0.24f, 0.22f, 1f);
+        var darkOutline = new Color(0.06f, 0.06f, 0.06f, 1f);
+        var thoraxScale = new Vector3(0.30f, 0.30f, 1f);
+        var abdomenScale = role == AntRole.Queen ? new Vector3(0.42f, 0.42f, 1f) : new Vector3(0.36f, 0.36f, 1f);
+        var headScale = role == AntRole.Warrior ? new Vector3(0.30f, 0.30f, 1f) : new Vector3(0.24f, 0.24f, 1f);
 
-        AddOutlinedPart(root, "Abdomen", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), bodyTint, new Vector3(-0.3f, 0f, 0f), abdomenScale);
-        AddOutlinedPart(root, "Thorax", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), bodyTint, Vector3.zero, new Vector3(0.3f, 0.26f, 1f));
-        AddOutlinedPart(root, "Head", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), bodyTint, new Vector3(0.28f, 0f, 0f), headScale);
+        AddOutlinedPart(root, "Abdomen", PrimitiveSpriteLibrary.CircleOutline(AntSegmentSizePx), PrimitiveSpriteLibrary.CircleFill(AntSegmentSizePx), bodyTint, new Vector3(-0.45f, 0f, 0f), abdomenScale, 0f, darkOutline);
+        AddOutlinedPart(root, "Thorax", PrimitiveSpriteLibrary.CircleOutline(AntSegmentSizePx), PrimitiveSpriteLibrary.CircleFill(AntSegmentSizePx), bodyTint, Vector3.zero, thoraxScale, 0f, darkOutline);
+        AddOutlinedPart(root, "Head", PrimitiveSpriteLibrary.CircleOutline(AntSegmentSizePx), PrimitiveSpriteLibrary.CircleFill(AntSegmentSizePx), bodyTint, new Vector3(0.42f, 0f, 0f), headScale, 0f, darkOutline);
 
-        var legFill = bodyTint * 0.65f;
-        var legOutline = bodyTint * 0.35f;
-        var legAngles = new[] { 32f, 45f, 58f };
-        for (var i = 0; i < 3; i++)
+        var connectorTint = bodyTint * 0.85f;
+        AddOutlinedPart(root, "WaistRear", PrimitiveSpriteLibrary.CapsuleOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.CapsuleFill(AntAppendageSizePx), connectorTint, new Vector3(-0.23f, 0f, 0f), new Vector3(0.11f, 0.06f, 1f), 0f, darkOutline);
+        AddOutlinedPart(root, "WaistFront", PrimitiveSpriteLibrary.CapsuleOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.CapsuleFill(AntAppendageSizePx), connectorTint, new Vector3(0.20f, 0f, 0f), new Vector3(0.1f, 0.055f, 1f), 0f, darkOutline);
+
+        var appendageFill = bodyTint * 0.55f;
+        var legXOffsets = new[] { -0.15f, 0f, 0.15f };
+        var legAngles = new[] { 72f, 90f, 108f };
+        for (var i = 0; i < legXOffsets.Length; i++)
         {
-            var y = 0.16f - (i * 0.16f);
-            AddOutlinedPart(root, $"LegLeft_{i}", PrimitiveSpriteLibrary.CapsuleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), legFill, new Vector3(-0.02f, y, 0f), new Vector3(0.35f, 0.05f, 1f), legAngles[i], legOutline);
-            AddOutlinedPart(root, $"LegRight_{i}", PrimitiveSpriteLibrary.CapsuleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), legFill, new Vector3(-0.02f, -y, 0f), new Vector3(0.35f, 0.05f, 1f), -legAngles[i], legOutline);
+            var x = legXOffsets[i];
+            AddOutlinedPart(root, $"LegTop_{i}", PrimitiveSpriteLibrary.CapsuleOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.CapsuleFill(AntAppendageSizePx), appendageFill, new Vector3(x, 0.19f, 0f), new Vector3(0.22f, 0.03f, 1f), legAngles[i], darkOutline);
+            AddOutlinedPart(root, $"LegBottom_{i}", PrimitiveSpriteLibrary.CapsuleOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.CapsuleFill(AntAppendageSizePx), appendageFill, new Vector3(x, -0.19f, 0f), new Vector3(0.22f, 0.03f, 1f), -legAngles[i], darkOutline);
         }
 
-        var detailFill = bodyTint * 0.5f;
-        AddPart(root, "AntennaLeft", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), detailFill, new Vector3(0.43f, 0.09f, 0f), new Vector3(0.22f, 0.04f, 1f), 2, 38f);
-        AddPart(root, "AntennaRight", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), detailFill, new Vector3(0.43f, -0.09f, 0f), new Vector3(0.22f, 0.04f, 1f), 2, -38f);
+        AddOutlinedPart(root, "AntennaTop", PrimitiveSpriteLibrary.CapsuleOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.CapsuleFill(AntAppendageSizePx), appendageFill, new Vector3(0.55f, 0.09f, 0f), new Vector3(0.20f, 0.024f, 1f), 35f, darkOutline);
+        AddOutlinedPart(root, "AntennaBottom", PrimitiveSpriteLibrary.CapsuleOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.CapsuleFill(AntAppendageSizePx), appendageFill, new Vector3(0.55f, -0.09f, 0f), new Vector3(0.20f, 0.024f, 1f), -35f, darkOutline);
 
         if (role == AntRole.Queen)
         {
-            var wingTint = new Color(1f, 1f, 1f, 0.15f);
-            AddPart(root, "WingTop", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), wingTint, new Vector3(-0.05f, 0.2f, 0f), new Vector3(0.46f, 0.2f, 1f), 2, 20f);
-            AddPart(root, "WingBottom", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), wingTint, new Vector3(-0.05f, -0.2f, 0f), new Vector3(0.46f, 0.2f, 1f), 2, -20f);
+            var wingTint = new Color(0.95f, 0.97f, 1f, 0.15f);
+            AddPart(root, "WingTop", PrimitiveSpriteLibrary.CircleFill(AntSegmentSizePx), wingTint, new Vector3(-0.02f, 0.22f, 0f), new Vector3(0.52f, 0.24f, 1f), -1, 18f);
+            AddPart(root, "WingBottom", PrimitiveSpriteLibrary.CircleFill(AntSegmentSizePx), wingTint, new Vector3(-0.02f, -0.22f, 0f), new Vector3(0.52f, 0.24f, 1f), -1, -18f);
         }
 
         if (role == AntRole.Warrior)
         {
-            var mandibleTint = bodyTint * 0.25f;
-            AddPart(root, "MandibleTop", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), mandibleTint, new Vector3(0.46f, 0.07f, 0f), new Vector3(0.08f, 0.04f, 1f), 2, 20f);
-            AddPart(root, "MandibleBottom", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), mandibleTint, new Vector3(0.46f, -0.07f, 0f), new Vector3(0.08f, 0.04f, 1f), 2, -20f);
+            var mandibleTint = bodyTint * 0.4f;
+            AddOutlinedPart(root, "MandibleTop", PrimitiveSpriteLibrary.RoundedRectOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.RoundedRectFill(AntAppendageSizePx), mandibleTint, new Vector3(0.64f, 0.07f, 0f), new Vector3(0.08f, 0.04f, 1f), 22f, darkOutline);
+            AddOutlinedPart(root, "MandibleBottom", PrimitiveSpriteLibrary.RoundedRectOutline(AntAppendageSizePx), PrimitiveSpriteLibrary.RoundedRectFill(AntAppendageSizePx), mandibleTint, new Vector3(0.64f, -0.07f, 0f), new Vector3(0.08f, 0.04f, 1f), -22f, darkOutline);
         }
     }
 

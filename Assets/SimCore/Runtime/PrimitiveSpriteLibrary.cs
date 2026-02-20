@@ -61,7 +61,7 @@ public static class PrimitiveSpriteLibrary
 
         var texture = new Texture2D(sizePx, sizePx, TextureFormat.RGBA32, false)
         {
-            filterMode = FilterMode.Point,
+            filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp
         };
         texture.SetPixels32(pixels);
