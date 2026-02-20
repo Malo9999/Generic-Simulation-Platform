@@ -3,11 +3,16 @@ using UnityEngine;
 public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 {
     private const int CarCount = 10;
+    private const int SpawnDebugCount = 5;
+
+    [SerializeField] private bool logSpawnIdentity = true;
 
     private Transform[] cars;
+    private EntityIdentity[] identities;
     private Vector2[] positions;
     private Vector2[] velocities;
     private float[] laneTargets;
+    private int nextEntityId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
 
@@ -61,6 +66,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         cars = null;
+        identities = null;
         positions = null;
         velocities = null;
         laneTargets = null;
@@ -70,11 +76,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private void BuildCars(ScenarioConfig config)
     {
         Shutdown();
+        nextEntityId = 0;
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
         cars = new Transform[CarCount];
+        identities = new EntityIdentity[CarCount];
         positions = new Vector2[CarCount];
         velocities = new Vector2[CarCount];
         laneTargets = new float[CarCount];
@@ -84,20 +92,16 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             var car = new GameObject($"Car_{i}");
             car.transform.SetParent(transform, false);
 
-            var bodyTint = new Color(
-                RngService.Global.Range(0.2f, 1f),
-                RngService.Global.Range(0.2f, 1f),
-                RngService.Global.Range(0.2f, 1f),
-                1f);
-            var livery = (CarLivery)RngService.Global.Range(0, 4);
-            var liveryTint = new Color(
-                RngService.Global.Range(0.8f, 1f),
-                RngService.Global.Range(0.8f, 1f),
-                RngService.Global.Range(0.8f, 1f),
-                1f);
+            var identity = new EntityIdentity(
+                nextEntityId++,
+                i % 2,
+                "car",
+                RngService.Global.Range(0, 4),
+                RngService.Global.Range(0, int.MaxValue));
+
             var iconRoot = new GameObject("IconRoot");
             iconRoot.transform.SetParent(car.transform, false);
-            EntityIconFactory.BuildCar(iconRoot.transform, livery, bodyTint, liveryTint);
+            EntityIconFactory.BuildCar(iconRoot.transform, identity);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / CarCount);
@@ -118,6 +122,12 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                 car.transform.right = new Vector2(Mathf.Sign(speed), 0f);
             }
             cars[i] = car.transform;
+            identities[i] = identity;
+
+            if (logSpawnIdentity && i < SpawnDebugCount)
+            {
+                Debug.Log($"{nameof(RaceCarRunner)} spawn[{i}] {identity}");
+            }
         }
     }
 

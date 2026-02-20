@@ -17,6 +17,7 @@ public class ArenaCameraPolicy : MonoBehaviour
     public bool clampToBounds = true;
 
     [Header("Optional: auto-bounds from collider")]
+    [Tooltip("Camera clamp uses this collider\'s world-space bounds. Ensure this collider fully covers the playable arena extents.")]
     public Collider2D arenaBoundsCollider;
 
     [Header("Pixel Perfect Zoom")]
@@ -172,7 +173,7 @@ public class ArenaCameraPolicy : MonoBehaviour
         if (TryGetMember<float>(pixelPerfectComponent, "assetsPPU", out var ppu)) return ppu;
         if (TryGetMember<float>(pixelPerfectComponent, "assetsPixelsPerUnit", out ppu)) return ppu;
 
-        // In case it’s an int
+        // In case itâ€™s an int
         if (TryGetMember<int>(pixelPerfectComponent, "assetsPPU", out var ppuI)) return ppuI;
         if (TryGetMember<int>(pixelPerfectComponent, "assetsPixelsPerUnit", out ppuI)) return ppuI;
 
