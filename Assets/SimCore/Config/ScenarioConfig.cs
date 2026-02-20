@@ -11,6 +11,7 @@ public class ScenarioConfig
     public string activeSimulation;
     public WorldConfig world = new();
     public RecordingConfig recording = new();
+    public ReplayConfig replay = new();
     public RenderingConfig rendering = new();
 
     public void NormalizeAliases()
@@ -21,8 +22,10 @@ public class ScenarioConfig
         }
 
         activeSimulation = simulationId;
+        mode = string.Equals(mode, "Replay", StringComparison.OrdinalIgnoreCase) ? "Replay" : "Sim";
         world ??= new WorldConfig();
         recording ??= new RecordingConfig();
+        replay ??= new ReplayConfig();
         rendering ??= new RenderingConfig();
     }
 }
@@ -43,6 +46,13 @@ public class RecordingConfig
     public int snapshotEveryNTicks = 30;
     public bool eventsEnabled = true;
     public string outputRoot = "Runs";
+}
+
+[Serializable]
+public class ReplayConfig
+{
+    public string runFolder = string.Empty;
+    public bool rendererOnly = false;
 }
 
 [Serializable]
