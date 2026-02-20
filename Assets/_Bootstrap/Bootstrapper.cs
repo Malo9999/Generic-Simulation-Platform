@@ -1,4 +1,3 @@
-using System;
 using System.IO;
 using UnityEngine;
 
@@ -6,44 +5,6 @@ public class Bootstrapper : MonoBehaviour
 {
     [SerializeField] private bool createDefaultIfMissing = true;
     [SerializeField] private string configRelativePath = "Configs/scenario_quad_poc.json";
-
-    [Serializable]
-    public class ScenarioConfig
-    {
-        public int schemaVersion;
-        public string scenarioName;
-        public string mode;
-        public int seed;
-        public string activeSimulation;
-        public WorldConfig world;
-        public RecordingConfig recording;
-        public RenderingConfig rendering;
-    }
-
-    [Serializable]
-    public class WorldConfig
-    {
-        public int arenaWidth;
-        public int arenaHeight;
-        public bool walls;
-        public float obstacleDensity;
-    }
-
-    [Serializable]
-    public class RecordingConfig
-    {
-        public bool enabled;
-        public int snapshotEveryNTicks;
-        public bool eventsEnabled;
-        public string outputRoot;
-    }
-
-    [Serializable]
-    public class RenderingConfig
-    {
-        public int targetUpscale = 4;
-        public int targetFps = 60;
-    }
 
     private void Awake()
     {
@@ -96,6 +57,15 @@ public class Bootstrapper : MonoBehaviour
             $"- world: {config.world.arenaWidth}x{config.world.arenaHeight}, walls={config.world.walls}, obstacleDensity={config.world.obstacleDensity}\n" +
             $"- recording: enabled={config.recording.enabled}, snapshotEveryNTicks={config.recording.snapshotEveryNTicks}, eventsEnabled={config.recording.eventsEnabled}\n" +
             $"- runsPath: {resolvedRunsPath}");
+
+        var runner = FindFirstObjectByType<SimRunner>();
+        if (runner == null)
+        {
+            var runnerObject = new GameObject("SimRunner");
+            runner = runnerObject.AddComponent<SimRunner>();
+        }
+
+        runner.Initialize(config);
     }
 
     private static ScenarioConfig CreateDefaultConfig()
