@@ -7,6 +7,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private const int WorkerCount = 8;
     private const int WarriorCount = 3;
     private const int AntCount = QueenCount + WorkerCount + WarriorCount;
+    private const float SpeedMultiplier = 0.20f; // 0.20 = ~5x slower; tweak as needed
 
     private Transform[] ants;
     private SpriteRenderer[] antOutlines;
@@ -156,12 +157,14 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
     private static float GetRoleSpeed(AntRole role)
     {
-        return role switch
+        float s = role switch
         {
             AntRole.Queen => RngService.Global.Range(3f, 6f),
             AntRole.Worker => RngService.Global.Range(8f, 13f),
             _ => RngService.Global.Range(6f, 10f)
         };
+
+        return s * SpeedMultiplier;
     }
 
     private static float GetRoleScale(AntRole role)
