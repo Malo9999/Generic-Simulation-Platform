@@ -5,7 +5,7 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class MarbleRaceSimulation : ISimulation
+public class MarbleRaceSimulation : ISimulation, IRecordable
 {
     private const int DefaultMarbleCount = 32;
     private const int MaxMarbleCount = 200;
@@ -89,6 +89,31 @@ public class MarbleRaceSimulation : ISimulation
             fallbackLogTimer = 0f;
             Debug.Log(BuildScoreboardText());
         }
+    }
+
+
+    public object CaptureState()
+    {
+        var marbleStates = marbles
+            .Select(m => new MarbleSnapshot
+            {
+                name = m.Name,
+                x = m.Root != null ? m.Root.position.x : 0f,
+                y = m.Root != null ? m.Root.position.y : 0f,
+                lap = m.LapCount,
+                nextWaypoint = m.NextWaypointIndex,
+                finished = m.Finished
+            })
+            .ToList();
+
+        return new MarbleRaceSnapshot
+        {
+            elapsedTime = elapsedTime,
+            raceFinished = raceFinished,
+            marbleCount = marbles.Count,
+            waypoints = waypoints.Count,
+            marbles = marbleStates
+        };
     }
 
     public void Dispose()
@@ -210,6 +235,13 @@ public class MarbleRaceSimulation : ISimulation
         {
             Debug.Log($"MarbleRace winner: {winner.Name} at {winner.FinishTime:0.00}s");
         }
+
+        EventBusService.Global?.Publish("marble_race_finished", new
+        {
+            elapsedTime,
+            winner = winner?.Name,
+            finishCount = finishOrder.Count
+        });
 
         WriteRunOutput();
     }
@@ -556,5 +588,26 @@ public class MarbleRaceSimulation : ISimulation
         public int lapCount;
         public int waypointIndex;
         public float finishTime;
+    }
+
+    [Serializable]
+    private sealed class MarbleRaceSnapshot
+    {
+        public float elapsedTime;
+        public bool raceFinished;
+        public int marbleCount;
+        public int waypoints;
+        public List<MarbleSnapshot> marbles;
+    }
+
+    [Serializable]
+    private sealed class MarbleSnapshot
+    {
+        public string name;
+        public float x;
+        public float y;
+        public int lap;
+        public int nextWaypoint;
+        public bool finished;
     }
 }

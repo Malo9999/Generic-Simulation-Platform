@@ -21,6 +21,7 @@ public class Bootstrapper : MonoBehaviour
     private SimDriver simDriver;
     private ScenarioConfig currentConfig;
     private string currentPresetSource = "<defaults>";
+    private string currentRunFolder;
     private bool isPaused;
     private int tickCount;
     private float smoothedFps;
@@ -169,8 +170,10 @@ public class Bootstrapper : MonoBehaviour
         tickCount = 0;
 
         ConfigureDeterminism(currentConfig.seed);
+        currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
+        EventBusService.ResetGlobal();
+        simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
         SpawnRunner(currentConfig);
-        WriteRunManifest(currentConfig, currentPresetSource);
 
         if (!initialRun)
         {
@@ -501,7 +504,7 @@ public class Bootstrapper : MonoBehaviour
         simDriver?.SetTimeScale(timeScale);
     }
 
-    private void WriteRunManifest(ScenarioConfig config, string presetSource)
+    private string WriteRunManifest(ScenarioConfig config, string presetSource)
     {
         var runId = $"{DateTime.Now:yyyyMMdd_HHmmss}_{config.simulationId}";
         var projectRoot = Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath;
@@ -522,5 +525,6 @@ public class Bootstrapper : MonoBehaviour
         var manifestPath = Path.Combine(runFolder, "run_manifest.json");
         File.WriteAllText(manifestPath, manifest.ToString(Formatting.Indented));
         Debug.Log($"Bootstrapper: Run manifest written to {manifestPath}");
+        return runFolder;
     }
 }
