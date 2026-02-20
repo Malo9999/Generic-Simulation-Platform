@@ -7,12 +7,13 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private const int WarriorCount = 3;
     private const int AntCount = QueenCount + WorkerCount + WarriorCount;
 
-    private const float RotationEpsilonSqr = 0.0001f;
-
     private Transform[] ants;
+    private SpriteRenderer[] antOutlines;
+    private SpriteRenderer[] antFills;
     private Vector2[] positions;
     private Vector2[] velocities;
     private AntRole[] roles;
+    private int[] currentDirs;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
 
@@ -47,7 +48,17 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             ants[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            FaceVelocity(ants[i], velocities[i]);
+            ants[i].localRotation = Quaternion.identity;
+
+            var dir = Direction8.FromVector(velocities[i]);
+            if (dir == currentDirs[i])
+            {
+                continue;
+            }
+
+            currentDirs[i] = dir;
+            antOutlines[i].sprite = AntAtlasLibrary.GetOutline(roles[i], dir);
+            antFills[i].sprite = AntAtlasLibrary.GetFill(roles[i], dir);
         }
     }
 
@@ -65,9 +76,12 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         ants = null;
+        antOutlines = null;
+        antFills = null;
         positions = null;
         velocities = null;
         roles = null;
+        currentDirs = null;
         Debug.Log("AntColoniesRunner Shutdown");
     }
 
@@ -79,9 +93,12 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
         ants = new Transform[AntCount];
+        antOutlines = new SpriteRenderer[AntCount];
+        antFills = new SpriteRenderer[AntCount];
         positions = new Vector2[AntCount];
         velocities = new Vector2[AntCount];
         roles = new AntRole[AntCount];
+        currentDirs = new int[AntCount];
 
         for (var i = 0; i < AntCount; i++)
         {
@@ -90,12 +107,19 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
             var ant = new GameObject($"Ant_{role}_{i}");
             ant.transform.SetParent(transform, false);
-
-            var iconRoot = new GameObject("IconRoot");
-            iconRoot.transform.SetParent(ant.transform, false);
-            EntityIconFactory.BuildAnt(iconRoot.transform, role, GetRoleColor(role));
-
             ant.transform.localScale = Vector3.one * GetRoleScale(role);
+            ant.transform.localRotation = Quaternion.identity;
+
+            var outlineObject = new GameObject("Outline");
+            outlineObject.transform.SetParent(ant.transform, false);
+            var outlineRenderer = outlineObject.AddComponent<SpriteRenderer>();
+            outlineRenderer.sortingOrder = 0;
+
+            var fillObject = new GameObject("Fill");
+            fillObject.transform.SetParent(ant.transform, false);
+            var fillRenderer = fillObject.AddComponent<SpriteRenderer>();
+            fillRenderer.sortingOrder = 1;
+            fillRenderer.color = GetRoleColor(role);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -105,28 +129,16 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
             ant.transform.localPosition = new Vector3(startX, startY, 0f);
-            FaceVelocity(ant.transform, velocities[i]);
+
+            var initialDir = Direction8.FromVector(velocities[i]);
+            currentDirs[i] = initialDir;
+            outlineRenderer.sprite = AntAtlasLibrary.GetOutline(role, initialDir);
+            fillRenderer.sprite = AntAtlasLibrary.GetFill(role, initialDir);
 
             ants[i] = ant.transform;
+            antOutlines[i] = outlineRenderer;
+            antFills[i] = fillRenderer;
         }
-    }
-
-    private static void FaceVelocity(Transform target, Vector2 velocity)
-    {
-        if (velocity.sqrMagnitude <= RotationEpsilonSqr)
-        {
-            return;
-        }
-
-        var angle = SnapAngleDeg(velocity, 16);
-        target.localRotation = Quaternion.Euler(0f, 0f, angle);
-    }
-
-    private static float SnapAngleDeg(Vector2 v, int directions = 16)
-    {
-        var angle = Mathf.Atan2(v.y, v.x) * Mathf.Rad2Deg;
-        var step = 360f / directions;
-        return Mathf.Round(angle / step) * step;
     }
 
     private static float GetRoleSpeed(AntRole role)
