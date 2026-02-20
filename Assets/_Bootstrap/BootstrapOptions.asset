@@ -12,7 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 72049d3b1f71df8409d7dd79f1dd4ce0, type: 3}
   m_Name: BootstrapOptions
   m_EditorClassIdentifier: Assembly-CSharp::BootstrapOptions
-  simulationId: MarbleRace
+  simulationId: AntColonies
+  simulationCatalog: {fileID: 11400000, guid: d59dd5f11ea34adf9d4bc5f86f9e9497, type: 2}
   presetJson: {fileID: 0}
   seedPolicy: 0
   fixedSeed: 12345
