@@ -6,6 +6,30 @@ public static class EntityIconFactory
     private const int AntSegmentSizePx = 256;
     private const int AntAppendageSizePx = 128;
 
+    public static void BuildMarble(Transform root, EntityIdentity identity)
+    {
+        var stripe = (MarbleStripe)Mathf.Abs(identity.variant % 4);
+        var baseTint = ColorFromIdentity(identity, 0.2f, 0.95f, 0x9E3779B9u);
+        var stripeTint = ColorFromIdentity(identity, 0.7f, 1f, 0x7F4A7C15u);
+        BuildMarble(root, stripe, baseTint, stripeTint);
+    }
+
+    public static void BuildCar(Transform root, EntityIdentity identity)
+    {
+        var livery = (CarLivery)Mathf.Abs(identity.variant % 4);
+        var bodyTint = ColorFromIdentity(identity, 0.2f, 0.95f, 0xA24BAEDCu);
+        var liveryTint = ColorFromIdentity(identity, 0.8f, 1f, 0x165667B1u);
+        BuildCar(root, livery, bodyTint, liveryTint);
+    }
+
+    public static void BuildAthlete(Transform root, EntityIdentity identity)
+    {
+        var kit = (AthleteKit)Mathf.Abs(identity.variant % 3);
+        var jerseyTint = ColorFromIdentity(identity, 0.15f, 0.95f, 0x27D4EB2Fu);
+        var padsTint = ColorFromIdentity(identity, 0.8f, 1f, 0xB5297A4Du);
+        BuildAthlete(root, kit, jerseyTint, padsTint);
+    }
+
     public static void BuildAnt(Transform root, AntRole role, Color bodyTint)
     {
         var darkOutline = new Color(0.06f, 0.06f, 0.06f, 1f);
@@ -135,5 +159,30 @@ public static class EntityIconFactory
         renderer.sprite = sprite;
         renderer.color = tint;
         renderer.sortingOrder = sortingOrder;
+    }
+
+    private static Color ColorFromIdentity(EntityIdentity identity, float minChannel, float maxChannel, uint salt)
+    {
+        var hash = HashIdentity(identity, salt);
+        return new Color(
+            Mathf.Lerp(minChannel, maxChannel, ((hash >> 0) & 0xFF) / 255f),
+            Mathf.Lerp(minChannel, maxChannel, ((hash >> 8) & 0xFF) / 255f),
+            Mathf.Lerp(minChannel, maxChannel, ((hash >> 16) & 0xFF) / 255f),
+            1f);
+    }
+
+    private static uint HashIdentity(EntityIdentity identity, uint salt)
+    {
+        unchecked
+        {
+            uint hash = 2166136261u;
+            hash = (hash ^ (uint)identity.entityId) * 16777619u;
+            hash = (hash ^ (uint)identity.teamId) * 16777619u;
+            hash = (hash ^ (uint)identity.variant) * 16777619u;
+            hash = (hash ^ (uint)identity.variantSeed) * 16777619u;
+            hash = (hash ^ (uint)identity.statusFlags) * 16777619u;
+            hash = (hash ^ salt) * 16777619u;
+            return hash;
+        }
     }
 }

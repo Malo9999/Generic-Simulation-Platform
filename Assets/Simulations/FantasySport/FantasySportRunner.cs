@@ -3,12 +3,17 @@ using UnityEngine;
 public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 {
     private const int AthleteCount = 10;
+    private const int SpawnDebugCount = 5;
+
+    [SerializeField] private bool logSpawnIdentity = true;
 
     private Transform[] athletes;
+    private EntityIdentity[] identities;
     private Vector2[] positions;
     private Vector2[] velocities;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
+    private int nextEntityId;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -69,6 +74,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         athletes = null;
+        identities = null;
         positions = null;
         velocities = null;
         Debug.Log("FantasySportRunner Shutdown");
@@ -77,11 +83,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void BuildAthletes(ScenarioConfig config)
     {
         Shutdown();
+        nextEntityId = 0;
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
         athletes = new Transform[AthleteCount];
+        identities = new EntityIdentity[AthleteCount];
         positions = new Vector2[AthleteCount];
         velocities = new Vector2[AthleteCount];
 
@@ -90,20 +98,16 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var athlete = new GameObject($"Athlete_{i}");
             athlete.transform.SetParent(transform, false);
 
-            var jerseyTint = new Color(
-                RngService.Global.Range(0.15f, 1f),
-                RngService.Global.Range(0.15f, 1f),
-                RngService.Global.Range(0.15f, 1f),
-                1f);
-            var kit = (AthleteKit)RngService.Global.Range(0, 3);
-            var padsTint = new Color(
-                RngService.Global.Range(0.8f, 1f),
-                RngService.Global.Range(0.8f, 1f),
-                RngService.Global.Range(0.8f, 1f),
-                1f);
+            var identity = new EntityIdentity(
+                nextEntityId++,
+                i % 2,
+                i < AthleteCount / 2 ? "offense" : "defense",
+                RngService.Global.Range(0, 3),
+                RngService.Global.Range(0, int.MaxValue));
+
             var iconRoot = new GameObject("IconRoot");
             iconRoot.transform.SetParent(athlete.transform, false);
-            EntityIconFactory.BuildAthlete(iconRoot.transform, kit, jerseyTint, padsTint);
+            EntityIconFactory.BuildAthlete(iconRoot.transform, identity);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -117,6 +121,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             athlete.transform.localScale = Vector3.one * RngService.Global.Range(0.95f, 1.1f);
             FaceVelocity(athlete.transform, velocities[i]);
             athletes[i] = athlete.transform;
+            identities[i] = identity;
+
+            if (logSpawnIdentity && i < SpawnDebugCount)
+            {
+                Debug.Log($"{nameof(FantasySportRunner)} spawn[{i}] {identity}");
+            }
         }
     }
 

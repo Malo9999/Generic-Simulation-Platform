@@ -3,10 +3,15 @@ using UnityEngine;
 public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 {
     private const int MarbleCount = 12;
+    private const int SpawnDebugCount = 5;
+
+    [SerializeField] private bool logSpawnIdentity = true;
 
     private Transform[] marbles;
+    private EntityIdentity[] identities;
     private Vector2[] positions;
     private Vector2[] velocities;
+    private int nextEntityId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
 
@@ -58,6 +63,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         marbles = null;
+        identities = null;
         positions = null;
         velocities = null;
         Debug.Log("MarbleRaceRunner Shutdown");
@@ -66,11 +72,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private void BuildMarbles(ScenarioConfig config)
     {
         Shutdown();
+        nextEntityId = 0;
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
         marbles = new Transform[MarbleCount];
+        identities = new EntityIdentity[MarbleCount];
         positions = new Vector2[MarbleCount];
         velocities = new Vector2[MarbleCount];
 
@@ -79,12 +87,16 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             var marble = new GameObject($"Marble_{i}");
             marble.transform.SetParent(transform, false);
 
-            var baseTint = RandomBrightColor();
-            var stripe = (MarbleStripe)RngService.Global.Range(0, 4);
-            var stripeTint = RandomContrastingColor(baseTint);
+            var identity = new EntityIdentity(
+                nextEntityId++,
+                i % 2,
+                "marble",
+                RngService.Global.Range(0, 4),
+                RngService.Global.Range(0, int.MaxValue));
+
             var iconRoot = new GameObject("IconRoot");
             iconRoot.transform.SetParent(marble.transform, false);
-            EntityIconFactory.BuildMarble(iconRoot.transform, stripe, baseTint, stripeTint);
+            EntityIconFactory.BuildMarble(iconRoot.transform, identity);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -97,27 +109,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             marble.transform.localPosition = new Vector3(startX, startY, 0f);
             marble.transform.localScale = Vector3.one;
             marbles[i] = marble.transform;
+            identities[i] = identity;
+
+            if (logSpawnIdentity && i < SpawnDebugCount)
+            {
+                Debug.Log($"{nameof(MarbleRaceRunner)} spawn[{i}] {identity}");
+            }
         }
-    }
-
-    private static Color RandomBrightColor()
-    {
-        return new Color(
-            RngService.Global.Range(0.2f, 1f),
-            RngService.Global.Range(0.2f, 1f),
-            RngService.Global.Range(0.2f, 1f),
-            1f);
-    }
-
-    private static Color RandomContrastingColor(Color baseColor)
-    {
-        var inv = new Color(1f - baseColor.r, 1f - baseColor.g, 1f - baseColor.b, 1f);
-        var jitter = new Color(
-            RngService.Global.Range(0f, 0.2f),
-            RngService.Global.Range(0f, 0.2f),
-            RngService.Global.Range(0f, 0.2f),
-            0f);
-        return (inv * 0.8f) + jitter;
     }
 
     private void EnsureMainCamera()
