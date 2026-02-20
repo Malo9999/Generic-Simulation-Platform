@@ -7,3 +7,8 @@ public interface ISimulation
     void Tick(float dt);
     void Dispose();
 }
+
+public interface IRecordable
+{
+    object CaptureState();
+}

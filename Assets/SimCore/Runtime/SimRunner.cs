@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class SimRunner : MonoBehaviour, ITickableSimulationRunner
+public class SimRunner : MonoBehaviour, ITickableSimulationRunner, IRecordable
 {
     private const string SimRootName = "SimRoot";
 
@@ -47,6 +47,20 @@ public class SimRunner : MonoBehaviour, ITickableSimulationRunner
     {
         currentSimulation?.Dispose();
         currentSimulation = null;
+    }
+
+    public object CaptureState()
+    {
+        if (currentSimulation is IRecordable recordable)
+        {
+            return recordable.CaptureState();
+        }
+
+        return new FallbackSnapshot
+        {
+            simulationId = currentSimulation?.Id,
+            status = currentSimulation == null ? "not_initialized" : "recordable_not_implemented"
+        };
     }
 
     private void OnDestroy()
@@ -193,5 +207,11 @@ public class SimRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         return "Default";
+    }
+
+    private sealed class FallbackSnapshot
+    {
+        public string simulationId;
+        public string status;
     }
 }
