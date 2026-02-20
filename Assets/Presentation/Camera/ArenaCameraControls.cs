@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
 
 public class ArenaCameraControls : MonoBehaviour
 {
@@ -12,6 +13,7 @@ public class ArenaCameraControls : MonoBehaviour
     public float panSmoothTime = 0.06f;
     public bool allowRightMouseDrag = true;
     public bool allowMiddleMouseDrag = true;
+    public bool blockDragStartOverUI = true;
 
     [Header("Zoom")]
     public bool enableZoom = true;
@@ -22,6 +24,7 @@ public class ArenaCameraControls : MonoBehaviour
     public bool logZoom = false;
 
     private Camera _cam;
+    private Transform _rig;
     private Vector3 _desiredPos;
     private Vector3 _vel;
 
@@ -37,13 +40,14 @@ public class ArenaCameraControls : MonoBehaviour
     private void Awake()
     {
         if (policy == null) policy = GetComponent<ArenaCameraPolicy>();
-        _cam = policy != null ? policy.targetCamera : GetComponentInChildren<Camera>();
-        _desiredPos = transform.position;
+        ResolveReferences();
+        _desiredPos = _rig.position;
     }
 
     private void Update()
     {
         if (policy == null) return;
+        ResolveReferences();
 
         var kb = Keyboard.current;
         var mouse = Mouse.current;
@@ -81,12 +85,24 @@ public class ArenaCameraControls : MonoBehaviour
 
             if (dragPressedThisFrame)
             {
-                _dragging = true;
-                _dragStartRigPos = _desiredPos;
-                _dragStartMouseScreen = mouse.position.ReadValue();
+                if (blockDragStartOverUI && EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+                {
+                    _dragging = false;
+                }
+                else
+                {
+                    _dragging = true;
+                    _dragStartRigPos = _desiredPos;
+                    _dragStartMouseScreen = mouse.position.ReadValue();
+                }
             }
             else if (dragReleasedThisFrame)
             {
+                _dragging = false;
+            }
+            else if (_dragging && !dragHeld)
+            {
+                // Handles missed MouseUp when focus leaves the game view/window.
                 _dragging = false;
             }
             else if (_dragging && dragHeld)
@@ -98,8 +114,8 @@ public class ArenaCameraControls : MonoBehaviour
         }
 
         // Apply smoothing
-        transform.position = Vector3.SmoothDamp(
-            transform.position,
+        _rig.position = Vector3.SmoothDamp(
+            _rig.position,
             _desiredPos,
             ref _vel,
             panSmoothTime,
@@ -143,9 +159,38 @@ public class ArenaCameraControls : MonoBehaviour
             return d;
         }
 
-        float worldUnitsPerPixelY = (2f * _cam.orthographicSize) / Mathf.Max(1, Screen.height);
-        float worldUnitsPerPixelX = (2f * _cam.orthographicSize * _cam.aspect) / Mathf.Max(1, Screen.width);
+        float worldUnitsPerPixelY = (2f * _cam.orthographicSize) / Mathf.Max(1, _cam.pixelHeight);
+        float worldUnitsPerPixelX = (2f * _cam.orthographicSize * _cam.aspect) / Mathf.Max(1, _cam.pixelWidth);
 
         return new Vector3(pixelDelta.x * worldUnitsPerPixelX, pixelDelta.y * worldUnitsPerPixelY, 0f);
+    }
+
+    private void OnDisable()
+    {
+        StopDragging();
+    }
+
+    private void OnApplicationFocus(bool hasFocus)
+    {
+        if (!hasFocus)
+            StopDragging();
+    }
+
+    private void ResolveReferences()
+    {
+        _rig = policy != null ? policy.transform : transform;
+        _cam = policy != null ? policy.targetCamera : _cam;
+
+        if (_cam == null)
+            _cam = GetComponentInChildren<Camera>();
+
+        if (!_dragging)
+            _desiredPos = _rig.position;
+    }
+
+    private void StopDragging()
+    {
+        _dragging = false;
+        _vel = Vector3.zero;
     }
 }
