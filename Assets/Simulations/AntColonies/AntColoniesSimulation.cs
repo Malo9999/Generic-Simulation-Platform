@@ -24,7 +24,7 @@ public class AntColoniesSimulation : ISimulation
     private Transform foodRoot;
     private Transform nestRoot;
 
-    private System.Random random;
+    private IRng rng;
     private float arenaWidth;
     private float arenaHeight;
     private float elapsed;
@@ -37,13 +37,14 @@ public class AntColoniesSimulation : ISimulation
     private Sprite circleSprite;
     private Sprite squareSprite;
 
-    public void Initialize(ScenarioConfig cfg, Transform root)
+    public void Initialize(ScenarioConfig cfg, Transform root, IRng randomService)
     {
         config = cfg ?? new ScenarioConfig();
         simRoot = root;
         arenaWidth = Mathf.Max(10f, config.world?.arenaWidth ?? 64);
         arenaHeight = Mathf.Max(10f, config.world?.arenaHeight ?? 64);
-        random = new System.Random(config.seed == 0 ? Environment.TickCount : config.seed);
+        var effectiveSeed = config.seed == 0 ? Environment.TickCount : config.seed;
+        rng = randomService ?? new SeededRng(effectiveSeed);
 
         BuildRoots();
         BuildSprites();
@@ -661,7 +662,7 @@ public class AntColoniesSimulation : ISimulation
 
     private float Rand(float min, float max)
     {
-        return min + (float)random.NextDouble() * (max - min);
+        return min + (float)rng.NextDouble() * (max - min);
     }
 
     [Serializable]

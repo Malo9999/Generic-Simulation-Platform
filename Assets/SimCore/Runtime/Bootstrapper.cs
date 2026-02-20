@@ -84,6 +84,7 @@ public class Bootstrapper : MonoBehaviour
         resolved.NormalizeAliases();
         currentConfig = resolved;
 
+        ConfigureDeterminism(currentConfig.seed);
         SpawnRunner(currentConfig);
         WriteRunManifest(currentConfig, currentPresetSource);
 
@@ -194,15 +195,29 @@ public class Bootstrapper : MonoBehaviour
     {
         if (options == null)
         {
-            return UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            return Environment.TickCount;
         }
 
         return options.seedPolicy switch
         {
             SeedPolicy.Fixed => options.fixedSeed,
             SeedPolicy.FromSystemTime => Environment.TickCount,
-            _ => UnityEngine.Random.Range(int.MinValue, int.MaxValue)
+            _ => Environment.TickCount
         };
+    }
+
+
+    private void ConfigureDeterminism(int seed)
+    {
+        UnityEngine.Random.InitState(seed);
+
+        var sampleA = UnityEngine.Random.value;
+        var sampleB = UnityEngine.Random.value;
+        var sampleC = UnityEngine.Random.value;
+        Debug.Log($"Bootstrapper: RNG sanity check seed={seed} values=[{sampleA:F6}, {sampleB:F6}, {sampleC:F6}]");
+
+        UnityEngine.Random.InitState(seed);
+        RngService.SetGlobal(new SeededRng(seed));
     }
 
     private void SpawnRunner(ScenarioConfig config)
