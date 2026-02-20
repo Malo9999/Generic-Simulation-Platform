@@ -187,14 +187,6 @@ public class SimRunner : MonoBehaviour
             }
         }
 
-        foreach (var layer in SortingLayer.layers)
-        {
-            if (layer.name == "UI")
-            {
-                return "UI";
-            }
-        }
-
         return "Default";
     }
 }
