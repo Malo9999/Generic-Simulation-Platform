@@ -1,9 +1,9 @@
 using System;
+using System.Collections;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
-using UnityEngine.InputSystem;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -11,19 +11,30 @@ using UnityEditor;
 public class Bootstrapper : MonoBehaviour
 {
     [SerializeField] private BootstrapOptions options;
+    [SerializeField, Min(0.0001f)] private float tickDeltaTime = 1f / 60f;
 
     private const string SimulationRootName = "SimulationRoot";
     private static readonly string[] KnownSimulationIds = { "AntColonies", "MarbleRace", "RaceCar", "FantasySport" };
 
     private GameObject simulationRoot;
     private ISimulationRunner activeRunner;
+    private SimDriver simDriver;
     private ScenarioConfig currentConfig;
     private string currentPresetSource = "<defaults>";
+    private bool isPaused;
+    private int tickCount;
+    private float smoothedFps;
 
     public string CurrentSimulationId => currentConfig?.simulationId ?? options?.simulationId ?? "MarbleRace";
     public int CurrentSeed => currentConfig?.seed ?? 0;
     public string CurrentPresetSource => currentPresetSource;
     public bool ShowOverlay => options == null || options.showOverlay;
+    public bool IsPaused => isPaused;
+    public int TickCount => tickCount;
+    public float CurrentFps => smoothedFps;
+    public int CurrentTick => simDriver?.CurrentTick ?? 0;
+    public bool IsPaused => simDriver?.IsPaused ?? false;
+    public float TimeScale => simDriver?.TimeScale ?? 1f;
 
 #if UNITY_EDITOR
     private void OnValidate()
@@ -32,14 +43,22 @@ public class Bootstrapper : MonoBehaviour
         {
             options = EnsureBootstrapOptionsAsset();
         }
+
+        if (options != null && options.simulationCatalog == null)
+        {
+            options.simulationCatalog = EnsureSimulationCatalogAsset();
+            EditorUtility.SetDirty(options);
+        }
     }
 #endif
 
     private void Awake()
     {
+        simDriver = new SimDriver(tickDeltaTime);
         ResolveOptions();
-        ValidateDefaultPresets();
-        StartSimulation(options?.simulationId ?? "MarbleRace", true);
+        EnsureSimulationCatalogReference();
+
+        StartSimulation(options?.simulationId ?? GetFallbackSimulationId(), true);
 
         if (ShowOverlay && GetComponent<SimulationSelectorOverlay>() == null)
         {
@@ -49,25 +68,87 @@ public class Bootstrapper : MonoBehaviour
 
     private void Update()
     {
+        simDriver?.Advance(Time.unscaledDeltaTime);
+
         if (options == null || !options.allowHotkeySwitch)
         {
             return;
         }
 
-        if (Keyboard.current == null)
+        tickCount++;
+        var instantaneousFps = Time.unscaledDeltaTime > 0f ? 1f / Time.unscaledDeltaTime : 0f;
+        smoothedFps = smoothedFps <= 0f ? instantaneousFps : Mathf.Lerp(smoothedFps, instantaneousFps, 0.15f);
+    }
+
+    public void PauseOrResume()
+    {
+        isPaused = !isPaused;
+        Time.timeScale = isPaused ? 0f : 1f;
+    }
+
+    public void StepSimulation()
+    {
+        if (!isPaused)
         {
             return;
         }
 
-        if (Keyboard.current.f1Key.wasPressedThisFrame) StartSimulation("AntColonies", false);
-        if (Keyboard.current.f2Key.wasPressedThisFrame) StartSimulation("MarbleRace", false);
-        if (Keyboard.current.f3Key.wasPressedThisFrame) StartSimulation("RaceCar", false);
-        if (Keyboard.current.f4Key.wasPressedThisFrame) StartSimulation("FantasySport", false);
+        StartCoroutine(StepSingleFrame());
+    }
+
+    public void ResetSimulation()
+    {
+        StartSimulation(CurrentSimulationId, false);
+    }
+
+    public void SwitchToNextSimulation()
+    {
+        var simulationId = GetSimulationIdAtOffset(1);
+        StartSimulation(simulationId, false);
+    }
+
+    public void SwitchToPreviousSimulation()
+    {
+        var simulationId = GetSimulationIdAtOffset(-1);
+        StartSimulation(simulationId, false);
+    }
+
+    private IEnumerator StepSingleFrame()
+    {
+        Time.timeScale = 1f;
+        yield return null;
+        if (isPaused)
+        {
+            Time.timeScale = 0f;
+        }
+    }
+
+    private string GetSimulationIdAtOffset(int direction)
+    {
+        var catalog = options?.simulationCatalog;
+        if (catalog == null || catalog.Simulations.Count == 0)
+        {
+            return CurrentSimulationId;
+        }
+
+        var currentIndex = 0;
+        for (var i = 0; i < catalog.Simulations.Count; i++)
+        {
+            if (string.Equals(catalog.Simulations[i]?.simulationId, CurrentSimulationId, StringComparison.OrdinalIgnoreCase))
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        var nextIndex = (currentIndex + direction + catalog.Simulations.Count) % catalog.Simulations.Count;
+        var simulationId = catalog.Simulations[nextIndex]?.simulationId;
+        return string.IsNullOrWhiteSpace(simulationId) ? CurrentSimulationId : simulationId;
     }
 
     private void StartSimulation(string simulationId, bool initialRun)
     {
-        simulationId = string.IsNullOrWhiteSpace(simulationId) ? "MarbleRace" : simulationId;
+        simulationId = string.IsNullOrWhiteSpace(simulationId) ? GetFallbackSimulationId() : simulationId;
         if (options != null)
         {
             options.simulationId = simulationId;
@@ -85,7 +166,9 @@ public class Bootstrapper : MonoBehaviour
         resolved.seed = ResolveSeed();
         resolved.NormalizeAliases();
         currentConfig = resolved;
+        tickCount = 0;
 
+        ConfigureDeterminism(currentConfig.seed);
         SpawnRunner(currentConfig);
         WriteRunManifest(currentConfig, currentPresetSource);
 
@@ -93,6 +176,17 @@ public class Bootstrapper : MonoBehaviour
         {
             Debug.Log($"Switched simulation to {simulationId} with seed {currentConfig.seed}");
         }
+    }
+
+    private string GetFallbackSimulationId()
+    {
+        var catalog = options?.simulationCatalog;
+        if (catalog != null && catalog.Simulations.Count > 0)
+        {
+            return catalog.Simulations[0]?.simulationId ?? "MarbleRace";
+        }
+
+        return "MarbleRace";
     }
 
     private void ResolveOptions()
@@ -111,6 +205,21 @@ public class Bootstrapper : MonoBehaviour
             options = ScriptableObject.CreateInstance<BootstrapOptions>();
             Debug.LogWarning("Bootstrapper: BootstrapOptions missing, using safe in-memory defaults.");
         }
+    }
+
+    private void EnsureSimulationCatalogReference()
+    {
+        if (options == null || options.simulationCatalog != null)
+        {
+            return;
+        }
+
+#if UNITY_EDITOR
+        options.simulationCatalog = EnsureSimulationCatalogAsset();
+        EditorUtility.SetDirty(options);
+#else
+        options.simulationCatalog = Resources.Load<SimulationCatalog>("SimulationCatalog");
+#endif
     }
 
 #if UNITY_EDITOR
@@ -141,10 +250,39 @@ public class Bootstrapper : MonoBehaviour
         }
 
         resolvedOptions = ScriptableObject.CreateInstance<BootstrapOptions>();
+        resolvedOptions.simulationCatalog = EnsureSimulationCatalogAsset();
         AssetDatabase.CreateAsset(resolvedOptions, assetPath);
         AssetDatabase.SaveAssets();
         Debug.Log($"Bootstrapper: Created BootstrapOptions asset at {assetPath}");
         return resolvedOptions;
+    }
+
+    private static SimulationCatalog EnsureSimulationCatalogAsset()
+    {
+        const string assetPath = "Assets/_Bootstrap/SimulationCatalog.asset";
+        var catalog = AssetDatabase.LoadAssetAtPath<SimulationCatalog>(assetPath);
+        if (catalog != null)
+        {
+            return catalog;
+        }
+
+        var guid = AssetDatabase.FindAssets("t:SimulationCatalog SimulationCatalog");
+        if (guid.Length > 0)
+        {
+            var foundPath = AssetDatabase.GUIDToAssetPath(guid[0]);
+            catalog = AssetDatabase.LoadAssetAtPath<SimulationCatalog>(foundPath);
+            if (catalog != null)
+            {
+                return catalog;
+            }
+        }
+
+        catalog = ScriptableObject.CreateInstance<SimulationCatalog>();
+        AssetDatabase.CreateAsset(catalog, assetPath);
+        catalog.AutoDiscoverSimulations();
+        AssetDatabase.SaveAssets();
+        Debug.Log($"Bootstrapper: Created SimulationCatalog asset at {assetPath}");
+        return catalog;
     }
 #endif
 
@@ -157,8 +295,18 @@ public class Bootstrapper : MonoBehaviour
             return options.presetJson.text;
         }
 
-        var streamingAssetsPath = GetStreamingPresetPath(simulationId);
-        if (TryReadStreamingPreset(streamingAssetsPath, out var streamingJson))
+        var entry = options?.simulationCatalog?.FindById(simulationId);
+        if (entry != null && entry.defaultPreset != null)
+        {
+            presetAsset = entry.defaultPreset;
+            source = $"Catalog/{simulationId}";
+            return presetAsset.text;
+        }
+
+#if UNITY_EDITOR
+        var assetPath = $"Assets/Simulations/{simulationId}/Presets/default.json";
+        presetAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
+        if (presetAsset != null)
         {
             source = $"StreamingAssets/{GetStreamingPresetRelativePath(simulationId)}";
             Debug.Log($"Bootstrapper: Using preset from {source} for simulation '{simulationId}'.");
@@ -251,20 +399,35 @@ public class Bootstrapper : MonoBehaviour
     {
         if (options == null)
         {
-            return UnityEngine.Random.Range(int.MinValue, int.MaxValue);
+            return Environment.TickCount;
         }
 
         return options.seedPolicy switch
         {
             SeedPolicy.Fixed => options.fixedSeed,
             SeedPolicy.FromSystemTime => Environment.TickCount,
-            _ => UnityEngine.Random.Range(int.MinValue, int.MaxValue)
+            _ => Environment.TickCount
         };
+    }
+
+
+    private void ConfigureDeterminism(int seed)
+    {
+        UnityEngine.Random.InitState(seed);
+
+        var sampleA = UnityEngine.Random.value;
+        var sampleB = UnityEngine.Random.value;
+        var sampleC = UnityEngine.Random.value;
+        Debug.Log($"Bootstrapper: RNG sanity check seed={seed} values=[{sampleA:F6}, {sampleB:F6}, {sampleC:F6}]");
+
+        UnityEngine.Random.InitState(seed);
+        RngService.SetGlobal(new SeededRng(seed));
     }
 
     private void SpawnRunner(ScenarioConfig config)
     {
-        var prefab = SimulationRegistry.LoadRunnerPrefab(config.simulationId);
+        var prefab = options?.simulationCatalog?.FindById(config.simulationId)?.runnerPrefab;
+        prefab ??= SimulationRegistry.LoadRunnerPrefab(config.simulationId);
         GameObject runnerObject;
 
         if (prefab != null)
@@ -286,6 +449,7 @@ public class Bootstrapper : MonoBehaviour
         }
 
         activeRunner.Initialize(config);
+        simDriver?.SetRunner(activeRunner);
     }
 
     private void EnsureSimulationRoot()
@@ -314,6 +478,27 @@ public class Bootstrapper : MonoBehaviour
     {
         activeRunner?.Shutdown();
         activeRunner = null;
+        simDriver?.SetRunner(null);
+    }
+
+    public void PauseSimulation()
+    {
+        simDriver?.Pause();
+    }
+
+    public void ResumeSimulation()
+    {
+        simDriver?.Resume();
+    }
+
+    public void StepSimulationOnce()
+    {
+        simDriver?.RequestSingleStep();
+    }
+
+    public void SetSimulationTimeScale(float timeScale)
+    {
+        simDriver?.SetTimeScale(timeScale);
     }
 
     private void WriteRunManifest(ScenarioConfig config, string presetSource)
