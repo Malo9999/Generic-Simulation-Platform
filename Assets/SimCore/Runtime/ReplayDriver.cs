@@ -72,6 +72,34 @@ public sealed class ReplayDriver
         singleStepRequested = false;
     }
 
+    public bool ValidateRunnerForLoadedConfig(string simulationId)
+    {
+        if (!IsLoaded)
+        {
+            return false;
+        }
+
+        var hasReplayable = replayableRunner != null;
+        var hasTickable = tickableRunner != null;
+        var valid = rendererOnly ? hasReplayable : hasReplayable || hasTickable;
+        if (valid)
+        {
+            return true;
+        }
+
+        var requiredContract = rendererOnly
+            ? "IReplayableSimulationRunner"
+            : "IReplayableSimulationRunner or ITickableSimulationRunner";
+
+        Debug.LogError(
+            $"ReplayDriver: Invalid runner contract for simulation '{simulationId}'. " +
+            $"replay.rendererOnly={rendererOnly} requires {requiredContract}, " +
+            $"but found replayable={hasReplayable}, tickable={hasTickable}. Replay disabled.");
+
+        IsLoaded = false;
+        return false;
+    }
+
     public void Pause() => IsPaused = true;
 
     public void Resume()
