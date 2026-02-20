@@ -6,7 +6,7 @@ public static class SimRegistry
     private static readonly Dictionary<string, Func<ISimulation>> Registry = new()
     {
         ["AntColonies"] = () => null,
-        ["MarbleRace"] = () => null
+        ["MarbleRace"] = () => new MarbleRaceSimulation()
     };
 
     public static bool TryCreate(string simulationId, out ISimulation simulation)
