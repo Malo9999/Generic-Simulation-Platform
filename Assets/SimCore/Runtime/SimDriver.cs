@@ -28,9 +28,9 @@ public class SimDriver
         recordingSession = RecordingSession.Create(config, runFolderPath, eventBus);
     }
 
-    public void SetRunner(ISimulationRunner simulationRunner)
+    public void SetRunner(ITickableSimulationRunner tickableRunner)
     {
-        runner = simulationRunner as ITickableSimulationRunner;
+        runner = tickableRunner;
         accumulatedTime = 0f;
         CurrentTick = 0;
         singleStepRequested = false;
