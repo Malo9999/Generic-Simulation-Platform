@@ -1,0 +1,9 @@
+{
+  "simulationId": "MarbleRace",
+  "world": {
+    "arenaWidth": 72,
+    "arenaHeight": 48,
+    "walls": true,
+    "obstacleDensity": 0.05
+  }
+}
