@@ -167,6 +167,9 @@ public class Bootstrapper : MonoBehaviour
         currentConfig = resolved;
         tickCount = 0;
 
+        QualitySettings.vSyncCount = 0;
+        Application.targetFrameRate = Mathf.Clamp(currentConfig.rendering?.targetFps ?? 60, 30, 240);
+
         ConfigureDeterminism(currentConfig.seed);
         EventBusService.ResetGlobal();
         SpawnRunner(currentConfig);
