@@ -20,6 +20,7 @@ public class MarbleRaceSimulation : ISimulation
 
     private ScenarioConfig config;
     private Transform simRoot;
+    private Transform raceRoot;
     private System.Random random;
 
     private Sprite pixelSprite;
@@ -44,8 +45,8 @@ public class MarbleRaceSimulation : ISimulation
         random = new System.Random(config.seed);
         finishOrder = new List<MarbleAgent>();
 
-        var raceRoot = new GameObject("MarbleRace");
-        raceRoot.transform.SetParent(simRoot, false);
+        raceRoot = new GameObject("MarbleRace").transform;
+        raceRoot.SetParent(simRoot, false);
 
         pixelSprite = CreatePixelSprite();
         agentsSortingLayer = ResolveAgentsSortingLayer();
@@ -54,8 +55,8 @@ public class MarbleRaceSimulation : ISimulation
         var worldHeight = Mathf.Max(24, config.world?.arenaHeight ?? 64);
 
         CreateTrackWaypoints(worldWidth, worldHeight);
-        CreateTrackVisual(raceRoot.transform);
-        SpawnMarbles(raceRoot.transform, worldWidth, worldHeight);
+        CreateTrackVisual(raceRoot);
+        SpawnMarbles(raceRoot, worldWidth, worldHeight);
         CreateScoreboard();
 
         Debug.Log($"MarbleRace initialized with {marbles.Count} marbles, {waypoints.Count} waypoints, seed {config.seed}.");
@@ -95,6 +96,14 @@ public class MarbleRaceSimulation : ISimulation
         if (scoreboardCanvas != null)
         {
             UnityEngine.Object.Destroy(scoreboardCanvas.gameObject);
+            scoreboardCanvas = null;
+            scoreboardText = null;
+        }
+
+        if (raceRoot != null)
+        {
+            UnityEngine.Object.Destroy(raceRoot.gameObject);
+            raceRoot = null;
         }
 
         if (pixelSprite != null)

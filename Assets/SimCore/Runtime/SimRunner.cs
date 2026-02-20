@@ -10,6 +10,13 @@ public class SimRunner : MonoBehaviour
     public void Initialize(ScenarioConfig cfg)
     {
         EnsureSimRoot();
+
+        if (currentSimulation != null)
+        {
+            currentSimulation.Dispose();
+            currentSimulation = null;
+        }
+
         BuildArenaVisuals(cfg);
 
         var selectedSimulationId = cfg?.activeSimulation ?? string.Empty;
