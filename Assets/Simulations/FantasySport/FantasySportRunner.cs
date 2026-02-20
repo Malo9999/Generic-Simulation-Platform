@@ -53,7 +53,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             athletes[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             if (velocities[i].sqrMagnitude > 0.0001f)
             {
-                athletes[i].right = velocities[i];
+                athletes[i].right = velocities[i].normalized;
             }
         }
     }
@@ -104,7 +104,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 RngService.Global.Range(0.8f, 1f),
                 RngService.Global.Range(0.8f, 1f),
                 1f);
-            EntityIconFactory.CreateAthleteIcon(athlete.transform, kit, jerseyTint, padsTint, 64);
+            var iconRoot = new GameObject("IconRoot");
+            iconRoot.transform.SetParent(athlete.transform, false);
+            EntityIconFactory.BuildAthlete(iconRoot.transform, kit, jerseyTint, padsTint);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -118,7 +120,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             athlete.transform.localScale = Vector3.one * RngService.Global.Range(0.95f, 1.1f);
             if (velocities[i].sqrMagnitude > 0.0001f)
             {
-                athlete.transform.right = velocities[i];
+                athlete.transform.right = velocities[i].normalized;
             }
             athletes[i] = athlete.transform;
         }

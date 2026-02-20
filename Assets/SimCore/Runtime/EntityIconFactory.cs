@@ -2,177 +2,121 @@ using UnityEngine;
 
 public static class EntityIconFactory
 {
-    public static Transform CreateAntIcon(Transform parent, AntRole role, Color bodyTint, int sizePx = 64)
+    private const int DefaultSizePx = 64;
+
+    public static void BuildAnt(Transform root, AntRole role, Color bodyTint)
     {
-        var root = CreateRoot(parent, "AntIcon");
+        var abdomenScale = role == AntRole.Queen ? new Vector3(0.48f, 0.36f, 1f) : new Vector3(0.4f, 0.3f, 1f);
+        var headScale = role == AntRole.Warrior ? new Vector3(0.3f, 0.28f, 1f) : new Vector3(0.24f, 0.22f, 1f);
 
-        var thoraxScale = new Vector3(0.32f, 0.26f, 1f);
-        var headScale = role == AntRole.Warrior ? new Vector3(0.34f, 0.3f, 1f) : new Vector3(0.25f, 0.22f, 1f);
-        var abdomenScale = role == AntRole.Queen ? new Vector3(0.54f, 0.36f, 1f) : new Vector3(0.42f, 0.3f, 1f);
+        AddOutlinedPart(root, "Abdomen", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), bodyTint, new Vector3(-0.3f, 0f, 0f), abdomenScale);
+        AddOutlinedPart(root, "Thorax", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), bodyTint, Vector3.zero, new Vector3(0.3f, 0.26f, 1f));
+        AddOutlinedPart(root, "Head", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), bodyTint, new Vector3(0.28f, 0f, 0f), headScale);
 
-        CreateOutlinedPart(root, "Abdomen", PrimitiveSpriteLibrary.CircleFill(sizePx), PrimitiveSpriteLibrary.CircleOutline(sizePx), bodyTint, new Vector3(-0.28f, 0f, 0f), abdomenScale);
-        CreateOutlinedPart(root, "Thorax", PrimitiveSpriteLibrary.CircleFill(sizePx), PrimitiveSpriteLibrary.CircleOutline(sizePx), bodyTint, new Vector3(0f, 0f, 0f), thoraxScale);
-        var head = CreateOutlinedPart(root, "Head", PrimitiveSpriteLibrary.CircleFill(sizePx), PrimitiveSpriteLibrary.CircleOutline(sizePx), bodyTint, new Vector3(0.28f, 0f, 0f), headScale);
-
-        var legColor = bodyTint * 0.55f;
+        var legFill = bodyTint * 0.65f;
+        var legOutline = bodyTint * 0.35f;
+        var legAngles = new[] { 32f, 45f, 58f };
         for (var i = 0; i < 3; i++)
         {
-            var y = (i - 1) * 0.13f;
-            CreateSimplePart(root, $"LegTop_{i}", PrimitiveSpriteLibrary.CapsuleFill(sizePx), legColor, new Vector3(-0.02f, y + 0.05f, 0f), new Vector3(0.42f, 0.05f, 1f), 2, 22f + (i * 6f));
-            CreateSimplePart(root, $"LegBottom_{i}", PrimitiveSpriteLibrary.CapsuleFill(sizePx), legColor, new Vector3(-0.02f, y - 0.05f, 0f), new Vector3(0.42f, 0.05f, 1f), 2, -22f - (i * 6f));
+            var y = 0.16f - (i * 0.16f);
+            AddOutlinedPart(root, $"LegLeft_{i}", PrimitiveSpriteLibrary.CapsuleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), legFill, new Vector3(-0.02f, y, 0f), new Vector3(0.35f, 0.05f, 1f), legAngles[i], legOutline);
+            AddOutlinedPart(root, $"LegRight_{i}", PrimitiveSpriteLibrary.CapsuleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), legFill, new Vector3(-0.02f, -y, 0f), new Vector3(0.35f, 0.05f, 1f), -legAngles[i], legOutline);
         }
 
-        CreateSimplePart(root, "AntennaTop", PrimitiveSpriteLibrary.CapsuleFill(sizePx), legColor, new Vector3(0.43f, 0.08f, 0f), new Vector3(0.25f, 0.04f, 1f), 2, 35f);
-        CreateSimplePart(root, "AntennaBottom", PrimitiveSpriteLibrary.CapsuleFill(sizePx), legColor, new Vector3(0.43f, -0.08f, 0f), new Vector3(0.25f, 0.04f, 1f), 2, -35f);
-
-        if (role == AntRole.Warrior)
-        {
-            var mandibleColor = bodyTint * 0.45f;
-            CreateSimplePart(head, "MandibleTop", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), mandibleColor, new Vector3(0.22f, 0.08f, 0f), new Vector3(0.12f, 0.05f, 1f), 2, 20f);
-            CreateSimplePart(head, "MandibleBottom", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), mandibleColor, new Vector3(0.22f, -0.08f, 0f), new Vector3(0.12f, 0.05f, 1f), 2, -20f);
-            SetOutlineTint(root, bodyTint * 0.25f);
-        }
+        var detailFill = bodyTint * 0.5f;
+        AddPart(root, "AntennaLeft", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), detailFill, new Vector3(0.43f, 0.09f, 0f), new Vector3(0.22f, 0.04f, 1f), 2, 38f);
+        AddPart(root, "AntennaRight", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), detailFill, new Vector3(0.43f, -0.09f, 0f), new Vector3(0.22f, 0.04f, 1f), 2, -38f);
 
         if (role == AntRole.Queen)
         {
-            var wingColor = new Color(1f, 1f, 1f, 0.35f);
-            CreateSimplePart(root, "WingTop", PrimitiveSpriteLibrary.CircleFill(sizePx), wingColor, new Vector3(-0.04f, 0.2f, 0f), new Vector3(0.5f, 0.22f, 1f), 0, 20f);
-            CreateSimplePart(root, "WingBottom", PrimitiveSpriteLibrary.CircleFill(sizePx), wingColor, new Vector3(-0.04f, -0.2f, 0f), new Vector3(0.5f, 0.22f, 1f), 0, -20f);
+            var wingTint = new Color(1f, 1f, 1f, 0.15f);
+            AddPart(root, "WingTop", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), wingTint, new Vector3(-0.05f, 0.2f, 0f), new Vector3(0.46f, 0.2f, 1f), 2, 20f);
+            AddPart(root, "WingBottom", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), wingTint, new Vector3(-0.05f, -0.2f, 0f), new Vector3(0.46f, 0.2f, 1f), 2, -20f);
         }
 
-        return root;
+        if (role == AntRole.Warrior)
+        {
+            var mandibleTint = bodyTint * 0.25f;
+            AddPart(root, "MandibleTop", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), mandibleTint, new Vector3(0.46f, 0.07f, 0f), new Vector3(0.08f, 0.04f, 1f), 2, 20f);
+            AddPart(root, "MandibleBottom", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), mandibleTint, new Vector3(0.46f, -0.07f, 0f), new Vector3(0.08f, 0.04f, 1f), 2, -20f);
+        }
     }
 
-    public static Transform CreateCarIcon(Transform parent, CarLivery livery, Color bodyTint, Color liveryTint, int sizePx = 64)
+    public static void BuildCar(Transform root, CarLivery livery, Color bodyTint, Color liveryTint)
     {
-        var root = CreateRoot(parent, "CarIcon");
+        AddOutlinedPart(root, "Body", PrimitiveSpriteLibrary.RoundedRectOutline(DefaultSizePx), PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), bodyTint, Vector3.zero, new Vector3(0.9f, 0.46f, 1f));
+        AddOutlinedPart(root, "Cabin", PrimitiveSpriteLibrary.RoundedRectOutline(DefaultSizePx), PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), bodyTint * 0.88f, new Vector3(0.12f, 0.1f, 0f), new Vector3(0.42f, 0.24f, 1f));
 
-        CreateOutlinedPart(root, "Body", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), PrimitiveSpriteLibrary.RoundedRectOutline(sizePx), bodyTint, Vector3.zero, new Vector3(0.86f, 0.42f, 1f));
-        CreateOutlinedPart(root, "Cabin", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), PrimitiveSpriteLibrary.RoundedRectOutline(sizePx), bodyTint * 0.9f, new Vector3(0.08f, 0f, 0f), new Vector3(0.36f, 0.25f, 1f));
-        CreateSimplePart(root, "Windshield", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), new Color(0.12f, 0.15f, 0.2f, 1f), new Vector3(0.16f, 0f, 0f), new Vector3(0.16f, 0.18f, 1f), 2);
-
-        CreateSimplePart(root, "WheelTop", PrimitiveSpriteLibrary.CircleFill(sizePx), new Color(0.1f, 0.1f, 0.1f, 1f), new Vector3(-0.16f, 0.27f, 0f), new Vector3(0.2f, 0.2f, 1f), 2);
-        CreateSimplePart(root, "WheelBottom", PrimitiveSpriteLibrary.CircleFill(sizePx), new Color(0.1f, 0.1f, 0.1f, 1f), new Vector3(-0.16f, -0.27f, 0f), new Vector3(0.2f, 0.2f, 1f), 2);
+        AddPart(root, "WheelLeft", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), new Color(0.1f, 0.1f, 0.1f, 1f), new Vector3(-0.3f, -0.2f, 0f), new Vector3(0.2f, 0.2f, 1f), 2);
+        AddPart(root, "WheelRight", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), new Color(0.1f, 0.1f, 0.1f, 1f), new Vector3(0.34f, -0.2f, 0f), new Vector3(0.2f, 0.2f, 1f), 2);
+        AddPart(root, "Windshield", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), new Color(0.12f, 0.16f, 0.2f, 1f), new Vector3(0.14f, 0.1f, 0f), new Vector3(0.2f, 0.14f, 1f), 2);
 
         switch (livery)
         {
             case CarLivery.CenterStripe:
-                CreateSimplePart(root, "LiveryCenter", PrimitiveSpriteLibrary.CapsuleFill(sizePx), liveryTint, new Vector3(0f, 0f, 0f), new Vector3(0.78f, 0.09f, 1f), 2);
+                AddPart(root, "LiveryCenter", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), liveryTint, new Vector3(0f, 0f, 0f), new Vector3(0.76f, 0.08f, 1f), 2);
                 break;
             case CarLivery.SideStripes:
-                CreateSimplePart(root, "LiveryTop", PrimitiveSpriteLibrary.CapsuleFill(sizePx), liveryTint, new Vector3(0f, 0.12f, 0f), new Vector3(0.75f, 0.06f, 1f), 2);
-                CreateSimplePart(root, "LiveryBottom", PrimitiveSpriteLibrary.CapsuleFill(sizePx), liveryTint, new Vector3(0f, -0.12f, 0f), new Vector3(0.75f, 0.06f, 1f), 2);
+                AddPart(root, "LiveryTop", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), liveryTint, new Vector3(0f, 0.1f, 0f), new Vector3(0.74f, 0.06f, 1f), 2);
+                AddPart(root, "LiveryBottom", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), liveryTint, new Vector3(0f, -0.08f, 0f), new Vector3(0.74f, 0.06f, 1f), 2);
                 break;
             case CarLivery.DiagonalStripe:
-                CreateSimplePart(root, "LiveryDiagonal", PrimitiveSpriteLibrary.CapsuleFill(sizePx), liveryTint, new Vector3(0f, 0f, 0f), new Vector3(0.78f, 0.08f, 1f), 2, 18f);
+                AddPart(root, "LiveryDiagonal", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), liveryTint, Vector3.zero, new Vector3(0.78f, 0.08f, 1f), 2, 18f);
                 break;
             default:
-                CreateSimplePart(root, "LiverySolid", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), liveryTint * 0.3f, Vector3.zero, new Vector3(0.8f, 0.35f, 1f), 2);
+                AddPart(root, "LiverySolid", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), liveryTint * 0.35f, Vector3.zero, new Vector3(0.84f, 0.36f, 1f), 2);
                 break;
         }
-
-        return root;
     }
 
-    public static Transform CreateMarbleIcon(Transform parent, MarbleStripe stripe, Color baseTint, Color stripeTint, int sizePx = 64)
+    public static void BuildMarble(Transform root, MarbleStripe stripe, Color baseTint, Color stripeTint)
     {
-        var root = CreateRoot(parent, "MarbleIcon");
+        AddOutlinedPart(root, "Base", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), baseTint, Vector3.zero, new Vector3(0.62f, 0.62f, 1f));
+        AddPart(root, "Highlight", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), new Color(1f, 1f, 1f, 0.35f), new Vector3(-0.16f, 0.16f, 0f), new Vector3(0.18f, 0.18f, 1f), 2);
 
-        CreateOutlinedPart(root, "Base", PrimitiveSpriteLibrary.CircleFill(sizePx), PrimitiveSpriteLibrary.CircleOutline(sizePx), baseTint, Vector3.zero, new Vector3(0.6f, 0.6f, 1f));
-        CreateSimplePart(root, "Highlight", PrimitiveSpriteLibrary.CircleFill(sizePx), new Color(1f, 1f, 1f, 0.35f), new Vector3(-0.14f, 0.14f, 0f), new Vector3(0.2f, 0.2f, 1f), 2);
-
-        var maskObject = new GameObject("StripeMask");
-        maskObject.transform.SetParent(root, false);
-        var maskRenderer = maskObject.AddComponent<SpriteRenderer>();
-        maskRenderer.sprite = PrimitiveSpriteLibrary.CircleFill(sizePx);
-        maskRenderer.enabled = false;
-        var spriteMask = maskObject.AddComponent<SpriteMask>();
-        spriteMask.sprite = PrimitiveSpriteLibrary.CircleFill(sizePx);
-
-        if (stripe != MarbleStripe.None)
+        switch (stripe)
         {
-            if (stripe == MarbleStripe.Single)
-            {
-                CreateMaskedStripe(root, spriteMask, sizePx, "StripeSingle", stripeTint, new Vector3(0f, 0f, 0f), new Vector3(0.14f, 0.58f, 1f), 0f);
-            }
-            else if (stripe == MarbleStripe.Double)
-            {
-                CreateMaskedStripe(root, spriteMask, sizePx, "StripeLeft", stripeTint, new Vector3(-0.1f, 0f, 0f), new Vector3(0.1f, 0.58f, 1f), 0f);
-                CreateMaskedStripe(root, spriteMask, sizePx, "StripeRight", stripeTint, new Vector3(0.1f, 0f, 0f), new Vector3(0.1f, 0.58f, 1f), 0f);
-            }
-            else
-            {
-                CreateMaskedStripe(root, spriteMask, sizePx, "StripeDiagonal", stripeTint, Vector3.zero, new Vector3(0.14f, 0.72f, 1f), 38f);
-            }
+            case MarbleStripe.Single:
+                AddPart(root, "StripeSingle", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), stripeTint, Vector3.zero, new Vector3(0.62f, 0.11f, 1f), 2);
+                break;
+            case MarbleStripe.Double:
+                AddPart(root, "StripeUpper", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), stripeTint, new Vector3(0f, 0.1f, 0f), new Vector3(0.58f, 0.08f, 1f), 2);
+                AddPart(root, "StripeLower", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), stripeTint, new Vector3(0f, -0.1f, 0f), new Vector3(0.58f, 0.08f, 1f), 2);
+                break;
+            case MarbleStripe.Diagonal:
+                AddPart(root, "StripeDiagonal", PrimitiveSpriteLibrary.CapsuleFill(DefaultSizePx), stripeTint, Vector3.zero, new Vector3(0.68f, 0.1f, 1f), 2, 30f);
+                break;
         }
-
-        return root;
     }
 
-    public static Transform CreateAthleteIcon(Transform parent, AthleteKit kit, Color jerseyTint, Color padsTint, int sizePx = 64)
+    public static void BuildAthlete(Transform root, AthleteKit kit, Color jerseyTint, Color padsTint)
     {
-        var root = CreateRoot(parent, "AthleteIcon");
+        AddOutlinedPart(root, "Torso", PrimitiveSpriteLibrary.RoundedRectOutline(DefaultSizePx), PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), jerseyTint, new Vector3(0f, -0.02f, 0f), new Vector3(0.42f, 0.54f, 1f));
+        AddOutlinedPart(root, "Head", PrimitiveSpriteLibrary.CircleOutline(DefaultSizePx), PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), jerseyTint * 0.92f, new Vector3(0.24f, 0.12f, 0f), new Vector3(0.24f, 0.24f, 1f));
 
-        CreateOutlinedPart(root, "Torso", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), PrimitiveSpriteLibrary.RoundedRectOutline(sizePx), jerseyTint, new Vector3(0f, -0.03f, 0f), new Vector3(0.42f, 0.56f, 1f));
-        CreateOutlinedPart(root, "Helmet", PrimitiveSpriteLibrary.CircleFill(sizePx), PrimitiveSpriteLibrary.CircleOutline(sizePx), jerseyTint * 0.9f, new Vector3(0.22f, 0f, 0f), new Vector3(0.24f, 0.24f, 1f));
-        CreateSimplePart(root, "Visor", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), new Color(0.08f, 0.08f, 0.1f, 1f), new Vector3(0.27f, -0.01f, 0f), new Vector3(0.08f, 0.09f, 1f), 2);
-
-        var leftPadScale = new Vector3(0.22f, 0.2f, 1f);
-        var rightPadScale = new Vector3(0.22f, 0.2f, 1f);
-        if (kit == AthleteKit.Away)
-        {
-            leftPadScale = new Vector3(0.26f, 0.2f, 1f);
-            rightPadScale = new Vector3(0.2f, 0.18f, 1f);
-        }
-        else if (kit == AthleteKit.Alt)
-        {
-            leftPadScale = new Vector3(0.24f, 0.22f, 1f);
-            rightPadScale = new Vector3(0.24f, 0.22f, 1f);
-        }
-
-        CreateOutlinedPart(root, "LeftPad", PrimitiveSpriteLibrary.CircleFill(sizePx), PrimitiveSpriteLibrary.CircleOutline(sizePx), padsTint, new Vector3(-0.08f, 0.16f, 0f), leftPadScale);
-        CreateOutlinedPart(root, "RightPad", PrimitiveSpriteLibrary.CircleFill(sizePx), PrimitiveSpriteLibrary.CircleOutline(sizePx), padsTint, new Vector3(0.1f, 0.16f, 0f), rightPadScale);
+        AddPart(root, "FaceMask", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), new Color(0.08f, 0.08f, 0.1f, 1f), new Vector3(0.29f, 0.11f, 0f), new Vector3(0.12f, 0.04f, 1f), 2);
+        AddPart(root, "PadLeft", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), padsTint, new Vector3(-0.13f, 0.17f, 0f), new Vector3(0.28f, 0.2f, 1f), 2);
+        AddPart(root, "PadRight", PrimitiveSpriteLibrary.CircleFill(DefaultSizePx), padsTint, new Vector3(0.1f, 0.17f, 0f), new Vector3(0.28f, 0.2f, 1f), 2);
 
         if (kit != AthleteKit.Home)
         {
-            CreateSimplePart(root, "NumberPatch", PrimitiveSpriteLibrary.RoundedRectFill(sizePx), Color.white, new Vector3(0f, -0.03f, 0f), new Vector3(0.08f, 0.1f, 1f), 2);
+            AddPart(root, "NumberPatch", PrimitiveSpriteLibrary.RoundedRectFill(DefaultSizePx), Color.white, new Vector3(0f, -0.03f, 0f), new Vector3(0.1f, 0.08f, 1f), 2);
         }
-
-        return root;
     }
 
-    private static Transform CreateRoot(Transform parent, string name)
+    private static void AddOutlinedPart(Transform parent, string name, Sprite outlineSprite, Sprite fillSprite, Color fillTint, Vector3 localPosition, Vector3 localScale, float rotationZ = 0f, Color? outlineTint = null)
     {
-        var root = new GameObject(name).transform;
-        root.SetParent(parent, false);
-        return root;
+        var node = new GameObject(name).transform;
+        node.SetParent(parent, false);
+        node.localPosition = localPosition;
+        node.localScale = localScale;
+        node.localRotation = Quaternion.Euler(0f, 0f, rotationZ);
+
+        AddPart(node, "Outline", outlineSprite, outlineTint ?? Color.black, Vector3.zero, Vector3.one, 0);
+        AddPart(node, "Fill", fillSprite, fillTint, Vector3.zero, Vector3.one, 1);
     }
 
-    private static Transform CreateOutlinedPart(Transform parent, string name, Sprite fillSprite, Sprite outlineSprite, Color tint, Vector3 localPosition, Vector3 localScale)
-    {
-        var part = new GameObject(name).transform;
-        part.SetParent(parent, false);
-        part.localPosition = localPosition;
-        part.localScale = localScale;
-
-        var outline = new GameObject("Outline");
-        outline.transform.SetParent(part, false);
-        var outlineRenderer = outline.AddComponent<SpriteRenderer>();
-        outlineRenderer.sprite = outlineSprite;
-        outlineRenderer.color = Color.white;
-        outlineRenderer.sortingOrder = 0;
-
-        var fill = new GameObject("Fill");
-        fill.transform.SetParent(part, false);
-        var fillRenderer = fill.AddComponent<SpriteRenderer>();
-        fillRenderer.sprite = fillSprite;
-        fillRenderer.color = tint;
-        fillRenderer.sortingOrder = 1;
-
-        return part;
-    }
-
-    private static void CreateSimplePart(Transform parent, string name, Sprite sprite, Color tint, Vector3 localPosition, Vector3 localScale, int sortingOrder, float rotationZ = 0f)
+    private static void AddPart(Transform parent, string name, Sprite sprite, Color tint, Vector3 localPosition, Vector3 localScale, int sortingOrder, float rotationZ = 0f)
     {
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
@@ -184,35 +128,5 @@ public static class EntityIconFactory
         renderer.sprite = sprite;
         renderer.color = tint;
         renderer.sortingOrder = sortingOrder;
-    }
-
-    private static void CreateMaskedStripe(Transform parent, SpriteMask mask, int sizePx, string name, Color tint, Vector3 localPos, Vector3 localScale, float rotZ)
-    {
-        var stripe = new GameObject(name);
-        stripe.transform.SetParent(parent, false);
-        stripe.transform.localPosition = localPos;
-        stripe.transform.localScale = localScale;
-        stripe.transform.localRotation = Quaternion.Euler(0f, 0f, rotZ);
-
-        var renderer = stripe.AddComponent<SpriteRenderer>();
-        renderer.sprite = PrimitiveSpriteLibrary.CapsuleFill(sizePx);
-        renderer.color = tint;
-        renderer.sortingOrder = 2;
-        renderer.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
-
-        mask.frontSortingOrder = 3;
-        mask.backSortingOrder = -1;
-    }
-
-    private static void SetOutlineTint(Transform root, Color outlineTint)
-    {
-        var renderers = root.GetComponentsInChildren<SpriteRenderer>();
-        for (var i = 0; i < renderers.Length; i++)
-        {
-            if (renderers[i].name == "Outline")
-            {
-                renderers[i].color = outlineTint;
-            }
-        }
     }
 }

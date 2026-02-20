@@ -47,7 +47,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             ants[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             if (velocities[i].sqrMagnitude > 0.0001f)
             {
-                ants[i].right = velocities[i];
+                ants[i].right = velocities[i].normalized;
             }
         }
     }
@@ -92,7 +92,9 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             var ant = new GameObject($"Ant_{role}_{i}");
             ant.transform.SetParent(transform, false);
 
-            EntityIconFactory.CreateAntIcon(ant.transform, role, GetRoleColor(role), 64);
+            var iconRoot = new GameObject("IconRoot");
+            iconRoot.transform.SetParent(ant.transform, false);
+            EntityIconFactory.BuildAnt(iconRoot.transform, role, GetRoleColor(role));
 
             ant.transform.localScale = Vector3.one * GetRoleScale(role);
 
@@ -106,7 +108,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             ant.transform.localPosition = new Vector3(startX, startY, 0f);
             if (velocities[i].sqrMagnitude > 0.0001f)
             {
-                ant.transform.right = velocities[i];
+                ant.transform.right = velocities[i].normalized;
             }
 
             ants[i] = ant.transform;

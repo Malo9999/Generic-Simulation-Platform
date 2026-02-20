@@ -82,7 +82,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             var baseTint = RandomBrightColor();
             var stripe = (MarbleStripe)RngService.Global.Range(0, 4);
             var stripeTint = RandomContrastingColor(baseTint);
-            EntityIconFactory.CreateMarbleIcon(marble.transform, stripe, baseTint, stripeTint, 64);
+            var iconRoot = new GameObject("IconRoot");
+            iconRoot.transform.SetParent(marble.transform, false);
+            EntityIconFactory.BuildMarble(iconRoot.transform, stripe, baseTint, stripeTint);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
