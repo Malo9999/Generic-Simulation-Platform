@@ -2,9 +2,9 @@ using UnityEngine;
 
 public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int DotCount = 12;
+    private const int MarbleCount = 12;
 
-    private Transform[] dots;
+    private Transform[] marbles;
     private Vector2[] positions;
     private Vector2[] velocities;
     private float halfWidth = 32f;
@@ -13,18 +13,18 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     public void Initialize(ScenarioConfig config)
     {
         EnsureMainCamera();
-        BuildDots(config);
+        BuildMarbles(config);
         Debug.Log($"{nameof(MarbleRaceRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
     }
 
     public void Tick(int tickIndex, float dt)
     {
-        if (dots == null)
+        if (marbles == null)
         {
             return;
         }
 
-        for (var i = 0; i < dots.Length; i++)
+        for (var i = 0; i < marbles.Length; i++)
         {
             positions[i] += velocities[i] * dt;
 
@@ -40,50 +40,58 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 velocities[i].y *= -1f;
             }
 
-            dots[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
         }
     }
 
     public void Shutdown()
     {
-        if (dots != null)
+        if (marbles != null)
         {
-            for (var i = 0; i < dots.Length; i++)
+            for (var i = 0; i < marbles.Length; i++)
             {
-                if (dots[i] != null)
+                if (marbles[i] != null)
                 {
-                    Destroy(dots[i].gameObject);
+                    Destroy(marbles[i].gameObject);
                 }
             }
         }
 
-        dots = null;
+        marbles = null;
         positions = null;
         velocities = null;
         Debug.Log("MarbleRaceRunner Shutdown");
     }
 
-    private void BuildDots(ScenarioConfig config)
+    private void BuildMarbles(ScenarioConfig config)
     {
         Shutdown();
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
-        dots = new Transform[DotCount];
-        positions = new Vector2[DotCount];
-        velocities = new Vector2[DotCount];
+        marbles = new Transform[MarbleCount];
+        positions = new Vector2[MarbleCount];
+        velocities = new Vector2[MarbleCount];
 
-        var sprite = CreateDotSprite();
+        var baseSprite = ProceduralSpriteLibrary.GetMarbleBase(64);
 
-        for (var i = 0; i < DotCount; i++)
+        for (var i = 0; i < MarbleCount; i++)
         {
-            var dot = new GameObject($"Dot_{i}");
-            dot.transform.SetParent(transform, false);
+            var marble = new GameObject($"Marble_{i}");
+            marble.transform.SetParent(transform, false);
 
-            var renderer = dot.AddComponent<SpriteRenderer>();
-            renderer.sprite = sprite;
-            renderer.color = new Color(RngService.Global.Value(), RngService.Global.Value(), RngService.Global.Value());
+            var baseRenderer = marble.AddComponent<SpriteRenderer>();
+            baseRenderer.sprite = baseSprite;
+            baseRenderer.color = RandomBrightColor();
+
+            var stripeGo = new GameObject("Stripe");
+            stripeGo.transform.SetParent(marble.transform, false);
+
+            var stripeRenderer = stripeGo.AddComponent<SpriteRenderer>();
+            stripeRenderer.sprite = ProceduralSpriteLibrary.GetMarbleStripe((MarbleStripe)RngService.Global.Range(0, 4), 64);
+            stripeRenderer.color = RandomContrastingColor(baseRenderer.color);
+            stripeRenderer.sortingOrder = baseRenderer.sortingOrder + 1;
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -93,18 +101,30 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
 
-            dot.transform.localPosition = new Vector3(startX, startY, 0f);
-            dot.transform.localScale = Vector3.one * RngService.Global.Range(0.8f, 1.8f);
-            dots[i] = dot.transform;
+            marble.transform.localPosition = new Vector3(startX, startY, 0f);
+            marble.transform.localScale = Vector3.one;
+            marbles[i] = marble.transform;
         }
     }
 
-    private static Sprite CreateDotSprite()
+    private static Color RandomBrightColor()
     {
-        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-        texture.SetPixel(0, 0, Color.white);
-        texture.Apply();
-        return Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return new Color(
+            RngService.Global.Range(0.2f, 1f),
+            RngService.Global.Range(0.2f, 1f),
+            RngService.Global.Range(0.2f, 1f),
+            1f);
+    }
+
+    private static Color RandomContrastingColor(Color baseColor)
+    {
+        var inv = new Color(1f - baseColor.r, 1f - baseColor.g, 1f - baseColor.b, 1f);
+        var jitter = new Color(
+            RngService.Global.Range(0f, 0.2f),
+            RngService.Global.Range(0f, 0.2f),
+            RngService.Global.Range(0f, 0.2f),
+            0f);
+        return (inv * 0.8f) + jitter;
     }
 
     private void EnsureMainCamera()

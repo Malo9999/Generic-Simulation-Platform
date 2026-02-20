@@ -2,9 +2,9 @@ using UnityEngine;
 
 public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int DotCount = 12;
+    private const int AthleteCount = 10;
 
-    private Transform[] dots;
+    private Transform[] athletes;
     private Vector2[] positions;
     private Vector2[] velocities;
     private float halfWidth = 32f;
@@ -13,19 +13,29 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     public void Initialize(ScenarioConfig config)
     {
         EnsureMainCamera();
-        BuildDots(config);
+        BuildAthletes(config);
         Debug.Log($"{nameof(FantasySportRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
     }
 
     public void Tick(int tickIndex, float dt)
     {
-        if (dots == null)
+        if (athletes == null)
         {
             return;
         }
 
-        for (var i = 0; i < dots.Length; i++)
+        for (var i = 0; i < athletes.Length; i++)
         {
+            if (tickIndex % 60 == 0)
+            {
+                var turn = RngService.Global.Range(-0.45f, 0.45f);
+                var cos = Mathf.Cos(turn);
+                var sin = Mathf.Sin(turn);
+                var vx = velocities[i].x;
+                var vy = velocities[i].y;
+                velocities[i] = new Vector2((vx * cos) - (vy * sin), (vx * sin) + (vy * cos));
+            }
+
             positions[i] += velocities[i] * dt;
 
             if (positions[i].x < -halfWidth || positions[i].x > halfWidth)
@@ -40,71 +50,80 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 velocities[i].y *= -1f;
             }
 
-            dots[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            athletes[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
         }
     }
 
     public void Shutdown()
     {
-        if (dots != null)
+        if (athletes != null)
         {
-            for (var i = 0; i < dots.Length; i++)
+            for (var i = 0; i < athletes.Length; i++)
             {
-                if (dots[i] != null)
+                if (athletes[i] != null)
                 {
-                    Destroy(dots[i].gameObject);
+                    Destroy(athletes[i].gameObject);
                 }
             }
         }
 
-        dots = null;
+        athletes = null;
         positions = null;
         velocities = null;
         Debug.Log("FantasySportRunner Shutdown");
     }
 
-    private void BuildDots(ScenarioConfig config)
+    private void BuildAthletes(ScenarioConfig config)
     {
         Shutdown();
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
-        dots = new Transform[DotCount];
-        positions = new Vector2[DotCount];
-        velocities = new Vector2[DotCount];
+        athletes = new Transform[AthleteCount];
+        positions = new Vector2[AthleteCount];
+        velocities = new Vector2[AthleteCount];
 
-        var sprite = CreateDotSprite();
+        var baseSprite = ProceduralSpriteLibrary.GetAthleteBase(64);
 
-        for (var i = 0; i < DotCount; i++)
+        for (var i = 0; i < AthleteCount; i++)
         {
-            var dot = new GameObject($"Dot_{i}");
-            dot.transform.SetParent(transform, false);
+            var athlete = new GameObject($"Athlete_{i}");
+            athlete.transform.SetParent(transform, false);
 
-            var renderer = dot.AddComponent<SpriteRenderer>();
-            renderer.sprite = sprite;
-            renderer.color = new Color(RngService.Global.Value(), RngService.Global.Value(), RngService.Global.Value());
+            var baseRenderer = athlete.AddComponent<SpriteRenderer>();
+            baseRenderer.sprite = baseSprite;
+            baseRenderer.color = new Color(
+                RngService.Global.Range(0.15f, 1f),
+                RngService.Global.Range(0.15f, 1f),
+                RngService.Global.Range(0.15f, 1f),
+                1f);
+
+            var kit = (AthleteKit)RngService.Global.Range(0, 3);
+            var padsGo = new GameObject("Shoulderpads");
+            padsGo.transform.SetParent(athlete.transform, false);
+
+            var padsRenderer = padsGo.AddComponent<SpriteRenderer>();
+            padsRenderer.sprite = ProceduralSpriteLibrary.GetAthleteShoulderpads(kit, 64);
+            padsRenderer.color = new Color(
+                RngService.Global.Range(0.8f, 1f),
+                RngService.Global.Range(0.8f, 1f),
+                RngService.Global.Range(0.8f, 1f),
+                1f);
+            padsRenderer.sortingOrder = baseRenderer.sortingOrder + 1;
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
-            var speed = RngService.Global.Range(5f, 14f);
+            var speed = RngService.Global.Range(3f, 7f);
             var angle = RngService.Global.Range(0f, Mathf.PI * 2f);
 
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
 
-            dot.transform.localPosition = new Vector3(startX, startY, 0f);
-            dot.transform.localScale = Vector3.one * RngService.Global.Range(0.8f, 1.8f);
-            dots[i] = dot.transform;
+            athlete.transform.localPosition = new Vector3(startX, startY, 0f);
+            athlete.transform.localScale = Vector3.one * RngService.Global.Range(0.95f, 1.1f);
+            athletes[i] = athlete.transform;
         }
-    }
-
-    private static Sprite CreateDotSprite()
-    {
-        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-        texture.SetPixel(0, 0, Color.white);
-        texture.Apply();
-        return Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
     }
 
     private void EnsureMainCamera()
