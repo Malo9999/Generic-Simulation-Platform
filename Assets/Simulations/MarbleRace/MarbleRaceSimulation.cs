@@ -166,11 +166,30 @@ public class MarbleRaceSimulation : ISimulation
         }
 
         var desiredDirection = toTarget.normalized;
-        marble.Forward = Vector2.RotateTowards(marble.Forward, desiredDirection, marble.TurnRateRadians * dt, 0f).normalized;
+        marble.Forward = RotateTowards(marble.Forward, desiredDirection, marble.TurnRateRadians * dt);
         marble.Root.position += (Vector3)(marble.Forward * marble.Speed * dt);
 
         var angleDeg = Mathf.Atan2(marble.Forward.y, marble.Forward.x) * Mathf.Rad2Deg;
         marble.Root.rotation = Quaternion.Euler(0f, 0f, angleDeg);
+    }
+
+    private static Vector2 RotateTowards(Vector2 currentDirection, Vector2 targetDirection, float maxRadiansDelta)
+    {
+        if (currentDirection.sqrMagnitude < 0.0001f)
+        {
+            return targetDirection.normalized;
+        }
+
+        if (targetDirection.sqrMagnitude < 0.0001f)
+        {
+            return currentDirection.normalized;
+        }
+
+        var currentAngle = Mathf.Atan2(currentDirection.y, currentDirection.x);
+        var targetAngle = Mathf.Atan2(targetDirection.y, targetDirection.x);
+        var nextAngle = Mathf.MoveTowardsAngle(currentAngle * Mathf.Rad2Deg, targetAngle * Mathf.Rad2Deg, maxRadiansDelta * Mathf.Rad2Deg) * Mathf.Deg2Rad;
+
+        return new Vector2(Mathf.Cos(nextAngle), Mathf.Sin(nextAngle));
     }
 
     private void OnRaceFinished()
