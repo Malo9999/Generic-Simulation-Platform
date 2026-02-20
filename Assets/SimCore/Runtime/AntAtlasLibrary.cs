@@ -6,7 +6,8 @@ public static class AntAtlasLibrary
     private enum AntAtlasLayer
     {
         Outline,
-        Fill
+        Fill,
+        Details
     }
 
     private readonly struct AntAtlasKey
@@ -36,9 +37,11 @@ public static class AntAtlasLibrary
 
     private static readonly Dictionary<AntAtlasKey, Sprite> SpriteCache = new();
 
-    public static Sprite GetOutline(AntRole role, int dir, int sizePx = 32) => GetOrCreate(role, dir, AntAtlasLayer.Outline, sizePx);
+    public static Sprite GetOutline(AntRole role, int dir, int sizePx = 64) => GetOrCreate(role, dir, AntAtlasLayer.Outline, sizePx);
 
-    public static Sprite GetFill(AntRole role, int dir, int sizePx = 32) => GetOrCreate(role, dir, AntAtlasLayer.Fill, sizePx);
+    public static Sprite GetFill(AntRole role, int dir, int sizePx = 64) => GetOrCreate(role, dir, AntAtlasLayer.Fill, sizePx);
+
+    public static Sprite GetDetails(AntRole role, int dir, int sizePx = 64) => GetOrCreate(role, dir, AntAtlasLayer.Details, sizePx);
 
     public static void ClearCache()
     {
@@ -69,8 +72,14 @@ public static class AntAtlasLibrary
         }
 
         var effectiveSize = Mathf.Max(8, sizePx);
-        var mask = BuildFillMask(role, key.Dir, effectiveSize);
-        var alpha = layer == AntAtlasLayer.Fill ? mask : OutlineFromMask(mask, effectiveSize);
+        var bodyMask = BuildBodyMask(role, key.Dir, effectiveSize);
+        var detailMask = BuildDetailMask(role, key.Dir, effectiveSize);
+        var alpha = layer switch
+        {
+            AntAtlasLayer.Fill => bodyMask,
+            AntAtlasLayer.Details => detailMask,
+            _ => OutlineFromMask(bodyMask, effectiveSize)
+        };
 
         var pixels = new Color32[effectiveSize * effectiveSize];
         var color = layer == AntAtlasLayer.Fill
@@ -101,16 +110,30 @@ public static class AntAtlasLibrary
         return sprite;
     }
 
-    private static byte[] BuildFillMask(AntRole role, int dir, int sizePx)
+    private static byte[] BuildBodyMask(AntRole role, int dir, int sizePx)
     {
         var mask = new byte[sizePx * sizePx];
         var scale = sizePx * 0.5f;
         var angle = Direction8.ToAngleDeg(dir);
 
         var body = GetRoleShape(role);
-        DrawFilledEllipse(mask, sizePx, 0.28f, 0f, body.AbdomenRx, body.AbdomenRy, angle, scale);
+        DrawFilledEllipse(mask, sizePx, -0.30f, 0f, body.AbdomenRx, body.AbdomenRy, angle, scale);
         DrawFilledEllipse(mask, sizePx, 0f, 0f, body.ThoraxRx, body.ThoraxRy, angle, scale);
-        DrawFilledEllipse(mask, sizePx, -0.24f, 0f, body.HeadR, body.HeadR, angle, scale);
+        DrawFilledEllipse(mask, sizePx, 0.30f, 0f, body.HeadR, body.HeadR, angle, scale);
+
+        if (role == AntRole.Queen)
+        {
+            DrawQueenWings(mask, sizePx, angle, scale);
+        }
+
+        return mask;
+    }
+
+    private static byte[] BuildDetailMask(AntRole role, int dir, int sizePx)
+    {
+        var mask = new byte[sizePx * sizePx];
+        var scale = sizePx * 0.5f;
+        var angle = Direction8.ToAngleDeg(dir);
 
         DrawLegs(mask, sizePx, angle, scale);
         DrawAntennae(mask, sizePx, angle, scale);
@@ -118,11 +141,6 @@ public static class AntAtlasLibrary
         if (role == AntRole.Warrior)
         {
             DrawMandibles(mask, sizePx, angle, scale);
-        }
-
-        if (role == AntRole.Queen)
-        {
-            DrawQueenWings(mask, sizePx, angle, scale);
         }
 
         return mask;
@@ -142,16 +160,16 @@ public static class AntAtlasLibrary
             },
             AntRole.Warrior => new RoleShape
             {
-                AbdomenRx = 0.20f,
-                AbdomenRy = 0.16f,
+                AbdomenRx = 0.23f,
+                AbdomenRy = 0.19f,
                 ThoraxRx = 0.13f,
                 ThoraxRy = 0.11f,
-                HeadR = 0.12f
+                HeadR = 0.11f
             },
             _ => new RoleShape
             {
-                AbdomenRx = 0.21f,
-                AbdomenRy = 0.17f,
+                AbdomenRx = 0.22f,
+                AbdomenRy = 0.18f,
                 ThoraxRx = 0.13f,
                 ThoraxRy = 0.11f,
                 HeadR = 0.09f
@@ -161,28 +179,28 @@ public static class AntAtlasLibrary
 
     private static void DrawLegs(byte[] buffer, int sizePx, float angleDeg, float scale)
     {
-        var thickness = Mathf.Max(1f, sizePx * 0.055f);
-        var anchors = new[] { -0.08f, 0f, 0.08f };
+        var thickness = Mathf.Max(2f, sizePx * 0.04f);
+        var anchors = new[] { -0.07f, 0f, 0.07f };
         for (var i = 0; i < anchors.Length; i++)
         {
             var y = anchors[i];
-            DrawModelLine(buffer, sizePx, -0.03f, y, -0.28f, y - 0.14f, thickness, angleDeg, scale);
-            DrawModelLine(buffer, sizePx, -0.03f, y, -0.28f, y + 0.14f, thickness, angleDeg, scale);
+            DrawModelLine(buffer, sizePx, 0.02f, y, -0.10f, -0.26f, thickness, angleDeg, scale);
+            DrawModelLine(buffer, sizePx, 0.02f, y, -0.10f, 0.26f, thickness, angleDeg, scale);
         }
     }
 
     private static void DrawAntennae(byte[] buffer, int sizePx, float angleDeg, float scale)
     {
-        var thickness = Mathf.Max(1f, sizePx * 0.04f);
-        DrawModelLine(buffer, sizePx, -0.32f, -0.03f, -0.44f, -0.15f, thickness, angleDeg, scale);
-        DrawModelLine(buffer, sizePx, -0.32f, 0.03f, -0.44f, 0.15f, thickness, angleDeg, scale);
+        var thickness = Mathf.Max(2f, sizePx * 0.03f);
+        DrawModelLine(buffer, sizePx, 0.34f, -0.03f, 0.46f, -0.14f, thickness, angleDeg, scale);
+        DrawModelLine(buffer, sizePx, 0.34f, 0.03f, 0.46f, 0.14f, thickness, angleDeg, scale);
     }
 
     private static void DrawMandibles(byte[] buffer, int sizePx, float angleDeg, float scale)
     {
-        var thickness = Mathf.Max(1f, sizePx * 0.05f);
-        DrawModelLine(buffer, sizePx, -0.36f, -0.02f, -0.47f, -0.07f, thickness, angleDeg, scale);
-        DrawModelLine(buffer, sizePx, -0.36f, 0.02f, -0.47f, 0.07f, thickness, angleDeg, scale);
+        var thickness = Mathf.Max(2f, sizePx * 0.035f);
+        DrawModelLine(buffer, sizePx, 0.36f, -0.02f, 0.48f, -0.08f, thickness, angleDeg, scale);
+        DrawModelLine(buffer, sizePx, 0.36f, 0.02f, 0.48f, 0.08f, thickness, angleDeg, scale);
     }
 
     private static void DrawQueenWings(byte[] buffer, int sizePx, float angleDeg, float scale)
