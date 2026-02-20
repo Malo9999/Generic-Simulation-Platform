@@ -2,6 +2,7 @@ using UnityEngine;
 
 public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 {
+    private const int AtlasSizePx = 64;
     private const int QueenCount = 1;
     private const int WorkerCount = 8;
     private const int WarriorCount = 3;
@@ -58,9 +59,9 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             currentDirs[i] = dir;
-            antOutlines[i].sprite = AntAtlasLibrary.GetOutline(roles[i], dir);
-            antFills[i].sprite = AntAtlasLibrary.GetFill(roles[i], dir);
-            antDetails[i].sprite = AntAtlasLibrary.GetDetails(roles[i], dir);
+            antOutlines[i].sprite = AntAtlasLibrary.GetOutline(roles[i], dir, AtlasSizePx);
+            antFills[i].sprite = AntAtlasLibrary.GetFill(roles[i], dir, AtlasSizePx);
+            antDetails[i].sprite = AntAtlasLibrary.GetDetails(roles[i], dir, AtlasSizePx);
         }
     }
 
@@ -129,6 +130,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             detailsObject.transform.SetParent(ant.transform, false);
             var detailsRenderer = detailsObject.AddComponent<SpriteRenderer>();
             detailsRenderer.sortingOrder = 2;
+            detailsRenderer.color = Color.white;
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -141,9 +143,9 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
             var initialDir = Direction8.FromVector(velocities[i]);
             currentDirs[i] = initialDir;
-            outlineRenderer.sprite = AntAtlasLibrary.GetOutline(role, initialDir);
-            fillRenderer.sprite = AntAtlasLibrary.GetFill(role, initialDir);
-            detailsRenderer.sprite = AntAtlasLibrary.GetDetails(role, initialDir);
+            outlineRenderer.sprite = AntAtlasLibrary.GetOutline(role, initialDir, AtlasSizePx);
+            fillRenderer.sprite = AntAtlasLibrary.GetFill(role, initialDir, AtlasSizePx);
+            detailsRenderer.sprite = AntAtlasLibrary.GetDetails(role, initialDir, AtlasSizePx);
 
             ants[i] = ant.transform;
             antOutlines[i] = outlineRenderer;
