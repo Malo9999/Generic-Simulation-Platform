@@ -14,6 +14,7 @@ public class Bootstrapper : MonoBehaviour
     [SerializeField, Min(0.0001f)] private float tickDeltaTime = 1f / 60f;
 
     private const string SimulationRootName = "SimulationRoot";
+    private static readonly string[] KnownSimulationIds = { "AntColonies", "MarbleRace", "RaceCar", "FantasySport" };
 
     private GameObject simulationRoot;
     private ISimulationRunner activeRunner;
@@ -287,12 +288,11 @@ public class Bootstrapper : MonoBehaviour
 
     private string LoadPresetJson(string simulationId, out string source)
     {
-        TextAsset presetAsset = null;
         if (options != null && options.presetJson != null)
         {
-            presetAsset = options.presetJson;
-            source = presetAsset.name;
-            return presetAsset.text;
+            source = $"TextAsset override '{options.presetJson.name}'";
+            Debug.Log($"Bootstrapper: Using preset from {source} for simulation '{simulationId}'.");
+            return options.presetJson.text;
         }
 
         var entry = options?.simulationCatalog?.FindById(simulationId);
@@ -308,22 +308,80 @@ public class Bootstrapper : MonoBehaviour
         presetAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
         if (presetAsset != null)
         {
-            source = assetPath;
-            return presetAsset.text;
+            source = $"StreamingAssets/{GetStreamingPresetRelativePath(simulationId)}";
+            Debug.Log($"Bootstrapper: Using preset from {source} for simulation '{simulationId}'.");
+            return streamingJson;
         }
-#endif
 
         var resourcePath = $"Simulations/{simulationId}/Presets/default";
-        presetAsset = Resources.Load<TextAsset>(resourcePath);
+        var presetAsset = Resources.Load<TextAsset>(resourcePath);
         if (presetAsset != null)
         {
             source = $"Resources/{resourcePath}.json";
+            Debug.Log($"Bootstrapper: Using preset from {source} for simulation '{simulationId}'.");
             return presetAsset.text;
         }
 
         source = "<base-defaults>";
         Debug.LogWarning($"Bootstrapper: No preset found for simulation '{simulationId}'. Using hardcoded defaults.");
         return string.Empty;
+    }
+
+    private void ValidateDefaultPresets()
+    {
+        foreach (var simulationId in KnownSimulationIds)
+        {
+            if (!HasDefaultPreset(simulationId))
+            {
+                Debug.LogWarning($"Bootstrapper: Missing default preset for simulation '{simulationId}'. Expected StreamingAssets or Resources fallback.");
+            }
+        }
+    }
+
+    private static bool HasDefaultPreset(string simulationId)
+    {
+        if (string.IsNullOrWhiteSpace(simulationId))
+        {
+            return false;
+        }
+
+        if (File.Exists(GetStreamingPresetPath(simulationId)))
+        {
+            return true;
+        }
+
+        var resourcePath = $"Simulations/{simulationId}/Presets/default";
+        return Resources.Load<TextAsset>(resourcePath) != null;
+    }
+
+    private static string GetStreamingPresetPath(string simulationId)
+    {
+        return Path.Combine(Application.streamingAssetsPath, GetStreamingPresetRelativePath(simulationId));
+    }
+
+    private static string GetStreamingPresetRelativePath(string simulationId)
+    {
+        return Path.Combine("Simulations", simulationId, "Presets", "default.json");
+    }
+
+    private static bool TryReadStreamingPreset(string absolutePath, out string json)
+    {
+        json = string.Empty;
+
+        try
+        {
+            if (File.Exists(absolutePath))
+            {
+                json = File.ReadAllText(absolutePath);
+                return !string.IsNullOrWhiteSpace(json);
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Bootstrapper: Failed to read StreamingAssets preset at '{absolutePath}'. {ex.Message}");
+        }
+
+        return false;
     }
 
     private void ApplyBootstrapOverrides(ScenarioConfig config)

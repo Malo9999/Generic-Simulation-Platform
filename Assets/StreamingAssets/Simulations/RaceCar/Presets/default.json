@@ -1,0 +1,9 @@
+{
+  "simulationId": "RaceCar",
+  "world": {
+    "arenaWidth": 96,
+    "arenaHeight": 64,
+    "walls": true,
+    "obstacleDensity": 0.2
+  }
+}
