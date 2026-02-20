@@ -10,6 +10,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private Transform[] ants;
     private SpriteRenderer[] antOutlines;
     private SpriteRenderer[] antFills;
+    private SpriteRenderer[] antDetails;
     private Vector2[] positions;
     private Vector2[] velocities;
     private AntRole[] roles;
@@ -59,6 +60,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             currentDirs[i] = dir;
             antOutlines[i].sprite = AntAtlasLibrary.GetOutline(roles[i], dir);
             antFills[i].sprite = AntAtlasLibrary.GetFill(roles[i], dir);
+            antDetails[i].sprite = AntAtlasLibrary.GetDetails(roles[i], dir);
         }
     }
 
@@ -78,6 +80,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         ants = null;
         antOutlines = null;
         antFills = null;
+        antDetails = null;
         positions = null;
         velocities = null;
         roles = null;
@@ -95,6 +98,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         ants = new Transform[AntCount];
         antOutlines = new SpriteRenderer[AntCount];
         antFills = new SpriteRenderer[AntCount];
+        antDetails = new SpriteRenderer[AntCount];
         positions = new Vector2[AntCount];
         velocities = new Vector2[AntCount];
         roles = new AntRole[AntCount];
@@ -121,6 +125,11 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             fillRenderer.sortingOrder = 1;
             fillRenderer.color = GetRoleColor(role);
 
+            var detailsObject = new GameObject("Details");
+            detailsObject.transform.SetParent(ant.transform, false);
+            var detailsRenderer = detailsObject.AddComponent<SpriteRenderer>();
+            detailsRenderer.sortingOrder = 2;
+
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
             var speed = GetRoleSpeed(role);
@@ -134,10 +143,12 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             currentDirs[i] = initialDir;
             outlineRenderer.sprite = AntAtlasLibrary.GetOutline(role, initialDir);
             fillRenderer.sprite = AntAtlasLibrary.GetFill(role, initialDir);
+            detailsRenderer.sprite = AntAtlasLibrary.GetDetails(role, initialDir);
 
             ants[i] = ant.transform;
             antOutlines[i] = outlineRenderer;
             antFills[i] = fillRenderer;
+            antDetails[i] = detailsRenderer;
         }
     }
 
