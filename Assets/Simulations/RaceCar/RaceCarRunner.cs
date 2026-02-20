@@ -27,7 +27,6 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < cars.Length; i++)
         {
-            var previousY = positions[i].y;
             positions[i].x += velocities[i].x * dt;
 
             if (positions[i].x < -halfWidth || positions[i].x > halfWidth)
@@ -41,10 +40,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
 
             cars[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            var velocity = new Vector2(velocities[i].x, dt > 0f ? (positions[i].y - previousY) / dt : 0f);
-            if (velocity.sqrMagnitude > 0.0001f)
+            if (Mathf.Abs(velocities[i].x) > 0.0001f)
             {
-                cars[i].right = velocity;
+                cars[i].right = new Vector2(Mathf.Sign(velocities[i].x), 0f);
             }
         }
     }
@@ -97,7 +95,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                 RngService.Global.Range(0.8f, 1f),
                 RngService.Global.Range(0.8f, 1f),
                 1f);
-            EntityIconFactory.CreateCarIcon(car.transform, livery, bodyTint, liveryTint, 64);
+            var iconRoot = new GameObject("IconRoot");
+            iconRoot.transform.SetParent(car.transform, false);
+            EntityIconFactory.BuildCar(iconRoot.transform, livery, bodyTint, liveryTint);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / CarCount);
