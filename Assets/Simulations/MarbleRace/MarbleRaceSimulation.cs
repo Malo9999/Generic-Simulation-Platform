@@ -21,7 +21,7 @@ public class MarbleRaceSimulation : ISimulation
     private ScenarioConfig config;
     private Transform simRoot;
     private Transform raceRoot;
-    private System.Random random;
+    private IRng rng;
 
     private Sprite pixelSprite;
     private string agentsSortingLayer;
@@ -38,11 +38,11 @@ public class MarbleRaceSimulation : ISimulation
 
     public string Id => "MarbleRace";
 
-    public void Initialize(ScenarioConfig cfg, Transform root)
+    public void Initialize(ScenarioConfig cfg, Transform root, IRng randomService)
     {
         config = cfg ?? new ScenarioConfig();
         simRoot = root;
-        random = new System.Random(config.seed);
+        rng = randomService ?? new SeededRng(config.seed);
         finishOrder = new List<MarbleAgent>();
 
         raceRoot = new GameObject("MarbleRace").transform;
@@ -235,15 +235,15 @@ public class MarbleRaceSimulation : ISimulation
             var offset = (-perp * (col - 3.5f) * 0.6f) - (startDirection * row * 0.6f);
             marbleRoot.position = (Vector3)(startPoint + offset);
 
-            var baseColor = Color.HSVToRGB((float)random.NextDouble(), 0.6f + (float)random.NextDouble() * 0.25f, 0.85f + (float)random.NextDouble() * 0.15f);
+            var baseColor = Color.HSVToRGB((float)rng.NextDouble(), 0.6f + (float)rng.NextDouble() * 0.25f, 0.85f + (float)rng.NextDouble() * 0.15f);
             BuildMarbleVisual(marbleRoot, baseColor, i);
 
             marbles.Add(new MarbleAgent
             {
                 Name = marbleName,
                 Root = marbleRoot,
-                Speed = 2.8f + (float)random.NextDouble() * 1.2f,
-                TurnRateRadians = Mathf.Deg2Rad * (120f + (float)random.NextDouble() * 110f),
+                Speed = 2.8f + (float)rng.NextDouble() * 1.2f,
+                TurnRateRadians = Mathf.Deg2Rad * (120f + (float)rng.NextDouble() * 110f),
                 NextWaypointIndex = 1,
                 Forward = startDirection,
                 LapCount = 0

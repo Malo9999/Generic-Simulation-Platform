@@ -29,7 +29,7 @@ public class SimRunner : MonoBehaviour
         if (SimRegistry.TryCreate(selectedSimulationId, out var simulation))
         {
             currentSimulation = simulation;
-            currentSimulation?.Initialize(cfg, simRoot);
+            currentSimulation?.Initialize(cfg, simRoot, RngService.Global);
         }
         else
         {
