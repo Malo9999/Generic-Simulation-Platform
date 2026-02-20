@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class SimRunner : MonoBehaviour
+public class SimRunner : MonoBehaviour, ITickableSimulationRunner
 {
     private const string SimRootName = "SimRoot";
 
@@ -38,15 +38,20 @@ public class SimRunner : MonoBehaviour
         }
     }
 
-    private void FixedUpdate()
+    public void Tick(int tickIndex, float dt)
     {
-        currentSimulation?.Tick(Time.fixedDeltaTime);
+        currentSimulation?.Tick(dt);
+    }
+
+    public void Shutdown()
+    {
+        currentSimulation?.Dispose();
+        currentSimulation = null;
     }
 
     private void OnDestroy()
     {
-        currentSimulation?.Dispose();
-        currentSimulation = null;
+        Shutdown();
     }
 
     private void EnsureSimRoot()

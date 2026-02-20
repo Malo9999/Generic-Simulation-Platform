@@ -11,11 +11,13 @@ using UnityEditor;
 public class Bootstrapper : MonoBehaviour
 {
     [SerializeField] private BootstrapOptions options;
+    [SerializeField, Min(0.0001f)] private float tickDeltaTime = 1f / 60f;
 
     private const string SimulationRootName = "SimulationRoot";
 
     private GameObject simulationRoot;
     private ISimulationRunner activeRunner;
+    private SimDriver simDriver;
     private ScenarioConfig currentConfig;
     private string currentPresetSource = "<defaults>";
 
@@ -23,6 +25,9 @@ public class Bootstrapper : MonoBehaviour
     public int CurrentSeed => currentConfig?.seed ?? 0;
     public string CurrentPresetSource => currentPresetSource;
     public bool ShowOverlay => options == null || options.showOverlay;
+    public int CurrentTick => simDriver?.CurrentTick ?? 0;
+    public bool IsPaused => simDriver?.IsPaused ?? false;
+    public float TimeScale => simDriver?.TimeScale ?? 1f;
 
 #if UNITY_EDITOR
     private void OnValidate()
@@ -36,6 +41,7 @@ public class Bootstrapper : MonoBehaviour
 
     private void Awake()
     {
+        simDriver = new SimDriver(tickDeltaTime);
         ResolveOptions();
         StartSimulation(options?.simulationId ?? "MarbleRace", true);
 
@@ -47,6 +53,8 @@ public class Bootstrapper : MonoBehaviour
 
     private void Update()
     {
+        simDriver?.Advance(Time.unscaledDeltaTime);
+
         if (options == null || !options.allowHotkeySwitch)
         {
             return;
@@ -244,6 +252,7 @@ public class Bootstrapper : MonoBehaviour
         }
 
         activeRunner.Initialize(config);
+        simDriver?.SetRunner(activeRunner);
     }
 
     private void EnsureSimulationRoot()
@@ -272,6 +281,27 @@ public class Bootstrapper : MonoBehaviour
     {
         activeRunner?.Shutdown();
         activeRunner = null;
+        simDriver?.SetRunner(null);
+    }
+
+    public void PauseSimulation()
+    {
+        simDriver?.Pause();
+    }
+
+    public void ResumeSimulation()
+    {
+        simDriver?.Resume();
+    }
+
+    public void StepSimulationOnce()
+    {
+        simDriver?.RequestSingleStep();
+    }
+
+    public void SetSimulationTimeScale(float timeScale)
+    {
+        simDriver?.SetTimeScale(timeScale);
     }
 
     private void WriteRunManifest(ScenarioConfig config, string presetSource)
