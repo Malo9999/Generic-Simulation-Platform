@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class SimRunner : MonoBehaviour, ITickableSimulationRunner, IRecordable
+public class SimRunner : MonoBehaviour, ITickableSimulationRunner, IRecordable, IReplayableSimulationRunner
 {
     private const string SimRootName = "SimRoot";
 
@@ -61,6 +61,28 @@ public class SimRunner : MonoBehaviour, ITickableSimulationRunner, IRecordable
             simulationId = currentSimulation?.Id,
             status = currentSimulation == null ? "not_initialized" : "recordable_not_implemented"
         };
+    }
+
+    public void ApplyReplaySnapshot(int tick, object state)
+    {
+        if (currentSimulation is IReplayableState replayable)
+        {
+            replayable.ApplyReplayState(state);
+            return;
+        }
+
+        if (tick == 0)
+        {
+            Debug.Log($"SimRunner: Replay snapshot feed active but simulation '{currentSimulation?.Id ?? "<none>"}' does not implement IReplayableState.");
+        }
+    }
+
+    public void ApplyReplayEvent(int tick, string eventType, object payload)
+    {
+        if (currentSimulation is IReplayableState replayable)
+        {
+            replayable.ApplyReplayEvent(eventType, payload);
+        }
     }
 
     private void OnDestroy()

@@ -19,10 +19,10 @@ public class Bootstrapper : MonoBehaviour
     private GameObject simulationRoot;
     private ISimulationRunner activeRunner;
     private SimDriver simDriver;
+    private ReplayDriver replayDriver;
     private ScenarioConfig currentConfig;
     private string currentPresetSource = "<defaults>";
     private string currentRunFolder;
-    private bool isPaused;
     private int tickCount;
     private float smoothedFps;
 
@@ -30,12 +30,13 @@ public class Bootstrapper : MonoBehaviour
     public int CurrentSeed => currentConfig?.seed ?? 0;
     public string CurrentPresetSource => currentPresetSource;
     public bool ShowOverlay => options == null || options.showOverlay;
-    public bool IsPaused => isPaused;
     public int TickCount => tickCount;
     public float CurrentFps => smoothedFps;
-    public int CurrentTick => simDriver?.CurrentTick ?? 0;
-    public bool IsPaused => simDriver?.IsPaused ?? false;
-    public float TimeScale => simDriver?.TimeScale ?? 1f;
+    public int CurrentTick => IsReplayMode ? replayDriver?.CurrentTick ?? 0 : simDriver?.CurrentTick ?? 0;
+    public bool IsPaused => IsReplayMode ? replayDriver?.IsPaused ?? false : simDriver?.IsPaused ?? false;
+    public float TimeScale => IsReplayMode ? replayDriver?.TimeScale ?? 1f : simDriver?.TimeScale ?? 1f;
+
+    private bool IsReplayMode => string.Equals(currentConfig?.mode, "Replay", StringComparison.OrdinalIgnoreCase);
 
 #if UNITY_EDITOR
     private void OnValidate()
@@ -56,6 +57,7 @@ public class Bootstrapper : MonoBehaviour
     private void Awake()
     {
         simDriver = new SimDriver(tickDeltaTime);
+        replayDriver = new ReplayDriver(tickDeltaTime);
         ResolveOptions();
         EnsureSimulationCatalogReference();
 
@@ -69,7 +71,14 @@ public class Bootstrapper : MonoBehaviour
 
     private void Update()
     {
-        simDriver?.Advance(Time.unscaledDeltaTime);
+        if (IsReplayMode)
+        {
+            replayDriver?.Advance(Time.unscaledDeltaTime);
+        }
+        else
+        {
+            simDriver?.Advance(Time.unscaledDeltaTime);
+        }
 
         if (options == null || !options.allowHotkeySwitch)
         {
@@ -81,26 +90,25 @@ public class Bootstrapper : MonoBehaviour
         smoothedFps = smoothedFps <= 0f ? instantaneousFps : Mathf.Lerp(smoothedFps, instantaneousFps, 0.15f);
     }
 
+
     public void PauseOrResume()
     {
-        isPaused = !isPaused;
-        Time.timeScale = isPaused ? 0f : 1f;
+        if (IsPaused)
+        {
+            ResumeSimulation();
+        }
+        else
+        {
+            PauseSimulation();
+        }
     }
 
     public void StepSimulation()
     {
-        if (!isPaused)
-        {
-            return;
-        }
-
-        StartCoroutine(StepSingleFrame());
+        StepSimulationOnce();
     }
 
-    public void ResetSimulation()
-    {
-        StartSimulation(CurrentSimulationId, false);
-    }
+    public void ResetSimulation() => StartSimulation(CurrentSimulationId, false);
 
     public void SwitchToNextSimulation()
     {
@@ -112,16 +120,6 @@ public class Bootstrapper : MonoBehaviour
     {
         var simulationId = GetSimulationIdAtOffset(-1);
         StartSimulation(simulationId, false);
-    }
-
-    private IEnumerator StepSingleFrame()
-    {
-        Time.timeScale = 1f;
-        yield return null;
-        if (isPaused)
-        {
-            Time.timeScale = 0f;
-        }
     }
 
     private string GetSimulationIdAtOffset(int direction)
@@ -164,20 +162,34 @@ public class Bootstrapper : MonoBehaviour
         resolved.simulationId = simulationId;
         resolved.activeSimulation = simulationId;
         ApplyBootstrapOverrides(resolved);
-        resolved.seed = ResolveSeed();
+        resolved.seed = ResolveSeed(resolved);
         resolved.NormalizeAliases();
         currentConfig = resolved;
         tickCount = 0;
 
         ConfigureDeterminism(currentConfig.seed);
-        currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
         EventBusService.ResetGlobal();
-        simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
         SpawnRunner(currentConfig);
+
+        if (IsReplayMode)
+        {
+            currentRunFolder = currentConfig.replay?.runFolder;
+            replayDriver?.SetRunner(activeRunner);
+            replayDriver?.Load(currentConfig);
+            simDriver?.SetRunner(null);
+            simDriver?.ConfigureRecording(currentConfig, null, EventBusService.Global);
+        }
+        else
+        {
+            currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
+            simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
+            simDriver?.SetRunner(activeRunner);
+            replayDriver?.SetRunner(null);
+        }
 
         if (!initialRun)
         {
-            Debug.Log($"Switched simulation to {simulationId} with seed {currentConfig.seed}");
+            Debug.Log($"Switched simulation to {simulationId} mode={currentConfig.mode} seed={currentConfig.seed}");
         }
     }
 
@@ -301,15 +313,13 @@ public class Bootstrapper : MonoBehaviour
         var entry = options?.simulationCatalog?.FindById(simulationId);
         if (entry != null && entry.defaultPreset != null)
         {
-            presetAsset = entry.defaultPreset;
             source = $"Catalog/{simulationId}";
-            return presetAsset.text;
+            Debug.Log($"Bootstrapper: Using preset from {source} for simulation '{simulationId}'.");
+            return entry.defaultPreset.text;
         }
 
-#if UNITY_EDITOR
-        var assetPath = $"Assets/Simulations/{simulationId}/Presets/default.json";
-        presetAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
-        if (presetAsset != null)
+        var streamingPath = GetStreamingPresetPath(simulationId);
+        if (TryReadStreamingPreset(streamingPath, out var streamingJson))
         {
             source = $"StreamingAssets/{GetStreamingPresetRelativePath(simulationId)}";
             Debug.Log($"Bootstrapper: Using preset from {source} for simulation '{simulationId}'.");
@@ -317,28 +327,17 @@ public class Bootstrapper : MonoBehaviour
         }
 
         var resourcePath = $"Simulations/{simulationId}/Presets/default";
-        var presetAsset = Resources.Load<TextAsset>(resourcePath);
-        if (presetAsset != null)
+        var resourcePreset = Resources.Load<TextAsset>(resourcePath);
+        if (resourcePreset != null)
         {
             source = $"Resources/{resourcePath}.json";
             Debug.Log($"Bootstrapper: Using preset from {source} for simulation '{simulationId}'.");
-            return presetAsset.text;
+            return resourcePreset.text;
         }
 
         source = "<base-defaults>";
         Debug.LogWarning($"Bootstrapper: No preset found for simulation '{simulationId}'. Using hardcoded defaults.");
         return string.Empty;
-    }
-
-    private void ValidateDefaultPresets()
-    {
-        foreach (var simulationId in KnownSimulationIds)
-        {
-            if (!HasDefaultPreset(simulationId))
-            {
-                Debug.LogWarning($"Bootstrapper: Missing default preset for simulation '{simulationId}'. Expected StreamingAssets or Resources fallback.");
-            }
-        }
     }
 
     private static bool HasDefaultPreset(string simulationId)
@@ -398,8 +397,13 @@ public class Bootstrapper : MonoBehaviour
         config.activeSimulation = options.simulationId;
     }
 
-    private int ResolveSeed()
+    private int ResolveSeed(ScenarioConfig config)
     {
+        if (string.Equals(config?.mode, "Replay", StringComparison.OrdinalIgnoreCase))
+        {
+            return config.seed;
+        }
+
         if (options == null)
         {
             return Environment.TickCount;
@@ -412,7 +416,6 @@ public class Bootstrapper : MonoBehaviour
             _ => Environment.TickCount
         };
     }
-
 
     private void ConfigureDeterminism(int seed)
     {
@@ -452,7 +455,6 @@ public class Bootstrapper : MonoBehaviour
         }
 
         activeRunner.Initialize(config);
-        simDriver?.SetRunner(activeRunner);
     }
 
     private void EnsureSimulationRoot()
@@ -482,25 +484,50 @@ public class Bootstrapper : MonoBehaviour
         activeRunner?.Shutdown();
         activeRunner = null;
         simDriver?.SetRunner(null);
+        replayDriver?.SetRunner(null);
     }
 
     public void PauseSimulation()
     {
+        if (IsReplayMode)
+        {
+            replayDriver?.Pause();
+            return;
+        }
+
         simDriver?.Pause();
     }
 
     public void ResumeSimulation()
     {
+        if (IsReplayMode)
+        {
+            replayDriver?.Resume();
+            return;
+        }
+
         simDriver?.Resume();
     }
 
     public void StepSimulationOnce()
     {
+        if (IsReplayMode)
+        {
+            replayDriver?.RequestSingleStep();
+            return;
+        }
+
         simDriver?.RequestSingleStep();
     }
 
     public void SetSimulationTimeScale(float timeScale)
     {
+        if (IsReplayMode)
+        {
+            replayDriver?.SetTimeScale(timeScale);
+            return;
+        }
+
         simDriver?.SetTimeScale(timeScale);
     }
 

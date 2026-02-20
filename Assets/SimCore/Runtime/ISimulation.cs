@@ -12,3 +12,9 @@ public interface IRecordable
 {
     object CaptureState();
 }
+
+public interface IReplayableState
+{
+    void ApplyReplayState(object state);
+    void ApplyReplayEvent(string eventType, object payload);
+}
