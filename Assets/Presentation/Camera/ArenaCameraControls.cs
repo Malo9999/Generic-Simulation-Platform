@@ -11,6 +11,7 @@ public class ArenaCameraControls : MonoBehaviour
     [Tooltip("Lower = snappier, higher = smoother but laggier.")]
     public float panSmoothTime = 0.06f;
     public bool allowRightMouseDrag = true;
+    public bool allowMiddleMouseDrag = true;
 
     [Header("Zoom")]
     public bool enableZoom = true;
@@ -26,7 +27,7 @@ public class ArenaCameraControls : MonoBehaviour
 
     private bool _dragging;
     private Vector3 _dragStartRigPos;
-    private Vector3 _dragStartMouseWorld;
+    private Vector2 _dragStartMouseScreen;
 
     private void Reset()
     {
@@ -63,24 +64,36 @@ public class ArenaCameraControls : MonoBehaviour
             _desiredPos += dir * panSpeedUnitsPerSecond * Time.unscaledDeltaTime;
         }
 
-        // --- RMB drag pan (world-space) ---
-        if (allowRightMouseDrag && mouse != null && _cam != null)
+        // --- Mouse drag pan ---
+        if (mouse != null && _cam != null)
         {
-            if (mouse.rightButton.wasPressedThisFrame)
+            bool dragPressedThisFrame =
+                (allowRightMouseDrag && mouse.rightButton.wasPressedThisFrame) ||
+                (allowMiddleMouseDrag && mouse.middleButton.wasPressedThisFrame);
+
+            bool dragReleasedThisFrame =
+                (allowRightMouseDrag && mouse.rightButton.wasReleasedThisFrame) ||
+                (allowMiddleMouseDrag && mouse.middleButton.wasReleasedThisFrame);
+
+            bool dragHeld =
+                (allowRightMouseDrag && mouse.rightButton.isPressed) ||
+                (allowMiddleMouseDrag && mouse.middleButton.isPressed);
+
+            if (dragPressedThisFrame)
             {
                 _dragging = true;
                 _dragStartRigPos = _desiredPos;
-                _dragStartMouseWorld = MouseWorldZ0(mouse.position.ReadValue());
+                _dragStartMouseScreen = mouse.position.ReadValue();
             }
-            else if (mouse.rightButton.wasReleasedThisFrame)
+            else if (dragReleasedThisFrame)
             {
                 _dragging = false;
             }
-            else if (_dragging && mouse.rightButton.isPressed)
+            else if (_dragging && dragHeld)
             {
-                Vector3 now = MouseWorldZ0(mouse.position.ReadValue());
-                Vector3 delta = _dragStartMouseWorld - now;
-                _desiredPos = _dragStartRigPos + delta;
+                Vector2 now = mouse.position.ReadValue();
+                Vector2 pixelDelta = now - _dragStartMouseScreen;
+                _desiredPos = _dragStartRigPos + ScreenToWorldPanDelta(-pixelDelta);
             }
         }
 
@@ -115,12 +128,24 @@ public class ArenaCameraControls : MonoBehaviour
         }
     }
 
-    private Vector3 MouseWorldZ0(Vector2 mouseScreenPos)
+    private Vector3 ScreenToWorldPanDelta(Vector2 pixelDelta)
     {
-        float zDist = _cam != null ? -_cam.transform.position.z : 10f;
-        var sp = new Vector3(mouseScreenPos.x, mouseScreenPos.y, zDist);
-        var wp = _cam.ScreenToWorldPoint(sp);
-        wp.z = 0f;
-        return wp;
+        if (_cam == null)
+            return new Vector3(pixelDelta.x, pixelDelta.y, 0f);
+
+        if (!_cam.orthographic)
+        {
+            float zDist = Mathf.Max(0.01f, -_cam.transform.position.z);
+            Vector3 a = _cam.ScreenToWorldPoint(new Vector3(0f, 0f, zDist));
+            Vector3 b = _cam.ScreenToWorldPoint(new Vector3(pixelDelta.x, pixelDelta.y, zDist));
+            Vector3 d = b - a;
+            d.z = 0f;
+            return d;
+        }
+
+        float worldUnitsPerPixelY = (2f * _cam.orthographicSize) / Mathf.Max(1, Screen.height);
+        float worldUnitsPerPixelX = (2f * _cam.orthographicSize * _cam.aspect) / Mathf.Max(1, Screen.width);
+
+        return new Vector3(pixelDelta.x * worldUnitsPerPixelX, pixelDelta.y * worldUnitsPerPixelY, 0f);
     }
 }
