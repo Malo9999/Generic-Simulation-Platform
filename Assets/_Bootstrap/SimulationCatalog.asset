@@ -22,9 +22,6 @@ MonoBehaviour:
   - simulationId: MarbleRace
     runnerPrefab: {fileID: 4658548392147938066, guid: f907dfcf7ed910e40a33a3103cfc38ed, type: 3}
     defaultPreset: {fileID: 4900000, guid: 997e6acdbb00e5e4498ee4353ea0ef22, type: 3}
-  - simulationId: QuadPOC
-    runnerPrefab: {fileID: 0}
-    defaultPreset: {fileID: 4900000, guid: 499f0628b58567848ad0ec86f59e3cf1, type: 3}
   - simulationId: RaceCar
     runnerPrefab: {fileID: 2918714594879917558, guid: b066dfc512276f24f8ea5ab0b4743173, type: 3}
     defaultPreset: {fileID: 4900000, guid: 98c1727df29435b4f8bc02276cf4cecf, type: 3}
