@@ -16,12 +16,16 @@ MonoBehaviour:
   - simulationId: AntColonies
     runnerPrefab: {fileID: 7091845627640690864, guid: abf769fd9606e274ca690a4492d53f0d, type: 3}
     defaultPreset: {fileID: 4900000, guid: 383db04756422d4428c4ec4499c34806, type: 3}
+    defaultContentPack: {fileID: 11400000, guid: 932d911e0b1c4df43b63caccc0e025fd, type: 2}
   - simulationId: FantasySport
     runnerPrefab: {fileID: 2556959760160797046, guid: 5bd2445ff5636d144b3b1129490eeb2b, type: 3}
     defaultPreset: {fileID: 4900000, guid: 60b9e10de70d42f4aba97e45c9a58a7b, type: 3}
+    defaultContentPack: {fileID: 0}
   - simulationId: MarbleRace
     runnerPrefab: {fileID: 4658548392147938066, guid: f907dfcf7ed910e40a33a3103cfc38ed, type: 3}
     defaultPreset: {fileID: 4900000, guid: 997e6acdbb00e5e4498ee4353ea0ef22, type: 3}
+    defaultContentPack: {fileID: 0}
   - simulationId: RaceCar
     runnerPrefab: {fileID: 2918714594879917558, guid: b066dfc512276f24f8ea5ab0b4743173, type: 3}
     defaultPreset: {fileID: 4900000, guid: 98c1727df29435b4f8bc02276cf4cecf, type: 3}
+    defaultContentPack: {fileID: 0}

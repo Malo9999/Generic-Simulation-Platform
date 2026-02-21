@@ -2032,3 +2032,406 @@ MonoBehaviour:
   - id: ant_lasius_niger_like_worker_adult_idle_00_mask
     category: agent
     sprite: {fileID: -1855871686, guid: d1dc862314b4d264eb1ef5af0845c8d8, type: 3}
+  selections:
+  - entityId: ant
+    speciesIds:
+    - lasius_niger_like
+    - solenopsis_like
+    - formica_like
+  - entityId: spider
+    speciesIds:
+    - orb_weaver_like
+  - entityId: beetle
+    speciesIds:
+    - grub_like
+  clipMetadata:
+  - keyPrefix: agent:ant:queen:egg:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:queen:egg:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:egg:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:egg:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:egg:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:egg:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:egg:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:egg:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:egg:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:egg:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:larva:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:queen:larva:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:larva:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:larva:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:larva:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:larva:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:larva:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:larva:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:larva:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:larva:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:pupa:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:queen:pupa:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:pupa:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:pupa:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:pupa:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:pupa:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:pupa:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:pupa:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:pupa:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:pupa:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:adult:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:queen:adult:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:adult:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:queen:adult:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:adult:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:adult:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:adult:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:adult:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:adult:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:queen:adult:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:egg:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:worker:egg:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:egg:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:egg:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:egg:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:egg:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:egg:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:egg:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:egg:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:egg:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:larva:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:worker:larva:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:larva:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:larva:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:larva:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:larva:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:larva:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:larva:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:larva:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:larva:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:pupa:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:worker:pupa:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:pupa:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:pupa:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:pupa:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:pupa:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:pupa:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:pupa:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:pupa:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:pupa:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:adult:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:worker:adult:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:adult:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:worker:adult:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:adult:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:adult:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:adult:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:adult:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:adult:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:worker:adult:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:egg:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:soldier:egg:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:egg:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:egg:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:egg:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:egg:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:egg:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:egg:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:egg:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:egg:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:larva:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:soldier:larva:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:larva:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:larva:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:larva:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:larva:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:larva:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:larva:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:larva:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:larva:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:pupa:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:soldier:pupa:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:pupa:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:pupa:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:pupa:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:pupa:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:pupa:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:pupa:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:pupa:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:pupa:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:adult:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:ant:soldier:adult:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:adult:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:ant:soldier:adult:work
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:adult:eat
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:adult:reproduce
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:adult:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:adult:defend
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:adult:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:ant:soldier:adult:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:spider:adult:adult:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:spider:adult:adult:walk
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:spider:adult:adult:run
+    fps: 8
+    frameCount: 4
+  - keyPrefix: agent:spider:adult:adult:fight
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:spider:adult:adult:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:spider:adult:adult:death
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:beetle:adult:adult:idle
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:beetle:adult:adult:walk
+    fps: 8
+    frameCount: 2
+  - keyPrefix: agent:beetle:adult:adult:hurt
+    fps: 8
+    frameCount: 1
+  - keyPrefix: agent:beetle:adult:adult:death
+    fps: 8
+    frameCount: 1
