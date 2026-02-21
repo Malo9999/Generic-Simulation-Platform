@@ -1,0 +1,70 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 984d2af2c6146a049a6a5bf4d1d92996, type: 3}
+  m_Name: AntContentPack
+  m_EditorClassIdentifier: Assembly-CSharp::AntContentPack
+  version: 1
+  seed: 12345
+  tileSize: 32
+  paletteId: Classic
+  tilesetTexture: {fileID: 2800000, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  antsTexture: {fileID: 2800000, guid: 54c882e9984f1c6428818f195d421aa3, type: 3}
+  propsTexture: {fileID: 2800000, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
+  tileSprites:
+  - id: debug_pheromone_high
+    sprite: {fileID: 1887703361, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: debug_pheromone_low
+    sprite: {fileID: 1999920218, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: food_crumb
+    sprite: {fileID: 1819535519, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: food_pile
+    sprite: {fileID: 1367391260, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: ground_alt_a
+    sprite: {fileID: 532919550, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: ground_alt_b
+    sprite: {fileID: -1869538863, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: ground_alt_c
+    sprite: {fileID: -1673004307, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: ground_plain
+    sprite: {fileID: -2010451980, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: nest_entrance
+    sprite: {fileID: 1051080310, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: nest_interior
+    sprite: {fileID: 110586861, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: wall_rock_a
+    sprite: {fileID: -1948080558, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  - id: wall_rock_b
+    sprite: {fileID: 1367642731, guid: afae428091844c24aa9fceb3ab35b89c, type: 3}
+  antRoleSprites:
+  - id: ant_soldier
+    sprite: {fileID: -323963592, guid: 54c882e9984f1c6428818f195d421aa3, type: 3}
+  - id: ant_soldier_mask
+    sprite: {fileID: -1496523340, guid: 54c882e9984f1c6428818f195d421aa3, type: 3}
+  - id: ant_worker
+    sprite: {fileID: 2142638429, guid: 54c882e9984f1c6428818f195d421aa3, type: 3}
+  - id: ant_worker_mask
+    sprite: {fileID: -1650450381, guid: 54c882e9984f1c6428818f195d421aa3, type: 3}
+  propSprites:
+  - id: prop_carry_pellet
+    sprite: {fileID: -1949228103, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
+  - id: prop_dust_puff
+    sprite: {fileID: -1641375175, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
+  - id: prop_food_large
+    sprite: {fileID: 1271925934, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
+  - id: prop_food_medium
+    sprite: {fileID: -1863067173, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
+  - id: prop_food_small
+    sprite: {fileID: -1629719311, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
+  - id: prop_nest_entrance_medium
+    sprite: {fileID: 577628984, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
+  - id: prop_nest_entrance_small
+    sprite: {fileID: -1833238924, guid: 863995dca98e38d4a83a28b186b96f6d, type: 3}
