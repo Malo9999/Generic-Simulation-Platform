@@ -11,6 +11,7 @@ public class Bootstrapper : MonoBehaviour
 {
     [SerializeField] private BootstrapOptions options;
     [SerializeField, Min(0.0001f)] private float tickDeltaTime = 1f / 60f;
+    [SerializeField] private ContentPack contentPackOverride;
 
     private const string SimulationRootName = "SimulationRoot";
     private static readonly string[] KnownSimulationIds = { "AntColonies", "MarbleRace", "RaceCar", "FantasySport" };
@@ -174,6 +175,17 @@ public class Bootstrapper : MonoBehaviour
         EventBusService.ResetGlobal();
         PrimitiveSpriteLibrary.ClearCache();
         AntAtlasLibrary.ClearCache();
+
+        var selectedContentPack = ResolveContentPack(simulationId);
+        if (selectedContentPack != null)
+        {
+            ContentPackService.Set(selectedContentPack);
+        }
+        else
+        {
+            ContentPackService.Clear();
+        }
+
         ArenaBuilder.Build(simulationRoot.transform, currentConfig);
         SpawnRunner(currentConfig);
 
@@ -212,6 +224,83 @@ public class Bootstrapper : MonoBehaviour
             Debug.Log($"Switched simulation to {simulationId} mode={currentConfig.mode} seed={currentConfig.seed}");
         }
     }
+
+
+    private ContentPack ResolveContentPack(string simulationId)
+    {
+        if (contentPackOverride != null)
+        {
+            return contentPackOverride;
+        }
+
+        var entry = options?.simulationCatalog?.FindById(simulationId);
+        if (entry != null && entry.defaultContentPack != null)
+        {
+            return entry.defaultContentPack;
+        }
+
+#if UNITY_EDITOR
+        return FindEditorFallbackContentPack(simulationId);
+#else
+        return null;
+#endif
+    }
+
+#if UNITY_EDITOR
+    private static ContentPack FindEditorFallbackContentPack(string simulationId)
+    {
+        if (string.IsNullOrWhiteSpace(simulationId))
+        {
+            return null;
+        }
+
+        var searchRoot = $"Assets/Presentation/Packs/{simulationId}";
+        if (!AssetDatabase.IsValidFolder(searchRoot))
+        {
+            return null;
+        }
+
+        var guids = AssetDatabase.FindAssets("t:ContentPack", new[] { searchRoot });
+        if (guids == null || guids.Length == 0)
+        {
+            return null;
+        }
+
+        ContentPack bestPack = null;
+        DateTime newestWriteTime = DateTime.MinValue;
+        string bestPath = null;
+
+        for (var i = 0; i < guids.Length; i++)
+        {
+            var path = AssetDatabase.GUIDToAssetPath(guids[i]);
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            var absolutePath = Path.GetFullPath(path);
+            var writeTime = File.Exists(absolutePath) ? File.GetLastWriteTimeUtc(absolutePath) : DateTime.MinValue;
+            var candidate = AssetDatabase.LoadAssetAtPath<ContentPack>(path);
+            if (candidate == null)
+            {
+                continue;
+            }
+
+            var isNewer = writeTime > newestWriteTime;
+            var isTieButEarlierPath = writeTime == newestWriteTime && string.Compare(path, bestPath, StringComparison.Ordinal) < 0;
+            if (!isNewer && !isTieButEarlierPath)
+            {
+                continue;
+            }
+
+            newestWriteTime = writeTime;
+            bestPath = path;
+            bestPack = candidate;
+        }
+
+        return bestPack;
+    }
+#endif
 
     private string GetFallbackSimulationId()
     {
