@@ -6,6 +6,18 @@ using UnityEngine;
 
 public static class AntTilesetSheetGenerator
 {
+    private readonly struct SheetTextureResult
+    {
+        public readonly Texture2D Texture;
+        public readonly List<Sprite> Sprites;
+
+        public SheetTextureResult(Texture2D texture, List<Sprite> sprites)
+        {
+            Texture = texture;
+            Sprites = sprites;
+        }
+    }
+
     private static readonly string[] SurfaceTileNames =
     {
         "grass_plain", "grass_alt_a", "grass_alt_b", "path_straight_h",
@@ -47,13 +59,13 @@ public static class AntTilesetSheetGenerator
         return new TileGenerationResult(surfaceResult.Texture, undergroundResult.Texture, surfaceResult.Sprites, undergroundResult.Sprites);
     }
 
-    private static AntPackGenerator.TextureResult GenerateSheet(string path, IReadOnlyList<string> tileNames, int tileSize, int seed, AntPalettePreset palettePreset, bool surface, bool overwrite)
+    private static SheetTextureResult GenerateSheet(string path, IReadOnlyList<string> tileNames, int tileSize, int seed, AntPalettePreset palettePreset, bool surface, bool overwrite)
     {
         if (!overwrite && File.Exists(path))
         {
             var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             var sprites = AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
-            return new AntPackGenerator.TextureResult(existing, sprites);
+            return new SheetTextureResult(existing, sprites);
         }
 
         const int columns = 4;
@@ -76,8 +88,29 @@ public static class AntTilesetSheetGenerator
         Object.DestroyImmediate(texture);
         AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
 
-        var spritesOut = ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, tileSize, AntPackGenerator.BuildGridRects(tileNames, tileSize, columns));
-        return new AntPackGenerator.TextureResult(AssetDatabase.LoadAssetAtPath<Texture2D>(path), spritesOut);
+        var spritesOut = ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, tileSize, BuildGridRects(tileNames, tileSize, columns));
+        return new SheetTextureResult(AssetDatabase.LoadAssetAtPath<Texture2D>(path), spritesOut);
+    }
+
+    private static List<UnityEditor.U2D.Sprites.SpriteRect> BuildGridRects(IReadOnlyList<string> names, int tileSize, int columns)
+    {
+        var rows = Mathf.CeilToInt(names.Count / (float)columns);
+        var rects = new List<UnityEditor.U2D.Sprites.SpriteRect>(names.Count);
+        for (var index = 0; index < names.Count; index++)
+        {
+            var col = index % columns;
+            var row = rows - 1 - index / columns;
+            rects.Add(new UnityEditor.U2D.Sprites.SpriteRect
+            {
+                name = names[index],
+                rect = new Rect(col * tileSize, row * tileSize, tileSize, tileSize),
+                alignment = SpriteAlignment.Center,
+                pivot = new Vector2(0.5f, 0.5f),
+                spriteID = GUID.Generate()
+            });
+        }
+
+        return rects;
     }
 
     private static void DrawTile(Color32[] px, int width, int ox, int oy, int size, string tileId, int seed, AntPalettePreset palettePreset, bool isSurface)

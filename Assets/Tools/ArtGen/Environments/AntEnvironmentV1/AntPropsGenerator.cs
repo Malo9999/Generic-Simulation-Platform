@@ -6,20 +6,32 @@ using UnityEngine;
 
 public static class AntPropsGenerator
 {
+    public readonly struct TextureResult
+    {
+        public readonly Texture2D Texture;
+        public readonly List<Sprite> Sprites;
+
+        public TextureResult(Texture2D texture, List<Sprite> sprites)
+        {
+            Texture = texture;
+            Sprites = sprites;
+        }
+    }
+
     private static readonly string[] SpriteNames =
     {
         "prop_nest_entrance_small", "prop_nest_entrance_medium", "prop_food_small", "prop_food_medium",
         "prop_food_large", "prop_carry_pellet", "prop_dust_puff"
     };
 
-    public static AntPackGenerator.TextureResult Generate(string outputFolder, int seed, int tileSize, AntPalettePreset palettePreset, bool overwrite)
+    public static TextureResult Generate(string outputFolder, int seed, int tileSize, AntPalettePreset palettePreset, bool overwrite)
     {
         var path = $"{outputFolder}/props.png";
         if (!overwrite && File.Exists(path))
         {
             var existing = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             var sprites = AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
-            return new AntPackGenerator.TextureResult(existing, sprites);
+            return new TextureResult(existing, sprites);
         }
 
         const int columns = 4;
@@ -42,8 +54,29 @@ public static class AntPropsGenerator
         Object.DestroyImmediate(texture);
         AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
 
-        var spritesOut = ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, tileSize, AntPackGenerator.BuildGridRects(SpriteNames, tileSize, columns));
-        return new AntPackGenerator.TextureResult(AssetDatabase.LoadAssetAtPath<Texture2D>(path), spritesOut);
+        var spritesOut = ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, tileSize, BuildGridRects(SpriteNames, tileSize, columns));
+        return new TextureResult(AssetDatabase.LoadAssetAtPath<Texture2D>(path), spritesOut);
+    }
+
+    private static List<UnityEditor.U2D.Sprites.SpriteRect> BuildGridRects(IReadOnlyList<string> names, int tileSize, int columns)
+    {
+        var rows = Mathf.CeilToInt(names.Count / (float)columns);
+        var rects = new List<UnityEditor.U2D.Sprites.SpriteRect>(names.Count);
+        for (var index = 0; index < names.Count; index++)
+        {
+            var col = index % columns;
+            var row = rows - 1 - index / columns;
+            rects.Add(new UnityEditor.U2D.Sprites.SpriteRect
+            {
+                name = names[index],
+                rect = new Rect(col * tileSize, row * tileSize, tileSize, tileSize),
+                alignment = SpriteAlignment.Center,
+                pivot = new Vector2(0.5f, 0.5f),
+                spriteID = GUID.Generate()
+            });
+        }
+
+        return rects;
     }
 
     private static void DrawProp(Color32[] px, int width, int ox, int oy, int size, string id, int seed)
