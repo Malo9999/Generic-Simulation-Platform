@@ -301,7 +301,7 @@ public static class RecreateBroadcastUiMenu
             return false;
         }
 
-        var bootstrapper = UnityEngine.Object.FindObjectOfType(bootstrapperType) as MonoBehaviour;
+        var bootstrapper = UnityEngine.Object.FindFirstObjectByType(bootstrapperType) as MonoBehaviour;
         if (bootstrapper == null)
         {
             return false;
@@ -349,7 +349,7 @@ public static class RecreateBroadcastUiMenu
 
     private static void EnsureEventSystem()
     {
-        if (UnityEngine.Object.FindObjectOfType<EventSystem>() != null)
+        if (UnityEngine.Object.FindAnyObjectByType<EventSystem>() != null)
         {
             return;
         }
