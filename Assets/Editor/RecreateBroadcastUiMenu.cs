@@ -11,9 +11,11 @@ public static class RecreateBroadcastUiMenu
 {
     private const string PresentationRootName = "PresentationRoot";
     private const string CanvasName = "BroadcastCanvas";
+    private const string UiRightStripName = "UiRightStrip";
     private const string MinimapFrameName = "MinimapFrame";
     private const string MinimapViewName = "MinimapView";
     private const string MinimapBorderName = "MinimapBorder";
+    private const string MinimapBorderRootName = "MinimapBorderRoot";
     private const string HudPanelName = "HUDPanel";
     private const string HudTextName = "HUDText";
     private const string MinimapCameraName = "MinimapCamera";
@@ -32,23 +34,30 @@ public static class RecreateBroadcastUiMenu
         }
 
         var presentationRoot = GetOrCreateRoot(PresentationRootName, null);
+        EnsureBroadcastViewportLayout(presentationRoot);
+
         var canvasObject = GetOrCreateRoot(CanvasName, presentationRoot.transform);
         ConfigureCanvas(canvasObject);
 
-        var frame = GetOrCreateUiObject(MinimapFrameName, canvasObject.transform, typeof(Image));
+        var rightStrip = GetOrCreateUiObject(UiRightStripName, canvasObject.transform, typeof(Image));
+        ConfigureRightStrip(rightStrip);
+
+        var frame = GetOrCreateUiObject(MinimapFrameName, rightStrip.transform, typeof(Image));
         ConfigureMinimapFrame(frame);
 
         var view = GetOrCreateUiObject(MinimapViewName, frame.transform, typeof(RawImage));
         ConfigureMinimapView(view, rt);
 
-        var border = GetOrCreateUiObject(MinimapBorderName, frame.transform, typeof(Image));
-        ConfigureMinimapBorder(border);
+        CleanupLegacyMinimapBorder(frame.transform);
+        var borderRoot = GetOrCreateUiObject(MinimapBorderRootName, frame.transform);
+        ConfigureMinimapBorder(borderRoot);
 
-        var hudPanel = GetOrCreateUiObject(HudPanelName, canvasObject.transform, typeof(Image));
+        var hudPanel = GetOrCreateUiObject(HudPanelName, rightStrip.transform, typeof(Image));
         ConfigureHudPanel(hudPanel);
 
-        var hudText = GetOrCreateHudText(canvasObject.transform, hudPanel.transform);
+        var hudText = GetOrCreateHudText(rightStrip.transform, hudPanel.transform);
         ConfigureHudText(hudText);
+        EnsureHudBinder(hudText);
         DisableLegacyHudOverlays(canvasObject.transform, hudText);
 
         var minimapCamera = GetOrCreateRoot(MinimapCameraName, presentationRoot.transform);
@@ -152,6 +161,20 @@ public static class RecreateBroadcastUiMenu
         rect.offsetMax = Vector2.zero;
     }
 
+    private static void ConfigureRightStrip(GameObject rightStrip)
+    {
+        var image = rightStrip.GetComponent<Image>() ?? rightStrip.AddComponent<Image>();
+        image.color = new Color(0f, 0f, 0f, 0.4f);
+        image.raycastTarget = false;
+
+        var rect = rightStrip.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.75f, 0f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(1f, 0.5f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
     private static void ConfigureMinimapFrame(GameObject frame)
     {
         var image = frame.GetComponent<Image>() ?? frame.AddComponent<Image>();
@@ -161,7 +184,7 @@ public static class RecreateBroadcastUiMenu
         rect.anchorMin = new Vector2(1f, 1f);
         rect.anchorMax = new Vector2(1f, 1f);
         rect.pivot = new Vector2(1f, 1f);
-        rect.sizeDelta = new Vector2(160f, 160f);
+        rect.sizeDelta = new Vector2(112f, 112f);
         rect.anchoredPosition = new Vector2(-10f, -10f);
     }
 
@@ -192,23 +215,66 @@ public static class RecreateBroadcastUiMenu
 
         var rect = hudPanel.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = new Vector2(10f, -10f);
-        rect.sizeDelta = new Vector2(280f, 92f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(0f, -10f);
+        rect.offsetMin = new Vector2(10f, -102f);
+        rect.offsetMax = new Vector2(-10f, -10f);
     }
 
-    private static void ConfigureMinimapBorder(GameObject border)
+    private static void CleanupLegacyMinimapBorder(Transform frameTransform)
     {
-        var image = border.GetComponent<Image>() ?? border.AddComponent<Image>();
-        image.color = new Color(1f, 1f, 1f, 0.75f);
+        var oldBorder = frameTransform.Find(MinimapBorderName)?.gameObject;
+        if (oldBorder == null)
+        {
+            return;
+        }
+
+        var image = oldBorder.GetComponent<Image>();
+        if (image != null)
+        {
+            image.enabled = false;
+            oldBorder.SetActive(false);
+        }
+    }
+
+    private static void ConfigureMinimapBorder(GameObject borderRoot)
+    {
+        var rootRect = borderRoot.GetComponent<RectTransform>();
+        rootRect.anchorMin = Vector2.zero;
+        rootRect.anchorMax = Vector2.one;
+        rootRect.offsetMin = Vector2.zero;
+        rootRect.offsetMax = Vector2.zero;
+
+        CreateBorderLine(borderRoot.transform, "BorderTop", new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(0f, 0f), new Vector2(0f, 0f), 2f);
+        CreateBorderLine(borderRoot.transform, "BorderBottom", new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), 2f);
+        CreateBorderLine(borderRoot.transform, "BorderLeft", new Vector2(0f, 0f), new Vector2(0f, 1f), new Vector2(0f, 0.5f), new Vector2(0f, 0f), new Vector2(0f, 0f), 2f, true);
+        CreateBorderLine(borderRoot.transform, "BorderRight", new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(1f, 0.5f), new Vector2(0f, 0f), new Vector2(0f, 0f), 2f, true);
+    }
+
+    private static void CreateBorderLine(
+        Transform parent,
+        string name,
+        Vector2 anchorMin,
+        Vector2 anchorMax,
+        Vector2 pivot,
+        Vector2 offsetMin,
+        Vector2 offsetMax,
+        float thickness,
+        bool vertical = false)
+    {
+        var line = GetOrCreateUiObject(name, parent, typeof(Image));
+        var image = line.GetComponent<Image>();
+        image.color = new Color(1f, 1f, 1f, 0.8f);
         image.raycastTarget = false;
 
-        var rect = border.GetComponent<RectTransform>();
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = Vector2.zero;
-        rect.offsetMax = Vector2.zero;
+        var rect = line.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = pivot;
+        rect.offsetMin = offsetMin;
+        rect.offsetMax = offsetMax;
+        rect.sizeDelta = vertical ? new Vector2(thickness, 0f) : new Vector2(0f, thickness);
     }
 
     private static GameObject GetOrCreateHudText(Transform canvasRoot, Transform hudPanel)
@@ -242,7 +308,7 @@ public static class RecreateBroadcastUiMenu
         if (tmpType != null)
         {
             var tmp = hudText.GetComponent(tmpType) ?? hudText.AddComponent(tmpType);
-            SetMember(tmp, "text", "simId: -\nseed: -\ntick: -\nfps: -");
+            SetMember(tmp, "text", string.Empty);
             SetMember(tmp, "fontSize", 16f);
             SetMember(tmp, "color", Color.white);
             SetMember(tmp, "raycastTarget", false);
@@ -252,7 +318,7 @@ public static class RecreateBroadcastUiMenu
         }
 
         var text = hudText.GetComponent<Text>() ?? hudText.AddComponent<Text>();
-        text.text = "simId: -\nseed: -\ntick: -\nfps: -";
+        text.text = string.Empty;
         text.fontSize = 16;
         text.alignment = TextAnchor.UpperLeft;
         text.color = Color.white;
@@ -260,6 +326,40 @@ public static class RecreateBroadcastUiMenu
         if (text.font == null)
         {
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+    }
+
+    private static void EnsureHudBinder(GameObject hudText)
+    {
+        var binderType = Type.GetType("BroadcastHudBinder, Assembly-CSharp");
+        if (binderType == null)
+        {
+            return;
+        }
+
+        if (hudText.GetComponent(binderType) == null)
+        {
+            hudText.AddComponent(binderType);
+        }
+    }
+
+    private static void EnsureBroadcastViewportLayout(GameObject presentationRoot)
+    {
+        var layoutType = Type.GetType("BroadcastViewportLayout, Assembly-CSharp");
+        if (layoutType == null)
+        {
+            return;
+        }
+
+        var layout = presentationRoot.GetComponent(layoutType) as Behaviour;
+        if (layout == null)
+        {
+            layout = presentationRoot.AddComponent(layoutType) as Behaviour;
+        }
+
+        if (layout != null)
+        {
+            layout.enabled = true;
         }
     }
 
@@ -330,7 +430,7 @@ public static class RecreateBroadcastUiMenu
     {
         var legacyText = root.GetComponentsInChildren<Text>(true)
             .Where(t => t != null && t.gameObject != canonicalHudText)
-            .Where(t => t.name == "Broadcast HUD" || t.fontSize >= 28)
+            .Where(t => t.name == "Broadcast HUD" || t.fontSize >= 28 || string.Equals(t.text, "Broadcast HUD", StringComparison.Ordinal))
             .ToArray();
 
         foreach (var text in legacyText)
