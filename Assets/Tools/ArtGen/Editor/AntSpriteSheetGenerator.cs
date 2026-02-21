@@ -23,12 +23,12 @@ public static class AntSpriteSheetGenerator
         var height = antSpriteSize;
         var pixels = new Color32[width * height];
 
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < columns; i++)
         {
             var ox = i * antSpriteSize;
             var isSoldier = i >= 2;
             var isMask = (i % 2) == 1;
-            DrawAnt(pixels, width, ox, 0, antSpriteSize, seed + i * 101, isSoldier, isMask);
+            DrawAnt(pixels, width, ox, 0, antSpriteSize, seed + (i * 101), isSoldier, isMask, palettePreset);
         }
 
         var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
@@ -42,101 +42,162 @@ public static class AntSpriteSheetGenerator
         return new AntPackGenerator.TextureResult(AssetDatabase.LoadAssetAtPath<Texture2D>(path), spritesOut);
     }
 
-    private static void DrawAnt(Color32[] px, int width, int ox, int oy, int size, int seed, bool soldier, bool maskOnly)
+    private static void DrawAnt(Color32[] px, int width, int ox, int oy, int size, int seed, bool soldier, bool maskOnly, AntPalettePreset palettePreset)
     {
-        var cellMask = new bool[size * size];
-        var cx = size / 2;
-        var cy = size / 2;
+        var silhouette = new bool[size * size];
+        var abdomenMask = new bool[size * size];
 
-        FillDisk(cellMask, size, cx - Scale(size, 0.20f), cy, Scale(size, soldier ? 0.18f : 0.16f)); // abdomen
-        FillDisk(cellMask, size, cx + Scale(size, 0.02f), cy, Scale(size, 0.12f)); // thorax
-        FillDisk(cellMask, size, cx + Scale(size, soldier ? 0.21f : 0.18f), cy - Scale(size, 0.01f), Scale(size, soldier ? 0.13f : 0.10f)); // head
+        var cx = size / 2f;
+        var cy = size / 2f;
+        var t = Mathf.Max(2, Mathf.RoundToInt(size / 32f));
 
-        // waist/petiole pinch
-        FillRect(cellMask, size, cx - Scale(size, 0.08f), cy - Scale(size, 0.03f), Scale(size, 0.08f), Scale(size, 0.06f), false);
+        var abdomenCx = cx - size * 0.18f;
+        var thoraxCx = cx + size * 0.01f;
+        var headCx = cx + size * (soldier ? 0.20f : 0.16f);
 
-        // legs (6)
-        for (var leg = 0; leg < 3; leg++)
+        FillEllipse(silhouette, size, abdomenCx, cy, size * 0.21f, size * 0.18f);
+        FillEllipse(abdomenMask, size, abdomenCx, cy, size * 0.21f, size * 0.18f);
+        FillEllipse(silhouette, size, thoraxCx, cy, size * 0.13f, size * 0.11f);
+        FillEllipse(silhouette, size, headCx, cy, size * (soldier ? 0.13f : 0.10f), size * (soldier ? 0.12f : 0.09f));
+
+        var petioleW = Mathf.RoundToInt(size * 0.05f);
+        var petioleH = Mathf.RoundToInt(size * 0.08f);
+        FillRect(silhouette, size, Mathf.RoundToInt(cx - size * 0.08f), Mathf.RoundToInt(cy - petioleH * 0.5f), petioleW, petioleH, true);
+
+        var legOffsets = new[] { -size * 0.11f, 0f, size * 0.11f };
+        foreach (var legOffset in legOffsets)
         {
-            var y = cy - Scale(size, 0.12f) + leg * Scale(size, 0.12f);
-            var jitter = (Hash(seed, leg, 0, 5) & 1) == 0 ? 1 : -1;
-            DrawMaskLine(cellMask, size, cx - Scale(size, 0.01f), y, cx - Scale(size, 0.30f), y - Scale(size, 0.10f) + jitter);
-            DrawMaskLine(cellMask, size, cx + Scale(size, 0.06f), y, cx + Scale(size, 0.31f), y - Scale(size, 0.10f) - jitter);
+            var anchorX = thoraxCx;
+            var anchorY = cy + legOffset + ((Hash(seed, Mathf.RoundToInt(legOffset), 13) & 1) == 0 ? -1 : 1) * size * 0.01f;
+
+            DrawThickLine(silhouette, size, anchorX - size * 0.03f, anchorY, anchorX - size * 0.17f, anchorY - size * 0.08f, t);
+            DrawThickLine(silhouette, size, anchorX - size * 0.17f, anchorY - size * 0.08f, anchorX - size * 0.30f, anchorY - size * 0.13f, t);
+
+            DrawThickLine(silhouette, size, anchorX + size * 0.03f, anchorY, anchorX + size * 0.18f, anchorY - size * 0.08f, t);
+            DrawThickLine(silhouette, size, anchorX + size * 0.18f, anchorY - size * 0.08f, anchorX + size * 0.30f, anchorY - size * 0.13f, t);
         }
 
-        // antennae
-        DrawMaskLine(cellMask, size, cx + Scale(size, soldier ? 0.25f : 0.21f), cy - Scale(size, 0.05f), cx + Scale(size, 0.34f), cy - Scale(size, 0.18f));
-        DrawMaskLine(cellMask, size, cx + Scale(size, soldier ? 0.25f : 0.21f), cy + Scale(size, 0.01f), cx + Scale(size, 0.35f), cy + Scale(size, 0.14f));
+        var antennaOriginX = headCx + size * (soldier ? 0.07f : 0.05f);
+        var antennaWiggle = ((Hash(seed, 7, 23) & 1) == 0 ? -1f : 1f) * size * 0.01f;
+        DrawThickLine(silhouette, size, antennaOriginX, cy - size * 0.03f, antennaOriginX + size * 0.12f, cy - size * 0.17f + antennaWiggle, t);
+        DrawThickLine(silhouette, size, antennaOriginX, cy + size * 0.03f, antennaOriginX + size * 0.12f, cy + size * 0.17f - antennaWiggle, t);
 
-        // soldier mandibles
         if (soldier)
         {
-            DrawMaskLine(cellMask, size, cx + Scale(size, 0.33f), cy - Scale(size, 0.04f), cx + Scale(size, 0.42f), cy - Scale(size, 0.11f));
-            DrawMaskLine(cellMask, size, cx + Scale(size, 0.33f), cy + Scale(size, 0.02f), cx + Scale(size, 0.42f), cy + Scale(size, 0.09f));
+            var mandibleX = headCx + size * 0.12f;
+            DrawThickLine(silhouette, size, mandibleX, cy - size * 0.04f, mandibleX + size * 0.10f, cy - size * 0.11f, t);
+            DrawThickLine(silhouette, size, mandibleX, cy + size * 0.04f, mandibleX + size * 0.10f, cy + size * 0.11f, t);
         }
 
-        var body = soldier ? new Color32(67, 34, 22, 255) : new Color32(82, 45, 29, 255);
-        var shade = soldier ? new Color32(46, 24, 15, 255) : new Color32(56, 31, 21, 255);
-        var highlight = soldier ? new Color32(99, 53, 34, 255) : new Color32(116, 67, 46, 255);
-        var outline = new Color32(18, 10, 8, 255);
-
-        var stripeMinX = cx - Scale(size, 0.28f);
-        var stripeMaxX = cx - Scale(size, 0.14f);
-
+        var stripeMask = new bool[size * size];
+        var stripeMin = abdomenCx - size * 0.08f;
+        var stripeMax = abdomenCx + size * 0.03f;
         for (var y = 0; y < size; y++)
         {
             for (var x = 0; x < size; x++)
             {
-                if (!GetMask(cellMask, size, x, y))
+                if (!GetMask(abdomenMask, size, x, y))
                 {
                     continue;
                 }
 
-                if (maskOnly)
+                if (x >= stripeMin && x <= stripeMax)
                 {
-                    if (x >= stripeMinX && x <= stripeMaxX && Mathf.Abs(y - cy) <= Scale(size, 0.08f))
-                    {
-                        Set(px, width, ox + x, oy + y, Color.white);
-                    }
-
-                    continue;
+                    SetMask(stripeMask, size, x, y, true);
                 }
-
-                var c = body;
-                if (y > cy + Scale(size, 0.09f)) c = shade;
-                else if (y < cy - Scale(size, 0.10f)) c = highlight;
-                Set(px, width, ox + x, oy + y, c);
             }
         }
 
         if (maskOnly)
         {
+            for (var y = 0; y < size; y++)
+            {
+                for (var x = 0; x < size; x++)
+                {
+                    if (GetMask(stripeMask, size, x, y))
+                    {
+                        Set(px, width, ox + x, oy + y, Color.white);
+                    }
+                }
+            }
+
             return;
+        }
+
+        var colors = GetPalette(palettePreset, soldier);
+
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                if (!GetMask(silhouette, size, x, y) && HasNeighbor(silhouette, size, x, y))
+                {
+                    Set(px, width, ox + x, oy + y, colors.Outline);
+                }
+            }
         }
 
         for (var y = 0; y < size; y++)
         {
             for (var x = 0; x < size; x++)
             {
-                if (GetMask(cellMask, size, x, y) || !HasNeighbor(cellMask, size, x, y))
+                if (!GetMask(silhouette, size, x, y))
                 {
                     continue;
                 }
 
-                Set(px, width, ox + x, oy + y, outline);
+                var c = colors.Body;
+                if (y < cy - size * 0.07f)
+                {
+                    c = colors.Highlight;
+                }
+                else if (y > cy + size * 0.08f)
+                {
+                    c = colors.Shade;
+                }
+
+                Set(px, width, ox + x, oy + y, c);
             }
         }
     }
 
-    private static int Scale(int size, float fraction) => Mathf.Max(1, Mathf.RoundToInt(size * fraction));
-
-    private static void FillDisk(bool[] mask, int size, int cx, int cy, int r)
+    private static (Color32 Body, Color32 Shade, Color32 Highlight, Color32 Outline) GetPalette(AntPalettePreset preset, bool soldier)
     {
-        var rr = r * r;
-        for (var y = -r; y <= r; y++)
-        for (var x = -r; x <= r; x++)
-            if (x * x + y * y <= rr)
-                SetMask(mask, size, cx + x, cy + y, true);
+        switch (preset)
+        {
+            case AntPalettePreset.Desert:
+                return soldier
+                    ? (new Color32(118, 82, 45, 255), new Color32(88, 61, 33, 255), new Color32(149, 105, 62, 255), new Color32(30, 20, 12, 255))
+                    : (new Color32(134, 98, 58, 255), new Color32(100, 72, 41, 255), new Color32(166, 124, 79, 255), new Color32(30, 20, 12, 255));
+            case AntPalettePreset.Twilight:
+                return soldier
+                    ? (new Color32(74, 62, 98, 255), new Color32(55, 46, 76, 255), new Color32(97, 84, 128, 255), new Color32(17, 14, 24, 255))
+                    : (new Color32(87, 71, 116, 255), new Color32(65, 54, 87, 255), new Color32(114, 95, 146, 255), new Color32(17, 14, 24, 255));
+            default:
+                return soldier
+                    ? (new Color32(72, 40, 27, 255), new Color32(48, 27, 19, 255), new Color32(100, 59, 39, 255), new Color32(18, 10, 8, 255))
+                    : (new Color32(88, 51, 33, 255), new Color32(60, 36, 24, 255), new Color32(118, 73, 49, 255), new Color32(18, 10, 8, 255));
+        }
+    }
+
+    private static void FillEllipse(bool[] mask, int size, float cx, float cy, float rx, float ry)
+    {
+        var minX = Mathf.FloorToInt(cx - rx);
+        var maxX = Mathf.CeilToInt(cx + rx);
+        var minY = Mathf.FloorToInt(cy - ry);
+        var maxY = Mathf.CeilToInt(cy + ry);
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = minX; x <= maxX; x++)
+            {
+                var nx = (x - cx) / rx;
+                var ny = (y - cy) / ry;
+                if (nx * nx + ny * ny <= 1f)
+                {
+                    SetMask(mask, size, x, y, true);
+                }
+            }
+        }
     }
 
     private static void FillRect(bool[] mask, int size, int x0, int y0, int w, int h, bool value)
@@ -146,20 +207,27 @@ public static class AntSpriteSheetGenerator
             SetMask(mask, size, x0 + x, y0 + y, value);
     }
 
-    private static void DrawMaskLine(bool[] mask, int size, int x0, int y0, int x1, int y1)
+    private static void DrawThickLine(bool[] mask, int size, float x0, float y0, float x1, float y1, int thickness)
     {
-        var dx = Mathf.Abs(x1 - x0);
-        var sx = x0 < x1 ? 1 : -1;
-        var dy = -Mathf.Abs(y1 - y0);
-        var sy = y0 < y1 ? 1 : -1;
-        var err = dx + dy;
-        while (true)
+        var steps = Mathf.Max(Mathf.Abs(Mathf.RoundToInt(x1 - x0)), Mathf.Abs(Mathf.RoundToInt(y1 - y0)));
+        for (var i = 0; i <= steps; i++)
         {
-            SetMask(mask, size, x0, y0, true);
-            if (x0 == x1 && y0 == y1) break;
-            var e2 = err * 2;
-            if (e2 >= dy) { err += dy; x0 += sx; }
-            if (e2 <= dx) { err += dx; y0 += sy; }
+            var t = steps == 0 ? 0f : i / (float)steps;
+            var x = Mathf.RoundToInt(Mathf.Lerp(x0, x1, t));
+            var y = Mathf.RoundToInt(Mathf.Lerp(y0, y1, t));
+            FillEllipse(mask, size, x, y, thickness * 0.5f, thickness * 0.5f);
+        }
+    }
+
+
+    private static int Hash(int seed, int a, int b)
+    {
+        unchecked
+        {
+            var h = seed;
+            h = (h * 397) ^ (a * 73856093);
+            h = (h * 397) ^ (b * 19349663);
+            return h;
         }
     }
 
@@ -177,21 +245,17 @@ public static class AntSpriteSheetGenerator
 
     private static void Set(Color32[] px, int width, int x, int y, Color32 c)
     {
-        if (x < 0 || y < 0) return;
-        var i = y * width + x;
-        if (i < 0 || i >= px.Length) return;
-        px[i] = c;
-    }
-
-    private static int Hash(int seed, int x, int y, int salt)
-    {
-        unchecked
+        if (x < 0 || y < 0)
         {
-            var h = seed;
-            h = (h * 397) ^ (x * 73856093);
-            h = (h * 397) ^ (y * 19349663);
-            h = (h * 397) ^ (salt * 83492791);
-            return h;
+            return;
         }
+
+        var i = y * width + x;
+        if (i < 0 || i >= px.Length)
+        {
+            return;
+        }
+
+        px[i] = c;
     }
 }

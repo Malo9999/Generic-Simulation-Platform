@@ -28,7 +28,6 @@ public static class AntPackGenerator
         public bool GenerateTiles;
         public bool GenerateAnts;
         public bool GenerateProps;
-        public bool GenerateLegacyTilesets;
         public bool Overwrite;
     }
 
@@ -56,10 +55,6 @@ public static class AntPackGenerator
             surfaceTileLookups = tileResult.SurfaceSprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
             undergroundTileLookups = tileResult.UndergroundSprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
 
-            if (request.GenerateLegacyTilesets)
-            {
-                AntTilesetSheetGenerator.GenerateLegacyCopies(request.Seed, request.TileSize, request.Palette, request.Overwrite);
-            }
         }
 
         if (request.GenerateAnts)
@@ -110,9 +105,14 @@ public static class AntPackGenerator
             throw new ArgumentException("TileSize must be >= 8.");
         }
 
-        if (request.AntSpriteSize < 16)
+        if (request.AntSpriteSize < 32)
         {
-            throw new ArgumentException("AntSpriteSize must be >= 16.");
+            throw new ArgumentException("AntSpriteSize must be >= 32.");
+        }
+
+        if (request.AntSpriteSize % 8 != 0)
+        {
+            throw new ArgumentException("AntSpriteSize must be a multiple of 8.");
         }
 
         if (!request.GenerateTiles && !request.GenerateAnts && !request.GenerateProps)
