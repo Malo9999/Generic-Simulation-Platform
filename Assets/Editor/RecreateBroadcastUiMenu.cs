@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
@@ -120,21 +119,26 @@ public static class RecreateBroadcastUiMenu
         return go;
     }
 
+    private static T GetOrAdd<T>(GameObject go) where T : Component
+    {
+        var component = go.GetComponent<T>();
+        return component != null ? component : go.AddComponent<T>();
+    }
+
     private static void ConfigureCanvas(GameObject canvasObject)
     {
-        var canvas = canvasObject.GetComponent<Canvas>() ?? canvasObject.AddComponent<Canvas>();
+        GetOrAdd<RectTransform>(canvasObject);
+
+        var canvas = GetOrAdd<Canvas>(canvasObject);
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
 
-        var scaler = canvasObject.GetComponent<CanvasScaler>() ?? canvasObject.AddComponent<CanvasScaler>();
+        var scaler = GetOrAdd<CanvasScaler>(canvasObject);
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(480f, 270f);
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
 
-        if (canvasObject.GetComponent<GraphicRaycaster>() == null)
-        {
-            canvasObject.AddComponent<GraphicRaycaster>();
-        }
+        GetOrAdd<GraphicRaycaster>(canvasObject);
 
         var rect = canvasObject.GetComponent<RectTransform>();
         rect.anchorMin = Vector2.zero;
@@ -158,6 +162,8 @@ public static class RecreateBroadcastUiMenu
 
     private static void ConfigureMinimapView(GameObject view, RenderTexture rt)
     {
+        GetOrAdd<RectTransform>(view);
+
         var image = view.GetComponent<RawImage>() ?? view.AddComponent<RawImage>();
         image.texture = rt;
         image.raycastTarget = true;
@@ -370,104 +376,28 @@ public static class RecreateBroadcastUiMenu
 
     private static void AttachAndWireClickToPan(GameObject minimapView)
     {
-        var scriptType = FindMinimapClickToPanType();
-        if (scriptType == null)
+        GetOrAdd<RectTransform>(minimapView);
+
+        var clickToPan = GetOrAdd<MinimapClickToPan>(minimapView);
+        clickToPan.mainCamera = ResolveMainCamera();
+
+        if (TryReadArenaSizeFromBootstrapper(out var width, out var height))
         {
-            Debug.LogWarning("Recreate Broadcast UI: Could not find a minimap click-to-pan MonoBehaviour script under Assets/Presentation/Minimap.");
+            clickToPan.worldBounds = new Rect(-width * 0.5f, -height * 0.5f, width, height);
             return;
         }
 
-        var component = minimapView.GetComponent(scriptType) ?? minimapView.AddComponent(scriptType);
-        var assignedAny = TryAssignKnownFields(component, minimapView);
-        if (!assignedAny)
-        {
-            Debug.LogWarning($"Recreate Broadcast UI: Attached {scriptType.Name} to MinimapView, but could not auto-wire known fields. Fill references in Inspector if required.");
-        }
+        clickToPan.worldBounds = new Rect(-32f, -32f, 64f, 64f);
     }
 
-    private static Type FindMinimapClickToPanType()
+    private static Camera ResolveMainCamera()
     {
-        var guids = AssetDatabase.FindAssets("t:MonoScript", new[] { "Assets/Presentation/Minimap" });
-        foreach (var guid in guids)
+        if (Camera.main != null)
         {
-            var path = AssetDatabase.GUIDToAssetPath(guid);
-            if (path.EndsWith(".meta", StringComparison.OrdinalIgnoreCase) || !File.Exists(path))
-            {
-                continue;
-            }
-
-            var monoScript = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
-            var type = monoScript != null ? monoScript.GetClass() : null;
-            if (type == null || !typeof(MonoBehaviour).IsAssignableFrom(type))
-            {
-                continue;
-            }
-
-            if (typeof(IPointerClickHandler).IsAssignableFrom(type) || type.Name.Contains("Minimap", StringComparison.OrdinalIgnoreCase))
-            {
-                return type;
-            }
+            return Camera.main;
         }
 
-        return null;
-    }
-
-    private static bool TryAssignKnownFields(Component component, GameObject minimapView)
-    {
-        var assigned = false;
-        var targetType = component.GetType();
-        var cameraMain = Camera.main;
-        var minimapCamera = GameObject.Find(MinimapCameraName)?.GetComponent<Camera>();
-        var rect = minimapView.GetComponent<RectTransform>();
-        var rawImage = minimapView.GetComponent<RawImage>();
-
-        foreach (var field in targetType.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-        {
-            var name = field.Name.ToLowerInvariant();
-            if (field.FieldType == typeof(Camera))
-            {
-                if (name.Contains("main") || name.Contains("target") || name.Contains("sim"))
-                {
-                    field.SetValue(component, cameraMain);
-                    assigned = true;
-                }
-                else if (name.Contains("minimap"))
-                {
-                    field.SetValue(component, minimapCamera);
-                    assigned = true;
-                }
-            }
-            else if (field.FieldType == typeof(RectTransform) && (name.Contains("rect") || name.Contains("minimap")))
-            {
-                field.SetValue(component, rect);
-                assigned = true;
-            }
-            else if (field.FieldType == typeof(RawImage) && (name.Contains("raw") || name.Contains("image") || name.Contains("minimap")))
-            {
-                field.SetValue(component, rawImage);
-                assigned = true;
-            }
-            else if ((field.FieldType == typeof(float) || field.FieldType == typeof(int)) && (name.Contains("arenawidth") || name.EndsWith("width")))
-            {
-                if (TryReadArenaSizeFromBootstrapper(out var width, out _))
-                {
-                    if (field.FieldType == typeof(float)) field.SetValue(component, width);
-                    else field.SetValue(component, Mathf.RoundToInt(width));
-                    assigned = true;
-                }
-            }
-            else if ((field.FieldType == typeof(float) || field.FieldType == typeof(int)) && (name.Contains("arenaheight") || name.EndsWith("height")))
-            {
-                if (TryReadArenaSizeFromBootstrapper(out _, out var height))
-                {
-                    if (field.FieldType == typeof(float)) field.SetValue(component, height);
-                    else field.SetValue(component, Mathf.RoundToInt(height));
-                    assigned = true;
-                }
-            }
-        }
-
-        return assigned;
+        return Camera.allCameras.FirstOrDefault(c => c != null && c.CompareTag("MainCamera"));
     }
 
     private static void SetMember(object target, string memberName, object value)
