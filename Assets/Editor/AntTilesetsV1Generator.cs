@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+using UnityEditor.U2D.Sprites;
 using UnityEngine;
 
 public static class AntTilesetsV1Generator
@@ -289,21 +290,32 @@ public static class AntTilesetsV1Generator
         importer.alphaIsTransparency = true;
         importer.wrapMode = TextureWrapMode.Clamp;
 
-        var meta = new List<SpriteMetaData>(tiles.Count);
+        var dataProviderFactories = new SpriteDataProviderFactories();
+        dataProviderFactories.Init();
+
+        var spriteEditorDataProvider = dataProviderFactories.GetSpriteEditorDataProviderFromObject(importer);
+        spriteEditorDataProvider.InitSpriteEditorDataProvider();
+
+        var spriteRectDataProvider = spriteEditorDataProvider.GetDataProvider<ISpriteRectDataProvider>();
+        var spriteRects = new List<SpriteRect>(tiles.Count);
         for (int i = 0; i < tiles.Count; i++)
         {
             int col = i % Columns;
             int row = rows - 1 - i / Columns;
-            meta.Add(new SpriteMetaData
+            var spriteRect = new SpriteRect
             {
                 name = tiles[i].Name,
                 rect = new Rect(col * TileSize, row * TileSize, TileSize, TileSize),
-                alignment = (int)SpriteAlignment.Center,
-                pivot = new Vector2(0.5f, 0.5f)
-            });
+                alignment = SpriteAlignment.Center,
+                pivot = new Vector2(0.5f, 0.5f),
+                spriteID = GUID.Generate()
+            };
+
+            spriteRects.Add(spriteRect);
         }
 
-        importer.spritesheet = meta.ToArray();
+        spriteRectDataProvider.SetSpriteRects(spriteRects.ToArray());
+        spriteEditorDataProvider.Apply();
         importer.SaveAndReimport();
     }
 

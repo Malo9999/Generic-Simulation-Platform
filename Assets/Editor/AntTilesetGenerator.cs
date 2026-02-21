@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+using UnityEditor.U2D.Sprites;
 using UnityEngine;
 
 public static class AntTilesetGenerator
@@ -49,7 +50,6 @@ public static class AntTilesetGenerator
         "chamber_queen_marker"
     };
 
-    [MenuItem("Tools/GSP/Generate Ant Tilesets")]
     public static void GenerateAntTilesets()
     {
         EnsureFolderHierarchy();
@@ -121,22 +121,33 @@ public static class AntTilesetGenerator
         importer.npotScale = TextureImporterNPOTScale.None;
         importer.wrapMode = TextureWrapMode.Clamp;
 
-        var spriteMeta = new List<SpriteMetaData>(tileNames.Count);
+        var dataProviderFactories = new SpriteDataProviderFactories();
+        dataProviderFactories.Init();
+
+        var spriteEditorDataProvider = dataProviderFactories.GetSpriteEditorDataProviderFromObject(importer);
+        spriteEditorDataProvider.InitSpriteEditorDataProvider();
+
+        var spriteRectDataProvider = spriteEditorDataProvider.GetDataProvider<ISpriteRectDataProvider>();
+        var spriteRects = new List<SpriteRect>(tileNames.Count);
         for (int index = 0; index < tileNames.Count; index++)
         {
             int col = index % columns;
             int row = rows - 1 - index / columns;
 
-            spriteMeta.Add(new SpriteMetaData
+            var spriteRect = new SpriteRect
             {
                 name = tileNames[index],
                 rect = new Rect(col * TileSizePx, row * TileSizePx, TileSizePx, TileSizePx),
-                alignment = (int)SpriteAlignment.Center,
-                pivot = new Vector2(0.5f, 0.5f)
-            });
+                alignment = SpriteAlignment.Center,
+                pivot = new Vector2(0.5f, 0.5f),
+                spriteID = GUID.Generate()
+            };
+
+            spriteRects.Add(spriteRect);
         }
 
-        importer.spritesheet = spriteMeta.ToArray();
+        spriteRectDataProvider.SetSpriteRects(spriteRects.ToArray());
+        spriteEditorDataProvider.Apply();
         importer.SaveAndReimport();
     }
 
