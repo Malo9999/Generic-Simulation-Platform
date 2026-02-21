@@ -6,7 +6,6 @@ using UnityEngine;
 
 public static class AntTilesetSheetGenerator
 {
-    private const string LegacyFolder = "Assets/Generated/Tilesets/Ants";
     private static readonly string[] SurfaceTileNames =
     {
         "grass_plain", "grass_alt_a", "grass_alt_b", "path_straight_h",
@@ -46,16 +45,6 @@ public static class AntTilesetSheetGenerator
         var undergroundResult = GenerateSheet(undergroundPath, UndergroundTileNames, tileSize, seed + 811, palettePreset, false, overwrite);
 
         return new TileGenerationResult(surfaceResult.Texture, undergroundResult.Texture, surfaceResult.Sprites, undergroundResult.Sprites);
-    }
-
-    public static void GenerateLegacyCopies(int seed, int tileSize, AntPalettePreset palettePreset, bool overwrite)
-    {
-        ImportSettingsUtil.EnsureFolder("Assets/Generated");
-        ImportSettingsUtil.EnsureFolder("Assets/Generated/Tilesets");
-        ImportSettingsUtil.EnsureFolder(LegacyFolder);
-
-        GenerateSheet($"{LegacyFolder}/ant_surface_tileset.png", SurfaceTileNames, tileSize, seed, palettePreset, true, overwrite);
-        GenerateSheet($"{LegacyFolder}/ant_underground_tileset.png", UndergroundTileNames, tileSize, seed + 811, palettePreset, false, overwrite);
     }
 
     private static AntPackGenerator.TextureResult GenerateSheet(string path, IReadOnlyList<string> tileNames, int tileSize, int seed, AntPalettePreset palettePreset, bool surface, bool overwrite)
