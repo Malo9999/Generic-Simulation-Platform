@@ -50,9 +50,6 @@ sysinfo.txt
 # Media outputs (optional)
 *.mp4
 *.mov
-*.png
-*.jpg
-*.jpeg
 *.webm
 
 ############################
