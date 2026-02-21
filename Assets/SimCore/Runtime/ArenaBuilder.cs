@@ -7,6 +7,9 @@ public static class ArenaBuilder
     private const float PixelsPerUnit = 8f;
     private const int BackgroundSortingOrder = -100;
     private const int BorderSortingOrder = -10;
+    private const int ObstacleFillSortingOrder = -5;
+    private const int ObstacleOutlineSortingOrder = -4;
+    private const float ObstacleOverlapPadding = 0.4f;
 
     private static Sprite whitePixelSprite;
 
@@ -33,13 +36,27 @@ public static class ArenaBuilder
 
         BuildBackground(arenaRoot.transform, width, height);
         BuildBorders(arenaRoot.transform, halfWidth, halfHeight, world.walls);
-        BuildObstacles(arenaRoot.transform, config.seed, world.obstacleDensity, halfWidth, halfHeight, obstacles);
+        var simId = ResolveSimId(config);
+        if (ShouldBuildGenericObstacles(simId) && world.obstacleDensity > 0f)
+        {
+            BuildObstacles(arenaRoot.transform, config.seed, world.obstacleDensity, halfWidth, halfHeight, obstacles);
+        }
 
         var layout = arenaRoot.AddComponent<ArenaLayout>();
         layout.SetData(halfWidth, halfHeight, obstacles);
 
         ArenaDecorBuilder.EnsureDecorRoot(arenaRoot.transform);
-        ArenaDecorBuilder.BuildDecor(arenaRoot.transform, config, ResolveSimId(config));
+        ArenaDecorBuilder.BuildDecor(arenaRoot.transform, config, simId);
+    }
+
+    private static bool ShouldBuildGenericObstacles(string simId)
+    {
+        if (string.IsNullOrWhiteSpace(simId))
+        {
+            return false;
+        }
+
+        return string.Equals(simId, "AntColonies", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ClearExistingArenaRoots(Transform simulationRoot)
@@ -156,8 +173,13 @@ public static class ArenaBuilder
             Vector2 position;
             var foundPosition = false;
 
-            for (var attempt = 0; attempt < 30; attempt++)
+            for (var attempt = 0; attempt < 40; attempt++)
             {
+                var shapeRoll = rng.Range(0, 3);
+                var baseScale = rng.Range(0.8f, 1.8f);
+                var stretch = shapeRoll == 2 ? rng.Range(1.2f, 1.8f) : rng.Range(0.9f, 1.25f);
+                var approxRadius = Mathf.Max(baseScale * stretch, baseScale) * 0.6f;
+
                 position = new Vector2(
                     rng.Range(-halfWidth + margin, halfWidth - margin),
                     rng.Range(-halfHeight + margin, halfHeight - margin));
@@ -167,8 +189,13 @@ public static class ArenaBuilder
                     continue;
                 }
 
+                if (IntersectsExistingObstacle(position, approxRadius, obstacleCircles))
+                {
+                    continue;
+                }
+
                 foundPosition = true;
-                CreateObstacle(obstaclesRoot.transform, rng, i, position, obstacleCircles);
+                CreateObstacle(obstaclesRoot.transform, rng, i, position, shapeRoll, baseScale, stretch, approxRadius, obstacleCircles);
                 break;
             }
 
@@ -179,13 +206,36 @@ public static class ArenaBuilder
         }
     }
 
-    private static void CreateObstacle(Transform parent, SeededRng rng, int index, Vector2 position, List<ArenaLayout.ObstacleCircle> obstacleCircles)
+    private static bool IntersectsExistingObstacle(Vector2 candidatePosition, float candidateRadius, List<ArenaLayout.ObstacleCircle> obstacleCircles)
+    {
+        for (var i = 0; i < obstacleCircles.Count; i++)
+        {
+            var existing = obstacleCircles[i];
+            var allowedDistance = candidateRadius + existing.radius + ObstacleOverlapPadding;
+            if ((candidatePosition - existing.position).sqrMagnitude < allowedDistance * allowedDistance)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void CreateObstacle(
+        Transform parent,
+        SeededRng rng,
+        int index,
+        Vector2 position,
+        int shapeRoll,
+        float baseScale,
+        float stretch,
+        float approxRadius,
+        List<ArenaLayout.ObstacleCircle> obstacleCircles)
     {
         var obstacle = new GameObject($"Obstacle_{index:000}");
         obstacle.transform.SetParent(parent, false);
         obstacle.transform.localPosition = new Vector3(position.x, position.y, 0f);
 
-        var shapeRoll = rng.Range(0, 3);
         var fillRenderer = obstacle.AddComponent<SpriteRenderer>();
         var outline = new GameObject("Outline");
         outline.transform.SetParent(obstacle.transform, false);
@@ -208,13 +258,11 @@ public static class ArenaBuilder
                 break;
         }
 
-        var baseScale = rng.Range(0.8f, 1.8f);
-        var stretch = shapeRoll == 2 ? rng.Range(1.2f, 1.8f) : rng.Range(0.9f, 1.25f);
         obstacle.transform.localScale = new Vector3(baseScale * stretch, baseScale, 1f);
         obstacle.transform.localRotation = Quaternion.Euler(0f, 0f, rng.Range(0f, 360f));
 
-        fillRenderer.sortingOrder = rng.Range(-5, 0);
-        outlineRenderer.sortingOrder = fillRenderer.sortingOrder + 1;
+        fillRenderer.sortingOrder = ObstacleFillSortingOrder;
+        outlineRenderer.sortingOrder = ObstacleOutlineSortingOrder;
 
         var tint = new Color(
             rng.Range(0.28f, 0.44f),
@@ -224,7 +272,6 @@ public static class ArenaBuilder
         fillRenderer.color = tint;
         outlineRenderer.color = new Color(tint.r * 0.45f, tint.g * 0.45f, tint.b * 0.45f, 0.95f);
 
-        var approxRadius = Mathf.Max(obstacle.transform.localScale.x, obstacle.transform.localScale.y) * 0.6f;
         obstacleCircles.Add(new ArenaLayout.ObstacleCircle(position, approxRadius));
     }
 
