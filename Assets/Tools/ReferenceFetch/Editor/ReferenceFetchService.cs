@@ -161,8 +161,19 @@ internal sealed class ReferenceFetchService
     private static string ComputeSha256(byte[] bytes)
     {
         using var sha = SHA256.Create();
-        var hash = sha.ComputeHash(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        var hashBytes = sha.ComputeHash(bytes);
+        return BytesToHexLower(hashBytes);
+    }
+
+    private static string BytesToHexLower(byte[] bytes)
+    {
+        var sb = new System.Text.StringBuilder(bytes.Length * 2);
+        for (int i = 0; i < bytes.Length; i++)
+        {
+            sb.Append(bytes[i].ToString("x2"));
+        }
+
+        return sb.ToString();
     }
 
     private static string GetExtension(string fileUrl)
