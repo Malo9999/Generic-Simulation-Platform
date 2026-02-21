@@ -9,57 +9,57 @@ public static class RunEventSample
             new SpawnEvent
             {
                 tick = 0
-            }.SetEntity("runner-1").SetTeam("blue").SetPosition(1.5f, 2.0f).SetPrefab("RunnerBot").SetKind("racer").SetVelocity(0.5f, 0.0f),
+            }.SetPrefab("RunnerBot").SetKind("racer").SetVelocity(0.5f, 0.0f).SetEntity("runner-1").SetTeam("blue").SetPosition(1.5f, 2.0f),
 
             new SpawnEvent
             {
                 tick = 0
-            }.SetEntity("runner-2").SetTeam("red").SetPosition(2.5f, 2.0f).SetPrefab("RunnerBot").SetKind("racer").SetVelocity(0.4f, 0.1f),
+            }.SetPrefab("RunnerBot").SetKind("racer").SetVelocity(0.4f, 0.1f).SetEntity("runner-2").SetTeam("red").SetPosition(2.5f, 2.0f),
 
             new PickupEvent
             {
                 tick = 12
-            }.SetEntity("runner-1").SetTeam("blue").SetPosition(3.0f, 2.4f).SetItemId("flag-a").SetItemKind("flag"),
+            }.SetItemId("flag-a").SetItemKind("flag").SetEntity("runner-1").SetTeam("blue").SetPosition(3.0f, 2.4f),
 
             new HitEvent
             {
                 tick = 20
-            }.SetEntity("runner-2").SetTeam("red").SetPosition(3.8f, 2.4f).SetTargetId("runner-1").SetDamage(15f).SetWeapon("pulse"),
+            }.SetTargetId("runner-1").SetDamage(15f).SetWeapon("pulse").SetEntity("runner-2").SetTeam("red").SetPosition(3.8f, 2.4f),
 
             new DropoffEvent
             {
                 tick = 30
-            }.SetEntity("runner-1").SetTeam("blue").SetPosition(5.5f, 2.5f).SetItemId("flag-a").SetDestination("base-blue"),
+            }.SetItemId("flag-a").SetDestination("base-blue").SetEntity("runner-1").SetTeam("blue").SetPosition(5.5f, 2.5f),
 
             new ScoreEvent
             {
                 tick = 31
-            }.SetEntity("runner-1").SetTeam("blue").SetDelta(1).SetTotal(1),
+            }.SetDelta(1).SetTotal(1).SetEntity("runner-1").SetTeam("blue"),
 
             new OvertakeEvent
             {
                 tick = 44
-            }.SetEntity("runner-2").SetTeam("red").SetPosition(6.1f, 2.6f).SetPassedEntityId("runner-3").SetNewPosition(2),
+            }.SetPassedEntityId("runner-3").SetNewPosition(2).SetEntity("runner-2").SetTeam("red").SetPosition(6.1f, 2.6f),
 
             new LapEvent
             {
                 tick = 50
-            }.SetEntity("runner-2").SetTeam("red").SetLapNumber(1).SetLapTimeMs(60420),
+            }.SetLapNumber(1).SetLapTimeMs(60420).SetEntity("runner-2").SetTeam("red"),
 
             new GoalEvent
             {
                 tick = 62
-            }.SetEntity("runner-1").SetTeam("blue").SetGoalType("checkpoint").SetValue(0.75f),
+            }.SetGoalType("checkpoint").SetValue(0.75f).SetEntity("runner-1").SetTeam("blue"),
 
             new HighlightTagEvent
             {
                 tick = 70
-            }.SetEntity("runner-2").SetTag("photo_finish").SetSeverity("high"),
+            }.SetTag("photo_finish").SetSeverity("high").SetEntity("runner-2"),
 
             new DespawnEvent
             {
                 tick = 100
-            }.SetEntity("runner-3").SetTeam("green").SetReason("eliminated")
+            }.SetReason("eliminated").SetEntity("runner-3").SetTeam("green")
         };
     }
 }
