@@ -189,7 +189,7 @@ public class Bootstrapper : MonoBehaviour
                     : "IReplayableSimulationRunner or ITickableSimulationRunner";
                 throw new InvalidOperationException(
                     $"Bootstrapper: Replay runner contract mismatch for simulation '{currentConfig.simulationId}'. " +
-                    $"Runner '{activeRunnerObject?.name ?? '<null>'}' must implement {required} for replay mode.");
+                    $"Runner '{activeRunnerObject?.name ?? "<null>"}' must implement {required} for replay mode.");
             }
 
             simDriver?.SetRunner(null);
