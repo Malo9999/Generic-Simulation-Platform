@@ -98,12 +98,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var athlete = new GameObject($"Athlete_{i}");
             athlete.transform.SetParent(transform, false);
 
-            var identity = new EntityIdentity(
-                nextEntityId++,
-                i % 2,
-                i < AthleteCount / 2 ? "offense" : "defense",
-                RngService.Global.Range(0, 3),
-                RngService.Global.Range(0, int.MaxValue));
+            var identity = IdentityService.Create(
+                entityId: nextEntityId++,
+                teamId: i % 2,
+                role: i < AthleteCount / 2 ? "offense" : "defense",
+                variantCount: 3,
+                scenarioSeed: config?.seed ?? 0,
+                simIdOrSalt: "FantasySport");
 
             var iconRoot = new GameObject("IconRoot");
             iconRoot.transform.SetParent(athlete.transform, false);

@@ -87,12 +87,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             var marble = new GameObject($"Marble_{i}");
             marble.transform.SetParent(transform, false);
 
-            var identity = new EntityIdentity(
-                nextEntityId++,
-                i % 2,
-                "marble",
-                RngService.Global.Range(0, 4),
-                RngService.Global.Range(0, int.MaxValue));
+            var identity = IdentityService.Create(
+                entityId: nextEntityId++,
+                teamId: i % 2,
+                role: "marble",
+                variantCount: 4,
+                scenarioSeed: config?.seed ?? 0,
+                simIdOrSalt: "MarbleRace");
 
             var iconRoot = new GameObject("IconRoot");
             iconRoot.transform.SetParent(marble.transform, false);

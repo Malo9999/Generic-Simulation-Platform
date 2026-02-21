@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
@@ -118,12 +119,13 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         {
             var role = i == 0 ? AntRole.Queen : (i <= WorkerCount ? AntRole.Worker : AntRole.Warrior);
             var roleId = role.ToString().ToLowerInvariant();
-            var identity = new EntityIdentity(
-                nextEntityId++,
-                0,
-                roleId,
-                (int)role,
-                RngService.Global.Range(0, int.MaxValue));
+            var identity = IdentityService.Create(
+                entityId: nextEntityId++,
+                teamId: 0,
+                role: roleId,
+                variantCount: Enum.GetValues(typeof(AntRole)).Length,
+                scenarioSeed: config?.seed ?? 0,
+                simIdOrSalt: "AntColonies");
 
             identities[i] = identity;
             roles[i] = RoleFromIdentity(identity);
