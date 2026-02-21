@@ -17,8 +17,10 @@ public class ArenaCameraPolicy : MonoBehaviour
     public bool clampToBounds = true;
 
     [Header("Optional: auto-bounds from collider")]
-    [Tooltip("Camera clamp uses this collider\'s world-space bounds. Ensure this collider fully covers the playable arena extents.")]
+    [Tooltip("Camera clamp uses this collider's world-space bounds. Prefer a dedicated ArenaBounds BoxCollider2D that matches arena walls exactly.")]
     public Collider2D arenaBoundsCollider;
+    [Tooltip("When true and arenaBoundsCollider is empty, auto-wire by searching for a BoxCollider2D named 'ArenaBounds'.")]
+    public bool autoFindArenaBoundsCollider = true;
 
     [Header("Pixel Perfect Zoom")]
     public Vector2Int baseRefResolution = new Vector2Int(480, 270);
@@ -38,6 +40,7 @@ public class ArenaCameraPolicy : MonoBehaviour
     public bool drawClampGizmos = false;
 
     private bool _warnedMissingPixelPerfect;
+    private float _nextClampLogTime;
 
     private void Reset() => AutoWire();
     private void OnValidate() => AutoWire();
@@ -57,10 +60,14 @@ public class ArenaCameraPolicy : MonoBehaviour
         bool wasClamped;
         p = ClampPosition(p, out wasClamped);
 
-        if (logClampDiagnostics)
+        if (logClampDiagnostics && Time.unscaledTime >= _nextClampLogTime)
         {
+            _nextClampLogTime = Time.unscaledTime + 1f;
+            var worldBounds = GetWorldBounds();
             GetClampExtents(out float minX, out float maxX, out float minY, out float maxY);
-            UnityEngine.Debug.Log($"[GSP] Camera clamp pos=({p.x:F2},{p.y:F2}) x:[{minX:F2}..{maxX:F2}] y:[{minY:F2}..{maxY:F2}] clamped={wasClamped}");
+            UnityEngine.Debug.Log(
+                $"[GSP] Camera clamp bounds min=({worldBounds.min.x:F2},{worldBounds.min.y:F2}) max=({worldBounds.max.x:F2},{worldBounds.max.y:F2}) " +
+                $"viewportClampX=[{minX:F2}..{maxX:F2}] viewportClampY=[{minY:F2}..{maxY:F2}] pos=({p.x:F2},{p.y:F2}) clamped={wasClamped}");
         }
 
         if (snapRigToPixelGrid)
@@ -202,6 +209,26 @@ public class ArenaCameraPolicy : MonoBehaviour
         {
             UnityEngine.Debug.Log($"[GSP] AutoWire cam={(targetCamera ? targetCamera.name : "null")} pixelPerfect={(pixelPerfectComponent ? pixelPerfectComponent.GetType().FullName : "NULL")}");
         }
+
+        if (arenaBoundsCollider == null && autoFindArenaBoundsCollider)
+        {
+            arenaBoundsCollider = FindArenaBoundsCollider();
+        }
+    }
+
+    private static Collider2D FindArenaBoundsCollider()
+    {
+        var allBoxColliders = UnityEngine.Object.FindObjectsByType<BoxCollider2D>(FindObjectsSortMode.None);
+
+        foreach (var collider in allBoxColliders)
+        {
+            if (collider != null && collider.gameObject.name == "ArenaBounds")
+            {
+                return collider;
+            }
+        }
+
+        return null;
     }
 
     private static Component FindPixelPerfectOnCamera(Camera cam)
@@ -234,6 +261,11 @@ public class ArenaCameraPolicy : MonoBehaviour
 
     private void GetWorldMinMax(out float minX, out float minY, out float maxX, out float maxY)
     {
+        if (arenaBoundsCollider == null && autoFindArenaBoundsCollider)
+        {
+            arenaBoundsCollider = FindArenaBoundsCollider();
+        }
+
         if (arenaBoundsCollider != null)
         {
             var b = arenaBoundsCollider.bounds;
