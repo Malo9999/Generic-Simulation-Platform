@@ -1,11 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 public static class ArenaBuilder
 {
     private const float PixelsPerUnit = 8f;
     private const int BackgroundSortingOrder = -100;
+    private const int GroundTileSortingOrder = -90;
+    private const int PackDecorOrderMin = -20;
+    private const int PackDecorOrderMax = -15;
     private const int BorderSortingOrder = -10;
     private const int ObstacleFillSortingOrder = -5;
     private const int ObstacleOutlineSortingOrder = -4;
@@ -34,7 +38,13 @@ public static class ArenaBuilder
 
         var obstacles = new List<ArenaLayout.ObstacleCircle>();
 
-        BuildBackground(arenaRoot.transform, width, height);
+        var pack = ContentPackService.Current;
+        var didBuildPackTiles = pack != null && BuildPackGroundTiles(arenaRoot.transform, config, pack, width, height);
+        if (!didBuildPackTiles)
+        {
+            BuildBackground(arenaRoot.transform, width, height);
+        }
+
         BuildBorders(arenaRoot.transform, halfWidth, halfHeight, world.walls);
         var simId = ResolveSimId(config);
         if (ShouldBuildGenericObstacles(simId) && world.obstacleDensity > 0f)
@@ -45,8 +55,12 @@ public static class ArenaBuilder
         var layout = arenaRoot.AddComponent<ArenaLayout>();
         layout.SetData(halfWidth, halfHeight, obstacles);
 
-        ArenaDecorBuilder.EnsureDecorRoot(arenaRoot.transform);
-        ArenaDecorBuilder.BuildDecor(arenaRoot.transform, config, simId);
+        var didBuildPackDecor = pack != null && BuildPackDecorProps(arenaRoot.transform, config, pack, halfWidth, halfHeight);
+        if (!didBuildPackDecor)
+        {
+            ArenaDecorBuilder.EnsureDecorRoot(arenaRoot.transform);
+            ArenaDecorBuilder.BuildDecor(arenaRoot.transform, config, simId);
+        }
     }
 
     private static bool ShouldBuildGenericObstacles(string simId)
@@ -93,6 +107,180 @@ public static class ArenaBuilder
         }
 
         return config.scenarioName;
+    }
+
+    private static bool BuildPackGroundTiles(Transform parent, ScenarioConfig config, ContentPack pack, float width, float height)
+    {
+        var tileIds = pack.GetAllSpriteIds().Where(id => id.StartsWith("tile:", StringComparison.Ordinal)).ToList();
+        if (tileIds.Count == 0)
+        {
+            return false;
+        }
+
+        var tileNamespace = ResolveMostCommonNamespace(tileIds, "tile");
+        if (string.IsNullOrWhiteSpace(tileNamespace))
+        {
+            return false;
+        }
+
+        var surfacePrefix = $"tile:{tileNamespace}:surface:";
+        var surfaceIds = tileIds.Where(id => id.StartsWith(surfacePrefix, StringComparison.Ordinal)).ToList();
+        if (surfaceIds.Count == 0)
+        {
+            return false;
+        }
+
+        var preferredIds = surfaceIds.Where(id => id.IndexOf("ground", StringComparison.OrdinalIgnoreCase) >= 0 || id.IndexOf("grass", StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+        var candidates = preferredIds.Count > 0 ? preferredIds : surfaceIds;
+        var sprites = candidates.Select(id =>
+        {
+            pack.TryGetSprite(id, out var sprite);
+            return sprite;
+        }).Where(sprite => sprite != null).ToList();
+        if (sprites.Count == 0)
+        {
+            return false;
+        }
+
+        var root = new GameObject("GroundTiles");
+        root.transform.SetParent(parent, false);
+        root.transform.localPosition = Vector3.zero;
+
+        var gridW = Mathf.Max(1, Mathf.RoundToInt(width));
+        var gridH = Mathf.Max(1, Mathf.RoundToInt(height));
+        var localSeed = unchecked(config.seed ^ (int)ArenaDecorBuilder.StableHash32("GROUND_TILES"));
+        var rng = new SeededRng(localSeed);
+        var startX = -width * 0.5f + 0.5f;
+        var startY = -height * 0.5f + 0.5f;
+
+        for (var y = 0; y < gridH; y++)
+        {
+            for (var x = 0; x < gridW; x++)
+            {
+                var tile = new GameObject($"Tile_{x:000}_{y:000}");
+                tile.transform.SetParent(root.transform, false);
+                tile.transform.localPosition = new Vector3(startX + x, startY + y, 0f);
+
+                var renderer = tile.AddComponent<SpriteRenderer>();
+                renderer.sortingOrder = GroundTileSortingOrder;
+                renderer.sprite = sprites[rng.Range(0, sprites.Count)];
+                renderer.color = Color.white;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool BuildPackDecorProps(Transform arenaRoot, ScenarioConfig config, ContentPack pack, float halfWidth, float halfHeight)
+    {
+        var propIds = pack.GetAllSpriteIds().Where(id => id.StartsWith("prop:", StringComparison.Ordinal)).ToList();
+        if (propIds.Count == 0)
+        {
+            return false;
+        }
+
+        var propNamespace = ResolveMostCommonNamespace(propIds, "prop");
+        if (string.IsNullOrWhiteSpace(propNamespace))
+        {
+            return false;
+        }
+
+        var prefix = $"prop:{propNamespace}:";
+        var sprites = propIds.Where(id => id.StartsWith(prefix, StringComparison.Ordinal)).Select(id =>
+        {
+            pack.TryGetSprite(id, out var sprite);
+            return sprite;
+        }).Where(sprite => sprite != null).ToList();
+
+        if (sprites.Count == 0)
+        {
+            return false;
+        }
+
+        var decorRoot = ArenaDecorBuilder.EnsureDecorRoot(arenaRoot);
+        ArenaDecorBuilder.ClearChildren(decorRoot);
+
+        var minHalf = Mathf.Min(halfWidth, halfHeight);
+        var margin = Mathf.Clamp(minHalf * 0.07f, 1.5f, 2.5f);
+        var clearRadius = Mathf.Clamp(minHalf * 0.2f, 6f, 8f);
+        var budget = Mathf.Clamp(Mathf.RoundToInt((halfWidth * halfHeight) * 0.12f), 80, 200);
+
+        var localSeed = unchecked(config.seed ^ (int)ArenaDecorBuilder.StableHash32("DECOR"));
+        var rng = new SeededRng(localSeed);
+
+        for (var i = 0; i < budget; i++)
+        {
+            var position = new Vector2(
+                rng.Range(-halfWidth + margin, halfWidth - margin),
+                rng.Range(-halfHeight + margin, halfHeight - margin));
+
+            if (position.sqrMagnitude < clearRadius * clearRadius)
+            {
+                continue;
+            }
+
+            var prop = new GameObject($"Prop_{i:000}");
+            prop.transform.SetParent(decorRoot, false);
+            prop.transform.localPosition = new Vector3(position.x, position.y, 0f);
+            prop.transform.localRotation = Quaternion.identity;
+
+            var renderer = prop.AddComponent<SpriteRenderer>();
+            renderer.sprite = sprites[rng.Range(0, sprites.Count)];
+            renderer.color = new Color(1f, 1f, 1f, rng.Range(0.25f, 0.8f));
+            renderer.sortingOrder = rng.Range(PackDecorOrderMin, PackDecorOrderMax + 1);
+
+            var scale = rng.Range(0.8f, 1.3f);
+            prop.transform.localScale = new Vector3(scale, scale, 1f);
+        }
+
+        return true;
+    }
+
+    private static string ResolveMostCommonNamespace(List<string> ids, string category)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        string first = null;
+
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var id = ids[i];
+            var parts = id.Split(':');
+            if (parts.Length < 3 || !string.Equals(parts[0], category, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var ns = parts[1];
+            if (string.IsNullOrWhiteSpace(ns))
+            {
+                continue;
+            }
+
+            if (first == null)
+            {
+                first = ns;
+            }
+
+            counts[ns] = counts.TryGetValue(ns, out var count) ? count + 1 : 1;
+        }
+
+        if (counts.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var best = first;
+        var bestCount = -1;
+        foreach (var kvp in counts)
+        {
+            if (kvp.Value > bestCount)
+            {
+                best = kvp.Key;
+                bestCount = kvp.Value;
+            }
+        }
+
+        return best ?? string.Empty;
     }
 
     private static void BuildBackground(Transform parent, float width, float height)

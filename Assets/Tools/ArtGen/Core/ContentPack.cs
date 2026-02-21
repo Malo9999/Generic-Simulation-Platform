@@ -99,6 +99,85 @@ public sealed class ContentPack : ScriptableObject
         return spriteById.TryGetValue(id ?? string.Empty, out sprite);
     }
 
+    public IEnumerable<string> GetAllSpriteIds()
+    {
+        BuildIndex();
+        return spriteById.Keys;
+    }
+
+    public List<string> FindIdsByPrefix(string prefix, int max = 10)
+    {
+        BuildIndex();
+        if (string.IsNullOrWhiteSpace(prefix) || max <= 0)
+        {
+            return new List<string>();
+        }
+
+        return spriteById.Keys
+            .Where(id => id.StartsWith(prefix, StringComparison.Ordinal))
+            .Take(max)
+            .ToList();
+    }
+
+    public string InferFirstSpeciesId(string entityId)
+    {
+        BuildIndex();
+        if (string.IsNullOrWhiteSpace(entityId))
+        {
+            return string.Empty;
+        }
+
+        var prefix = $"agent:{entityId}:";
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+        string firstSpecies = null;
+
+        foreach (var id in spriteById.Keys)
+        {
+            if (!id.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var remainder = id.Substring(prefix.Length);
+            var separatorIndex = remainder.IndexOf(':');
+            if (separatorIndex <= 0)
+            {
+                continue;
+            }
+
+            var species = remainder.Substring(0, separatorIndex);
+            if (string.IsNullOrWhiteSpace(species))
+            {
+                continue;
+            }
+
+            if (firstSpecies == null)
+            {
+                firstSpecies = species;
+            }
+
+            counts[species] = counts.TryGetValue(species, out var current) ? current + 1 : 1;
+        }
+
+        if (counts.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var bestSpecies = firstSpecies;
+        var bestCount = -1;
+        foreach (var entry in counts)
+        {
+            if (entry.Value > bestCount)
+            {
+                bestSpecies = entry.Key;
+                bestCount = entry.Value;
+            }
+        }
+
+        return bestSpecies ?? string.Empty;
+    }
+
     public string GetSpeciesId(string entityId, int variantIndex)
     {
         BuildIndex();
