@@ -262,26 +262,76 @@ public static class ArenaDecorBuilder
 
     private static int BuildMarbleDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, SeededRng rng, int cap)
     {
+        rng = new SeededRng(unchecked(rng.Seed ^ (int)StableHash32("DECOR:MarbleRace")));
         var count = 0;
-        var lineSegments = rng.Range(8, 21);
-        var start = RandomPoint(rng, b.halfWidth, b.halfHeight, b.margin + 1f);
-        for (var i = 0; i < lineSegments && count < cap; i++)
+        var minHalf = Mathf.Min(b.halfWidth, b.halfHeight);
+        var laneWidth = Mathf.Clamp(minHalf * 0.2f, 5f, 12f);
+        var halfLane = laneWidth * 0.5f;
+        var centerJitterX = rng.Range(-minHalf * 0.05f, minHalf * 0.05f);
+        var centerJitterY = rng.Range(-minHalf * 0.05f, minHalf * 0.05f);
+        var trackCenter = new Vector2(centerJitterX, centerJitterY);
+        var radiusX = Mathf.Max(6f, b.halfWidth - b.margin - halfLane - 1.2f);
+        var radiusY = Mathf.Max(6f, b.halfHeight - b.margin - halfLane - 1.2f);
+        var segmentCount = Mathf.Clamp(Mathf.RoundToInt((radiusX + radiusY) * 1.6f), 64, 96);
+        var laneColor = new Color(0.12f, 0.13f, 0.15f, 0.85f);
+        var borderColor = new Color(0.92f, 0.94f, 0.98f, 0.9f);
+        var borderThickness = Mathf.Clamp(laneWidth * 0.12f, 0.35f, 0.8f);
+
+        Vector2 EllipsePoint(float angle, float rx, float ry)
         {
-            var end = start + new Vector2(rng.Range(-4f, 4f), rng.Range(-4f, 4f));
-            end.x = Mathf.Clamp(end.x, -b.halfWidth + b.margin, b.halfWidth - b.margin);
-            end.y = Mathf.Clamp(end.y, -b.halfHeight + b.margin, b.halfHeight - b.margin);
-            count += CreateLineSegment(root, "RaceLine", start, end, rng.Range(0.2f, 0.34f), new Color(0.92f, 0.92f, 0.88f, 0.45f), -4);
-            start = end;
+            return trackCenter + new Vector2(Mathf.Cos(angle) * rx, Mathf.Sin(angle) * ry);
         }
 
-        count += CreateDashedRect(root, b.halfWidth - b.margin, b.halfHeight - b.margin, rng.Range(0.14f, 0.2f), new Color(0.95f, 0.95f, 0.95f, 0.4f), -3, cap - count);
-
-        var bumperDots = Mathf.Min(cap - count, rng.Range(20, 61));
-        for (var i = 0; i < bumperDots && count < cap; i++)
+        for (var i = 0; i < segmentCount && count < cap; i++)
         {
-            var p = EdgeBiasedPoint(rng, b.halfWidth, b.halfHeight, b.margin);
-            CreateSpriteGO(root, "BumperDot", PrimitiveSpriteLibrary.CircleFill(), p, RandomScale(rng, 0.15f, 0.28f), 0f, new Color(0.8f, 0.2f, 0.2f, 0.45f), -5);
+            var a0 = (i / (float)segmentCount) * Mathf.PI * 2f;
+            var a1 = ((i + 1) / (float)segmentCount) * Mathf.PI * 2f;
+            var p0 = EllipsePoint(a0, radiusX, radiusY);
+            var p1 = EllipsePoint(a1, radiusX, radiusY);
+            var mid = (p0 + p1) * 0.5f;
+            var delta = p1 - p0;
+            if (delta.sqrMagnitude < 0.0001f)
+            {
+                continue;
+            }
+
+            var angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
+            CreateSpriteGO(root, "TrackLane", PrimitiveSpriteLibrary.CapsuleFill(), mid, new Vector2(delta.magnitude + 0.1f, laneWidth), angle, laneColor, -5);
             count++;
+        }
+
+        var outerRx = radiusX + halfLane;
+        var outerRy = radiusY + halfLane;
+        var innerRx = Mathf.Max(2f, radiusX - halfLane);
+        var innerRy = Mathf.Max(2f, radiusY - halfLane);
+        for (var i = 0; i < segmentCount && count + 1 < cap; i++)
+        {
+            var a0 = (i / (float)segmentCount) * Mathf.PI * 2f;
+            var a1 = ((i + 1) / (float)segmentCount) * Mathf.PI * 2f;
+            count += CreateLineSegment(root, "TrackOuterBorder", EllipsePoint(a0, outerRx, outerRy), EllipsePoint(a1, outerRx, outerRy), borderThickness, borderColor, -3);
+            count += CreateLineSegment(root, "TrackInnerBorder", EllipsePoint(a0, innerRx, innerRy), EllipsePoint(a1, innerRx, innerRy), borderThickness, borderColor, -3);
+        }
+
+        var startAngle = 0f;
+        var startCenter = EllipsePoint(startAngle, radiusX, radiusY);
+        var startNormal = new Vector2(Mathf.Cos(startAngle), Mathf.Sin(startAngle));
+        var startTangent = new Vector2(-Mathf.Sin(startAngle), Mathf.Cos(startAngle));
+        var stripeLength = Mathf.Clamp(laneWidth * 0.35f, 1.8f, 3.4f);
+        var cols = 6;
+        var rows = 2;
+        var tileW = laneWidth / cols;
+        var tileH = stripeLength / rows;
+        for (var r = 0; r < rows && count < cap; r++)
+        {
+            for (var c = 0; c < cols && count < cap; c++)
+            {
+                var u = -halfLane + (c + 0.5f) * tileW;
+                var v = -stripeLength * 0.5f + (r + 0.5f) * tileH;
+                var tilePos = startCenter + (startNormal * u) + (startTangent * v);
+                var color = ((r + c) & 1) == 0 ? new Color(0.95f, 0.95f, 0.95f, 0.95f) : new Color(0.08f, 0.08f, 0.08f, 0.95f);
+                CreateSpriteGO(root, "StartFinishTile", GetWhitePixelSprite(), tilePos, new Vector2(tileW * 0.92f, tileH * 0.92f), 90f, color, -2);
+                count++;
+            }
         }
 
         var banners = Mathf.Min(14, cap - count);
@@ -356,6 +406,7 @@ public static class ArenaDecorBuilder
 
     private static int BuildFantasySportDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, SeededRng rng, int cap)
     {
+        rng = new SeededRng(unchecked(rng.Seed ^ (int)StableHash32("DECOR:FantasySport")));
         var count = 0;
         var lineColor = new Color(0.95f, 0.95f, 0.9f, 0.6f);
         var insetW = b.halfWidth - b.margin;
@@ -388,9 +439,10 @@ public static class ArenaDecorBuilder
         var crowd = Mathf.Min(cap - count, rng.Range(20, 101));
         for (var i = 0; i < crowd && count < cap; i++)
         {
+            var sideY = (i & 1) == 0 ? (insetH + 0.65f) : (-insetH - 0.65f);
             var p = new Vector2(
                 rng.Range(-b.halfWidth + b.margin, b.halfWidth - b.margin),
-                (i & 1) == 0 ? b.halfHeight - b.margin : -b.halfHeight + b.margin) + new Vector2(0f, rng.Range(-0.35f, 0.35f));
+                sideY) + new Vector2(0f, rng.Range(-0.25f, 0.25f));
             CreateSpriteGO(root, "StandDot", PrimitiveSpriteLibrary.CircleFill(), p, RandomScale(rng, 0.06f, 0.13f), 0f, new Color(0.8f, 0.86f, 0.9f, 0.35f), -6);
             count++;
         }
