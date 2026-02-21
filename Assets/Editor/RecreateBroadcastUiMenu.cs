@@ -14,6 +14,7 @@ public static class RecreateBroadcastUiMenu
     private const string MinimapFrameName = "MinimapFrame";
     private const string MinimapViewName = "MinimapView";
     private const string MinimapBorderName = "MinimapBorder";
+    private const string HudPanelName = "HUDPanel";
     private const string HudTextName = "HUDText";
     private const string MinimapCameraName = "MinimapCamera";
 
@@ -43,8 +44,12 @@ public static class RecreateBroadcastUiMenu
         var border = GetOrCreateUiObject(MinimapBorderName, frame.transform, typeof(Image));
         ConfigureMinimapBorder(border);
 
-        var hudText = GetOrCreateUiObject(HudTextName, canvasObject.transform);
+        var hudPanel = GetOrCreateUiObject(HudPanelName, canvasObject.transform, typeof(Image));
+        ConfigureHudPanel(hudPanel);
+
+        var hudText = GetOrCreateHudText(canvasObject.transform, hudPanel.transform);
         ConfigureHudText(hudText);
+        DisableLegacyHudOverlays(canvasObject.transform, hudText);
 
         var minimapCamera = GetOrCreateRoot(MinimapCameraName, presentationRoot.transform);
         ConfigureMinimapCamera(minimapCamera, rt);
@@ -166,13 +171,31 @@ public static class RecreateBroadcastUiMenu
 
         var image = view.GetComponent<RawImage>() ?? view.AddComponent<RawImage>();
         image.texture = rt;
+        image.color = Color.white;
+        image.material = null;
         image.raycastTarget = true;
+
+        view.transform.localScale = Vector3.one;
 
         var rect = view.GetComponent<RectTransform>();
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;
         rect.offsetMin = new Vector2(6f, 6f);
         rect.offsetMax = new Vector2(-6f, -6f);
+    }
+
+    private static void ConfigureHudPanel(GameObject hudPanel)
+    {
+        var image = hudPanel.GetComponent<Image>() ?? hudPanel.AddComponent<Image>();
+        image.color = new Color(0f, 0f, 0f, 0.45f);
+        image.raycastTarget = false;
+
+        var rect = hudPanel.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(10f, -10f);
+        rect.sizeDelta = new Vector2(280f, 92f);
     }
 
     private static void ConfigureMinimapBorder(GameObject border)
@@ -188,21 +211,39 @@ public static class RecreateBroadcastUiMenu
         rect.offsetMax = Vector2.zero;
     }
 
+    private static GameObject GetOrCreateHudText(Transform canvasRoot, Transform hudPanel)
+    {
+        var inPanel = hudPanel.Find(HudTextName)?.gameObject;
+        if (inPanel != null)
+        {
+            return inPanel;
+        }
+
+        var existingOnCanvas = canvasRoot.Find(HudTextName)?.gameObject;
+        if (existingOnCanvas != null)
+        {
+            existingOnCanvas.transform.SetParent(hudPanel, false);
+            return existingOnCanvas;
+        }
+
+        return GetOrCreateUiObject(HudTextName, hudPanel);
+    }
+
     private static void ConfigureHudText(GameObject hudText)
     {
         var rect = hudText.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = new Vector2(10f, -10f);
-        rect.sizeDelta = new Vector2(280f, 50f);
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.offsetMin = new Vector2(8f, 8f);
+        rect.offsetMax = new Vector2(-8f, -8f);
 
         var tmpType = Type.GetType("TMPro.TextMeshProUGUI, Unity.TextMeshPro");
         if (tmpType != null)
         {
             var tmp = hudText.GetComponent(tmpType) ?? hudText.AddComponent(tmpType);
-            SetMember(tmp, "text", "Broadcast HUD");
-            SetMember(tmp, "fontSize", 20f);
+            SetMember(tmp, "text", "simId: -\nseed: -\ntick: -\nfps: -");
+            SetMember(tmp, "fontSize", 16f);
             SetMember(tmp, "color", Color.white);
             SetMember(tmp, "raycastTarget", false);
             SetMember(tmp, "alignment", GetTmpAlignmentTopLeftValue());
@@ -211,8 +252,8 @@ public static class RecreateBroadcastUiMenu
         }
 
         var text = hudText.GetComponent<Text>() ?? hudText.AddComponent<Text>();
-        text.text = "Broadcast HUD";
-        text.fontSize = 20;
+        text.text = "simId: -\nseed: -\ntick: -\nfps: -";
+        text.fontSize = 16;
         text.alignment = TextAnchor.UpperLeft;
         text.color = Color.white;
         text.raycastTarget = false;
@@ -249,21 +290,11 @@ public static class RecreateBroadcastUiMenu
         camera.orthographicSize = ResolveOrthographicSize();
         camera.targetTexture = rt;
         camera.clearFlags = CameraClearFlags.SolidColor;
+        camera.backgroundColor = new Color(0.11f, 0.14f, 0.19f, 1f);
         camera.depth = 10f;
 
-        var worldMask = LayerMask.GetMask("World", "Agents");
-        camera.cullingMask = worldMask == 0 ? ~0 : worldMask;
-
-        var mainCamera = Camera.main;
-        if (mainCamera != null)
-        {
-            var p = mainCamera.transform.position;
-            camera.transform.position = new Vector3(p.x, p.y, p.z);
-        }
-        else
-        {
-            camera.transform.position = new Vector3(0f, 0f, -10f);
-        }
+        camera.cullingMask = ResolveMinimapCullingMask();
+        camera.transform.position = new Vector3(0f, 0f, -10f);
         camera.transform.rotation = Quaternion.identity;
 
         var listener = cameraObject.GetComponent<AudioListener>();
@@ -277,10 +308,85 @@ public static class RecreateBroadcastUiMenu
     {
         if (TryReadArenaSizeFromBootstrapper(out var width, out var height))
         {
-            return Mathf.Max(width, height) * 0.5f;
+            return Mathf.Max(width, height) * 0.5f + 1f;
         }
 
-        return 32f;
+        return 32f + 1f;
+    }
+
+    private static int ResolveMinimapCullingMask()
+    {
+        var worldLayer = LayerMask.NameToLayer("World");
+        var agentsLayer = LayerMask.NameToLayer("Agents");
+        if (worldLayer < 0 || agentsLayer < 0)
+        {
+            return ~0;
+        }
+
+        return LayerMask.GetMask("Default", "World", "Agents");
+    }
+
+    private static void DisableLegacyHudOverlays(Transform root, GameObject canonicalHudText)
+    {
+        var legacyText = root.GetComponentsInChildren<Text>(true)
+            .Where(t => t != null && t.gameObject != canonicalHudText)
+            .Where(t => t.name == "Broadcast HUD" || t.fontSize >= 28)
+            .ToArray();
+
+        foreach (var text in legacyText)
+        {
+            text.gameObject.SetActive(false);
+        }
+
+        var tmpType = Type.GetType("TMPro.TMP_Text, Unity.TextMeshPro");
+        if (tmpType == null)
+        {
+            return;
+        }
+
+        foreach (var component in root.GetComponentsInChildren(tmpType, true))
+        {
+            var tmp = component as Component;
+            if (tmp == null || tmp.gameObject == canonicalHudText)
+            {
+                continue;
+            }
+
+            var nameLooksLegacy = tmp.name == "Broadcast HUD";
+            var textLooksLegacy = string.Equals(GetMember<string>(tmp, "text"), "Broadcast HUD", StringComparison.Ordinal);
+            var fontSize = GetMember<float>(tmp, "fontSize");
+
+            if (nameLooksLegacy || textLooksLegacy || fontSize >= 28f)
+            {
+                tmp.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private static T GetMember<T>(object target, string memberName)
+    {
+        var type = target.GetType();
+        var property = type.GetProperty(memberName, BindingFlags.Public | BindingFlags.Instance);
+        if (property != null && property.CanRead)
+        {
+            var value = property.GetValue(target);
+            if (value is T typedValue)
+            {
+                return typedValue;
+            }
+        }
+
+        var field = type.GetField(memberName, BindingFlags.Public | BindingFlags.Instance);
+        if (field != null)
+        {
+            var value = field.GetValue(target);
+            if (value is T typedValue)
+            {
+                return typedValue;
+            }
+        }
+
+        return default;
     }
 
     private static bool TryReadArenaSizeFromBootstrapper(out float width, out float height)
