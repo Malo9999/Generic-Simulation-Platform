@@ -1,12 +1,10 @@
 using System;
 
-[Flags]
-public enum EntityStatusFlags
+public enum EntityStatus
 {
-    None = 0,
-    Carrying = 1 << 0,
-    Stunned = 1 << 1,
-    Injured = 1 << 2
+    Active = 0,
+    Inactive = 1,
+    Eliminated = 2
 }
 
 [Serializable]
@@ -16,21 +14,21 @@ public struct EntityIdentity
     public int teamId;
     public string role;
     public int variant;
-    public int variantSeed;
-    public EntityStatusFlags statusFlags;
+    public int appearanceSeed;
+    public EntityStatus status;
 
-    public EntityIdentity(int entityId, int teamId, string role, int variant, int variantSeed, EntityStatusFlags statusFlags = EntityStatusFlags.None)
+    public EntityIdentity(int entityId, int teamId, string role, int variant, int appearanceSeed, EntityStatus status = EntityStatus.Active)
     {
         this.entityId = entityId;
         this.teamId = teamId;
         this.role = role ?? string.Empty;
         this.variant = variant;
-        this.variantSeed = variantSeed;
-        this.statusFlags = statusFlags;
+        this.appearanceSeed = appearanceSeed;
+        this.status = status;
     }
 
     public override string ToString()
     {
-        return $"entityId={entityId}, teamId={teamId}, role={role}, variant={variant}, variantSeed={variantSeed}, statusFlags={statusFlags}";
+        return $"entityId={entityId}, teamId={teamId}, role={role}, variant={variant}, appearanceSeed={appearanceSeed}, status={status}";
     }
 }

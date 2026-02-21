@@ -179,8 +179,8 @@ public static class EntityIconFactory
             hash = (hash ^ (uint)identity.entityId) * 16777619u;
             hash = (hash ^ (uint)identity.teamId) * 16777619u;
             hash = (hash ^ (uint)identity.variant) * 16777619u;
-            hash = (hash ^ (uint)identity.variantSeed) * 16777619u;
-            hash = (hash ^ (uint)identity.statusFlags) * 16777619u;
+            hash = (hash ^ (uint)identity.appearanceSeed) * 16777619u;
+            hash = (hash ^ (uint)identity.status) * 16777619u;
             hash = (hash ^ salt) * 16777619u;
             return hash;
         }
