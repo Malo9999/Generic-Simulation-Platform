@@ -1,0 +1,87 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1dbe3456b4b4769a147c7dd4edf1b64, type: 3}
+  m_Name: AntTilesetSpriteIndexMap
+  m_EditorClassIdentifier: Assembly-CSharp::AntTilesetSpriteIndexMap
+  entries:
+  - tileName: grass_plain
+    sheet: 0
+    spriteIndex: 0
+  - tileName: grass_alt_a
+    sheet: 0
+    spriteIndex: 1
+  - tileName: grass_alt_b
+    sheet: 0
+    spriteIndex: 2
+  - tileName: path_straight_h
+    sheet: 0
+    spriteIndex: 3
+  - tileName: path_straight_v
+    sheet: 0
+    spriteIndex: 4
+  - tileName: path_corner_ne
+    sheet: 0
+    spriteIndex: 5
+  - tileName: path_corner_nw
+    sheet: 0
+    spriteIndex: 6
+  - tileName: path_cross
+    sheet: 0
+    spriteIndex: 7
+  - tileName: decor_clover
+    sheet: 0
+    spriteIndex: 8
+  - tileName: decor_pebble
+    sheet: 0
+    spriteIndex: 9
+  - tileName: decor_flower
+    sheet: 0
+    spriteIndex: 10
+  - tileName: nest_entrance_marker
+    sheet: 0
+    spriteIndex: 11
+  - tileName: dirt_plain
+    sheet: 1
+    spriteIndex: 0
+  - tileName: dirt_alt_a
+    sheet: 1
+    spriteIndex: 1
+  - tileName: dirt_alt_b
+    sheet: 1
+    spriteIndex: 2
+  - tileName: tunnel_h
+    sheet: 1
+    spriteIndex: 3
+  - tileName: tunnel_v
+    sheet: 1
+    spriteIndex: 4
+  - tileName: tunnel_corner_ne
+    sheet: 1
+    spriteIndex: 5
+  - tileName: tunnel_corner_nw
+    sheet: 1
+    spriteIndex: 6
+  - tileName: tunnel_t_junction
+    sheet: 1
+    spriteIndex: 7
+  - tileName: tunnel_cross
+    sheet: 1
+    spriteIndex: 8
+  - tileName: chamber_small
+    sheet: 1
+    spriteIndex: 9
+  - tileName: chamber_medium
+    sheet: 1
+    spriteIndex: 10
+  - tileName: chamber_queen_marker
+    sheet: 1
+    spriteIndex: 11
