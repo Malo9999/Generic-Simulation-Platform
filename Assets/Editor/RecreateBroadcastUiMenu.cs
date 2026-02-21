@@ -20,6 +20,7 @@ public static class RecreateBroadcastUiMenu
     private const string HudTextName = "HUDText";
     private const string MinimapCameraName = "MinimapCamera";
     private const float HudPanelHeight = 110f;
+    private const float MinimapSize = 240f;
 
     [MenuItem("Tools/GSP/Recreate Broadcast UI (Minimap + HUD)")]
     public static void RecreateBroadcastUi()
@@ -48,6 +49,7 @@ public static class RecreateBroadcastUiMenu
 
         var view = GetOrCreateUiObject(MinimapViewName, frame.transform, typeof(RawImage));
         ConfigureMinimapView(view, rt);
+        DisableDuplicateNamedObjects(frame.transform, MinimapViewName, view);
 
         CleanupLegacyMinimapBorder(frame.transform);
         var borderRoot = GetOrCreateUiObject(MinimapBorderRootName, frame.transform);
@@ -62,6 +64,7 @@ public static class RecreateBroadcastUiMenu
         var hudText = GetOrCreateHudText(rightStrip.transform, hudPanel.transform);
         ConfigureHudText(hudText);
         EnsureHudBinder(hudText);
+        DisableDuplicateNamedObjects(canvasObject.transform, HudTextName, hudText);
         DisableLegacyHudOverlays(canvasObject.transform, hudText);
 
         var minimapCamera = GetOrCreateRoot(MinimapCameraName, presentationRoot.transform);
@@ -188,7 +191,7 @@ public static class RecreateBroadcastUiMenu
         rect.anchorMin = new Vector2(1f, 1f);
         rect.anchorMax = new Vector2(1f, 1f);
         rect.pivot = new Vector2(1f, 1f);
-        rect.sizeDelta = new Vector2(96f, 96f);
+        rect.sizeDelta = new Vector2(MinimapSize, MinimapSize);
         rect.anchoredPosition = new Vector2(-10f, -(HudPanelHeight + 20f));
     }
 
@@ -212,8 +215,8 @@ public static class RecreateBroadcastUiMenu
         var rect = view.GetComponent<RectTransform>();
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;
-        rect.offsetMin = new Vector2(4f, 4f);
-        rect.offsetMax = new Vector2(-4f, -4f);
+        rect.offsetMin = new Vector2(6f, 6f);
+        rect.offsetMax = new Vector2(-6f, -6f);
     }
 
     private static void ConfigureHudPanel(GameObject hudPanel)
@@ -394,7 +397,7 @@ public static class RecreateBroadcastUiMenu
 
     private static void ConfigureMinimapCamera(GameObject cameraObject, RenderTexture rt)
     {
-        var camera = cameraObject.GetComponent<Camera>() ?? cameraObject.AddComponent<Camera>();
+        var camera = GetOrAdd<Camera>(cameraObject);
         camera.orthographic = true;
         camera.orthographicSize = ResolveOrthographicSize();
         camera.targetTexture = rt;
@@ -420,19 +423,24 @@ public static class RecreateBroadcastUiMenu
             return Mathf.Max(width, height) * 0.5f + 1f;
         }
 
-        return 32f + 1f;
+        return 32f;
     }
 
     private static int ResolveMinimapCullingMask()
     {
-        var worldLayer = LayerMask.NameToLayer("World");
-        var agentsLayer = LayerMask.NameToLayer("Agents");
-        if (worldLayer < 0 || agentsLayer < 0)
+        var layerNames = new[] { "Default", "World", "Agents" };
+        var mask = 0;
+
+        foreach (var layerName in layerNames)
         {
-            return ~0;
+            var layerIndex = LayerMask.NameToLayer(layerName);
+            if (layerIndex >= 0)
+            {
+                mask |= 1 << layerIndex;
+            }
         }
 
-        return LayerMask.GetMask("Default", "World", "Agents");
+        return mask == 0 ? ~0 : mask;
     }
 
     private static void DisableLegacyHudOverlays(Transform root, GameObject canonicalHudText)
@@ -595,6 +603,10 @@ public static class RecreateBroadcastUiMenu
 
         var clickToPan = GetOrAdd<MinimapClickToPan>(minimapView);
         clickToPan.mainCamera = ResolveMainCamera();
+        if (clickToPan.mainCamera == null)
+        {
+            Debug.LogWarning("Recreate Broadcast UI: Could not find a main camera for MinimapClickToPan. Tag your primary camera as 'MainCamera'.");
+        }
 
         if (TryReadArenaSizeFromBootstrapper(out var width, out var height))
         {
@@ -612,7 +624,27 @@ public static class RecreateBroadcastUiMenu
             return Camera.main;
         }
 
-        return Camera.allCameras.FirstOrDefault(c => c != null && c.CompareTag("MainCamera"));
+        var cameras = UnityEngine.Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        var taggedMain = cameras.FirstOrDefault(c => c != null && c.CompareTag("MainCamera"));
+        if (taggedMain != null)
+        {
+            return taggedMain;
+        }
+
+        return cameras.FirstOrDefault(c => c != null && c.name.IndexOf("Main", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    private static void DisableDuplicateNamedObjects(Transform root, string objectName, GameObject keepActive)
+    {
+        foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (child == null || child.gameObject == keepActive || child.name != objectName)
+            {
+                continue;
+            }
+
+            child.gameObject.SetActive(false);
+        }
     }
 
     private static void SetMember(object target, string memberName, object value)
