@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEditor;
+using UnityEditor.U2D.Sprites;
 using UnityEngine;
 
 public static class AntPropsGenerator
@@ -58,15 +59,15 @@ public static class AntPropsGenerator
         return new TextureResult(AssetDatabase.LoadAssetAtPath<Texture2D>(path), spritesOut);
     }
 
-    private static List<UnityEditor.U2D.Sprites.SpriteRect> BuildGridRects(IReadOnlyList<string> names, int tileSize, int columns)
+    private static List<SpriteRect> BuildGridRects(IReadOnlyList<string> names, int tileSize, int columns)
     {
         var rows = Mathf.CeilToInt(names.Count / (float)columns);
-        var rects = new List<UnityEditor.U2D.Sprites.SpriteRect>(names.Count);
+        var rects = new List<SpriteRect>(names.Count);
         for (var index = 0; index < names.Count; index++)
         {
             var col = index % columns;
             var row = rows - 1 - index / columns;
-            rects.Add(new UnityEditor.U2D.Sprites.SpriteRect
+            rects.Add(new SpriteRect
             {
                 name = names[index],
                 rect = new Rect(col * tileSize, row * tileSize, tileSize, tileSize),
