@@ -12,9 +12,13 @@ public sealed class AntPackGeneratorWindow : EditorWindow
     private bool generateTiles = true;
     private bool generateAnts = true;
     private bool generateProps = true;
+    private bool useBlueprintAnts = true;
+    private bool generateAntAnimations;
+    private AntSpeciesBlueprintSet speciesBlueprint;
     private bool overwrite;
     private float previewZoom = 3f;
     private Texture2D antsPreviewTexture;
+    private Texture2D antsAnimPreviewTexture;
     private string summary = string.Empty;
 
     [MenuItem("Tools/Generic Simulation Platform/Art/Generate Ant Pack…")]
@@ -59,6 +63,12 @@ public sealed class AntPackGeneratorWindow : EditorWindow
         generateTiles = EditorGUILayout.ToggleLeft("Generate Tiles", generateTiles);
         generateAnts = EditorGUILayout.ToggleLeft("Generate Ants", generateAnts);
         generateProps = EditorGUILayout.ToggleLeft("Generate Props", generateProps);
+        useBlueprintAnts = EditorGUILayout.ToggleLeft("Generate ants from Blueprint", useBlueprintAnts);
+        using (new EditorGUI.DisabledScope(!generateAnts || !useBlueprintAnts))
+        {
+            speciesBlueprint = (AntSpeciesBlueprintSet)EditorGUILayout.ObjectField("Species Blueprint", speciesBlueprint, typeof(AntSpeciesBlueprintSet), false);
+            generateAntAnimations = EditorGUILayout.ToggleLeft("Generate ants_anim.png", generateAntAnimations);
+        }
         overwrite = EditorGUILayout.ToggleLeft("Regenerate / overwrite existing assets", overwrite);
 
         EditorGUILayout.Space(8f);
@@ -101,6 +111,9 @@ public sealed class AntPackGeneratorWindow : EditorWindow
             GenerateTiles = generateTiles,
             GenerateAnts = generateAnts,
             GenerateProps = generateProps,
+            UseBlueprintAnts = useBlueprintAnts,
+            SpeciesBlueprint = speciesBlueprint,
+            GenerateAntAnimations = generateAntAnimations,
             Overwrite = overwrite
         };
 
@@ -127,6 +140,7 @@ public sealed class AntPackGeneratorWindow : EditorWindow
         var path = $"{outputFolder}/ants.png";
         antsPreviewTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
         summary = antsPreviewTexture == null ? $"{summary}\nNo ants.png found at {path}" : summary;
+        antsAnimPreviewTexture = AssetDatabase.LoadAssetAtPath<Texture2D>($"{outputFolder}/ants_anim.png");
         Repaint();
     }
 
@@ -143,6 +157,16 @@ public sealed class AntPackGeneratorWindow : EditorWindow
 
         previewZoom = EditorGUILayout.Slider("Zoom", previewZoom, 2f, 4f);
         DrawSheetRow(previewZoom);
+
+        if (antsAnimPreviewTexture != null)
+        {
+            EditorGUILayout.Space(8f);
+            EditorGUILayout.LabelField("Ant Anim Preview (sheet)", EditorStyles.boldLabel);
+            var w = Mathf.Min(position.width - 20f, antsAnimPreviewTexture.width * 2f);
+            var h = w * (antsAnimPreviewTexture.height / (float)antsAnimPreviewTexture.width);
+            var rect = GUILayoutUtility.GetRect(w, h, GUILayout.Width(w), GUILayout.Height(h));
+            GUI.DrawTexture(rect, antsAnimPreviewTexture, ScaleMode.ScaleToFit, true);
+        }
     }
 
     private void DrawSheetRow(float zoom)

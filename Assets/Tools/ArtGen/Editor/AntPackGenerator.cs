@@ -28,6 +28,9 @@ public static class AntPackGenerator
         public bool GenerateTiles;
         public bool GenerateAnts;
         public bool GenerateProps;
+        public bool UseBlueprintAnts;
+        public bool GenerateAntAnimations;
+        public AntSpeciesBlueprintSet SpeciesBlueprint;
         public bool Overwrite;
     }
 
@@ -41,11 +44,13 @@ public static class AntPackGenerator
         var undergroundTileLookups = new List<AntContentPack.SpriteLookupEntry>();
         var antLookups = new List<AntContentPack.SpriteLookupEntry>();
         var propLookups = new List<AntContentPack.SpriteLookupEntry>();
+        var antAnimLookups = new List<AntContentPack.SpriteLookupEntry>();
 
         Texture2D surfaceTilesTexture = null;
         Texture2D undergroundTilesTexture = null;
         Texture2D antsTexture = null;
         Texture2D propsTexture = null;
+        Texture2D antsAnimTexture = null;
 
         if (request.GenerateTiles)
         {
@@ -59,9 +64,24 @@ public static class AntPackGenerator
 
         if (request.GenerateAnts)
         {
-            var antResult = AntSpriteSheetGenerator.Generate(request.OutputFolder, request.Seed, request.AntSpriteSize, request.Palette, request.Overwrite);
+            var selectedBlueprint = request.SpeciesBlueprint;
+            if (request.UseBlueprintAnts && selectedBlueprint == null)
+            {
+                selectedBlueprint = AntBlueprintFactory.EnsureDefaultSpeciesBlueprints(request.OutputFolder, false);
+            }
+
+            var antResult = request.UseBlueprintAnts
+                ? AntSpriteSheetGenerator.GenerateBase(request.OutputFolder, request.Seed, request.AntSpriteSize, request.Palette, request.Overwrite, selectedBlueprint)
+                : AntSpriteSheetGenerator.Generate(request.OutputFolder, request.Seed, request.AntSpriteSize, request.Palette, request.Overwrite);
             antsTexture = antResult.Texture;
             antLookups = antResult.Sprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
+
+            if (request.GenerateAntAnimations && request.UseBlueprintAnts)
+            {
+                var animResult = AntAnimationSheetGenerator.GenerateFromBlueprint(request.OutputFolder, request.AntSpriteSize, request.Palette, request.Overwrite, selectedBlueprint);
+                antsAnimTexture = animResult.Texture;
+                antAnimLookups = animResult.Sprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
+            }
         }
 
         if (request.GenerateProps)
@@ -80,17 +100,17 @@ public static class AntPackGenerator
         }
 
         pack.SetMetadata(request.Seed, request.TileSize, request.Palette.ToString());
-        pack.SetTextures(surfaceTilesTexture, undergroundTilesTexture, antsTexture, propsTexture);
-        pack.SetLookups(surfaceTileLookups, undergroundTileLookups, antLookups, propLookups);
+        pack.SetTextures(surfaceTilesTexture, undergroundTilesTexture, antsTexture, antsAnimTexture, propsTexture);
+        pack.SetLookups(surfaceTileLookups, undergroundTileLookups, antLookups, antAnimLookups, propLookups);
         EditorUtility.SetDirty(pack);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         EditorGUIUtility.PingObject(pack);
 
-        Debug.Log($"Ant pack generated: '{request.PackName}'\nSurface tiles: {(surfaceTilesTexture != null ? AssetDatabase.GetAssetPath(surfaceTilesTexture) : "n/a")} ({surfaceTileLookups.Count})\nUnderground tiles: {(undergroundTilesTexture != null ? AssetDatabase.GetAssetPath(undergroundTilesTexture) : "n/a")} ({undergroundTileLookups.Count})\nAnts: {antLookups.Count}\nProps: {propLookups.Count}");
+        Debug.Log($"Ant pack generated: '{request.PackName}'\nSurface tiles: {(surfaceTilesTexture != null ? AssetDatabase.GetAssetPath(surfaceTilesTexture) : "n/a")} ({surfaceTileLookups.Count})\nUnderground tiles: {(undergroundTilesTexture != null ? AssetDatabase.GetAssetPath(undergroundTilesTexture) : "n/a")} ({undergroundTileLookups.Count})\nAnts: {antLookups.Count}\nAnt Animations: {antAnimLookups.Count}\nProps: {propLookups.Count}");
 
-        return $"Generated Ant pack '{request.PackName}' at {request.OutputFolder}\nSurface Tiles={surfaceTileLookups.Count}, Underground Tiles={undergroundTileLookups.Count}, Ants={antLookups.Count}, Props={propLookups.Count}";
+        return $"Generated Ant pack '{request.PackName}' at {request.OutputFolder}\nSurface Tiles={surfaceTileLookups.Count}, Underground Tiles={undergroundTileLookups.Count}, Ants={antLookups.Count}, Ant Animations={antAnimLookups.Count}, Props={propLookups.Count}";
     }
 
     public static void Validate(Request request)

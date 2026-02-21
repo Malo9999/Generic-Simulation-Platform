@@ -24,12 +24,14 @@ public sealed class AntContentPack : ScriptableObject
     [SerializeField] private Texture2D tilesetSurfaceTexture;
     [SerializeField] private Texture2D tilesetUndergroundTexture;
     [SerializeField] private Texture2D antsTexture;
+    [SerializeField] private Texture2D antsAnimTexture;
     [SerializeField] private Texture2D propsTexture;
     [FormerlySerializedAs("tileSprites")]
     [SerializeField] private List<SpriteLookupEntry> tileSprites = new();
     [SerializeField] private List<SpriteLookupEntry> surfaceTileSprites = new();
     [SerializeField] private List<SpriteLookupEntry> undergroundTileSprites = new();
     [SerializeField] private List<SpriteLookupEntry> antRoleSprites = new();
+    [SerializeField] private List<SpriteLookupEntry> antAnimSprites = new();
     [SerializeField] private List<SpriteLookupEntry> propSprites = new();
 
     public int Version => version;
@@ -40,11 +42,13 @@ public sealed class AntContentPack : ScriptableObject
     public Texture2D TilesetSurfaceTexture => tilesetSurfaceTexture != null ? tilesetSurfaceTexture : tilesetTexture;
     public Texture2D TilesetUndergroundTexture => tilesetUndergroundTexture;
     public Texture2D AntsTexture => antsTexture;
+    public Texture2D AntsAnimTexture => antsAnimTexture;
     public Texture2D PropsTexture => propsTexture;
     public IReadOnlyList<SpriteLookupEntry> TileSprites => tileSprites;
     public IReadOnlyList<SpriteLookupEntry> SurfaceTileSprites => surfaceTileSprites;
     public IReadOnlyList<SpriteLookupEntry> UndergroundTileSprites => undergroundTileSprites;
     public IReadOnlyList<SpriteLookupEntry> AntRoleSprites => antRoleSprites;
+    public IReadOnlyList<SpriteLookupEntry> AntAnimSprites => antAnimSprites;
     public IReadOnlyList<SpriteLookupEntry> PropSprites => propSprites;
 
     public void SetMetadata(int generatedSeed, int generatedTileSize, string generatedPaletteId)
@@ -57,19 +61,31 @@ public sealed class AntContentPack : ScriptableObject
 
     public void SetTextures(Texture2D surfaceTiles, Texture2D undergroundTiles, Texture2D ants, Texture2D props)
     {
+        SetTextures(surfaceTiles, undergroundTiles, ants, null, props);
+    }
+
+    public void SetTextures(Texture2D surfaceTiles, Texture2D undergroundTiles, Texture2D ants, Texture2D antsAnim, Texture2D props)
+    {
         tilesetTexture = surfaceTiles;
         tilesetSurfaceTexture = surfaceTiles;
         tilesetUndergroundTexture = undergroundTiles;
         antsTexture = ants;
+        antsAnimTexture = antsAnim;
         propsTexture = props;
     }
 
     public void SetLookups(List<SpriteLookupEntry> surfaceTiles, List<SpriteLookupEntry> undergroundTiles, List<SpriteLookupEntry> ants, List<SpriteLookupEntry> props)
     {
+        SetLookups(surfaceTiles, undergroundTiles, ants, null, props);
+    }
+
+    public void SetLookups(List<SpriteLookupEntry> surfaceTiles, List<SpriteLookupEntry> undergroundTiles, List<SpriteLookupEntry> ants, List<SpriteLookupEntry> antAnimations, List<SpriteLookupEntry> props)
+    {
         surfaceTileSprites = surfaceTiles ?? new List<SpriteLookupEntry>();
         undergroundTileSprites = undergroundTiles ?? new List<SpriteLookupEntry>();
         tileSprites = surfaceTileSprites;
         antRoleSprites = ants ?? new List<SpriteLookupEntry>();
+        antAnimSprites = antAnimations ?? new List<SpriteLookupEntry>();
         propSprites = props ?? new List<SpriteLookupEntry>();
     }
 }
