@@ -11,10 +11,11 @@ public static class PackBuildPipeline
     public sealed class BuildReport
     {
         public string outputFolder;
+        public string contentPackVersion;
         public int blueprintCount;
         public int spriteCount;
         public readonly List<string> warnings = new();
-        public string Summary => $"Build completed at {outputFolder}. Blueprints={blueprintCount}, Sprites={spriteCount}, Warnings={warnings.Count}";
+        public string Summary => $"Build completed at {outputFolder} ({contentPackVersion}). Blueprints={blueprintCount}, Sprites={spriteCount}, Warnings={warnings.Count}";
     }
 
     private sealed class SheetCell
@@ -125,6 +126,7 @@ public static class PackBuildPipeline
         spriteEntries.AddRange(antsCompat);
         pack.SetEntries(textureEntries, spriteEntries);
         EditorUtility.SetDirty(pack);
+        report.contentPackVersion = pack.Version;
 
         if (recipe.generationPolicy.exportCompatibilityAntContentPack)
         {

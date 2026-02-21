@@ -30,8 +30,11 @@ public sealed class ContentPack : ScriptableObject
     [SerializeField] private List<TextureEntry> textures = new();
     [SerializeField] private List<SpriteEntry> sprites = new();
 
+    public string Version => $"v{version}";
     public IReadOnlyList<TextureEntry> Textures => textures;
     public IReadOnlyList<SpriteEntry> Sprites => sprites;
+
+    public override string ToString() => $"ContentPack[{packId}] {Version} (seed={seed}, tile={tileSize}, sprite={spriteSize})";
 
     public void SetMetadata(PackRecipe recipe)
     {
