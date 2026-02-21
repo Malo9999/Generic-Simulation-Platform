@@ -12,6 +12,12 @@ using UnityEngine;
 internal sealed class ReferenceFetchService
 {
     private readonly WikimediaClient wikimediaClient = new();
+    private static readonly Dictionary<string, string[]> QueryVariantsByAsset = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CarpenterAnt"] = new[] { "carpenter ant", "Camponotus", "Camponotus pennsylvanicus", "black carpenter ant" },
+        ["FireAnt"] = new[] { "fire ant", "Solenopsis invicta", "red imported fire ant" },
+        ["PharaohAnt"] = new[] { "Pharaoh ant", "Monomorium pharaonis" },
+    };
 
     public void Fetch(ReferenceFetchRequest request)
     {
@@ -31,8 +37,38 @@ internal sealed class ReferenceFetchService
 
             var metadataPath = Path.Combine(assetFolder, "meta.jsonl");
             var knownHashes = LoadKnownHashes(metadataPath);
-            var query = BuildQuery(request.SimulationName, assetName);
-            var candidates = wikimediaClient.Search(query, request.ImagesPerAsset * 4, request.MinWidth, request.LicenseFilter);
+            var mergedStats = new ReferenceCandidateStats();
+            var candidates = new List<ReferenceCandidate>();
+            var seenFileUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var query in BuildQueries(request.SimulationName, assetName))
+            {
+                var needed = request.ImagesPerAsset - candidates.Count;
+                if (needed <= 0)
+                {
+                    break;
+                }
+
+                var queryResult = wikimediaClient.Search(query, Math.Max(needed * 4, request.ImagesPerAsset), request.MinWidth, request.LicenseFilter);
+                mergedStats.Merge(queryResult.Stats);
+                foreach (var candidate in queryResult.Candidates)
+                {
+                    if (seenFileUrls.Add(candidate.FileUrl))
+                    {
+                        candidates.Add(candidate);
+                    }
+
+                    if (candidates.Count >= request.ImagesPerAsset)
+                    {
+                        break;
+                    }
+                }
+
+                if (candidates.Count >= request.ImagesPerAsset)
+                {
+                    break;
+                }
+            }
 
             var downloaded = 0;
             foreach (var candidate in candidates)
@@ -44,7 +80,7 @@ internal sealed class ReferenceFetchService
 
                 if (request.DryRun)
                 {
-                    Debug.Log($"[ReferenceFetch][DryRun] {assetName}: {candidate.FileUrl} ({candidate.License})");
+                    Debug.Log($"[ReferenceFetch][DryRun] {assetName}: {candidate.FileUrl} [{candidate.Mime}] {candidate.Width}x{candidate.Height} ({candidate.License})");
                     downloaded++;
                     continue;
                 }
@@ -58,7 +94,7 @@ internal sealed class ReferenceFetchService
                         continue;
                     }
 
-                    var extension = GetExtension(candidate.FileUrl);
+                    var extension = string.IsNullOrWhiteSpace(candidate.FileExtension) ? GetExtension(candidate.FileUrl) : candidate.FileExtension;
                     var imagePath = Path.Combine(assetFolder, NextImageFileName(assetFolder, extension));
                     File.WriteAllBytes(imagePath, bytes);
 
@@ -68,6 +104,8 @@ internal sealed class ReferenceFetchService
                         Source = candidate.Source,
                         PageUrl = candidate.PageUrl,
                         FileUrl = candidate.FileUrl,
+                        Mime = candidate.Mime,
+                        FileExtension = candidate.FileExtension,
                         License = candidate.License,
                         Author = candidate.Author,
                         Attribution = candidate.Attribution,
@@ -87,14 +125,43 @@ internal sealed class ReferenceFetchService
                 }
             }
 
+            Debug.Log($"[ReferenceFetch] Asset '{assetName}' stats: foundRawCandidates={mergedStats.FoundRawCandidates}, rejectedByLicense={mergedStats.RejectedByLicense}, rejectedByFileType={mergedStats.RejectedByFileType}, rejectedByResolution={mergedStats.RejectedByResolution}, accepted={mergedStats.Accepted}");
+
+            if (request.DryRun && candidates.Count > 0)
+            {
+                var count = Math.Min(request.ImagesPerAsset, candidates.Count);
+                for (var i = 0; i < count; i++)
+                {
+                    var top = candidates[i];
+                    Debug.Log($"[ReferenceFetch][DryRun][Accepted] {assetName} #{i + 1}: {top.FileUrl} [{top.Mime}] {top.Width}x{top.Height} ({top.License})");
+                }
+            }
+
             Debug.Log($"[ReferenceFetch] Asset '{assetName}' downloaded {downloaded} image(s) to {assetFolder}");
         }
     }
 
-    private static string BuildQuery(string simulationName, string asset)
+    private static IEnumerable<string> BuildQueries(string simulationName, string asset)
     {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (QueryVariantsByAsset.TryGetValue(asset, out var mappedVariants))
+        {
+            foreach (var variant in mappedVariants)
+            {
+                var query = $"{variant} {simulationName}".Trim();
+                if (seen.Add(query))
+                {
+                    yield return query;
+                }
+            }
+        }
+
         var humanized = Regex.Replace(asset, "([a-z])([A-Z])", "$1 $2");
-        return $"{humanized} {simulationName}";
+        var fallbackQuery = $"{humanized} {simulationName}".Trim();
+        if (seen.Add(fallbackQuery))
+        {
+            yield return fallbackQuery;
+        }
     }
 
     private static byte[] DownloadBytes(string url)
@@ -182,7 +249,7 @@ internal sealed class ReferenceFetchService
         var ext = Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(ext) || ext.Length > 5)
         {
-            return ".jpg";
+            return string.Empty;
         }
 
         return ext;
@@ -264,11 +331,37 @@ internal sealed class ReferenceCandidate
     public string Source;
     public string PageUrl;
     public string FileUrl;
+    public string Mime;
+    public string FileExtension;
     public string License;
     public string Author;
     public string Attribution;
     public int Width;
     public int Height;
+}
+
+internal sealed class ReferenceCandidateStats
+{
+    public int FoundRawCandidates;
+    public int RejectedByLicense;
+    public int RejectedByFileType;
+    public int RejectedByResolution;
+    public int Accepted;
+
+    public void Merge(ReferenceCandidateStats other)
+    {
+        FoundRawCandidates += other.FoundRawCandidates;
+        RejectedByLicense += other.RejectedByLicense;
+        RejectedByFileType += other.RejectedByFileType;
+        RejectedByResolution += other.RejectedByResolution;
+        Accepted += other.Accepted;
+    }
+}
+
+internal sealed class WikimediaSearchResult
+{
+    public readonly List<ReferenceCandidate> Candidates = new();
+    public readonly ReferenceCandidateStats Stats = new();
 }
 
 internal sealed class ReferenceMetadataRow
@@ -284,6 +377,12 @@ internal sealed class ReferenceMetadataRow
 
     [JsonProperty("fileUrl")]
     public string FileUrl;
+
+    [JsonProperty("mime")]
+    public string Mime;
+
+    [JsonProperty("fileExtension")]
+    public string FileExtension;
 
     [JsonProperty("license")]
     public string License;
