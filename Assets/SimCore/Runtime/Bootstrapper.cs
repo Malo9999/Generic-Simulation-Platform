@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -18,7 +17,7 @@ public class Bootstrapper : MonoBehaviour
 
     private GameObject simulationRoot;
     private GameObject activeRunnerObject;
-    private ISimulationRunner activeRunner;
+    private ITickableSimulationRunner activeRunner;
     private SimDriver simDriver;
     private ReplayDriver replayDriver;
     private ScenarioConfig currentConfig;
@@ -188,8 +187,9 @@ public class Bootstrapper : MonoBehaviour
                 var required = currentConfig.replay != null && currentConfig.replay.rendererOnly
                     ? "IReplayableSimulationRunner"
                     : "IReplayableSimulationRunner or ITickableSimulationRunner";
-                LogRunnerContractError(currentConfig.simulationId, required);
-                replayDriver.SetRunner(null);
+                throw new InvalidOperationException(
+                    $"Bootstrapper: Replay runner contract mismatch for simulation '{currentConfig.simulationId}'. " +
+                    $"Runner '{activeRunnerObject?.name ?? '<null>'}' must implement {required} for replay mode.");
             }
 
             simDriver?.SetRunner(null);
@@ -200,16 +200,9 @@ public class Bootstrapper : MonoBehaviour
             currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
             simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
 
-            var tickableRunner = activeRunner as ITickableSimulationRunner;
-            if (tickableRunner == null)
-            {
-                LogRunnerContractError(currentConfig.simulationId, "ITickableSimulationRunner");
-                simDriver?.SetRunner(null);
-            }
-            else
-            {
-                simDriver?.SetRunner(tickableRunner);
-            }
+            // Unified tick contract: all live simulation ticks must go through exactly one ITickableSimulationRunner.
+            var tickableRunner = RunnerContract.RequireTickable(activeRunnerObject, currentConfig.simulationId, "bootstrap pre-tick validation");
+            simDriver?.SetRunner(tickableRunner);
 
             replayDriver?.SetRunner(null);
         }
@@ -475,12 +468,7 @@ public class Bootstrapper : MonoBehaviour
         }
 
         activeRunnerObject = runnerObject;
-        activeRunner = runnerObject.GetComponent<ISimulationRunner>();
-        if (activeRunner == null)
-        {
-            Debug.LogWarning($"Bootstrapper: Runner GameObject '{runnerObject.name}' does not implement ISimulationRunner. Attached components: {DescribeComponents(runnerObject)}");
-            return;
-        }
+        activeRunner = RunnerContract.RequireTickable(activeRunnerObject, config.simulationId, "runner instantiation");
 
         activeRunner.Initialize(config);
     }
@@ -514,37 +502,6 @@ public class Bootstrapper : MonoBehaviour
         activeRunnerObject = null;
         simDriver?.SetRunner(null);
         replayDriver?.SetRunner(null);
-    }
-
-    private void LogRunnerContractError(string simulationId, string requiredInterface)
-    {
-        var runnerName = activeRunnerObject != null ? activeRunnerObject.name : "<null>";
-        Debug.LogError(
-            $"Bootstrapper: Runner contract mismatch for simulation '{simulationId}'. " +
-            $"Runner GameObject='{runnerName}' must implement {requiredInterface}. " +
-            $"Attached components: {DescribeComponents(activeRunnerObject)}");
-    }
-
-    private static string DescribeComponents(GameObject runnerObject)
-    {
-        if (runnerObject == null)
-        {
-            return "<none>";
-        }
-
-        var components = runnerObject.GetComponents<Component>();
-        if (components == null || components.Length == 0)
-        {
-            return "<none>";
-        }
-
-        var names = new string[components.Length];
-        for (var i = 0; i < components.Length; i++)
-        {
-            names[i] = components[i] == null ? "<MissingScript>" : components[i].GetType().FullName;
-        }
-
-        return string.Join(", ", names);
     }
 
     public void PauseSimulation()
