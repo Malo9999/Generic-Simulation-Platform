@@ -86,3 +86,7 @@ dist/
 build/
 *.egg-info/
 pip-wheel-metadata/
+
+# Local reference photos (editor fetch tool)
+_References/
+_References.meta
