@@ -177,6 +177,7 @@ public class Bootstrapper : MonoBehaviour
         AntAtlasLibrary.ClearCache();
 
         var selectedContentPack = ResolveContentPack(simulationId);
+        Debug.Log($"[Bootstrapper] sim={simulationId} contentPack={(selectedContentPack != null ? selectedContentPack.name : "<none>")}");
         if (selectedContentPack != null)
         {
             ContentPackService.Set(selectedContentPack);

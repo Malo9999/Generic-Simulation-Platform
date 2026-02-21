@@ -25,6 +25,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private float halfWidth = 32f;
     private float halfHeight = 32f;
 
+    private static Sprite debugFallbackSprite;
+
     public void Initialize(ScenarioConfig config)
     {
         EnsureMainCamera();
@@ -168,7 +170,15 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var baseId = $"agent:ant:{speciesId}:{roleId}:adult:{state}:{frame:00}";
         var maskId = baseId + "_mask";
 
-        antBaseRenderers[index].sprite = ContentPackService.TryGetSprite(baseId, out var baseSprite) ? baseSprite : null;
+        if (ContentPackService.TryGetSprite(baseId, out var baseSprite))
+        {
+            antBaseRenderers[index].sprite = baseSprite;
+        }
+        else
+        {
+            antBaseRenderers[index].sprite = GetDebugFallbackSprite();
+        }
+
         antBaseRenderers[index].color = Color.white;
 
         antMaskRenderers[index].sprite = ContentPackService.TryGetSprite(maskId, out var maskSprite) ? maskSprite : null;
@@ -257,6 +267,25 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             AntRole.Worker => new Color(0.45f + tintShift, 0.28f, 0.18f),
             _ => new Color(0.5f + tintShift, 0.12f, 0.12f)
         };
+    }
+
+    private static Sprite GetDebugFallbackSprite()
+    {
+        if (debugFallbackSprite != null)
+        {
+            return debugFallbackSprite;
+        }
+
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        texture.SetPixel(0, 0, Color.magenta);
+        texture.Apply(false, false);
+
+        debugFallbackSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return debugFallbackSprite;
     }
 
     private void EnsureMainCamera()
