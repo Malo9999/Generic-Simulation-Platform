@@ -22,11 +22,13 @@ public static class AntPackGenerator
         public string PackName;
         public int Seed;
         public int TileSize;
+        public int AntSpriteSize;
         public AntPalettePreset Palette;
         public string OutputFolder;
         public bool GenerateTiles;
         public bool GenerateAnts;
         public bool GenerateProps;
+        public bool GenerateLegacyTilesets;
         public bool Overwrite;
     }
 
@@ -36,24 +38,33 @@ public static class AntPackGenerator
         ImportSettingsUtil.EnsureFolder(DefaultBaseFolder);
         ImportSettingsUtil.EnsureFolder(request.OutputFolder);
 
-        var tileLookups = new List<AntContentPack.SpriteLookupEntry>();
+        var surfaceTileLookups = new List<AntContentPack.SpriteLookupEntry>();
+        var undergroundTileLookups = new List<AntContentPack.SpriteLookupEntry>();
         var antLookups = new List<AntContentPack.SpriteLookupEntry>();
         var propLookups = new List<AntContentPack.SpriteLookupEntry>();
 
-        Texture2D tilesTexture = null;
+        Texture2D surfaceTilesTexture = null;
+        Texture2D undergroundTilesTexture = null;
         Texture2D antsTexture = null;
         Texture2D propsTexture = null;
 
         if (request.GenerateTiles)
         {
             var tileResult = AntTilesetSheetGenerator.Generate(request.OutputFolder, request.Seed, request.TileSize, request.Palette, request.Overwrite);
-            tilesTexture = tileResult.Texture;
-            tileLookups = tileResult.Sprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
+            surfaceTilesTexture = tileResult.SurfaceTexture;
+            undergroundTilesTexture = tileResult.UndergroundTexture;
+            surfaceTileLookups = tileResult.SurfaceSprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
+            undergroundTileLookups = tileResult.UndergroundSprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
+
+            if (request.GenerateLegacyTilesets)
+            {
+                AntTilesetSheetGenerator.GenerateLegacyCopies(request.Seed, request.TileSize, request.Palette, request.Overwrite);
+            }
         }
 
         if (request.GenerateAnts)
         {
-            var antResult = AntSpriteSheetGenerator.Generate(request.OutputFolder, request.Seed, request.TileSize, request.Palette, request.Overwrite);
+            var antResult = AntSpriteSheetGenerator.Generate(request.OutputFolder, request.Seed, request.AntSpriteSize, request.Palette, request.Overwrite);
             antsTexture = antResult.Texture;
             antLookups = antResult.Sprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.name, sprite = s }).ToList();
         }
@@ -74,15 +85,17 @@ public static class AntPackGenerator
         }
 
         pack.SetMetadata(request.Seed, request.TileSize, request.Palette.ToString());
-        pack.SetTextures(tilesTexture, antsTexture, propsTexture);
-        pack.SetLookups(tileLookups, antLookups, propLookups);
+        pack.SetTextures(surfaceTilesTexture, undergroundTilesTexture, antsTexture, propsTexture);
+        pack.SetLookups(surfaceTileLookups, undergroundTileLookups, antLookups, propLookups);
         EditorUtility.SetDirty(pack);
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         EditorGUIUtility.PingObject(pack);
 
-        return $"Generated Ant pack '{request.PackName}' at {request.OutputFolder}\nTiles={tileLookups.Count}, Ants={antLookups.Count}, Props={propLookups.Count}";
+        Debug.Log($"Ant pack generated: '{request.PackName}'\nSurface tiles: {(surfaceTilesTexture != null ? AssetDatabase.GetAssetPath(surfaceTilesTexture) : "n/a")} ({surfaceTileLookups.Count})\nUnderground tiles: {(undergroundTilesTexture != null ? AssetDatabase.GetAssetPath(undergroundTilesTexture) : "n/a")} ({undergroundTileLookups.Count})\nAnts: {antLookups.Count}\nProps: {propLookups.Count}");
+
+        return $"Generated Ant pack '{request.PackName}' at {request.OutputFolder}\nSurface Tiles={surfaceTileLookups.Count}, Underground Tiles={undergroundTileLookups.Count}, Ants={antLookups.Count}, Props={propLookups.Count}";
     }
 
     public static void Validate(Request request)
@@ -95,6 +108,11 @@ public static class AntPackGenerator
         if (request.TileSize < 8)
         {
             throw new ArgumentException("TileSize must be >= 8.");
+        }
+
+        if (request.AntSpriteSize < 16)
+        {
+            throw new ArgumentException("AntSpriteSize must be >= 16.");
         }
 
         if (!request.GenerateTiles && !request.GenerateAnts && !request.GenerateProps)

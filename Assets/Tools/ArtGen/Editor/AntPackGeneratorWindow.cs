@@ -6,11 +6,13 @@ public sealed class AntPackGeneratorWindow : EditorWindow
     private string packName = "AntPack";
     private int seed = 12345;
     private int tileSize = 32;
+    private int antSpriteSize = 64;
     private AntPalettePreset palette = AntPalettePreset.Classic;
     private string outputFolder = "Assets/Presentation/Packs/Ants/AntPack";
     private bool generateTiles = true;
     private bool generateAnts = true;
     private bool generateProps = true;
+    private bool generateLegacyTilesets;
     private bool overwrite;
     private string summary = string.Empty;
 
@@ -38,6 +40,7 @@ public sealed class AntPackGeneratorWindow : EditorWindow
         packName = EditorGUILayout.TextField("Pack Name", packName);
         seed = EditorGUILayout.IntField("Seed", seed);
         tileSize = EditorGUILayout.IntField("Tile Size", tileSize);
+        antSpriteSize = EditorGUILayout.IntField("Ant Sprite Size", antSpriteSize);
         palette = (AntPalettePreset)EditorGUILayout.EnumPopup("Palette Preset", palette);
 
         using (new EditorGUILayout.HorizontalScope())
@@ -53,6 +56,7 @@ public sealed class AntPackGeneratorWindow : EditorWindow
         generateTiles = EditorGUILayout.ToggleLeft("Generate Tiles", generateTiles);
         generateAnts = EditorGUILayout.ToggleLeft("Generate Ants", generateAnts);
         generateProps = EditorGUILayout.ToggleLeft("Generate Props", generateProps);
+        generateLegacyTilesets = EditorGUILayout.ToggleLeft("Also generate legacy ant tilesets (surface + underground) into Assets/Generated/Tilesets/Ants", generateLegacyTilesets);
         overwrite = EditorGUILayout.ToggleLeft("Regenerate / overwrite existing assets", overwrite);
 
         EditorGUILayout.Space(8f);
@@ -79,11 +83,13 @@ public sealed class AntPackGeneratorWindow : EditorWindow
             PackName = packName,
             Seed = seed,
             TileSize = tileSize,
+            AntSpriteSize = antSpriteSize,
             Palette = palette,
             OutputFolder = outputFolder,
             GenerateTiles = generateTiles,
             GenerateAnts = generateAnts,
             GenerateProps = generateProps,
+            GenerateLegacyTilesets = generateLegacyTilesets,
             Overwrite = overwrite
         };
 
