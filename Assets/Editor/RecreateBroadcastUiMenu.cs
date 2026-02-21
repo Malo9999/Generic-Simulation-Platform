@@ -19,6 +19,7 @@ public static class RecreateBroadcastUiMenu
     private const string HudPanelName = "HUDPanel";
     private const string HudTextName = "HUDText";
     private const string MinimapCameraName = "MinimapCamera";
+    private const float HudPanelHeight = 110f;
 
     [MenuItem("Tools/GSP/Recreate Broadcast UI (Minimap + HUD)")]
     public static void RecreateBroadcastUi()
@@ -54,6 +55,9 @@ public static class RecreateBroadcastUiMenu
 
         var hudPanel = GetOrCreateUiObject(HudPanelName, rightStrip.transform, typeof(Image));
         ConfigureHudPanel(hudPanel);
+
+        // Ensure minimap is both positioned below the HUD and drawn above it.
+        frame.transform.SetAsLastSibling();
 
         var hudText = GetOrCreateHudText(rightStrip.transform, hudPanel.transform);
         ConfigureHudText(hudText);
@@ -148,7 +152,7 @@ public static class RecreateBroadcastUiMenu
 
         var scaler = GetOrAdd<CanvasScaler>(canvasObject);
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(480f, 270f);
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
 
@@ -184,8 +188,8 @@ public static class RecreateBroadcastUiMenu
         rect.anchorMin = new Vector2(1f, 1f);
         rect.anchorMax = new Vector2(1f, 1f);
         rect.pivot = new Vector2(1f, 1f);
-        rect.sizeDelta = new Vector2(112f, 112f);
-        rect.anchoredPosition = new Vector2(-10f, -10f);
+        rect.sizeDelta = new Vector2(96f, 96f);
+        rect.anchoredPosition = new Vector2(-10f, -(HudPanelHeight + 20f));
     }
 
     private static void ConfigureMinimapView(GameObject view, RenderTexture rt)
@@ -198,13 +202,18 @@ public static class RecreateBroadcastUiMenu
         image.material = null;
         image.raycastTarget = true;
 
+        if (!view.activeSelf)
+        {
+            view.SetActive(true);
+        }
+
         view.transform.localScale = Vector3.one;
 
         var rect = view.GetComponent<RectTransform>();
         rect.anchorMin = Vector2.zero;
         rect.anchorMax = Vector2.one;
-        rect.offsetMin = new Vector2(6f, 6f);
-        rect.offsetMax = new Vector2(-6f, -6f);
+        rect.offsetMin = new Vector2(4f, 4f);
+        rect.offsetMax = new Vector2(-4f, -4f);
     }
 
     private static void ConfigureHudPanel(GameObject hudPanel)
@@ -217,8 +226,8 @@ public static class RecreateBroadcastUiMenu
         rect.anchorMin = new Vector2(0f, 1f);
         rect.anchorMax = new Vector2(1f, 1f);
         rect.pivot = new Vector2(0.5f, 1f);
-        rect.anchoredPosition = new Vector2(0f, -10f);
-        rect.offsetMin = new Vector2(10f, -102f);
+        rect.anchoredPosition = Vector2.zero;
+        rect.offsetMin = new Vector2(10f, -(10f + HudPanelHeight));
         rect.offsetMax = new Vector2(-10f, -10f);
     }
 
