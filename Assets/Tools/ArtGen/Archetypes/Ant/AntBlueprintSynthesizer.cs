@@ -6,13 +6,25 @@ public static class AntBlueprintSynthesizer
 {
     public static (PixelBlueprint2D body, PixelBlueprint2D stripe) Build(AntSpeciesProfile profile, ArchetypeSynthesisRequest req)
     {
-        var body = AssetDatabase.LoadAssetAtPath<PixelBlueprint2D>(req.blueprintPath);
-        if (body == null)
+        var useAssetBackedBlueprint = !string.IsNullOrWhiteSpace(req.blueprintPath);
+        PixelBlueprint2D body;
+
+        if (useAssetBackedBlueprint)
+        {
+            body = AssetDatabase.LoadAssetAtPath<PixelBlueprint2D>(req.blueprintPath);
+            if (body == null)
+            {
+                body = ScriptableObject.CreateInstance<PixelBlueprint2D>();
+                body.width = 32;
+                body.height = 32;
+                AssetDatabase.CreateAsset(body, req.blueprintPath);
+            }
+        }
+        else
         {
             body = ScriptableObject.CreateInstance<PixelBlueprint2D>();
             body.width = 32;
             body.height = 32;
-            AssetDatabase.CreateAsset(body, req.blueprintPath);
         }
 
         body.Clear("body");
@@ -35,7 +47,11 @@ public static class AntBlueprintSynthesizer
             DrawAdult(body, profile, req);
         }
 
-        EditorUtility.SetDirty(body);
+        if (useAssetBackedBlueprint)
+        {
+            EditorUtility.SetDirty(body);
+        }
+
         return (body, body);
     }
 
