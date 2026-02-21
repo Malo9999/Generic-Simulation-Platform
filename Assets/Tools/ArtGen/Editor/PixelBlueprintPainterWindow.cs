@@ -3,9 +3,15 @@ using UnityEngine;
 
 public sealed class PixelBlueprintPainterWindow : EditorWindow
 {
+    private enum PaintTool
+    {
+        Paint,
+        Erase
+    }
+
     private PixelBlueprint2D blueprint;
     private string layerName = "body";
-    private bool paintValue = true;
+    private PaintTool activeTool = PaintTool.Paint;
     private float zoom = 16f;
     private byte[] clipboard;
 
@@ -32,8 +38,9 @@ public sealed class PixelBlueprintPainterWindow : EditorWindow
             if (GUILayout.Button("Stripe", GUILayout.Width(60f))) layerName = "stripe";
         }
 
-        paintValue = GUILayout.Toolbar(paintValue ? 0 : 1, new[] { "Paint", "Erase" }) == 0;
+        activeTool = (PaintTool)GUILayout.Toolbar((int)activeTool, new[] { "Paint", "Erase" });
         zoom = EditorGUILayout.Slider("Grid Zoom", zoom, 8f, 24f);
+        EditorGUILayout.HelpBox($"Layer: {layerName}  |  Tool: {activeTool}  |  Shortcuts: LMB uses tool, RMB erase, Shift+LMB erase.", MessageType.None);
 
         DrawTools();
 
@@ -66,7 +73,7 @@ public sealed class PixelBlueprintPainterWindow : EditorWindow
             if (GUILayout.Button("Nudge →")) { Nudge(1, 0); MarkDirty(); }
             if (GUILayout.Button("Nudge ↑")) { Nudge(0, -1); MarkDirty(); }
             if (GUILayout.Button("Nudge ↓")) { Nudge(0, 1); MarkDirty(); }
-            if (GUILayout.Button("Clear")) { blueprint.Clear(layerName); MarkDirty(); }
+            if (GUILayout.Button("Clear Layer")) { blueprint.Clear(layerName); MarkDirty(); }
         }
     }
 
@@ -94,13 +101,26 @@ public sealed class PixelBlueprintPainterWindow : EditorWindow
         }
 
         var evt = Event.current;
-        if ((evt.type == EventType.MouseDown || evt.type == EventType.MouseDrag) && rect.Contains(evt.mousePosition))
+        var mouseInGrid = rect.Contains(evt.mousePosition);
+        if (mouseInGrid)
         {
-            var x = Mathf.FloorToInt((evt.mousePosition.x - rect.x) / zoom);
-            var y = Mathf.FloorToInt((evt.mousePosition.y - rect.y) / zoom);
-            blueprint.Set(layerName, x, y, paintValue ? (byte)1 : (byte)0);
-            MarkDirty();
-            evt.Use();
+            var hoverX = Mathf.FloorToInt((evt.mousePosition.x - rect.x) / zoom);
+            var hoverY = Mathf.FloorToInt((evt.mousePosition.y - rect.y) / zoom);
+            if (hoverX >= 0 && hoverY >= 0 && hoverX < blueprint.width && hoverY < blueprint.height)
+            {
+                var value = layer.pixels[(hoverY * blueprint.width) + hoverX] > 0 ? 1 : 0;
+                EditorGUILayout.LabelField($"Cursor: ({hoverX}, {hoverY})  Value: {value}");
+            }
+
+            if ((evt.type == EventType.MouseDown || evt.type == EventType.MouseDrag) && (evt.button == 0 || evt.button == 1))
+            {
+                var x = Mathf.FloorToInt((evt.mousePosition.x - rect.x) / zoom);
+                var y = Mathf.FloorToInt((evt.mousePosition.y - rect.y) / zoom);
+                var erase = evt.button == 1 || (evt.button == 0 && evt.shift) || activeTool == PaintTool.Erase;
+                blueprint.Set(layerName, x, y, erase ? (byte)0 : (byte)1);
+                MarkDirty();
+                evt.Use();
+            }
         }
     }
 
