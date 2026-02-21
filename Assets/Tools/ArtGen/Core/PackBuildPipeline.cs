@@ -37,6 +37,8 @@ public static class PackBuildPipeline
         var textureEntries = new List<ContentPack.TextureEntry>();
         var spriteEntries = new List<ContentPack.SpriteEntry>();
         var antsCompat = new List<ContentPack.SpriteEntry>();
+        var speciesSelections = new List<ContentPack.SpeciesSelection>();
+        var clipMetadata = new List<ContentPack.ClipMetadataEntry>();
 
         foreach (var entity in recipe.entities)
         {
@@ -44,6 +46,12 @@ public static class PackBuildPipeline
             module.EnsureLibrariesExist();
 
             var speciesIds = module.PickSpeciesIds(Deterministic.DeriveSeed(recipe.seed, "species:" + entity.entityId), entity.speciesCount);
+            speciesSelections.Add(new ContentPack.SpeciesSelection
+            {
+                entityId = entity.entityId,
+                speciesIds = new List<string>(speciesIds)
+            });
+
             var cells = new List<SheetCell>();
 
             foreach (var speciesId in speciesIds)
@@ -78,6 +86,18 @@ public static class PackBuildPipeline
                         report.blueprintCount += s.bodyBlueprint != null ? 1 : 0;
                     }
                 }
+            }
+
+            foreach (var role in entity.roles)
+            foreach (var stage in entity.lifeStages)
+            foreach (var state in entity.states)
+            {
+                clipMetadata.Add(new ContentPack.ClipMetadataEntry
+                {
+                    keyPrefix = $"agent:{entity.entityId}:{role}:{stage}:{state}",
+                    fps = Mathf.Max(1, entity.animationPolicy.defaultFps),
+                    frameCount = Mathf.Max(1, entity.animationPolicy.FramesForState(state))
+                });
             }
 
             if (recipe.generationPolicy.compileSpritesheets)
@@ -125,6 +145,8 @@ public static class PackBuildPipeline
         pack.SetMetadata(recipe);
         spriteEntries.AddRange(antsCompat);
         pack.SetEntries(textureEntries, spriteEntries);
+        pack.SetSelections(speciesSelections);
+        pack.SetClipMetadata(clipMetadata);
         EditorUtility.SetDirty(pack);
         report.contentPackVersion = pack.Version;
 

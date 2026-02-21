@@ -3,25 +3,24 @@ using UnityEngine;
 
 public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int AtlasSizePx = 64;
     private const int QueenCount = 1;
     private const int WorkerCount = 8;
     private const int WarriorCount = 3;
     private const int AntCount = QueenCount + WorkerCount + WarriorCount;
     private const int SpawnDebugCount = 5;
-    private const float SpeedMultiplier = 0.20f; // 0.20 = ~5x slower; tweak as needed
+    private const float SpeedMultiplier = 0.20f;
+    private const float IdleSpeedThreshold = 0.2f;
+    private const float RunSpeedThreshold = 1.6f;
 
     [SerializeField] private bool logSpawnIdentity = true;
 
     private Transform[] ants;
-    private SpriteRenderer[] antOutlines;
-    private SpriteRenderer[] antFills;
-    private SpriteRenderer[] antDetails;
+    private SpriteRenderer[] antBaseRenderers;
+    private SpriteRenderer[] antMaskRenderers;
     private Vector2[] positions;
     private Vector2[] velocities;
     private EntityIdentity[] identities;
     private AntRole[] roles;
-    private int[] currentDirs;
     private int nextEntityId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
@@ -58,17 +57,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
             ants[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             ants[i].localRotation = Quaternion.identity;
-
-            var dir = Direction8.FromVector(velocities[i]);
-            if (dir == currentDirs[i])
-            {
-                continue;
-            }
-
-            currentDirs[i] = dir;
-            antOutlines[i].sprite = AntAtlasLibrary.GetOutline(roles[i], dir, AtlasSizePx);
-            antFills[i].sprite = AntAtlasLibrary.GetFill(roles[i], dir, AtlasSizePx);
-            antDetails[i].sprite = AntAtlasLibrary.GetDetails(roles[i], dir, AtlasSizePx);
+            ApplyVisual(i, tickIndex);
         }
     }
 
@@ -86,14 +75,12 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         ants = null;
-        antOutlines = null;
-        antFills = null;
-        antDetails = null;
+        antBaseRenderers = null;
+        antMaskRenderers = null;
         positions = null;
         velocities = null;
         identities = null;
         roles = null;
-        currentDirs = null;
         Debug.Log("AntColoniesRunner Shutdown");
     }
 
@@ -106,19 +93,17 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
         ants = new Transform[AntCount];
-        antOutlines = new SpriteRenderer[AntCount];
-        antFills = new SpriteRenderer[AntCount];
-        antDetails = new SpriteRenderer[AntCount];
+        antBaseRenderers = new SpriteRenderer[AntCount];
+        antMaskRenderers = new SpriteRenderer[AntCount];
         positions = new Vector2[AntCount];
         velocities = new Vector2[AntCount];
         identities = new EntityIdentity[AntCount];
         roles = new AntRole[AntCount];
-        currentDirs = new int[AntCount];
 
         for (var i = 0; i < AntCount; i++)
         {
             var role = i == 0 ? AntRole.Queen : (i <= WorkerCount ? AntRole.Worker : AntRole.Warrior);
-            var roleId = role.ToString().ToLowerInvariant();
+            var roleId = RoleToStableString(role);
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
                 teamId: 0,
@@ -135,22 +120,17 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             ant.transform.localScale = Vector3.one * GetRoleScale(roles[i]);
             ant.transform.localRotation = Quaternion.identity;
 
-            var outlineObject = new GameObject("Outline");
-            outlineObject.transform.SetParent(ant.transform, false);
-            var outlineRenderer = outlineObject.AddComponent<SpriteRenderer>();
-            outlineRenderer.sortingOrder = 0;
+            var baseObject = new GameObject("Base");
+            baseObject.transform.SetParent(ant.transform, false);
+            var baseRenderer = baseObject.AddComponent<SpriteRenderer>();
+            baseRenderer.sortingOrder = 0;
+            baseRenderer.color = Color.white;
 
-            var fillObject = new GameObject("Fill");
-            fillObject.transform.SetParent(ant.transform, false);
-            var fillRenderer = fillObject.AddComponent<SpriteRenderer>();
-            fillRenderer.sortingOrder = 1;
-            fillRenderer.color = GetRoleColor(roles[i], identity.teamId);
-
-            var detailsObject = new GameObject("Details");
-            detailsObject.transform.SetParent(ant.transform, false);
-            var detailsRenderer = detailsObject.AddComponent<SpriteRenderer>();
-            detailsRenderer.sortingOrder = 2;
-            detailsRenderer.color = Color.white;
+            var maskObject = new GameObject("Mask");
+            maskObject.transform.SetParent(ant.transform, false);
+            var maskRenderer = maskObject.AddComponent<SpriteRenderer>();
+            maskRenderer.sortingOrder = 1;
+            maskRenderer.color = GetRoleColor(roles[i], identity.teamId);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -161,16 +141,10 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
             ant.transform.localPosition = new Vector3(startX, startY, 0f);
 
-            var initialDir = Direction8.FromVector(velocities[i]);
-            currentDirs[i] = initialDir;
-            outlineRenderer.sprite = AntAtlasLibrary.GetOutline(roles[i], initialDir, AtlasSizePx);
-            fillRenderer.sprite = AntAtlasLibrary.GetFill(roles[i], initialDir, AtlasSizePx);
-            detailsRenderer.sprite = AntAtlasLibrary.GetDetails(roles[i], initialDir, AtlasSizePx);
-
             ants[i] = ant.transform;
-            antOutlines[i] = outlineRenderer;
-            antFills[i] = fillRenderer;
-            antDetails[i] = detailsRenderer;
+            antBaseRenderers[i] = baseRenderer;
+            antMaskRenderers[i] = maskRenderer;
+            ApplyVisual(i, 0);
 
             if (logSpawnIdentity && i < SpawnDebugCount)
             {
@@ -179,13 +153,76 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
+    private void ApplyVisual(int index, int tickIndex)
+    {
+        var role = roles[index];
+        var roleId = RoleToStableString(role);
+        var state = ResolveState(velocities[index].magnitude);
+        var speciesId = ContentPackService.GetSpeciesId("ant", identities[index].variant);
+
+        var fps = ContentPackService.GetClipFpsOrDefault("ant", roleId, "adult", state, 8);
+        var frameCount = ResolveFrameCount(speciesId, roleId, state);
+        var ticksPerFrame = Mathf.Max(1, Mathf.RoundToInt(60f / Mathf.Max(1, fps)));
+        var frame = (tickIndex / ticksPerFrame) % frameCount;
+
+        var baseId = $"agent:ant:{speciesId}:{roleId}:adult:{state}:{frame:00}";
+        var maskId = baseId + "_mask";
+
+        antBaseRenderers[index].sprite = ContentPackService.TryGetSprite(baseId, out var baseSprite) ? baseSprite : null;
+        antBaseRenderers[index].color = Color.white;
+
+        antMaskRenderers[index].sprite = ContentPackService.TryGetSprite(maskId, out var maskSprite) ? maskSprite : null;
+        antMaskRenderers[index].color = GetRoleColor(role, identities[index].teamId);
+    }
+
+    private static string ResolveState(float speed)
+    {
+        if (speed < IdleSpeedThreshold)
+        {
+            return "idle";
+        }
+
+        return speed < RunSpeedThreshold ? "walk" : "run";
+    }
+
+    private static int ResolveFrameCount(string speciesId, string roleId, string state)
+    {
+        var keyPrefix = $"agent:ant:{speciesId}:{roleId}:adult:{state}";
+        if (ContentPackService.Current != null)
+        {
+            if (ContentPackService.Current.TryGetClipMetadata($"agent:ant:{roleId}:adult:{state}", out var clip) && clip.frameCount > 0)
+            {
+                return clip.frameCount;
+            }
+
+            var inferred = ContentPackService.Current.InferFrameCountByPrefix(keyPrefix);
+            if (inferred > 0)
+            {
+                return inferred;
+            }
+        }
+
+        return state == "idle" ? 2 : 4;
+    }
+
     private static AntRole RoleFromIdentity(EntityIdentity identity)
     {
         return identity.role switch
         {
             "queen" => AntRole.Queen,
+            "soldier" => AntRole.Warrior,
             "warrior" => AntRole.Warrior,
             _ => AntRole.Worker
+        };
+    }
+
+    private static string RoleToStableString(AntRole role)
+    {
+        return role switch
+        {
+            AntRole.Queen => "queen",
+            AntRole.Warrior => "soldier",
+            _ => "worker"
         };
     }
 
