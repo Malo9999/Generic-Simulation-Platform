@@ -81,4 +81,5 @@ public class SimulationCatalogEntry
     public string simulationId;
     public GameObject runnerPrefab;
     public TextAsset defaultPreset;
+    public ContentPack defaultContentPack;
 }
