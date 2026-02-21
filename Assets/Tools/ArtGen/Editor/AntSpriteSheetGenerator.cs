@@ -8,78 +8,6 @@ public static class AntSpriteSheetGenerator
 {
     private static readonly string[] SpriteNames = { "ant_worker", "ant_worker_mask", "ant_soldier", "ant_soldier_mask" };
 
-    private static readonly string[] WorkerTemplate =
-    {
-        "................................",
-        "................................",
-        "..............................#.",
-        ".............................##.",
-        "............................###.",
-        "...........................##...",
-        ".......................####.....",
-        "...............#####.###........",
-        ".............##########.........",
-        "....##.....##########...........",
-        "...SSS#########################.",
-        "....SSSS#######################.",
-        "......SSSS####################..",
-        "........SSS#################....",
-        ".............##########.........",
-        "..............#######...........",
-        "...............#####............",
-        "..............#######...........",
-        ".............##########.........",
-        "........SSS#################....",
-        "......SSSS####################..",
-        "....SSSS#######################.",
-        "...SSS#########################.",
-        "....##.....##########...........",
-        ".............##########.........",
-        "...............#####.###........",
-        ".......................####.....",
-        "...........................##...",
-        "............................###.",
-        ".............................##.",
-        "..............................#.",
-        "................................"
-    };
-
-    private static readonly string[] SoldierTemplate =
-    {
-        "................................",
-        "................................",
-        "............................####",
-        "...........................#####",
-        "..........................######",
-        ".........................####...",
-        "......................######....",
-        "...............#####.#####......",
-        ".............############.......",
-        "....##.....##############.......",
-        "...SSSS########################.",
-        "....SSSSS######################.",
-        "......SSSS####################..",
-        "........SSSS##################..",
-        ".............##############.....",
-        "..............###########.......",
-        "...............########.........",
-        "..............###########.......",
-        ".............##############.....",
-        "........SSSS##################..",
-        "......SSSS####################..",
-        "....SSSSS######################.",
-        "...SSSS########################.",
-        "....##.....##############.......",
-        ".............############.......",
-        "...............#####.#####......",
-        "......................######....",
-        ".........................####...",
-        "..........................######",
-        "...........................#####",
-        "............................####",
-        "................................"
-    };
-
     public static AntPackGenerator.TextureResult Generate(string outputFolder, int seed, int antSpriteSize, AntPalettePreset palettePreset, bool overwrite)
     {
         var path = $"{outputFolder}/ants.png";
@@ -116,11 +44,11 @@ public static class AntSpriteSheetGenerator
 
     private static void DrawAnt(Color32[] px, int width, int ox, int oy, int size, int seed, bool soldier, bool maskOnly, AntPalettePreset palettePreset)
     {
-        BuildTemplateMasks(size, soldier, out var bodyMask, out var stripeMask);
+        BuildSkeletonMasks(size, soldier, out var bodyMask, out var stripeMask);
         if (!ValidateSilhouette(bodyMask, size, seed, soldier))
         {
-            Debug.LogWarning($"Ant silhouette validation failed for {(soldier ? "soldier" : "worker")}. Falling back to built-in template.");
-            BuildTemplateMasks(size, soldier, out bodyMask, out stripeMask);
+            Debug.LogWarning($"Ant silhouette validation failed for {(soldier ? "soldier" : "worker")}. Rebuilding deterministic skeleton mask.");
+            BuildSkeletonMasks(size, soldier, out bodyMask, out stripeMask);
         }
 
         if (maskOnly)
@@ -181,25 +109,145 @@ public static class AntSpriteSheetGenerator
         }
     }
 
-    private static void BuildTemplateMasks(int size, bool soldier, out bool[] bodyMask, out bool[] stripeMask)
+    private static void BuildSkeletonMasks(int size, bool soldier, out bool[] bodyMask, out bool[] stripeMask)
     {
-        var template = soldier ? SoldierTemplate : WorkerTemplate;
-        var sourceHeight = template.Length;
-        var sourceWidth = template[0].Length;
-
         bodyMask = new bool[size * size];
         stripeMask = new bool[size * size];
 
+        var abdomenCenter = new Vector2(size * 0.40f, size * 0.52f);
+        var thoraxCenter = new Vector2(size * 0.58f, size * 0.52f);
+        var headCenter = new Vector2(size * 0.72f, size * 0.50f);
+
+        DrawFilledEllipse(bodyMask, size, abdomenCenter, new Vector2(size * 0.18f, size * 0.13f));
+        DrawFilledEllipse(bodyMask, size, thoraxCenter, new Vector2(size * 0.12f, size * 0.10f));
+        DrawFilledEllipse(bodyMask, size, headCenter, soldier ? new Vector2(size * 0.11f, size * 0.10f) : new Vector2(size * 0.09f, size * 0.08f));
+
+        var waistStart = Mathf.RoundToInt(size * 0.50f);
+        var waistEnd = Mathf.RoundToInt(size * 0.52f);
+        var waistHalfHeight = Mathf.Max(1, Mathf.RoundToInt(size * 0.05f));
+        var waistY = Mathf.RoundToInt(size * 0.52f);
+        for (var x = waistStart; x <= waistEnd; x++)
+        {
+            for (var y = waistY - waistHalfHeight; y <= waistY + waistHalfHeight; y++)
+            {
+                SetMask(bodyMask, size, x, y, false);
+            }
+        }
+
+        SetMask(bodyMask, size, Mathf.RoundToInt(size * 0.51f), waistY, true);
+
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.57f, size * 0.47f),
+            new Vector2(size * 0.66f, size * 0.42f),
+            new Vector2(size * 0.74f, size * 0.36f));
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.58f, size * 0.52f),
+            new Vector2(size * 0.68f, size * 0.52f),
+            new Vector2(size * 0.76f, size * 0.52f));
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.57f, size * 0.57f),
+            new Vector2(size * 0.52f, size * 0.63f),
+            new Vector2(size * 0.46f, size * 0.70f));
+
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.59f, size * 0.49f),
+            new Vector2(size * 0.68f, size * 0.45f),
+            new Vector2(size * 0.74f, size * 0.40f));
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.59f, size * 0.54f),
+            new Vector2(size * 0.69f, size * 0.57f),
+            new Vector2(size * 0.76f, size * 0.60f));
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.58f, size * 0.59f),
+            new Vector2(size * 0.52f, size * 0.65f),
+            new Vector2(size * 0.47f, size * 0.72f));
+
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.74f, size * 0.44f),
+            new Vector2(size * 0.80f, size * 0.37f),
+            new Vector2(size * 0.86f, size * 0.32f));
+        DrawThickPolyline(bodyMask, size, 2,
+            new Vector2(size * 0.76f, size * 0.48f),
+            new Vector2(size * 0.82f, size * 0.44f),
+            new Vector2(size * 0.86f, size * 0.40f));
+
+        if (soldier)
+        {
+            DrawThickPolyline(bodyMask, size, 2,
+                new Vector2(size * 0.80f, size * 0.50f),
+                new Vector2(size * 0.88f, size * 0.46f));
+            DrawThickPolyline(bodyMask, size, 2,
+                new Vector2(size * 0.80f, size * 0.50f),
+                new Vector2(size * 0.88f, size * 0.54f));
+        }
+
         for (var y = 0; y < size; y++)
         {
-            var ty = Mathf.Clamp((int)((y / (float)size) * sourceHeight), 0, sourceHeight - 1);
             for (var x = 0; x < size; x++)
             {
-                var tx = Mathf.Clamp((int)((x / (float)size) * sourceWidth), 0, sourceWidth - 1);
-                var ch = template[ty][tx];
-                var body = ch == '#' || ch == 'S';
-                SetMask(bodyMask, size, x, y, body);
-                SetMask(stripeMask, size, x, y, ch == 'S');
+                var dx = (x - abdomenCenter.x) / Mathf.Max(1f, size * 0.18f);
+                var dy = (y - abdomenCenter.y) / Mathf.Max(1f, size * 0.13f);
+                var insideAbdomen = (dx * dx) + (dy * dy) <= 1f;
+                var inStripeBand = Mathf.Abs(y - abdomenCenter.y) <= size * 0.04f;
+                var rearHalf = x < abdomenCenter.x;
+                SetMask(stripeMask, size, x, y, insideAbdomen && rearHalf && inStripeBand);
+            }
+        }
+    }
+
+    private static void DrawFilledEllipse(bool[] mask, int size, Vector2 center, Vector2 radii)
+    {
+        for (var y = 0; y < size; y++)
+        {
+            var dy = (y - center.y) / Mathf.Max(1f, radii.y);
+            for (var x = 0; x < size; x++)
+            {
+                var dx = (x - center.x) / Mathf.Max(1f, radii.x);
+                if ((dx * dx) + (dy * dy) <= 1f)
+                {
+                    SetMask(mask, size, x, y, true);
+                }
+            }
+        }
+    }
+
+    private static void DrawThickPolyline(bool[] mask, int size, int thicknessPx, params Vector2[] points)
+    {
+        if (points == null || points.Length < 2)
+        {
+            return;
+        }
+
+        for (var i = 0; i < points.Length - 1; i++)
+        {
+            DrawThickSegment(mask, size, points[i], points[i + 1], thicknessPx);
+        }
+    }
+
+    private static void DrawThickSegment(bool[] mask, int size, Vector2 start, Vector2 end, int thicknessPx)
+    {
+        var distance = Vector2.Distance(start, end);
+        var steps = Mathf.Max(1, Mathf.CeilToInt(distance * 1.5f));
+        for (var i = 0; i <= steps; i++)
+        {
+            var t = i / (float)steps;
+            var p = Vector2.Lerp(start, end, t);
+            DrawDisc(mask, size, Mathf.RoundToInt(p.x), Mathf.RoundToInt(p.y), Mathf.Max(1, thicknessPx / 2));
+        }
+    }
+
+    private static void DrawDisc(bool[] mask, int size, int cx, int cy, int radius)
+    {
+        for (var y = cy - radius; y <= cy + radius; y++)
+        {
+            for (var x = cx - radius; x <= cx + radius; x++)
+            {
+                var dx = x - cx;
+                var dy = y - cy;
+                if ((dx * dx) + (dy * dy) <= radius * radius)
+                {
+                    SetMask(mask, size, x, y, true);
+                }
             }
         }
     }
@@ -275,8 +323,19 @@ public static class AntSpriteSheetGenerator
             middleMin = Mathf.Min(middleMin, smoothed[x]);
         }
 
-        var hasWaistDip = maxSpan > 0f && middleMin < maxSpan * 0.65f;
+        var petioleStart = Mathf.RoundToInt(size * 0.49f);
+        var petioleEnd = Mathf.RoundToInt(size * 0.54f);
+        var petioleMin = maxSpan;
+        for (var x = petioleStart; x <= petioleEnd; x++)
+        {
+            petioleMin = Mathf.Min(petioleMin, smoothed[x]);
+        }
+
+        var thoraxX = Mathf.RoundToInt(size * 0.58f);
+        var abdomenX = Mathf.RoundToInt(size * 0.40f);
+        var hasWaistDip = maxSpan > 0f && petioleMin < smoothed[thoraxX] * 0.70f && petioleMin < smoothed[abdomenX] * 0.70f;
         var hasSegmentProfile = localMinima >= 2 || hasWaistDip;
+        var midsectionTooWide = middleMin > maxSpan * 0.88f;
 
         var antennaPixels = 0;
         var frontStart = Mathf.RoundToInt(size * 0.72f);
@@ -331,10 +390,10 @@ public static class AntSpriteSheetGenerator
         var hasLegPresence = leftLegPixels >= Mathf.RoundToInt(size * 1.3f) && rightLegPixels >= Mathf.RoundToInt(size * 1.3f);
         var hasAntennae = antennaPixels >= Mathf.Max(4, size / 8);
 
-        var valid = hasSegmentProfile && hasAntennae && hasLegPresence;
+        var valid = hasSegmentProfile && hasAntennae && hasLegPresence && !midsectionTooWide && hasWaistDip;
         if (!valid)
         {
-            Debug.LogWarning($"Ant silhouette validator failed ({(soldier ? "soldier" : "worker")}) seed={seed}. profile={hasSegmentProfile}, antennae={hasAntennae}, legs={hasLegPresence}");
+            Debug.LogWarning($"Ant silhouette validator failed ({(soldier ? "soldier" : "worker")}) seed={seed}. profile={hasSegmentProfile}, waist={hasWaistDip}, antennae={hasAntennae}, legs={hasLegPresence}, wingLike={midsectionTooWide}");
         }
 
         return valid;
