@@ -41,46 +41,88 @@ public static class AntBlueprintSynthesizer
 
     private static void DrawAdult(PixelBlueprint2D bp, AntSpeciesProfile profile, ArchetypeSynthesisRequest req)
     {
-        var head = Mathf.RoundToInt(4 * profile.headScale * (req.role == "soldier" ? profile.soldierHeadMultiplier : 1f));
-        var thorax = Mathf.RoundToInt(4 * profile.thoraxScale);
+        var head = Mathf.Max(2, Mathf.RoundToInt(4 * profile.headScale * (req.role == "soldier" ? profile.soldierHeadMultiplier : 1f)));
+        var thorax = Mathf.Max(2, Mathf.RoundToInt(4 * profile.thoraxScale));
         var abdomenScale = profile.abdomenScale * (req.role == "queen" ? profile.queenAbdomenMultiplier : 1f);
-        var abdomen = Mathf.RoundToInt(6 * abdomenScale);
+        var abdomen = Mathf.Max(3, Mathf.RoundToInt(6 * abdomenScale));
 
         var stride = req.state == "run" ? 2 : req.state == "walk" ? 1 : 0;
         var legPhase = req.frameIndex % 2 == 0 ? -1 : 1;
-        var cx = 16 + (req.state == "run" ? 1 : 0);
+        var thoraxCx = Mathf.RoundToInt(bp.width * 0.56f) + (req.state == "run" ? 1 : 0);
+        var thoraxCy = Mathf.RoundToInt(bp.height * 0.52f);
+        var headCx = thoraxCx + Mathf.Max(4, thorax + 2);
+        var abdomenCx = thoraxCx - Mathf.Max(5, abdomen - 1);
+        var headRy = Mathf.Max(2, head - 1);
+        var thoraxRy = Mathf.Max(2, thorax - 1);
+        var abdomenRy = Mathf.Max(2, abdomen - 1);
 
-        Oval(bp, "body", cx - 8, 16, head, head - 1);
-        Oval(bp, "body", cx, 16, thorax, thorax - 1);
-        Oval(bp, "body", cx + 9, 16, abdomen, abdomen - 1);
-        // petiole pinch
-        Rect(bp, "body", cx + 4, 15, Mathf.Max(1, Mathf.RoundToInt(2f / Mathf.Max(0.2f, profile.petiolePinchStrength))), 2);
+        // 3-segment body.
+        Oval(bp, "body", abdomenCx, thoraxCy, abdomen, abdomenRy);
+        Oval(bp, "body", thoraxCx, thoraxCy, thorax, thoraxRy);
+        Oval(bp, "body", headCx, thoraxCy, head, headRy);
 
-        const int appendageThickness = 2;
-        var legLen = Mathf.RoundToInt(6 * profile.legLengthScale);
-        for (var i = -1; i <= 1; i++)
+        // Carve a visible waist/petiole pinch and leave a 1px bridge.
+        var pinchX = Mathf.RoundToInt((abdomenCx + thoraxCx) * 0.5f);
+        var pinchHalfHeight = Mathf.Max(2, Mathf.RoundToInt(3f / Mathf.Max(0.3f, profile.petiolePinchStrength)));
+        for (var y = thoraxCy - pinchHalfHeight; y <= thoraxCy + pinchHalfHeight; y++)
         {
-            DrawThickLine(bp, "body", cx - 1, 16 + i, cx - 1 - legLen, 16 + i * 2 + legPhase * stride, appendageThickness);
-            DrawThickLine(bp, "body", cx + 1, 16 + i, cx + 1 + legLen, 16 + i * 2 - legPhase * stride, appendageThickness);
+            if (Mathf.Abs(y - thoraxCy) <= 0) continue;
+            bp.Set("body", pinchX, y, 0);
+            bp.Set("body", pinchX + 1, y, 0);
         }
 
-        var antLen = Mathf.RoundToInt(5 * profile.antennaLengthScale);
-        DrawThickLine(bp, "body", cx - 10, 15, cx - 10 - antLen, 12 + legPhase, appendageThickness);
-        DrawThickLine(bp, "body", cx - 10, 17, cx - 10 - antLen, 20 - legPhase, appendageThickness);
+        const int appendageThickness = 2;
+        var legLen = Mathf.Max(3, Mathf.RoundToInt(5 * profile.legLengthScale));
+        DrawThickLine(bp, "body", thoraxCx + 1, thoraxCy - 1, thoraxCx + legLen, thoraxCy - (3 + stride) + legPhase, appendageThickness); // front upper
+        DrawThickLine(bp, "body", thoraxCx + 1, thoraxCy + 1, thoraxCx + legLen, thoraxCy + (3 + stride) - legPhase, appendageThickness); // front lower
+        DrawThickLine(bp, "body", thoraxCx, thoraxCy - 1, thoraxCx + (legLen - 1), thoraxCy - 1 + legPhase, appendageThickness); // mid upper
+        DrawThickLine(bp, "body", thoraxCx, thoraxCy + 1, thoraxCx + (legLen - 1), thoraxCy + 1 - legPhase, appendageThickness); // mid lower
+        DrawThickLine(bp, "body", thoraxCx - 1, thoraxCy + 1, thoraxCx - legLen, thoraxCy + 3 + legPhase, appendageThickness); // rear lower
+        DrawThickLine(bp, "body", thoraxCx - 1, thoraxCy - 1, thoraxCx - legLen, thoraxCy - 3 - legPhase, appendageThickness); // rear upper
+
+        var antLen = Mathf.Max(2, Mathf.RoundToInt(4 * profile.antennaLengthScale));
+        var antennaStartX = headCx + Mathf.Max(1, head - 1);
+        DrawThickLine(bp, "body", antennaStartX, thoraxCy - 2, antennaStartX + antLen, thoraxCy - 5 + legPhase, appendageThickness);
+        DrawThickLine(bp, "body", antennaStartX, thoraxCy + 1, antennaStartX + antLen, thoraxCy + 4 - legPhase, appendageThickness);
 
         if (req.role == "soldier")
         {
-            var mand = Mathf.RoundToInt(3 * profile.soldierMandibleMultiplier);
-            DrawThickLine(bp, "body", cx - 12, 15, cx - 12 - mand, 14, appendageThickness);
-            DrawThickLine(bp, "body", cx - 12, 17, cx - 12 - mand, 18, appendageThickness);
+            var mand = Mathf.Max(2, Mathf.RoundToInt(3 * profile.soldierMandibleMultiplier));
+            DrawThickLine(bp, "body", headCx + head, thoraxCy - 1, headCx + head + mand, thoraxCy - 2, appendageThickness);
+            DrawThickLine(bp, "body", headCx + head, thoraxCy + 1, headCx + head + mand, thoraxCy + 2, appendageThickness);
         }
 
-        for (var x = cx + 6; x <= cx + 11; x++)
+        // Abdomen-only curved stripe mask band, constrained to rear/mid abdomen.
+        var bandHalfHeight = 1;
+        for (var y = thoraxCy - abdomenRy; y <= thoraxCy + abdomenRy; y++)
         {
-            bp.Set("stripe", x, 15, 1);
-            bp.Set("stripe", x, 16, 1);
-            bp.Set("stripe", x, 17, 1);
+            for (var x = abdomenCx - abdomen; x <= abdomenCx + abdomen; x++)
+            {
+                if (!IsInsideEllipse(x, y, abdomenCx, thoraxCy, abdomen, abdomenRy))
+                {
+                    continue;
+                }
+
+                if (Mathf.Abs(y - thoraxCy) > bandHalfHeight)
+                {
+                    continue;
+                }
+
+                if (x > abdomenCx)
+                {
+                    continue;
+                }
+
+                bp.Set("stripe", x, y, 1);
+            }
         }
+    }
+
+    private static bool IsInsideEllipse(int x, int y, int cx, int cy, int rx, int ry)
+    {
+        var nx = (x - cx) / (float)Mathf.Max(1, rx);
+        var ny = (y - cy) / (float)Mathf.Max(1, ry);
+        return nx * nx + ny * ny <= 1f;
     }
 
     private static void Rect(PixelBlueprint2D bp, string layer, int x, int y, int w, int h)

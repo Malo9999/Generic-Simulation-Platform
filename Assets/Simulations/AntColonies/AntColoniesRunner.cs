@@ -26,6 +26,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private float halfHeight = 32f;
 
     private static Sprite debugFallbackSprite;
+    private bool hasLoggedAssignedSpriteIds;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -90,6 +91,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     {
         Shutdown();
         nextEntityId = 0;
+        hasLoggedAssignedSpriteIds = false;
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
@@ -131,8 +133,9 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             var maskObject = new GameObject("Mask");
             maskObject.transform.SetParent(ant.transform, false);
             var maskRenderer = maskObject.AddComponent<SpriteRenderer>();
-            maskRenderer.sortingOrder = 1;
-            maskRenderer.color = GetRoleColor(roles[i], identity.teamId);
+            maskRenderer.sortingOrder = baseRenderer.sortingOrder + 1;
+            var colonyColor = GetRoleColor(roles[i], identity.teamId);
+            maskRenderer.color = new Color(colonyColor.r, colonyColor.g, colonyColor.b, 0.75f);
 
             var startX = RngService.Global.Range(-halfWidth, halfWidth);
             var startY = RngService.Global.Range(-halfHeight, halfHeight);
@@ -182,7 +185,14 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         antBaseRenderers[index].color = Color.white;
 
         antMaskRenderers[index].sprite = ContentPackService.TryGetSprite(maskId, out var maskSprite) ? maskSprite : null;
-        antMaskRenderers[index].color = GetRoleColor(role, identities[index].teamId);
+        var colonyColor = GetRoleColor(role, identities[index].teamId);
+        antMaskRenderers[index].color = new Color(colonyColor.r, colonyColor.g, colonyColor.b, 0.75f);
+
+        if (!hasLoggedAssignedSpriteIds && index == 0)
+        {
+            hasLoggedAssignedSpriteIds = true;
+            Debug.Log($"{nameof(AntColoniesRunner)} sprite ids base={baseId}, mask={maskId}");
+        }
     }
 
     private static string ResolveState(float speed)
