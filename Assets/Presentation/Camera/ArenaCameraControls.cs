@@ -192,5 +192,22 @@ public class ArenaCameraControls : MonoBehaviour
     {
         _dragging = false;
         _vel = Vector3.zero;
+        _dragStartRigPos = _desiredPos;
+    }
+
+    public void TeleportToWorldPosition(Vector3 worldPosition)
+    {
+        ResolveReferences();
+
+        Vector3 target = worldPosition;
+        if (policy != null)
+        {
+            target = policy.ClampPosition(target, out _);
+        }
+
+        StopDragging();
+        _desiredPos = target;
+        if (_rig != null)
+            _rig.position = target;
     }
 }

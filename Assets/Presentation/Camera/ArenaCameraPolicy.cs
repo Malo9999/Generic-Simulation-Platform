@@ -34,6 +34,8 @@ public class ArenaCameraPolicy : MonoBehaviour
     [Header("Debug")]
     public bool logAutoWire = false;
     public bool logZoomChanges = false;
+    public bool logClampDiagnostics = false;
+    public bool drawClampGizmos = false;
 
     private bool _warnedMissingPixelPerfect;
 
@@ -52,22 +54,13 @@ public class ArenaCameraPolicy : MonoBehaviour
         if (targetCamera == null) return;
 
         Vector3 p = transform.position;
+        bool wasClamped;
+        p = ClampPosition(p, out wasClamped);
 
-        GetWorldMinMax(out float minX, out float minY, out float maxX, out float maxY);
-
-        if (clampToBounds)
+        if (logClampDiagnostics)
         {
-            float halfH = targetCamera.orthographicSize;
-            float halfW = halfH * targetCamera.aspect;
-
-            float worldW = maxX - minX;
-            float worldH = maxY - minY;
-
-            if (halfW * 2f >= worldW) p.x = (minX + maxX) * 0.5f;
-            else p.x = Mathf.Clamp(p.x, minX + halfW, maxX - halfW);
-
-            if (halfH * 2f >= worldH) p.y = (minY + maxY) * 0.5f;
-            else p.y = Mathf.Clamp(p.y, minY + halfH, maxY - halfH);
+            GetClampExtents(out float minX, out float maxX, out float minY, out float maxY);
+            UnityEngine.Debug.Log($"[GSP] Camera clamp pos=({p.x:F2},{p.y:F2}) x:[{minX:F2}..{maxX:F2}] y:[{minY:F2}..{maxY:F2}] clamped={wasClamped}");
         }
 
         if (snapRigToPixelGrid)
@@ -81,6 +74,65 @@ public class ArenaCameraPolicy : MonoBehaviour
         }
 
         transform.position = p;
+    }
+
+    public Vector3 ClampPosition(Vector3 candidate, out bool wasClamped)
+    {
+        wasClamped = false;
+        if (targetCamera == null || !clampToBounds)
+            return candidate;
+
+        Vector3 clamped = candidate;
+        GetClampExtents(out float minX, out float maxX, out float minY, out float maxY);
+
+        float origX = clamped.x;
+        float origY = clamped.y;
+
+        clamped.x = minX > maxX ? GetWorldBounds().center.x : Mathf.Clamp(clamped.x, minX, maxX);
+        clamped.y = minY > maxY ? GetWorldBounds().center.y : Mathf.Clamp(clamped.y, minY, maxY);
+        wasClamped = !Mathf.Approximately(origX, clamped.x) || !Mathf.Approximately(origY, clamped.y);
+        return clamped;
+    }
+
+    public Bounds GetWorldBounds()
+    {
+        GetWorldMinMax(out float minX, out float minY, out float maxX, out float maxY);
+        Vector3 min = new Vector3(minX, minY, 0f);
+        Vector3 max = new Vector3(maxX, maxY, 0f);
+        Bounds b = new Bounds();
+        b.SetMinMax(min, max);
+        return b;
+    }
+
+    public void GetClampExtents(out float minX, out float maxX, out float minY, out float maxY)
+    {
+        GetWorldMinMax(out float worldMinX, out float worldMinY, out float worldMaxX, out float worldMaxY);
+
+        float halfH = targetCamera != null ? targetCamera.orthographicSize : 0f;
+        float halfW = halfH * (targetCamera != null ? targetCamera.aspect : 1f);
+
+        minX = worldMinX + halfW;
+        maxX = worldMaxX - halfW;
+        minY = worldMinY + halfH;
+        maxY = worldMaxY - halfH;
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!drawClampGizmos) return;
+
+        AutoWire();
+        var worldBounds = GetWorldBounds();
+        Gizmos.color = Color.yellow;
+        Gizmos.DrawWireCube(worldBounds.center, new Vector3(worldBounds.size.x, worldBounds.size.y, 0f));
+
+        if (targetCamera == null) return;
+        float halfH = targetCamera.orthographicSize;
+        float halfW = halfH * targetCamera.aspect;
+        Vector3 camCenter = transform.position;
+
+        Gizmos.color = Color.cyan;
+        Gizmos.DrawWireCube(camCenter, new Vector3(halfW * 2f, halfH * 2f, 0f));
     }
 
     public void StepZoom(int delta)
