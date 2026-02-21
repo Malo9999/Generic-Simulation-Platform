@@ -17,6 +17,8 @@ public static class ArenaBuilder
             return;
         }
 
+        ClearExistingArenaRoots(simulationRoot);
+
         var world = config.world ?? new WorldConfig();
         var width = Mathf.Max(4f, world.arenaWidth);
         var height = Mathf.Max(4f, world.arenaHeight);
@@ -35,6 +37,45 @@ public static class ArenaBuilder
 
         var layout = arenaRoot.AddComponent<ArenaLayout>();
         layout.SetData(halfWidth, halfHeight, obstacles);
+
+        ArenaDecorBuilder.EnsureDecorRoot(arenaRoot.transform);
+        ArenaDecorBuilder.BuildDecor(arenaRoot.transform, config, ResolveSimId(config));
+    }
+
+    private static void ClearExistingArenaRoots(Transform simulationRoot)
+    {
+        for (var i = simulationRoot.childCount - 1; i >= 0; i--)
+        {
+            var child = simulationRoot.GetChild(i);
+            if (!string.Equals(child.name, "ArenaRoot", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(child.gameObject);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(child.gameObject);
+            }
+        }
+    }
+
+    private static string ResolveSimId(ScenarioConfig config)
+    {
+        if (!string.IsNullOrWhiteSpace(config.activeSimulation))
+        {
+            return config.activeSimulation;
+        }
+
+        if (!string.IsNullOrWhiteSpace(config.simulationId))
+        {
+            return config.simulationId;
+        }
+
+        return config.scenarioName;
     }
 
     private static void BuildBackground(Transform parent, float width, float height)
