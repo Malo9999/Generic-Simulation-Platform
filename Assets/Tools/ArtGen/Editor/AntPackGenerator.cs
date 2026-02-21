@@ -6,13 +6,6 @@ using UnityEditor;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
 
-public enum AntPalettePreset
-{
-    Classic,
-    Desert,
-    Twilight
-}
-
 public static class AntPackGenerator
 {
     public const string DefaultBaseFolder = "Assets/Presentation/Packs/Ants";
