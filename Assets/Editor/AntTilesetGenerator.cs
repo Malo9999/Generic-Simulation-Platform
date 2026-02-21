@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
@@ -127,7 +128,6 @@ public static class AntTilesetGenerator
         var spriteEditorDataProvider = dataProviderFactories.GetSpriteEditorDataProviderFromObject(importer);
         spriteEditorDataProvider.InitSpriteEditorDataProvider();
 
-        var spriteRectDataProvider = spriteEditorDataProvider.GetDataProvider<ISpriteRectDataProvider>();
         var spriteRects = new List<SpriteRect>(tileNames.Count);
         for (int index = 0; index < tileNames.Count; index++)
         {
@@ -146,9 +146,36 @@ public static class AntTilesetGenerator
             spriteRects.Add(spriteRect);
         }
 
-        spriteRectDataProvider.SetSpriteRects(spriteRects.ToArray());
+        var existingSpriteRects = spriteEditorDataProvider.GetSpriteRects();
+        if (existingSpriteRects is { Length: > 0 })
+        {
+            var existingByName = existingSpriteRects.ToDictionary(sr => sr.name, sr => sr);
+            for (int i = 0; i < spriteRects.Count; i++)
+            {
+                if (existingByName.TryGetValue(spriteRects[i].name, out var existing))
+                {
+                    var rect = spriteRects[i];
+                    rect.spriteID = existing.spriteID;
+                    spriteRects[i] = rect;
+                }
+            }
+        }
+
+        spriteEditorDataProvider.SetSpriteRects(spriteRects.ToArray());
+
+        var nameFileIdDataProvider = spriteEditorDataProvider.GetDataProvider<ISpriteNameFileIdDataProvider>();
+        if (nameFileIdDataProvider != null)
+        {
+            nameFileIdDataProvider.SetNameFileIdPairs(
+                spriteRects.Select(spriteRect => new SpriteNameFileIdPair(spriteRect.name, spriteRect.spriteID)).ToList());
+        }
+
         spriteEditorDataProvider.Apply();
-        importer.SaveAndReimport();
+
+        if (spriteEditorDataProvider.targetObject is AssetImporter targetImporter)
+        {
+            targetImporter.SaveAndReimport();
+        }
     }
 
     private static void CreateOrUpdateIndexMap()
