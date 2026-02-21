@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f8f5a23cecbc8f74a996c1b7abe9c0d8, type: 3}
+  m_Name: AntSpeciesLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::AntSpeciesLibrary
+  profiles:
+  - speciesId: lasius_niger_like
+    displayName: Lasius niger-like
+    baseColorId: black
+    headScale: 0.9
+    thoraxScale: 0.9
+    abdomenScale: 0.95
+    legLengthScale: 1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1.2
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+  - speciesId: camponotus_like
+    displayName: Camponotus-like
+    baseColorId: brown
+    headScale: 1.15
+    thoraxScale: 1.1
+    abdomenScale: 1.2
+    legLengthScale: 1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+  - speciesId: solenopsis_like
+    displayName: Solenopsis-like
+    baseColorId: red
+    headScale: 1
+    thoraxScale: 0.95
+    abdomenScale: 0.9
+    legLengthScale: 0.9
+    antennaLengthScale: 1.1
+    petiolePinchStrength: 1.3
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+  - speciesId: formica_like
+    displayName: Formica-like
+    baseColorId: yellow
+    headScale: 1
+    thoraxScale: 1
+    abdomenScale: 1.3
+    legLengthScale: 1.1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3

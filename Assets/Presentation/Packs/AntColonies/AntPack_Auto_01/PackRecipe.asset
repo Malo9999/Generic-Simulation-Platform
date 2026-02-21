@@ -1,0 +1,105 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d152f503eb139846bff9a0b3912a357, type: 3}
+  m_Name: PackRecipe
+  m_EditorClassIdentifier: Assembly-CSharp::PackRecipe
+  simulationId: AntColonies
+  packId: AntPack_Auto_01
+  seed: 12345
+  outputFolder: Assets/Presentation/Packs/AntColonies/AntPack_Auto_01
+  tileSize: 32
+  agentSpriteSize: 64
+  environmentId: env.ant.v1
+  entities:
+  - entityId: ant
+    archetypeId: archetype.ant
+    speciesCount: 3
+    roles:
+    - queen
+    - worker
+    - soldier
+    lifeStages:
+    - egg
+    - larva
+    - pupa
+    - adult
+    states:
+    - idle
+    - walk
+    - run
+    - work
+    - eat
+    - reproduce
+    - fight
+    - defend
+    - hurt
+    - death
+    animationPolicy:
+      idleFrames: 2
+      walkFrames: 4
+      runFrames: 4
+      defaultFps: 8
+  - entityId: spider
+    archetypeId: archetype.arachnid
+    speciesCount: 1
+    roles:
+    - adult
+    lifeStages:
+    - adult
+    states:
+    - idle
+    - walk
+    - run
+    - fight
+    - hurt
+    - death
+    animationPolicy:
+      idleFrames: 2
+      walkFrames: 4
+      runFrames: 4
+      defaultFps: 8
+  - entityId: beetle
+    archetypeId: archetype.beetle
+    speciesCount: 1
+    roles:
+    - adult
+    lifeStages:
+    - adult
+    states:
+    - idle
+    - walk
+    - hurt
+    - death
+    animationPolicy:
+      idleFrames: 2
+      walkFrames: 2
+      runFrames: 2
+      defaultFps: 8
+  props:
+  - propId: nest_entrance
+    importance: hero
+  - propId: food_pile_small
+    importance: hero
+  - propId: food_pile_med
+    importance: hero
+  - propId: food_pile_large
+    importance: hero
+  - propId: egg_cluster
+    importance: hero
+  - propId: foliage_scatter
+    importance: background
+  - propId: rock_scatter
+    importance: background
+  generationPolicy:
+    generateBlueprints: 1
+    compileSpritesheets: 1
+    exportCompatibilityAntContentPack: 1
