@@ -8,8 +8,8 @@ public class MinimapClickToPan : MonoBehaviour, IPointerClickHandler, IDragHandl
     public ArenaCameraPolicy cameraPolicy;
     public ArenaCameraControls cameraControls;
 
-    // Default guess for a 64x64 arena centered at (0,0): -32..32
-    // If your arena is 0..64 instead, change to new Rect(0,0,64,64)
+    // Fallback only if no ArenaCameraPolicy exists in scene.
+    // Keep this aligned to your arena if you intentionally run without camera policy.
     public Rect worldBounds = new Rect(-32, -32, 64, 64);
 
     RectTransform _rt;
@@ -21,6 +21,8 @@ public class MinimapClickToPan : MonoBehaviour, IPointerClickHandler, IDragHandl
         if (mainCamera == null) mainCamera = Camera.main;
         if (cameraPolicy == null && mainCamera != null)
             cameraPolicy = mainCamera.GetComponentInParent<ArenaCameraPolicy>();
+        if (cameraPolicy == null)
+            cameraPolicy = FindFirstObjectByType<ArenaCameraPolicy>();
         if (cameraControls == null && cameraPolicy != null)
             cameraControls = cameraPolicy.GetComponent<ArenaCameraControls>();
     }
