@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -13,6 +14,7 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
     private bool overwrite;
     private readonly Dictionary<string, int> speciesOverrides = new();
     private string currentRecipePath;
+    private Vector2 referencePlanScroll;
 
     [MenuItem("GSP/Art/New Simulation Pack…")]
     public static void Open() => GetWindow<NewSimulationPackWizardWindow>("New Simulation Pack");
@@ -59,6 +61,8 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
             }
         }
 
+        DrawReferencePlanTable();
+
         if (GUILayout.Button("2) Create Reference Folder Structure"))
         {
             var recipe = GetOrCreateRecipe();
@@ -100,6 +104,93 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
                 Debug.Log(report.Summary);
             }
         }
+    }
+
+    private void DrawReferencePlanTable()
+    {
+        var recipe = AssetDatabase.LoadAssetAtPath<PackRecipe>(BuildRecipePath());
+        if (recipe == null)
+        {
+            EditorGUILayout.HelpBox("Create or update recipe to preview the reference asset plan.", MessageType.Info);
+            return;
+        }
+
+        EditorGUILayout.Space(8f);
+        EditorGUILayout.LabelField("Reference Asset Plan", EditorStyles.boldLabel);
+        using var scroll = new EditorGUILayout.ScrollViewScope(referencePlanScroll, GUILayout.MaxHeight(220f));
+        referencePlanScroll = scroll.scrollPosition;
+
+        for (var i = 0; i < recipe.referenceAssets.Count; i++)
+        {
+            var item = recipe.referenceAssets[i];
+            if (item == null) continue;
+
+            using (new EditorGUILayout.VerticalScope("box"))
+            {
+                EditorGUILayout.BeginHorizontal();
+                item.assetId = EditorGUILayout.TextField("assetId", item.assetId);
+                item.minImages = Mathf.Max(1, EditorGUILayout.IntField("minImages", item.minImages));
+                item.variantCount = Mathf.Max(1, EditorGUILayout.IntField("variants", item.variantCount));
+                EditorGUILayout.EndHorizontal();
+
+                EditorGUILayout.BeginHorizontal();
+                item.entityId = EditorGUILayout.TextField("entityId", item.entityId);
+                item.mappedSpeciesId = EditorGUILayout.TextField("mappedSpeciesId", item.mappedSpeciesId);
+                item.generationMode = (PackRecipe.GenerationMode)EditorGUILayout.EnumPopup("mode", item.generationMode);
+                EditorGUILayout.EndHorizontal();
+
+                var imagesFolder = GetAssetImageFolder(recipe.simulationId, item.assetId);
+                var foundCount = CountReferenceImages(imagesFolder);
+                EditorGUILayout.LabelField($"foundCount: {foundCount}");
+
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Create folders"))
+                {
+                    ReferenceInboxScaffolder.EnsureAssetStructure(recipe.simulationId, item.assetId, item.minImages);
+                }
+
+                if (GUILayout.Button("Open folder") && Directory.Exists(imagesFolder))
+                {
+                    EditorUtility.RevealInFinder(imagesFolder);
+                }
+
+                if (GUILayout.Button("Remove row"))
+                {
+                    recipe.referenceAssets.RemoveAt(i);
+                    EditorUtility.SetDirty(recipe);
+                    AssetDatabase.SaveAssets();
+                    GUIUtility.ExitGUI();
+                }
+
+                EditorGUILayout.EndHorizontal();
+            }
+        }
+
+        if (GUILayout.Button("Add row"))
+        {
+            recipe.referenceAssets.Add(new PackRecipe.ReferenceAssetNeed { assetId = "NewAsset", minImages = 1 });
+        }
+
+        EditorUtility.SetDirty(recipe);
+    }
+
+    private static string GetAssetImageFolder(string simulationId, string assetId)
+    {
+        return Path.Combine(ReferenceInboxScaffolder.ProjectRoot(), "_References", simulationId, assetId ?? string.Empty, "Images");
+    }
+
+    private static int CountReferenceImages(string imagesFolder)
+    {
+        if (!Directory.Exists(imagesFolder)) return 0;
+        var files = Directory.GetFiles(imagesFolder);
+        var count = 0;
+        foreach (var file in files)
+        {
+            var ext = Path.GetExtension(file).ToLowerInvariant();
+            if (ext is ".png" or ".jpg" or ".jpeg" or ".webp") count++;
+        }
+
+        return count;
     }
 
     private PackRecipe GetOrCreateRecipe()

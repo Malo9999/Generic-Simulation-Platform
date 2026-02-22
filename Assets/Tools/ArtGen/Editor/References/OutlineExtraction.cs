@@ -14,6 +14,7 @@ public static class OutlineExtraction
         public float threshold;
         public Vector2 centerOfMass;
         public Vector2 principalAxis;
+        public int fragmentCount;
         public List<string> warnings = new();
     }
 
@@ -26,9 +27,7 @@ public static class OutlineExtraction
     }
 
     public static string SelectBestTopdownImage(IEnumerable<string> files)
-    {
-        return files.OrderByDescending(path => GetArea(path)).ThenBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase).FirstOrDefault();
-    }
+        => files.OrderByDescending(GetArea).ThenBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
 
     public static bool TryExtract(string imagePath, out OutlineResult result)
     {
@@ -53,17 +52,27 @@ public static class OutlineExtraction
 
         mask = Morph(mask, width, height, true);
         mask = Morph(mask, width, height, false);
+        mask = KeepLargestComponent(mask, width, height);
         var bbox = ComputeBounds(mask, width, height);
         var report = new OutlineReport { coverage = Coverage(mask), bbox = bbox, threshold = threshold, warnings = new List<string>() };
         if (bbox.width < 2 || bbox.height < 2) { report.warnings.Add("Mask too small."); UnityEngine.Object.DestroyImmediate(tex); return false; }
         report.centerOfMass = ComputeCenter(mask, width, height);
         report.principalAxis = ComputePrincipalAxis(mask, width, height, report.centerOfMass);
-        var fragments = CountComponents(mask, width, height);
-        if (fragments > 3) report.warnings.Add($"Fragmented silhouette components={fragments}");
+        report.fragmentCount = CountComponents(mask, width, height);
+        if (report.fragmentCount > 1) report.warnings.Add($"Fragmented silhouette components={report.fragmentCount}");
 
         result = new OutlineResult { mask = mask, width = width, height = height, report = report };
         UnityEngine.Object.DestroyImmediate(tex);
         return true;
+    }
+
+    public static float Score(OutlineResult result)
+    {
+        if (result == null) return -1f;
+        var bboxArea = Mathf.Max(1, result.report.bbox.width * result.report.bbox.height);
+        var density = result.mask.Count(v => v) / (float)bboxArea;
+        var fragmentPenalty = Mathf.Max(0, result.report.fragmentCount - 1) * 0.2f;
+        return density * 2f + result.report.coverage - fragmentPenalty;
     }
 
     public static void SaveMaskPng(string outputPath, bool[] mask, int width, int height)
@@ -71,7 +80,7 @@ public static class OutlineExtraction
         Directory.CreateDirectory(Path.GetDirectoryName(outputPath) ?? string.Empty);
         var tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
         var px = new Color32[width * height];
-        for (var i = 0; i < px.Length; i++) px[i] = mask[i] ? new Color32(255,255,255,255) : new Color32(0,0,0,255);
+        for (var i = 0; i < px.Length; i++) px[i] = mask[i] ? new Color32(255,255,255,255) : new Color32(0,0,0,0);
         tex.SetPixels32(px);
         tex.Apply(false);
         File.WriteAllBytes(outputPath, tex.EncodeToPNG());
@@ -97,10 +106,7 @@ public static class OutlineExtraction
         var samples = new List<Color32>();
         var sizeX = Mathf.Min(10, w);
         var sizeY = Mathf.Min(10, h);
-        void Sample(int sx, int sy)
-        {
-            for (var y = 0; y < sizeY; y++) for (var x = 0; x < sizeX; x++) samples.Add(px[(sy + y) * w + (sx + x)]);
-        }
+        void Sample(int sx, int sy) { for (var y = 0; y < sizeY; y++) for (var x = 0; x < sizeX; x++) samples.Add(px[(sy + y) * w + (sx + x)]); }
         Sample(0, 0); Sample(w - sizeX, 0); Sample(0, h - sizeY); Sample(w - sizeX, h - sizeY);
         float r=0,g=0,b=0,a=0;
         foreach (var c in samples) { r += c.r; g += c.g; b += c.b; a += c.a; }
@@ -135,6 +141,40 @@ public static class OutlineExtraction
             dst[y*w+x]=on;
         }
         return dst;
+    }
+
+    private static bool[] KeepLargestComponent(bool[] mask, int w, int h)
+    {
+        var vis = new bool[mask.Length];
+        var q = new Queue<int>();
+        var largest = new List<int>();
+        for (var i = 0; i < mask.Length; i++)
+        {
+            if (!mask[i] || vis[i]) continue;
+            var comp = new List<int>();
+            vis[i] = true;
+            q.Enqueue(i);
+            while (q.Count > 0)
+            {
+                var idx = q.Dequeue();
+                comp.Add(idx);
+                var x = idx % w;
+                var y = idx / w;
+                for (var oy=-1;oy<=1;oy++) for (var ox=-1;ox<=1;ox++)
+                {
+                    if (ox==0&&oy==0) continue;
+                    var nx=x+ox; var ny=y+oy;
+                    if(nx<0||ny<0||nx>=w||ny>=h) continue;
+                    var ni=ny*w+nx;
+                    if(mask[ni]&&!vis[ni]) { vis[ni]=true; q.Enqueue(ni); }
+                }
+            }
+            if (comp.Count > largest.Count) largest = comp;
+        }
+
+        var outMask = new bool[mask.Length];
+        foreach (var idx in largest) outMask[idx] = true;
+        return outMask;
     }
 
     private static RectInt ComputeBounds(bool[] mask, int w, int h)
