@@ -53,7 +53,7 @@ public static class ReferenceInboxService
 
             if (asset.profileFolderMissing)
             {
-                manifest.warnings.Add("Missing required folder: profile");
+                manifest.warnings.Add("Missing required profile folder (accepted names: Images, profile).");
             }
 
             var assetReport = new NormalizeAssetReport
@@ -116,7 +116,7 @@ public static class ReferenceInboxService
             {
                 assetName = Path.GetFileName(assetDir),
                 assetFolderPath = assetDir,
-                profileFolderPath = Path.Combine(assetDir, "profile"),
+                profileFolderPath = ResolveProfileFolder(assetDir),
                 topFolderPath = ResolveTopFolder(assetDir),
                 profileFiles = new List<ImageFileInfo>(),
                 topFiles = new List<ImageFileInfo>(),
@@ -124,10 +124,10 @@ public static class ReferenceInboxService
                 warnings = new List<string>()
             };
 
-            if (!Directory.Exists(analysis.profileFolderPath))
+            if (analysis.profileFolderPath == null)
             {
                 analysis.profileFolderMissing = true;
-                analysis.warnings.Add($"Missing required folder: {analysis.profileFolderPath}");
+                analysis.warnings.Add("Missing required profile folder (accepted names: Images, profile).");
             }
             else
             {
@@ -140,7 +140,7 @@ public static class ReferenceInboxService
 
             if (analysis.topFolderPath == null)
             {
-                analysis.warnings.Add("Optional top folder not found (accepted names: topview, top).");
+                analysis.warnings.Add("Optional top folder not found (accepted names: Topview, topview, top).");
             }
             else
             {
@@ -162,8 +162,31 @@ public static class ReferenceInboxService
         return summary;
     }
 
+    private static string ResolveProfileFolder(string assetFolder)
+    {
+        string imagesPath = Path.Combine(assetFolder, "Images");
+        if (Directory.Exists(imagesPath))
+        {
+            return imagesPath;
+        }
+
+        string profilePath = Path.Combine(assetFolder, "profile");
+        if (Directory.Exists(profilePath))
+        {
+            return profilePath;
+        }
+
+        return null;
+    }
+
     private static string ResolveTopFolder(string assetFolder)
     {
+        string topviewAliasPath = Path.Combine(assetFolder, "Topview");
+        if (Directory.Exists(topviewAliasPath))
+        {
+            return topviewAliasPath;
+        }
+
         string topViewPath = Path.Combine(assetFolder, "topview");
         if (Directory.Exists(topViewPath))
         {
