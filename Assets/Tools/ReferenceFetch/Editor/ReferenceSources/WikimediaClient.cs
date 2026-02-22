@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json.Linq;
 
@@ -13,76 +15,54 @@ internal sealed class WikimediaClient
         "image/png",
         "image/webp",
     };
-    private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".jpg",
-        ".jpeg",
-        ".png",
-        ".webp",
-    };
-    private static readonly HashSet<string> BlockedExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".pdf", ".djvu", ".tif", ".tiff", ".svg", ".xcf", ".psd", ".webm", ".ogv",
-    };
+    private const string AllowedMediaType = "BITMAP";
 
     public WikimediaSearchResult Search(string query, int desiredCount, int minWidth, LicenseFilter licenseFilter)
     {
-        var url = $"{ApiUrl}?action=query&generator=search&gsrnamespace=6&gsrsearch={Uri.EscapeDataString(query)}&gsrlimit=50&prop=imageinfo&iiprop=url|size|mime|extmetadata&format=json";
-
-        using var client = new HttpClient();
-        client.DefaultRequestHeaders.Add("User-Agent", "GenericSimulationPlatformReferenceFetcher/1.0");
-        var response = client.GetStringAsync(url).GetAwaiter().GetResult();
-        var root = JObject.Parse(response);
-
-        var pages = root["query"]?["pages"] as JObject;
+        var searchTitles = SearchFileTitles(query, Math.Max(desiredCount * 4, desiredCount));
         var result = new WikimediaSearchResult();
-        if (pages == null)
+        if (searchTitles.Count == 0)
         {
             return result;
         }
 
-        foreach (var page in pages.Properties())
+        var imageInfos = LoadImageInfos(searchTitles, 1600);
+        foreach (var imageInfo in imageInfos)
         {
-            var imageInfo = page.Value["imageinfo"]?[0];
-            if (imageInfo == null)
-            {
-                continue;
-            }
-
             result.Stats.FoundRawCandidates++;
 
-            var fileUrl = imageInfo.Value<string>("url");
-            var pageUrl = page.Value.Value<string>("canonicalurl") ?? imageInfo.Value<string>("descriptionurl");
-            var mime = imageInfo.Value<string>("mime") ?? string.Empty;
-            var extension = GetExtension(fileUrl);
+            var fileUrl = imageInfo.ThumbUrl;
+            if (string.IsNullOrWhiteSpace(fileUrl))
+            {
+                fileUrl = imageInfo.Url;
+            }
+
+            var pageUrl = imageInfo.DescriptionUrl;
             if (string.IsNullOrWhiteSpace(fileUrl) || string.IsNullOrWhiteSpace(pageUrl))
             {
                 result.Stats.RejectedByFileType++;
                 continue;
             }
 
-            if (!IsAllowedFileType(mime, extension))
+            if (!IsAllowedFileType(imageInfo.Mime, imageInfo.MediaType))
             {
                 result.Stats.RejectedByFileType++;
                 continue;
             }
 
-            var width = imageInfo.Value<int?>("width") ?? 0;
-            var height = imageInfo.Value<int?>("height") ?? 0;
-            if (width < minWidth)
+            if (imageInfo.Width < minWidth)
             {
                 result.Stats.RejectedByResolution++;
                 continue;
             }
 
-            var ext = imageInfo["extmetadata"];
-            var license = MetadataValue(ext, "LicenseShortName");
-            var licenseUrl = MetadataValue(ext, "LicenseUrl");
-            var author = CleanupMetadata(MetadataValue(ext, "Artist"));
-            var attribution = CleanupMetadata(MetadataValue(ext, "Attribution"));
+            var license = MetadataValue(imageInfo.ExtMetadata, "LicenseShortName");
+            var licenseUrl = MetadataValue(imageInfo.ExtMetadata, "LicenseUrl");
+            var author = CleanupMetadata(MetadataValue(imageInfo.ExtMetadata, "Artist"));
+            var attribution = CleanupMetadata(MetadataValue(imageInfo.ExtMetadata, "Attribution"));
             if (string.IsNullOrWhiteSpace(attribution))
             {
-                attribution = CleanupMetadata(MetadataValue(ext, "Credit"));
+                attribution = CleanupMetadata(MetadataValue(imageInfo.ExtMetadata, "Credit"));
             }
 
             if (!licenseFilter.IsAllowed(license))
@@ -96,13 +76,13 @@ internal sealed class WikimediaClient
                 Source = "wikimedia",
                 PageUrl = pageUrl,
                 FileUrl = fileUrl,
-                Mime = mime,
-                FileExtension = extension,
+                Mime = imageInfo.Mime,
+                FileExtension = GetExtension(fileUrl),
                 License = string.IsNullOrWhiteSpace(licenseUrl) ? license : $"{license} ({licenseUrl})",
                 Author = author,
                 Attribution = attribution,
-                Width = width,
-                Height = height,
+                Width = imageInfo.Width,
+                Height = imageInfo.Height,
             });
             result.Stats.Accepted++;
 
@@ -115,14 +95,101 @@ internal sealed class WikimediaClient
         return result;
     }
 
-    private static bool IsAllowedFileType(string mime, string extension)
+    private static List<string> SearchFileTitles(string query, int limit)
     {
-        if (BlockedExtensions.Contains(extension))
+        var cappedLimit = Math.Clamp(limit, 1, 50);
+        var url = $"{ApiUrl}?action=query&list=search&srnamespace=6&srsearch={Uri.EscapeDataString(query)}&srlimit={cappedLimit}&format=json";
+
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("User-Agent", "GenericSimulationPlatformReferenceFetcher/1.0");
+        var response = client.GetStringAsync(url).GetAwaiter().GetResult();
+        var root = JObject.Parse(response);
+        var searchItems = root["query"]?["search"] as JArray;
+        if (searchItems == null)
+        {
+            return new List<string>();
+        }
+
+        var titles = new List<string>();
+        foreach (var item in searchItems)
+        {
+            var title = item.Value<string>("title");
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                titles.Add(title);
+            }
+        }
+
+        return titles;
+    }
+
+    private static List<WikiImageInfo> LoadImageInfos(IReadOnlyList<string> fileTitles, int urlWidth)
+    {
+        var results = new List<WikiImageInfo>();
+        if (fileTitles.Count == 0)
+        {
+            return results;
+        }
+
+        using var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("User-Agent", "GenericSimulationPlatformReferenceFetcher/1.0");
+
+        const int batchSize = 25;
+        for (var i = 0; i < fileTitles.Count; i += batchSize)
+        {
+            var chunk = fileTitles.Skip(i).Take(batchSize);
+            var titlesParam = Uri.EscapeDataString(string.Join("|", chunk));
+            var urlBuilder = new StringBuilder();
+            urlBuilder.Append($"{ApiUrl}?action=query&titles={titlesParam}&prop=imageinfo");
+            urlBuilder.Append("&iiprop=url|mime|size|mediatype|extmetadata");
+            if (urlWidth > 0)
+            {
+                urlBuilder.Append($"&iiurlwidth={urlWidth}");
+            }
+
+            urlBuilder.Append("&format=json");
+
+            var response = client.GetStringAsync(urlBuilder.ToString()).GetAwaiter().GetResult();
+            var root = JObject.Parse(response);
+            var pages = root["query"]?["pages"] as JObject;
+            if (pages == null)
+            {
+                continue;
+            }
+
+            foreach (var page in pages.Properties())
+            {
+                var imageInfo = page.Value["imageinfo"]?[0];
+                if (imageInfo == null)
+                {
+                    continue;
+                }
+
+                results.Add(new WikiImageInfo
+                {
+                    Url = imageInfo.Value<string>("url") ?? string.Empty,
+                    ThumbUrl = imageInfo.Value<string>("thumburl") ?? string.Empty,
+                    Mime = imageInfo.Value<string>("mime") ?? string.Empty,
+                    MediaType = imageInfo.Value<string>("mediatype") ?? string.Empty,
+                    Width = imageInfo.Value<int?>("width") ?? 0,
+                    Height = imageInfo.Value<int?>("height") ?? 0,
+                    DescriptionUrl = imageInfo.Value<string>("descriptionurl") ?? string.Empty,
+                    ExtMetadata = imageInfo["extmetadata"],
+                });
+            }
+        }
+
+        return results;
+    }
+
+    private static bool IsAllowedFileType(string mime, string mediaType)
+    {
+        if (!string.Equals(mediaType, AllowedMediaType, StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        return AllowedMimeTypes.Contains(mime) && AllowedExtensions.Contains(extension);
+        return AllowedMimeTypes.Contains(mime);
     }
 
     private static string GetExtension(string fileUrl)
@@ -149,5 +216,17 @@ internal sealed class WikimediaClient
 
         var noHtml = Regex.Replace(value, "<.*?>", string.Empty);
         return System.Net.WebUtility.HtmlDecode(noHtml).Trim();
+    }
+
+    private sealed class WikiImageInfo
+    {
+        public string Url;
+        public string ThumbUrl;
+        public string Mime;
+        public string MediaType;
+        public int Width;
+        public int Height;
+        public string DescriptionUrl;
+        public JToken ExtMetadata;
     }
 }

@@ -17,12 +17,21 @@ internal sealed class ReferenceFetchService
         ["CarpenterAnt"] = new[] { "carpenter ant", "Camponotus", "Camponotus pennsylvanicus", "black carpenter ant" },
         ["FireAnt"] = new[] { "fire ant", "Solenopsis invicta", "red imported fire ant" },
         ["PharaohAnt"] = new[] { "Pharaoh ant", "Monomorium pharaonis" },
+        ["LionMale"] = new[] { "male lion", "Panthera leo male", "lion male" },
+        ["LionFemale"] = new[] { "lioness", "Panthera leo female", "lion female" },
+        ["LionCub"] = new[] { "lion cub", "Panthera leo cub" },
     };
 
     public void Fetch(ReferenceFetchRequest request)
     {
         var simulationFolder = Path.Combine(ProjectRoot(), "_References", Sanitize(request.SimulationName));
         Directory.CreateDirectory(simulationFolder);
+        var fetchReport = new ReferenceFetchReport
+        {
+            SimulationName = request.SimulationName,
+            GeneratedAtUtc = DateTime.UtcNow.ToString("O"),
+            DryRun = request.DryRun,
+        };
 
         foreach (var asset in request.Assets)
         {
@@ -36,12 +45,15 @@ internal sealed class ReferenceFetchService
             Directory.CreateDirectory(assetFolder);
 
             var metadataPath = Path.Combine(assetFolder, "meta.jsonl");
+            EnsureFileExists(metadataPath);
             var knownHashes = LoadKnownHashes(metadataPath);
             var mergedStats = new ReferenceCandidateStats();
             var candidates = new List<ReferenceCandidate>();
             var seenFileUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var queryReports = new List<QueryAttemptReport>();
+            string successfulQuery = null;
 
-            foreach (var query in BuildQueries(request.SimulationName, assetName))
+            foreach (var query in ExpandQueries(assetName))
             {
                 var needed = request.ImagesPerAsset - candidates.Count;
                 if (needed <= 0)
@@ -51,6 +63,16 @@ internal sealed class ReferenceFetchService
 
                 var queryResult = wikimediaClient.Search(query, Math.Max(needed * 4, request.ImagesPerAsset), request.MinWidth, request.LicenseFilter);
                 mergedStats.Merge(queryResult.Stats);
+                queryReports.Add(new QueryAttemptReport
+                {
+                    Query = query,
+                    FoundRawCandidates = queryResult.Stats.FoundRawCandidates,
+                    RejectedByLicense = queryResult.Stats.RejectedByLicense,
+                    RejectedByFileType = queryResult.Stats.RejectedByFileType,
+                    RejectedByResolution = queryResult.Stats.RejectedByResolution,
+                    Accepted = queryResult.Stats.Accepted,
+                });
+
                 foreach (var candidate in queryResult.Candidates)
                 {
                     if (seenFileUrls.Add(candidate.FileUrl))
@@ -62,6 +84,11 @@ internal sealed class ReferenceFetchService
                     {
                         break;
                     }
+                }
+
+                if (queryResult.Candidates.Count > 0 && string.IsNullOrWhiteSpace(successfulQuery))
+                {
+                    successfulQuery = query;
                 }
 
                 if (candidates.Count >= request.ImagesPerAsset)
@@ -125,6 +152,7 @@ internal sealed class ReferenceFetchService
                 }
             }
 
+            LogQueryDebug(assetName, queryReports, successfulQuery, candidates);
             Debug.Log($"[ReferenceFetch] Asset '{assetName}' stats: foundRawCandidates={mergedStats.FoundRawCandidates}, rejectedByLicense={mergedStats.RejectedByLicense}, rejectedByFileType={mergedStats.RejectedByFileType}, rejectedByResolution={mergedStats.RejectedByResolution}, accepted={mergedStats.Accepted}");
 
             if (request.DryRun && candidates.Count > 0)
@@ -138,29 +166,75 @@ internal sealed class ReferenceFetchService
             }
 
             Debug.Log($"[ReferenceFetch] Asset '{assetName}' downloaded {downloaded} image(s) to {assetFolder}");
+
+            fetchReport.Assets.Add(new AssetFetchReport
+            {
+                AssetName = assetName,
+                SuccessfulQuery = successfulQuery ?? string.Empty,
+                Downloaded = downloaded,
+                QueryAttempts = queryReports,
+                Stats = mergedStats,
+            });
+        }
+
+        var fetchReportPath = Path.Combine(simulationFolder, "fetch_report.json");
+        File.WriteAllText(fetchReportPath, JsonConvert.SerializeObject(fetchReport, Formatting.Indented) + Environment.NewLine, Encoding.UTF8);
+
+        if (request.DryRun)
+        {
+            var dryRunPath = Path.Combine(simulationFolder, "dryrun_report.json");
+            File.WriteAllText(dryRunPath, JsonConvert.SerializeObject(fetchReport, Formatting.Indented) + Environment.NewLine, Encoding.UTF8);
         }
     }
 
-    private static IEnumerable<string> BuildQueries(string simulationName, string asset)
+    private static IEnumerable<string> ExpandQueries(string assetKey)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (QueryVariantsByAsset.TryGetValue(asset, out var mappedVariants))
+        if (QueryVariantsByAsset.TryGetValue(assetKey, out var mappedVariants))
         {
             foreach (var variant in mappedVariants)
             {
-                var query = $"{variant} {simulationName}".Trim();
-                if (seen.Add(query))
+                if (seen.Add(variant))
                 {
-                    yield return query;
+                    yield return variant;
                 }
             }
         }
 
-        var humanized = Regex.Replace(asset, "([a-z])([A-Z])", "$1 $2");
-        var fallbackQuery = $"{humanized} {simulationName}".Trim();
-        if (seen.Add(fallbackQuery))
+        var humanized = Regex.Replace(assetKey, "([a-z])([A-Z])", "$1 $2");
+        if (!string.Equals(humanized, assetKey, StringComparison.Ordinal) && seen.Add(humanized))
         {
-            yield return fallbackQuery;
+            yield return humanized;
+        }
+
+        if (seen.Add(assetKey))
+        {
+            yield return assetKey;
+        }
+    }
+
+    private static void EnsureFileExists(string path)
+    {
+        if (!File.Exists(path))
+        {
+            File.WriteAllText(path, string.Empty, Encoding.UTF8);
+        }
+    }
+
+    private static void LogQueryDebug(string assetName, List<QueryAttemptReport> queryReports, string successfulQuery, List<ReferenceCandidate> candidates)
+    {
+        var winner = string.IsNullOrWhiteSpace(successfulQuery) ? "none" : successfulQuery;
+        Debug.Log($"[ReferenceFetch][Debug] Asset '{assetName}' successfulQuery={winner}");
+        foreach (var report in queryReports)
+        {
+            Debug.Log($"[ReferenceFetch][Debug] Asset '{assetName}' query='{report.Query}' raw={report.FoundRawCandidates} rejectedByFileType={report.RejectedByFileType} rejectedByLicense={report.RejectedByLicense} rejectedByResolution={report.RejectedByResolution} accepted={report.Accepted}");
+        }
+
+        var previewCount = Math.Min(3, candidates.Count);
+        for (var i = 0; i < previewCount; i++)
+        {
+            var candidate = candidates[i];
+            Debug.Log($"[ReferenceFetch][Debug] Asset '{assetName}' candidate#{i + 1}: url={candidate.FileUrl} mime={candidate.Mime} width={candidate.Width} license={candidate.License}");
         }
     }
 
@@ -401,4 +475,58 @@ internal sealed class ReferenceMetadataRow
 
     [JsonProperty("sha256")]
     public string Sha256;
+}
+
+internal sealed class ReferenceFetchReport
+{
+    [JsonProperty("simulationName")]
+    public string SimulationName;
+
+    [JsonProperty("generatedAtUtc")]
+    public string GeneratedAtUtc;
+
+    [JsonProperty("dryRun")]
+    public bool DryRun;
+
+    [JsonProperty("assets")]
+    public readonly List<AssetFetchReport> Assets = new();
+}
+
+internal sealed class AssetFetchReport
+{
+    [JsonProperty("assetName")]
+    public string AssetName;
+
+    [JsonProperty("successfulQuery")]
+    public string SuccessfulQuery;
+
+    [JsonProperty("downloaded")]
+    public int Downloaded;
+
+    [JsonProperty("stats")]
+    public ReferenceCandidateStats Stats;
+
+    [JsonProperty("queryAttempts")]
+    public List<QueryAttemptReport> QueryAttempts;
+}
+
+internal sealed class QueryAttemptReport
+{
+    [JsonProperty("query")]
+    public string Query;
+
+    [JsonProperty("foundRawCandidates")]
+    public int FoundRawCandidates;
+
+    [JsonProperty("rejectedByLicense")]
+    public int RejectedByLicense;
+
+    [JsonProperty("rejectedByFileType")]
+    public int RejectedByFileType;
+
+    [JsonProperty("rejectedByResolution")]
+    public int RejectedByResolution;
+
+    [JsonProperty("accepted")]
+    public int Accepted;
 }
