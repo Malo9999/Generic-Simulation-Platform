@@ -15,7 +15,7 @@ public sealed class PixelBlueprintPainterWindow : EditorWindow
     private float zoom = 16f;
     private byte[] clipboard;
 
-    [MenuItem("Tools/Generic Simulation Platform/Art/Blueprint Painter…")]
+    [MenuItem("GSP/Art/Blueprint Painter…")]
     public static void OpenWindow()
     {
         var window = GetWindow<PixelBlueprintPainterWindow>("Blueprint Painter");

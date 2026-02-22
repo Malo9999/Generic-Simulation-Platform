@@ -1,3 +1,4 @@
+#if UNITY_EDITOR && GSP_TOOLING
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -8,8 +9,8 @@ using UnityEngine;
 
 public sealed class ManualAntPixelSheetImporterWindow : EditorWindow
 {
-    private const string MenuPath = "Tools/Generic Simulation Platform/Art/Import Manual Pixel Sheets…";
-    private const string ValidateMenuPath = "Tools/Generic Simulation Platform/Art/Validate Ant ContentPack";
+    private const string MenuPath = "GSP/Tooling/Art/Import Manual Pixel Sheets…";
+    private const string ValidateMenuPath = "GSP/Tooling/Art/Validate Ant ContentPack";
     private const string DefaultSourceFolder = "Assets/Presentation/ReferencePacks/AntColonies/Manual";
 
     private static readonly string[] SpeciesIds = { "fire_ant", "carpenter_ant", "pharaoh_ant" };
@@ -608,3 +609,4 @@ public sealed class ManualAntPixelSheetImporterWindow : EditorWindow
         return bestPack;
     }
 }
+#endif

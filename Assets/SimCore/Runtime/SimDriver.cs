@@ -136,13 +136,13 @@ public class SimDriver
 
         public void RecordTick(int tick, ITickableSimulationRunner tickableRunner)
         {
-            if (tickableRunner is IRecordable recordable && tick % snapshotEveryNTicks == 0)
+            if (tickableRunner is IStateSnapshotProvider snapshotProvider && tick % snapshotEveryNTicks == 0)
             {
                 var snapshotLine = JsonConvert.SerializeObject(new TickSnapshot
                 {
                     tick = tick,
                     timestamp = DateTime.UtcNow.ToString("O"),
-                    state = recordable.CaptureState()
+                    state = snapshotProvider.CaptureState()
                 });
                 AppendLine(snapshotPath, snapshotLine);
             }

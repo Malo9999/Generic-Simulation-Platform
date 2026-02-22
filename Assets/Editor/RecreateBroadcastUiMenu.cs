@@ -22,7 +22,7 @@ public static class RecreateBroadcastUiMenu
     private const float HudPanelHeight = 110f;
     private const float MinimapSize = 240f;
 
-    [MenuItem("Tools/GSP/Recreate Broadcast UI (Minimap + HUD)")]
+    [MenuItem("GSP/Dev/Recreate Broadcast UI (Minimap + HUD)")]
     public static void RecreateBroadcastUi()
     {
         var rt = LoadMinimapRenderTexture();
