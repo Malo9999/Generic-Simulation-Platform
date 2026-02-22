@@ -9,8 +9,10 @@ using UnityEditor;
 [CreateAssetMenu(fileName = "SimulationCatalog", menuName = "GSP/Simulation Catalog")]
 public class SimulationCatalog : ScriptableObject
 {
+    [SerializeField] private ContentPack globalDefaultContentPack;
     [SerializeField] private List<SimulationCatalogEntry> simulations = new();
 
+    public ContentPack GlobalDefaultContentPack => globalDefaultContentPack;
     public IReadOnlyList<SimulationCatalogEntry> Simulations => simulations;
 
     public SimulationCatalogEntry FindById(string simulationId)
@@ -37,7 +39,19 @@ public class SimulationCatalog : ScriptableObject
     public void AutoDiscoverSimulations()
     {
         const string simulationsRoot = "Assets/Simulations";
-        simulations.Clear();
+        var previousEntries = new Dictionary<string, SimulationCatalogEntry>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < simulations.Count; i++)
+        {
+            var existing = simulations[i];
+            if (existing == null || string.IsNullOrWhiteSpace(existing.simulationId))
+            {
+                continue;
+            }
+
+            previousEntries[existing.simulationId] = existing;
+        }
+
+        var rebuiltEntries = new List<SimulationCatalogEntry>();
 
         if (!AssetDatabase.IsValidFolder(simulationsRoot))
         {
@@ -59,18 +73,44 @@ public class SimulationCatalog : ScriptableObject
             var prefabPath = $"{simulationsRoot}/{simulationId}/{simulationId}Runner.prefab";
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
 
-            simulations.Add(new SimulationCatalogEntry
+            previousEntries.TryGetValue(simulationId, out var existing);
+
+            var preservedPreset = existing != null && existing.defaultPreset != null ? existing.defaultPreset : preset;
+            var preservedContentPack = existing != null ? existing.defaultContentPack : null;
+
+            rebuiltEntries.Add(new SimulationCatalogEntry
             {
                 simulationId = simulationId,
                 runnerPrefab = prefab,
-                defaultPreset = preset
+                defaultPreset = preservedPreset,
+                defaultContentPack = preservedContentPack
             });
         }
 
-        simulations.Sort((a, b) => string.Compare(a?.simulationId, b?.simulationId, StringComparison.OrdinalIgnoreCase));
+        rebuiltEntries.Sort((a, b) => string.Compare(a?.simulationId, b?.simulationId, StringComparison.OrdinalIgnoreCase));
+        simulations = rebuiltEntries;
+        AssignGlobalDefaultContentPackIfMissing();
         EditorUtility.SetDirty(this);
         AssetDatabase.SaveAssets();
         Debug.Log($"SimulationCatalog: Discovered {simulations.Count} simulations.");
+    }
+
+    public void AssignGlobalDefaultContentPackIfMissing()
+    {
+        if (globalDefaultContentPack != null)
+        {
+            return;
+        }
+
+        const string defaultPlaceholderPackPath = "Assets/_Bootstrap/DefaultPlaceholderContentPack.asset";
+        var fallback = AssetDatabase.LoadAssetAtPath<ContentPack>(defaultPlaceholderPackPath);
+        if (fallback == null)
+        {
+            return;
+        }
+
+        globalDefaultContentPack = fallback;
+        EditorUtility.SetDirty(this);
     }
 #endif
 }

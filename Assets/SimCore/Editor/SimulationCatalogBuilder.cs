@@ -47,6 +47,7 @@ public static class SimulationCatalogBuilder
         }
 
         catalog.AutoDiscoverSimulations();
+        catalog.AssignGlobalDefaultContentPackIfMissing();
         EditorUtility.SetDirty(catalog);
         EditorUtility.SetDirty(options);
         AssetDatabase.SaveAssets();

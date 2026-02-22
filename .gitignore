@@ -90,3 +90,10 @@ pip-wheel-metadata/
 # Local reference photos (editor fetch tool)
 _References/
 _References.meta
+
+# Generated simulation art packs
+Assets/Presentation/Packs/**/Generated/
+Assets/Presentation/Packs/**/Debug/
+Assets/Presentation/Packs/**/Blueprints/Generated/
+Assets/Presentation/Packs/**/ContentPack.asset
+Assets/Presentation/Packs/**/ContentPack.asset.meta

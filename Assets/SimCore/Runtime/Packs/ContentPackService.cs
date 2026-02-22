@@ -28,9 +28,7 @@ public static class ContentPackService
     {
         if (Current == null)
         {
-            LogOnce("NO_PACK", $"[ContentPack] No content pack loaded; sprite lookup failed for id: {id}");
-            sprite = null;
-            return false;
+            return TryGetPlaceholderSprite(id, out sprite);
         }
 
         if (Current.TryGetSprite(id, out sprite))
@@ -49,6 +47,11 @@ public static class ContentPackService
         }
 
         if (TryGetWithSpeciesFallback(id, out sprite))
+        {
+            return true;
+        }
+
+        if (TryGetPlaceholderSprite(id, out sprite))
         {
             return true;
         }
@@ -154,6 +157,55 @@ public static class ContentPackService
         parts[2] = inferredSpecies;
         var alternateId = string.Join(":", parts);
         return Current.TryGetSprite(alternateId, out sprite);
+    }
+
+    private static bool TryGetPlaceholderSprite(string id, out Sprite sprite)
+    {
+        sprite = null;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return false;
+        }
+
+        var normalized = id.ToLowerInvariant();
+
+        if (normalized.Contains("agent"))
+        {
+            sprite = normalized.Contains("mask") || normalized.Contains("outline")
+                ? PrimitiveSpriteLibrary.CapsuleOutline()
+                : PrimitiveSpriteLibrary.CapsuleFill();
+            return true;
+        }
+
+        if (normalized.Contains("food") || normalized.Contains("target") || normalized.Contains("pickup") || normalized.Contains("ball"))
+        {
+            sprite = normalized.Contains("outline")
+                ? PrimitiveSpriteLibrary.CircleOutline()
+                : PrimitiveSpriteLibrary.CircleFill();
+            return true;
+        }
+
+        if (normalized.Contains("obstacle"))
+        {
+            sprite = normalized.Contains("outline")
+                ? PrimitiveSpriteLibrary.RoundedRectOutline()
+                : PrimitiveSpriteLibrary.RoundedRectFill();
+            return true;
+        }
+
+        if (normalized.Contains("goal") || normalized.Contains("finish") || normalized.Contains("marker") || normalized.Contains("decor") || normalized.Contains("background"))
+        {
+            sprite = PrimitiveSpriteLibrary.CircleOutline();
+            return true;
+        }
+
+        if (string.Equals(normalized, "agent_alt", StringComparison.Ordinal))
+        {
+            sprite = PrimitiveSpriteLibrary.CapsuleOutline();
+            return true;
+        }
+
+        return false;
     }
 
     private static void LogOnce(string key, string message)
