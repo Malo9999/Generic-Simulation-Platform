@@ -32,6 +32,32 @@ public class AntWorldRecipe
 
     public int hardDecorCap = 300;
 
+    public int spawnEveryNTicks = 30;
+    public int maxAntsPerNest = 80;
+    public int maxAntsGlobal = 400;
+
+    public float walkSpeed = 1.6f;
+    public float runSpeed = 2.4f;
+
+    public float foodSenseRadius = 2.2f;
+    public float pickupRadius = 1.1f;
+    public float depositRadius = 1.4f;
+
+    public float enemyNestAggroRadius = 1.6f;
+    public float antCollisionRadius = 0.35f;
+
+    public int fightDurationTicks = 60;
+    public float antDpsPerTick = 2.5f;
+    public float nestDpsPerTick = 1f;
+    public float ageDrainPerTick = 0.003f;
+
+    public int wanderTurnIntervalMinTicks = 20;
+    public int wanderTurnIntervalMaxTicks = 60;
+    public float wanderTurnRadians = 0.55f;
+
+    public float antMaxHp = 100f;
+    public float spawnOffsetRadius = 1.2f;
+
     public void Normalize()
     {
         nestCount = 5;
@@ -60,6 +86,32 @@ public class AntWorldRecipe
         baseGrassRatio = Mathf.Clamp01(baseGrassRatio);
         dirtPatches = Mathf.Clamp(dirtPatches, 0, 100);
         pathStrength = Mathf.Clamp01(pathStrength);
+
+        spawnEveryNTicks = Mathf.Max(1, spawnEveryNTicks);
+        maxAntsPerNest = Mathf.Clamp(maxAntsPerNest, 1, 500);
+        maxAntsGlobal = Mathf.Clamp(maxAntsGlobal, 1, 2000);
+
+        walkSpeed = Mathf.Max(0.1f, walkSpeed);
+        runSpeed = Mathf.Max(walkSpeed, runSpeed);
+
+        foodSenseRadius = Mathf.Max(0.1f, foodSenseRadius);
+        pickupRadius = Mathf.Max(0.05f, pickupRadius);
+        depositRadius = Mathf.Max(0.05f, depositRadius);
+
+        enemyNestAggroRadius = Mathf.Max(0.1f, enemyNestAggroRadius);
+        antCollisionRadius = Mathf.Max(0.05f, antCollisionRadius);
+
+        fightDurationTicks = Mathf.Max(1, fightDurationTicks);
+        antDpsPerTick = Mathf.Max(0f, antDpsPerTick);
+        nestDpsPerTick = Mathf.Max(0f, nestDpsPerTick);
+        ageDrainPerTick = Mathf.Max(0f, ageDrainPerTick);
+
+        wanderTurnIntervalMinTicks = Mathf.Max(1, wanderTurnIntervalMinTicks);
+        wanderTurnIntervalMaxTicks = Mathf.Max(wanderTurnIntervalMinTicks, wanderTurnIntervalMaxTicks);
+        wanderTurnRadians = Mathf.Clamp(wanderTurnRadians, 0.05f, 3.14159f);
+
+        antMaxHp = Mathf.Max(1f, antMaxHp);
+        spawnOffsetRadius = Mathf.Max(0.05f, spawnOffsetRadius);
     }
 }
 

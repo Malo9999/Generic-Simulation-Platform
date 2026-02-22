@@ -5,5 +5,23 @@
     "arenaHeight": 64,
     "walls": true,
     "obstacleDensity": 0.1
+  },
+  "antColonies": {
+    "worldRecipe": {
+      "spawnEveryNTicks": 30,
+      "maxAntsPerNest": 80,
+      "maxAntsGlobal": 400,
+      "walkSpeed": 1.6,
+      "runSpeed": 2.4,
+      "foodSenseRadius": 2.2,
+      "pickupRadius": 1.1,
+      "depositRadius": 1.4,
+      "enemyNestAggroRadius": 1.6,
+      "antCollisionRadius": 0.35,
+      "fightDurationTicks": 60,
+      "antDpsPerTick": 2.5,
+      "nestDpsPerTick": 1.0,
+      "ageDrainPerTick": 0.003
+    }
   }
 }

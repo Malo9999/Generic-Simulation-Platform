@@ -1,82 +1,149 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int QueenCount = 1;
-    private const int WorkerCount = 8;
-    private const int WarriorCount = 3;
-    private const int AntCount = QueenCount + WorkerCount + WarriorCount;
     private const int SpawnDebugCount = 5;
-    private const float SpeedMultiplier = 0.20f;
-    private const float IdleSpeedThreshold = 0.2f;
-    private const float RunSpeedThreshold = 1.6f;
+    private const int AntSortingOrder = 10;
 
     [SerializeField] private bool logSpawnIdentity = true;
 
-    private Transform[] ants;
-    private SpriteRenderer[] antBaseRenderers;
-    private SpriteRenderer[] antMaskRenderers;
-    private Vector2[] positions;
-    private Vector2[] velocities;
-    private EntityIdentity[] identities;
-    private AntRole[] roles;
-    private int nextEntityId;
+    private readonly List<AntAgentState> ants = new();
+    private readonly List<AntAgentView> antViews = new();
+    private readonly Dictionary<int, int> antIdToIndex = new();
+
+    private readonly List<SpriteRenderer> foodRenderers = new();
+
+    private int nextAntId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
-
-    private static Sprite debugFallbackSprite;
-    private bool hasLoggedAssignedSpriteIds;
     private AntWorldState worldState;
+    private AntWorldRecipe recipe;
+
+    private static Sprite fallbackAntSprite;
+    private static Sprite squareSprite;
 
     public void Initialize(ScenarioConfig config)
     {
         Shutdown();
         EnsureMainCamera();
-        BuildWorld(config);
-        BuildAnts(config);
-        Debug.Log($"{nameof(AntColoniesRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
+
+        recipe = config?.antColonies?.worldRecipe ?? new AntWorldRecipe();
+        recipe.Normalize();
+
+        halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
+        halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
+
+        worldState = AntWorldGenerator.Generate(config);
+        AntWorldViewBuilder.BuildOrRefresh(transform, config, worldState);
+        CacheWorldRenderers();
+
+        nextAntId = 0;
+        RebuildAntIndex();
+
+        Debug.Log($"{nameof(AntColoniesRunner)} Initialize seed={config?.seed ?? 0}, scenario={config?.scenarioName}");
     }
 
     public void Tick(int tickIndex, float dt)
     {
-        if (ants == null)
+        if (worldState == null)
         {
             return;
         }
 
-        for (var i = 0; i < ants.Length; i++)
+        SpawnAnts(tickIndex);
+        RespawnFood(tickIndex);
+
+        var pairDamage = new Dictionary<int, float>();
+
+        for (var i = 0; i < ants.Count; i++)
         {
-            positions[i] += velocities[i] * dt;
-
-            if (positions[i].x < -halfWidth || positions[i].x > halfWidth)
+            var ant = ants[i];
+            if (!ant.isAlive)
             {
-                positions[i].x = Mathf.Clamp(positions[i].x, -halfWidth, halfWidth);
-                velocities[i].x *= -1f;
+                continue;
             }
 
-            if (positions[i].y < -halfHeight || positions[i].y > halfHeight)
+            ant.ageTicks++;
+            ant.hp -= recipe.ageDrainPerTick;
+
+            if (ant.state == AntBehaviorState.Wander)
             {
-                positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
-                velocities[i].y *= -1f;
+                UpdateWander(ant, tickIndex, dt);
+                TryPickupFood(ant);
+            }
+            else if (ant.state == AntBehaviorState.ReturnHome)
+            {
+                UpdateReturnHome(ant, dt);
+            }
+            else
+            {
+                UpdateFightMotion(ant, dt);
             }
 
-            ants[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            ants[i].localRotation = Quaternion.identity;
-            ApplyVisual(i, tickIndex);
+            TryEnterNestFight(ant);
+
+            if (ant.state == AntBehaviorState.Fight)
+            {
+                ant.fightTicksRemaining--;
+                ant.hp -= recipe.antDpsPerTick;
+
+                if (ant.fightTargetAntId >= 0)
+                {
+                    if (!pairDamage.ContainsKey(ant.fightTargetAntId)) pairDamage[ant.fightTargetAntId] = 0f;
+                    pairDamage[ant.fightTargetAntId] += recipe.antDpsPerTick;
+                }
+                else if (ant.fightTargetNestId >= 0 && ant.fightTargetNestId < worldState.nests.Count)
+                {
+                    var nest = worldState.nests[ant.fightTargetNestId];
+                    nest.hp = Mathf.Max(0, nest.hp - Mathf.RoundToInt(recipe.nestDpsPerTick));
+                    worldState.nests[ant.fightTargetNestId] = nest;
+                }
+
+                if (ant.fightTicksRemaining <= 0)
+                {
+                    ant.state = ant.carrying ? AntBehaviorState.ReturnHome : AntBehaviorState.Wander;
+                    ant.fightTargetAntId = -1;
+                    ant.fightTargetNestId = -1;
+                }
+            }
+
+            ClampAndApply(ant, i);
         }
+
+        ResolveAntCollisionsForFight();
+
+        foreach (var kv in pairDamage)
+        {
+            if (antIdToIndex.TryGetValue(kv.Key, out var idx))
+            {
+                ants[idx].hp -= kv.Value;
+            }
+        }
+
+        for (var i = ants.Count - 1; i >= 0; i--)
+        {
+            if (ants[i].hp <= 0f || !ants[i].isAlive)
+            {
+                KillAnt(i);
+            }
+            else
+            {
+                ApplyVisual(i, tickIndex);
+            }
+        }
+
+        SyncFoodView();
     }
 
     public void Shutdown()
     {
-        if (ants != null)
+        for (var i = 0; i < antViews.Count; i++)
         {
-            for (var i = 0; i < ants.Length; i++)
+            if (antViews[i]?.root != null)
             {
-                if (ants[i] != null)
-                {
-                    Destroy(ants[i].gameObject);
-                }
+                Destroy(antViews[i].root.gameObject);
             }
         }
 
@@ -86,220 +153,530 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             Destroy(worldView.gameObject);
         }
 
-        ants = null;
-        antBaseRenderers = null;
-        antMaskRenderers = null;
-        positions = null;
-        velocities = null;
-        identities = null;
-        roles = null;
+        ants.Clear();
+        antViews.Clear();
+        antIdToIndex.Clear();
+        foodRenderers.Clear();
         worldState = null;
-        Debug.Log("AntColoniesRunner Shutdown");
+        recipe = null;
     }
 
-
-    private void BuildWorld(ScenarioConfig config)
+    private void SpawnAnts(int tickIndex)
     {
-        worldState = AntWorldGenerator.Generate(config);
-        AntWorldViewBuilder.BuildOrRefresh(transform, config, worldState);
-    }
-
-    private void BuildAnts(ScenarioConfig config)
-    {
-        nextEntityId = 0;
-        hasLoggedAssignedSpriteIds = false;
-
-        halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
-        halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
-
-        ants = new Transform[AntCount];
-        antBaseRenderers = new SpriteRenderer[AntCount];
-        antMaskRenderers = new SpriteRenderer[AntCount];
-        positions = new Vector2[AntCount];
-        velocities = new Vector2[AntCount];
-        identities = new EntityIdentity[AntCount];
-        roles = new AntRole[AntCount];
-
-        for (var i = 0; i < AntCount; i++)
+        if (tickIndex % recipe.spawnEveryNTicks != 0)
         {
-            var role = i == 0 ? AntRole.Queen : (i <= WorkerCount ? AntRole.Worker : AntRole.Warrior);
-            var roleId = RoleToStableString(role);
-            var identity = IdentityService.Create(
-                entityId: nextEntityId++,
-                teamId: 0,
-                role: roleId,
-                variantCount: Enum.GetValues(typeof(AntRole)).Length,
-                scenarioSeed: config?.seed ?? 0,
-                simIdOrSalt: "AntColonies");
+            return;
+        }
 
-            identities[i] = identity;
-            roles[i] = RoleFromIdentity(identity);
+        if (ants.Count >= recipe.maxAntsGlobal)
+        {
+            return;
+        }
 
-            var ant = new GameObject($"Ant_{role}_{i}");
-            ant.transform.SetParent(transform, false);
-            ant.transform.localScale = Vector3.one * GetRoleScale(roles[i]);
-            ant.transform.localRotation = Quaternion.identity;
-
-            var baseObject = new GameObject("Base");
-            baseObject.transform.SetParent(ant.transform, false);
-            var baseRenderer = baseObject.AddComponent<SpriteRenderer>();
-            baseRenderer.sortingOrder = 0;
-            baseRenderer.color = Color.white;
-
-            var maskObject = new GameObject("Mask");
-            maskObject.transform.SetParent(ant.transform, false);
-            var maskRenderer = maskObject.AddComponent<SpriteRenderer>();
-            maskRenderer.sortingOrder = baseRenderer.sortingOrder + 1;
-            var colonyColor = GetRoleColor(roles[i], identity.teamId);
-            maskRenderer.color = new Color(colonyColor.r, colonyColor.g, colonyColor.b, 0.75f);
-
-            var startX = RngService.Global.Range(-halfWidth, halfWidth);
-            var startY = RngService.Global.Range(-halfHeight, halfHeight);
-            var speed = GetRoleSpeed(roles[i]);
-            var angle = RngService.Global.Range(0f, Mathf.PI * 2f);
-
-            positions[i] = new Vector2(startX, startY);
-            velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
-            ant.transform.localPosition = new Vector3(startX, startY, 0f);
-
-            ants[i] = ant.transform;
-            antBaseRenderers[i] = baseRenderer;
-            antMaskRenderers[i] = maskRenderer;
-            ApplyVisual(i, 0);
-
-            if (logSpawnIdentity && i < SpawnDebugCount)
+        var antsPerNest = new int[worldState.nests.Count];
+        for (var i = 0; i < ants.Count; i++)
+        {
+            if (ants[i].isAlive && ants[i].homeNestId >= 0 && ants[i].homeNestId < antsPerNest.Length)
             {
-                Debug.Log($"{nameof(AntColoniesRunner)} spawn[{i}] {identity}");
+                antsPerNest[ants[i].homeNestId]++;
             }
         }
+
+        for (var nestIndex = 0; nestIndex < worldState.nests.Count; nestIndex++)
+        {
+            if (ants.Count >= recipe.maxAntsGlobal || antsPerNest[nestIndex] >= recipe.maxAntsPerNest)
+            {
+                continue;
+            }
+
+            SpawnAntAtNest(nestIndex);
+            antsPerNest[nestIndex]++;
+        }
+
+        RebuildAntIndex();
+    }
+
+    private void SpawnAntAtNest(int nestIndex)
+    {
+        var nest = worldState.nests[nestIndex];
+        var antId = nextAntId++;
+
+        var spawnSeed = unchecked((int)(ArenaDecorBuilder.StableHash32("ANTS:SPAWN") ^ (uint)(antId ^ (worldState.nests.Count * 131))));
+        var spawnRng = new SeededRng(spawnSeed);
+        var angle = spawnRng.Range(0f, Mathf.PI * 2f);
+        var radius = spawnRng.Range(0f, recipe.spawnOffsetRadius);
+        var pos = nest.position + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+
+        var identity = IdentityService.Create(
+            entityId: antId,
+            teamId: nest.teamId,
+            role: "worker",
+            variantCount: 8,
+            scenarioSeed: spawnSeed,
+            simIdOrSalt: "AntColonies:A3");
+
+        var ant = new AntAgentState
+        {
+            id = antId,
+            speciesId = nestIndex,
+            teamId = nest.teamId,
+            homeNestId = nestIndex,
+            identity = identity,
+            position = pos,
+            velocity = Vector2.right * recipe.walkSpeed,
+            maxHp = recipe.antMaxHp,
+            hp = recipe.antMaxHp,
+            ageTicks = 0,
+            carrying = false,
+            carriedAmount = 0,
+            state = AntBehaviorState.Wander,
+            fightTicksRemaining = 0,
+            fightTargetAntId = -1,
+            fightTargetNestId = -1,
+            wanderHeading = angle,
+            nextTurnTick = 0,
+            isAlive = true
+        };
+
+        ants.Add(ant);
+        antViews.Add(CreateAntView(ant));
+
+        if (logSpawnIdentity && ant.id < SpawnDebugCount)
+        {
+            Debug.Log($"{nameof(AntColoniesRunner)} spawn[{ant.id}] {identity}");
+        }
+    }
+
+    private void RespawnFood(int tickIndex)
+    {
+        for (var i = 0; i < worldState.foodPiles.Count; i++)
+        {
+            var food = worldState.foodPiles[i];
+            if (food.remaining > 0)
+            {
+                continue;
+            }
+
+            if (food.respawnAtTick < 0)
+            {
+                food.respawnAtTick = tickIndex + recipe.foodRespawnDelayTicks;
+            }
+            else if (tickIndex >= food.respawnAtTick)
+            {
+                food.position = PickRespawnFoodPosition(food.id, tickIndex);
+                food.remaining = recipe.foodAmount;
+                food.respawnAtTick = -1;
+            }
+
+            worldState.foodPiles[i] = food;
+        }
+    }
+
+    private Vector2 PickRespawnFoodPosition(int foodId, int tickIndex)
+    {
+        var seed = unchecked((int)((uint)foodId ^ ArenaDecorBuilder.StableHash32("ANTS:FOOD_RESPAWN") ^ (uint)tickIndex));
+        var rng = new SeededRng(seed);
+        for (var attempt = 0; attempt < 64; attempt++)
+        {
+            var edge = rng.Range(0, 4);
+            Vector2 p;
+            switch (edge)
+            {
+                case 0: p = new Vector2(rng.Range(-halfWidth + recipe.foodEdgeMargin, halfWidth - recipe.foodEdgeMargin), halfHeight - recipe.foodEdgeMargin); break;
+                case 1: p = new Vector2(rng.Range(-halfWidth + recipe.foodEdgeMargin, halfWidth - recipe.foodEdgeMargin), -halfHeight + recipe.foodEdgeMargin); break;
+                case 2: p = new Vector2(-halfWidth + recipe.foodEdgeMargin, rng.Range(-halfHeight + recipe.foodEdgeMargin, halfHeight - recipe.foodEdgeMargin)); break;
+                default: p = new Vector2(halfWidth - recipe.foodEdgeMargin, rng.Range(-halfHeight + recipe.foodEdgeMargin, halfHeight - recipe.foodEdgeMargin)); break;
+            }
+
+            var tooCloseToNest = false;
+            for (var i = 0; i < worldState.nests.Count; i++)
+            {
+                if ((worldState.nests[i].position - p).sqrMagnitude < 16f)
+                {
+                    tooCloseToNest = true;
+                    break;
+                }
+            }
+
+            if (!tooCloseToNest)
+            {
+                return p;
+            }
+        }
+
+        return Vector2.zero;
+    }
+
+    private void UpdateWander(AntAgentState ant, int tickIndex, float dt)
+    {
+        if (tickIndex >= ant.nextTurnTick)
+        {
+            var turnNoise = Hash01(ant.id, tickIndex, 11) * 2f - 1f;
+            ant.wanderHeading += turnNoise * recipe.wanderTurnRadians;
+            var interval = Mathf.RoundToInt(Mathf.Lerp(recipe.wanderTurnIntervalMinTicks, recipe.wanderTurnIntervalMaxTicks, Hash01(ant.id, tickIndex, 17)));
+            ant.nextTurnTick = tickIndex + interval;
+        }
+
+        var dir = new Vector2(Mathf.Cos(ant.wanderHeading), Mathf.Sin(ant.wanderHeading));
+        dir += ComputeRepulsion(ant.position);
+        if (dir.sqrMagnitude > 0.0001f)
+        {
+            dir.Normalize();
+        }
+
+        ant.velocity = dir * recipe.walkSpeed;
+        ant.position += ant.velocity * dt;
+    }
+
+    private void UpdateReturnHome(AntAgentState ant, float dt)
+    {
+        var nestPos = worldState.nests[ant.homeNestId].position;
+        var toNest = nestPos - ant.position;
+        var distance = toNest.magnitude;
+        var dir = distance > 0.001f ? toNest / distance : Vector2.zero;
+        ant.velocity = dir * recipe.runSpeed;
+        ant.position += ant.velocity * dt;
+
+        if (distance <= recipe.depositRadius)
+        {
+            var nest = worldState.nests[ant.homeNestId];
+            nest.foodStored += ant.carriedAmount;
+            worldState.nests[ant.homeNestId] = nest;
+
+            ant.carrying = false;
+            ant.carriedAmount = 0;
+            ant.state = AntBehaviorState.Wander;
+        }
+    }
+
+    private void UpdateFightMotion(AntAgentState ant, float dt)
+    {
+        ant.velocity *= 0.8f;
+        ant.position += ant.velocity * dt;
+    }
+
+    private Vector2 ComputeRepulsion(Vector2 position)
+    {
+        var push = Vector2.zero;
+        for (var i = 0; i < worldState.obstacles.Count; i++)
+        {
+            var obstacle = worldState.obstacles[i];
+            var toAnt = position - obstacle.position;
+            var dist = toAnt.magnitude;
+            var radius = obstacle.radius + 0.8f;
+            if (dist < radius && dist > 0.001f)
+            {
+                push += (toAnt / dist) * ((radius - dist) / radius);
+            }
+        }
+
+        for (var i = 0; i < worldState.nests.Count; i++)
+        {
+            var nest = worldState.nests[i];
+            var toAnt = position - nest.position;
+            var dist = toAnt.magnitude;
+            if (dist < 1.5f && dist > 0.001f)
+            {
+                push += (toAnt / dist) * 0.4f;
+            }
+        }
+
+        return push;
+    }
+
+    private void TryPickupFood(AntAgentState ant)
+    {
+        if (ant.carrying)
+        {
+            return;
+        }
+
+        var bestIndex = -1;
+        var bestDist = float.MaxValue;
+        for (var i = 0; i < worldState.foodPiles.Count; i++)
+        {
+            var food = worldState.foodPiles[i];
+            if (food.remaining <= 0)
+            {
+                continue;
+            }
+
+            var dist = Vector2.Distance(ant.position, food.position);
+            if (dist <= recipe.foodSenseRadius)
+            {
+                if (dist < bestDist || (Mathf.Abs(dist - bestDist) < 0.0001f && food.id < worldState.foodPiles[bestIndex].id))
+                {
+                    bestDist = dist;
+                    bestIndex = i;
+                }
+            }
+        }
+
+        if (bestIndex < 0)
+        {
+            return;
+        }
+
+        var selected = worldState.foodPiles[bestIndex];
+        if (bestDist <= recipe.pickupRadius && selected.remaining > 0)
+        {
+            selected.remaining = Mathf.Max(0, selected.remaining - 1);
+            if (selected.remaining <= 0)
+            {
+                selected.respawnAtTick = -1;
+            }
+
+            worldState.foodPiles[bestIndex] = selected;
+
+            ant.carrying = true;
+            ant.carriedAmount = 1;
+            ant.state = AntBehaviorState.ReturnHome;
+        }
+    }
+
+    private void TryEnterNestFight(AntAgentState ant)
+    {
+        if (ant.state == AntBehaviorState.Fight)
+        {
+            return;
+        }
+
+        for (var i = 0; i < worldState.nests.Count; i++)
+        {
+            var nest = worldState.nests[i];
+            if (nest.teamId == ant.teamId || nest.hp <= 0)
+            {
+                continue;
+            }
+
+            if (Vector2.Distance(ant.position, nest.position) <= recipe.enemyNestAggroRadius)
+            {
+                ant.state = AntBehaviorState.Fight;
+                ant.fightTicksRemaining = recipe.fightDurationTicks;
+                ant.fightTargetAntId = -1;
+                ant.fightTargetNestId = i;
+                return;
+            }
+        }
+    }
+
+    private void ResolveAntCollisionsForFight()
+    {
+        var sqrCollision = recipe.antCollisionRadius * recipe.antCollisionRadius;
+        for (var i = 0; i < ants.Count; i++)
+        {
+            if (!ants[i].isAlive)
+            {
+                continue;
+            }
+
+            for (var j = i + 1; j < ants.Count; j++)
+            {
+                if (!ants[j].isAlive || ants[i].teamId == ants[j].teamId)
+                {
+                    continue;
+                }
+
+                if ((ants[i].position - ants[j].position).sqrMagnitude <= sqrCollision)
+                {
+                    EnterFightAgainstAnt(ants[i], ants[j].id);
+                    EnterFightAgainstAnt(ants[j], ants[i].id);
+                }
+            }
+        }
+    }
+
+    private void EnterFightAgainstAnt(AntAgentState ant, int targetId)
+    {
+        ant.state = AntBehaviorState.Fight;
+        ant.fightTicksRemaining = recipe.fightDurationTicks;
+        ant.fightTargetAntId = targetId;
+        ant.fightTargetNestId = -1;
+    }
+
+    private void ClampAndApply(AntAgentState ant, int index)
+    {
+        ant.position.x = Mathf.Clamp(ant.position.x, -halfWidth, halfWidth);
+        ant.position.y = Mathf.Clamp(ant.position.y, -halfHeight, halfHeight);
+        ants[index] = ant;
+    }
+
+    private void KillAnt(int index)
+    {
+        ants[index].isAlive = false;
+
+        if (antViews[index]?.root != null)
+        {
+            Destroy(antViews[index].root.gameObject);
+        }
+
+        ants.RemoveAt(index);
+        antViews.RemoveAt(index);
+        RebuildAntIndex();
+    }
+
+    private AntAgentView CreateAntView(AntAgentState ant)
+    {
+        var root = new GameObject($"Ant_{ant.id}");
+        root.transform.SetParent(transform, false);
+
+        var baseObj = new GameObject("Base");
+        baseObj.transform.SetParent(root.transform, false);
+        var baseRenderer = baseObj.AddComponent<SpriteRenderer>();
+        baseRenderer.sortingOrder = AntSortingOrder;
+
+        var maskObj = new GameObject("Mask");
+        maskObj.transform.SetParent(root.transform, false);
+        var maskRenderer = maskObj.AddComponent<SpriteRenderer>();
+        maskRenderer.sortingOrder = AntSortingOrder + 1;
+
+        var hpBgObj = new GameObject("HpBg");
+        hpBgObj.transform.SetParent(root.transform, false);
+        hpBgObj.transform.localPosition = new Vector3(0f, 0.75f, 0f);
+        hpBgObj.transform.localScale = new Vector3(0.5f, 0.08f, 1f);
+        var hpBgRenderer = hpBgObj.AddComponent<SpriteRenderer>();
+        hpBgRenderer.sprite = GetSquareSprite();
+        hpBgRenderer.color = new Color(0f, 0f, 0f, 0.8f);
+        hpBgRenderer.sortingOrder = AntSortingOrder + 2;
+
+        var hpFillObj = new GameObject("HpFill");
+        hpFillObj.transform.SetParent(root.transform, false);
+        hpFillObj.transform.localPosition = new Vector3(-0.25f, 0.75f, 0f);
+        hpFillObj.transform.localScale = new Vector3(0.5f, 0.06f, 1f);
+        var hpFillRenderer = hpFillObj.AddComponent<SpriteRenderer>();
+        hpFillRenderer.sprite = GetSquareSprite();
+        hpFillRenderer.color = new Color(0.2f, 0.95f, 0.2f, 1f);
+        hpFillRenderer.sortingOrder = AntSortingOrder + 3;
+
+        return new AntAgentView
+        {
+            antId = ant.id,
+            root = root.transform,
+            baseRenderer = baseRenderer,
+            maskRenderer = maskRenderer,
+            hpBgRenderer = hpBgRenderer,
+            hpFillRenderer = hpFillRenderer
+        };
     }
 
     private void ApplyVisual(int index, int tickIndex)
     {
-        var role = roles[index];
-        var roleId = RoleToStableString(role);
-        var state = ResolveState(velocities[index].magnitude);
-        var speciesId = ContentPackService.GetSpeciesId("ant", identities[index].variant);
+        var ant = ants[index];
+        var view = antViews[index];
 
-        var fps = ContentPackService.GetClipFpsOrDefault("ant", roleId, "adult", state, 8);
-        var frameCount = ResolveFrameCount(speciesId, roleId, state);
-        var ticksPerFrame = Mathf.Max(1, Mathf.RoundToInt(60f / Mathf.Max(1, fps)));
-        var frame = (tickIndex / ticksPerFrame) % frameCount;
+        var state = ant.state == AntBehaviorState.Fight
+            ? "fight"
+            : (ant.velocity.magnitude >= recipe.runSpeed * 0.8f ? "run" : (ant.velocity.magnitude >= recipe.walkSpeed * 0.4f ? "walk" : "idle"));
 
-        var baseId = $"agent:ant:{speciesId}:{roleId}:adult:{state}:{frame:00}";
+        var species = worldState.nests[Mathf.Clamp(ant.speciesId, 0, worldState.nests.Count - 1)].speciesId;
+        var frame = ResolveFrameFromContract(state, tickIndex);
+
+        var baseId = $"agent:ant:{species}:worker:adult:{state}:{frame:00}";
         var maskId = baseId + "_mask";
 
-        if (ContentPackService.TryGetSprite(baseId, out var baseSprite))
+        view.baseRenderer.sprite = ContentPackService.TryGetSprite(baseId, out var baseSprite) ? baseSprite : GetFallbackAntSprite();
+        view.baseRenderer.color = ContentPackService.Current == null ? GetTeamColor(ant.teamId) : Color.white;
+
+        view.maskRenderer.sprite = ContentPackService.TryGetSprite(maskId, out var maskSprite) ? maskSprite : null;
+        view.maskRenderer.color = new Color(GetTeamColor(ant.teamId).r, GetTeamColor(ant.teamId).g, GetTeamColor(ant.teamId).b, 0.85f);
+
+        view.root.localPosition = new Vector3(ant.position.x, ant.position.y, 0f);
+        if (ant.velocity.sqrMagnitude > 0.0001f)
         {
-            antBaseRenderers[index].sprite = baseSprite;
+            var angle = Mathf.Atan2(ant.velocity.y, ant.velocity.x) * Mathf.Rad2Deg;
+            view.root.localRotation = Quaternion.Euler(0f, 0f, angle);
         }
-        else
+
+        var hpPct = Mathf.Clamp01(ant.hp / Mathf.Max(0.01f, ant.maxHp));
+        view.hpFillRenderer.transform.localScale = new Vector3(0.5f * hpPct, 0.06f, 1f);
+        view.hpFillRenderer.transform.localPosition = new Vector3(-0.25f + 0.25f * hpPct, 0.75f, 0f);
+    }
+
+    private int ResolveFrameFromContract(string state, int tickIndex)
+    {
+        var fps = ContentPackService.GetClipFpsOrDefault("ant", "worker", "adult", state, 8);
+        var ticksPerFrame = Mathf.Max(1, Mathf.RoundToInt(60f / Mathf.Max(1, fps)));
+        var t = (tickIndex / ticksPerFrame);
+
+        return state switch
         {
-            antBaseRenderers[index].sprite = GetDebugFallbackSprite();
+            "idle" => t % 2,
+            "walk" => 2 + (t % 3),
+            "run" => 5 + (t % 4),
+            "fight" => 9,
+            _ => 0
+        };
+    }
+
+    private void CacheWorldRenderers()
+    {
+        foodRenderers.Clear();
+        var foodRoot = transform.Find("AntWorldView/Food");
+        if (foodRoot == null)
+        {
+            return;
         }
 
-        antBaseRenderers[index].color = Color.white;
-
-        antMaskRenderers[index].sprite = ContentPackService.TryGetSprite(maskId, out var maskSprite) ? maskSprite : null;
-        var colonyColor = GetRoleColor(role, identities[index].teamId);
-        antMaskRenderers[index].color = new Color(colonyColor.r, colonyColor.g, colonyColor.b, 0.75f);
-
-        if (!hasLoggedAssignedSpriteIds && index == 0)
+        for (var i = 0; i < worldState.foodPiles.Count; i++)
         {
-            hasLoggedAssignedSpriteIds = true;
-            Debug.Log($"{nameof(AntColoniesRunner)} sprite ids base={baseId}, mask={maskId}");
+            var child = foodRoot.Find($"Food_{worldState.foodPiles[i].id:00}");
+            foodRenderers.Add(child != null ? child.GetComponent<SpriteRenderer>() : null);
         }
     }
 
-    private static string ResolveState(float speed)
+    private void SyncFoodView()
     {
-        if (speed < IdleSpeedThreshold)
+        for (var i = 0; i < worldState.foodPiles.Count && i < foodRenderers.Count; i++)
         {
-            return "idle";
-        }
-
-        return speed < RunSpeedThreshold ? "walk" : "run";
-    }
-
-    private static int ResolveFrameCount(string speciesId, string roleId, string state)
-    {
-        var keyPrefix = $"agent:ant:{speciesId}:{roleId}:adult:{state}";
-        if (ContentPackService.Current != null)
-        {
-            if (ContentPackService.Current.TryGetClipMetadata($"agent:ant:{roleId}:adult:{state}", out var clip) && clip.frameCount > 0)
+            var renderer = foodRenderers[i];
+            if (renderer == null)
             {
-                return clip.frameCount;
+                continue;
             }
 
-            var inferred = ContentPackService.Current.InferFrameCountByPrefix(keyPrefix);
-            if (inferred > 0)
+            var pile = worldState.foodPiles[i];
+            renderer.enabled = pile.remaining > 0;
+            renderer.transform.localPosition = new Vector3(pile.position.x, pile.position.y, 0f);
+        }
+    }
+
+    private Color GetTeamColor(int teamId)
+    {
+        for (var i = 0; i < worldState.nests.Count; i++)
+        {
+            if (worldState.nests[i].teamId == teamId)
             {
-                return inferred;
+                return worldState.nests[i].teamColor;
             }
         }
 
-        return state == "idle" ? 2 : 4;
+        return Color.white;
     }
 
-    private static AntRole RoleFromIdentity(EntityIdentity identity)
+    private void RebuildAntIndex()
     {
-        return identity.role switch
+        antIdToIndex.Clear();
+        for (var i = 0; i < ants.Count; i++)
         {
-            "queen" => AntRole.Queen,
-            "soldier" => AntRole.Warrior,
-            "warrior" => AntRole.Warrior,
-            _ => AntRole.Worker
-        };
+            antIdToIndex[ants[i].id] = i;
+        }
     }
 
-    private static string RoleToStableString(AntRole role)
+    private static float Hash01(int a, int b, int salt)
     {
-        return role switch
+        unchecked
         {
-            AntRole.Queen => "queen",
-            AntRole.Warrior => "soldier",
-            _ => "worker"
-        };
+            uint n = (uint)(a * 374761393) ^ (uint)(b * 668265263) ^ unchecked((uint)salt * 2246822519u);
+            n = (n ^ (n >> 13)) * 1274126177u;
+            return (n & 0x00FFFFFF) / 16777215f;
+        }
     }
 
-    private static float GetRoleSpeed(AntRole role)
+    private static Sprite GetFallbackAntSprite()
     {
-        float s = role switch
+        if (fallbackAntSprite != null)
         {
-            AntRole.Queen => RngService.Global.Range(3f, 6f),
-            AntRole.Worker => RngService.Global.Range(8f, 13f),
-            _ => RngService.Global.Range(6f, 10f)
-        };
-
-        return s * SpeedMultiplier;
-    }
-
-    private static float GetRoleScale(AntRole role)
-    {
-        return role switch
-        {
-            AntRole.Queen => 1.4f,
-            AntRole.Warrior => 1.2f,
-            _ => 1f
-        };
-    }
-
-    private static Color GetRoleColor(AntRole role, int teamId)
-    {
-        var tintShift = (teamId % 3) * 0.03f;
-        return role switch
-        {
-            AntRole.Queen => new Color(0.28f + tintShift, 0.22f, 0.4f),
-            AntRole.Worker => new Color(0.45f + tintShift, 0.28f, 0.18f),
-            _ => new Color(0.5f + tintShift, 0.12f, 0.12f)
-        };
-    }
-
-    private static Sprite GetDebugFallbackSprite()
-    {
-        if (debugFallbackSprite != null)
-        {
-            return debugFallbackSprite;
+            return fallbackAntSprite;
         }
 
         var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false)
@@ -307,11 +684,29 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp
         };
-        texture.SetPixel(0, 0, Color.magenta);
+        texture.SetPixel(0, 0, Color.white);
         texture.Apply(false, false);
 
-        debugFallbackSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
-        return debugFallbackSprite;
+        fallbackAntSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return fallbackAntSprite;
+    }
+
+    private static Sprite GetSquareSprite()
+    {
+        if (squareSprite != null)
+        {
+            return squareSprite;
+        }
+
+        var tx = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        tx.SetPixel(0, 0, Color.white);
+        tx.Apply(false, false);
+        squareSprite = Sprite.Create(tx, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return squareSprite;
     }
 
     private void EnsureMainCamera()
