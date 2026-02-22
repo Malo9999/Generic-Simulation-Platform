@@ -239,69 +239,14 @@ public class Bootstrapper : MonoBehaviour
         {
             return entry.defaultContentPack;
         }
+        var catalog = options?.simulationCatalog;
+        if (catalog != null && catalog.GlobalDefaultContentPack != null)
+        {
+            return catalog.GlobalDefaultContentPack;
+        }
 
-#if UNITY_EDITOR
-        return FindEditorFallbackContentPack(simulationId);
-#else
         return null;
-#endif
     }
-
-#if UNITY_EDITOR
-    private static ContentPack FindEditorFallbackContentPack(string simulationId)
-    {
-        if (string.IsNullOrWhiteSpace(simulationId))
-        {
-            return null;
-        }
-
-        var searchRoot = $"Assets/Presentation/Packs/{simulationId}";
-        if (!AssetDatabase.IsValidFolder(searchRoot))
-        {
-            return null;
-        }
-
-        var guids = AssetDatabase.FindAssets("t:ContentPack", new[] { searchRoot });
-        if (guids == null || guids.Length == 0)
-        {
-            return null;
-        }
-
-        ContentPack bestPack = null;
-        DateTime newestWriteTime = DateTime.MinValue;
-        string bestPath = null;
-
-        for (var i = 0; i < guids.Length; i++)
-        {
-            var path = AssetDatabase.GUIDToAssetPath(guids[i]);
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                continue;
-            }
-
-            var absolutePath = Path.GetFullPath(path);
-            var writeTime = File.Exists(absolutePath) ? File.GetLastWriteTimeUtc(absolutePath) : DateTime.MinValue;
-            var candidate = AssetDatabase.LoadAssetAtPath<ContentPack>(path);
-            if (candidate == null)
-            {
-                continue;
-            }
-
-            var isNewer = writeTime > newestWriteTime;
-            var isTieButEarlierPath = writeTime == newestWriteTime && string.Compare(path, bestPath, StringComparison.Ordinal) < 0;
-            if (!isNewer && !isTieButEarlierPath)
-            {
-                continue;
-            }
-
-            newestWriteTime = writeTime;
-            bestPath = path;
-            bestPack = candidate;
-        }
-
-        return bestPack;
-    }
-#endif
 
     private string GetFallbackSimulationId()
     {
@@ -341,6 +286,7 @@ public class Bootstrapper : MonoBehaviour
 
 #if UNITY_EDITOR
         options.simulationCatalog = EnsureSimulationCatalogAsset();
+        options.simulationCatalog?.AssignGlobalDefaultContentPackIfMissing();
         EditorUtility.SetDirty(options);
 #else
         options.simulationCatalog = Resources.Load<SimulationCatalog>("SimulationCatalog");
@@ -405,6 +351,7 @@ public class Bootstrapper : MonoBehaviour
         catalog = ScriptableObject.CreateInstance<SimulationCatalog>();
         AssetDatabase.CreateAsset(catalog, assetPath);
         catalog.AutoDiscoverSimulations();
+        catalog.AssignGlobalDefaultContentPackIfMissing();
         AssetDatabase.SaveAssets();
         Debug.Log($"Bootstrapper: Created SimulationCatalog asset at {assetPath}");
         return catalog;
