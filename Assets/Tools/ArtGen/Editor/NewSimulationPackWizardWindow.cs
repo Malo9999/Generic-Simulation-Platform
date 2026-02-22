@@ -14,7 +14,7 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
     private readonly Dictionary<string, int> speciesOverrides = new();
     private string currentRecipePath;
 
-    [MenuItem("Tools/Generic Simulation Platform/Packs/New Simulation Pack…")]
+    [MenuItem("GSP/Art/New Simulation Pack…")]
     public static void Open() => GetWindow<NewSimulationPackWizardWindow>("New Simulation Pack");
 
     private void OnEnable()

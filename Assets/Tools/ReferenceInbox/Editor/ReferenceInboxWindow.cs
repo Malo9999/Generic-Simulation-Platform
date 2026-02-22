@@ -1,3 +1,4 @@
+#if UNITY_EDITOR && GSP_TOOLING
 using System.IO;
 using System.Text;
 using UnityEditor;
@@ -11,7 +12,7 @@ public class ReferenceInboxWindow : EditorWindow
     private Vector2 scroll;
     private string output = "Run Validate or Normalize to see details.";
 
-    [MenuItem("Tools/Generic Simulation Platform/References/Normalize Inbox…")]
+    [MenuItem("GSP/Tooling/References/Normalize Inbox…")]
     public static void OpenWindow()
     {
         var window = GetWindow<ReferenceInboxWindow>("Reference Inbox");
@@ -181,3 +182,4 @@ public class ReferenceInboxWindow : EditorWindow
         return sb.ToString();
     }
 }
+#endif

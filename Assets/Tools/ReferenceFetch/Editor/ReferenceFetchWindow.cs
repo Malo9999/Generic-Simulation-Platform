@@ -1,3 +1,4 @@
+#if UNITY_EDITOR && GSP_TOOLING
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -19,7 +20,7 @@ public sealed class ReferenceFetchWindow : EditorWindow
     private int minWidth = 800;
     private bool dryRun;
 
-    [MenuItem("Tools/Generic Simulation Platform/References/Fetch References…")]
+    [MenuItem("GSP/Tooling/References/Fetch References…")]
     public static void Open() => GetWindow<ReferenceFetchWindow>("Reference Fetch");
 
     private void OnGUI()
@@ -132,3 +133,4 @@ public sealed class ReferenceFetchWindow : EditorWindow
         }
     }
 }
+#endif

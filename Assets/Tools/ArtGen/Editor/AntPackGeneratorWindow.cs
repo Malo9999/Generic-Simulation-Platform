@@ -1,3 +1,4 @@
+#if UNITY_EDITOR && GSP_TOOLING
 using UnityEditor;
 using UnityEngine;
 
@@ -21,7 +22,7 @@ public sealed class AntPackGeneratorWindow : EditorWindow
     private Texture2D antsAnimPreviewTexture;
     private string summary = string.Empty;
 
-    [MenuItem("Tools/Generic Simulation Platform/Art/Generate Ant Pack…")]
+    [MenuItem("GSP/Tooling/Art/Generate Ant Pack…")]
     public static void OpenWindow()
     {
         var window = GetWindow<AntPackGeneratorWindow>("Generate Ant Pack");
@@ -191,3 +192,4 @@ public sealed class AntPackGeneratorWindow : EditorWindow
         }
     }
 }
+#endif
