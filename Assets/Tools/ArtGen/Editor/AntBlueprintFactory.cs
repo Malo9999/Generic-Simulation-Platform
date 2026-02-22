@@ -1,3 +1,4 @@
+#if UNITY_EDITOR && GSP_TOOLING
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -6,7 +7,7 @@ using UnityEngine;
 
 public static class AntBlueprintFactory
 {
-    private const string MenuPath = "Tools/Generic Simulation Platform/Art/Ant Blueprints/Create Default Species Blueprints (in Pack Folder)";
+    private const string MenuPath = "GSP/Tooling/Art/Ant Blueprints/Create Default Species Blueprints (in Pack Folder)";
 
     [MenuItem(MenuPath)]
     public static void CreateFromMenu()
@@ -246,3 +247,4 @@ public static class AntBlueprintFactory
         return new string(chars).Trim('_');
     }
 }
+#endif

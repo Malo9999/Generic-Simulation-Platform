@@ -13,7 +13,7 @@ public static class SimulationCatalogBuilder
     private const string CatalogAssetPath = BootstrapFolder + "/SimulationCatalog.asset";
     private const string BootstrapOptionsAssetPath = BootstrapFolder + "/BootstrapOptions.asset";
 
-    [MenuItem("GSP/Build/Rebuild Catalog + Create Runner Prefabs")]
+    [MenuItem("GSP/Dev/Rebuild Simulation Catalog")]
     public static void RebuildCatalogAndCreateRunnerPrefabs()
     {
         EnsureFolder(BootstrapFolder);

@@ -1,3 +1,4 @@
+#if UNITY_EDITOR && GSP_TOOLING
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,7 +17,7 @@ public sealed class GenerateAntReferencePacksMenu : EditorWindow
     private bool overwrite;
     private readonly Dictionary<string, bool> enabledStates = new();
 
-    [MenuItem("Tools/Generic Simulation Platform/Reference Packs/Generate Ant Reference Packs…")]
+    [MenuItem("GSP/Tooling/Art/Reference Packs/Generate Ant Reference Packs…")]
     public static void Open()
     {
         var window = GetWindow<GenerateAntReferencePacksMenu>("Generate Ant Reference Packs");
@@ -239,3 +240,4 @@ public sealed class GenerateAntReferencePacksMenu : EditorWindow
             255);
     }
 }
+#endif

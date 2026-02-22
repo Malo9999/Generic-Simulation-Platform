@@ -1,3 +1,4 @@
+#if UNITY_EDITOR && GSP_TOOLING
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -24,7 +25,7 @@ public sealed class AiPixelSheetGeneratorWindow : EditorWindow
     private int selectedVariantIndex;
     private string status = "Ready.";
 
-    [MenuItem("Tools/Generic Simulation Platform/Art/AI/Generate Pixel Sheet…")]
+    [MenuItem("GSP/Tooling/Art/AI/Generate Pixel Sheet…")]
     public static void OpenWindow()
     {
         var window = GetWindow<AiPixelSheetGeneratorWindow>("AI Pixel Sheet Generator");
@@ -469,3 +470,4 @@ public sealed class AiPixelSheetGeneratorWindow : EditorWindow
         Both
     }
 }
+#endif
