@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEngine;
 
 public static class ModuleRegistry
 {
     private static Dictionary<string, IArchetypeModule> archetypes;
     private static Dictionary<string, IEnvironmentModule> environments;
     private static List<IPackPreset> presets;
+    private static List<Type> presetTypes;
+    private static readonly List<string> presetInstantiationFailures = new();
 
     private static void EnsureLoaded()
     {
@@ -15,6 +18,8 @@ public static class ModuleRegistry
         archetypes = new Dictionary<string, IArchetypeModule>(StringComparer.Ordinal);
         environments = new Dictionary<string, IEnvironmentModule>(StringComparer.Ordinal);
         presets = new List<IPackPreset>();
+        presetTypes = new List<Type>();
+        presetInstantiationFailures.Clear();
 
         foreach (var type in TypeCache.GetTypesDerivedFrom<IArchetypeModule>())
         {
@@ -31,7 +36,26 @@ public static class ModuleRegistry
         foreach (var type in TypeCache.GetTypesDerivedFrom<IPackPreset>())
         {
             if (type.IsAbstract) continue;
-            if (Activator.CreateInstance(type) is IPackPreset preset) presets.Add(preset);
+            presetTypes.Add(type);
+            try
+            {
+                if (Activator.CreateInstance(type) is IPackPreset preset)
+                {
+                    presets.Add(preset);
+                }
+                else
+                {
+                    var message = $"{type.FullName}: Activator.CreateInstance returned null or non-IPackPreset instance.";
+                    presetInstantiationFailures.Add(message);
+                    Debug.LogWarning($"[ModuleRegistry] Failed to instantiate pack preset type '{type.FullName}'. {message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                var message = $"{type.FullName}: {ex.Message}";
+                presetInstantiationFailures.Add(message);
+                Debug.LogWarning($"[ModuleRegistry] Failed to instantiate pack preset type '{type.FullName}': {ex.Message}");
+            }
         }
     }
 
@@ -51,5 +75,17 @@ public static class ModuleRegistry
     {
         EnsureLoaded();
         return new List<IPackPreset>(presets);
+    }
+
+    public static List<Type> ListPackPresetTypes()
+    {
+        EnsureLoaded();
+        return new List<Type>(presetTypes);
+    }
+
+    public static List<string> ListPresetInstantiationFailures()
+    {
+        EnsureLoaded();
+        return new List<string>(presetInstantiationFailures);
     }
 }

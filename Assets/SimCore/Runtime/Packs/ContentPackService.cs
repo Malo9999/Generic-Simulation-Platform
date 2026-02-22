@@ -6,6 +6,8 @@ public static class ContentPackService
 {
     public static ContentPack Current { get; private set; }
     private static readonly HashSet<string> MissingLogged = new(StringComparer.Ordinal);
+    private static Sprite squarePlaceholderSprite;
+
 
     public static void Set(ContentPack pack)
     {
@@ -51,7 +53,7 @@ public static class ContentPackService
             return true;
         }
 
-        if (TryGetPlaceholderSprite(id, out sprite))
+        if (IsPlaceholderPack(Current) && TryGetPlaceholderSprite(id, out sprite))
         {
             return true;
         }
@@ -167,38 +169,29 @@ public static class ContentPackService
             return false;
         }
 
-        var normalized = id.ToLowerInvariant();
-
-        if (normalized.Contains("agent"))
+        if (id.StartsWith("prop:", StringComparison.Ordinal))
         {
-            sprite = normalized.Contains("mask") || normalized.Contains("outline")
+            sprite = id.Contains("outline", StringComparison.OrdinalIgnoreCase)
+                ? PrimitiveSpriteLibrary.RoundedRectOutline()
+                : PrimitiveSpriteLibrary.CircleFill();
+            return true;
+        }
+
+        if (id.StartsWith("tile:", StringComparison.Ordinal))
+        {
+            sprite = GetSquarePlaceholderSprite();
+            return true;
+        }
+
+        if (id.StartsWith("agent:", StringComparison.Ordinal))
+        {
+            sprite = id.Contains("mask", StringComparison.OrdinalIgnoreCase) || id.Contains("outline", StringComparison.OrdinalIgnoreCase)
                 ? PrimitiveSpriteLibrary.CapsuleOutline()
                 : PrimitiveSpriteLibrary.CapsuleFill();
             return true;
         }
 
-        if (normalized.Contains("food") || normalized.Contains("target") || normalized.Contains("pickup") || normalized.Contains("ball"))
-        {
-            sprite = normalized.Contains("outline")
-                ? PrimitiveSpriteLibrary.CircleOutline()
-                : PrimitiveSpriteLibrary.CircleFill();
-            return true;
-        }
-
-        if (normalized.Contains("obstacle"))
-        {
-            sprite = normalized.Contains("outline")
-                ? PrimitiveSpriteLibrary.RoundedRectOutline()
-                : PrimitiveSpriteLibrary.RoundedRectFill();
-            return true;
-        }
-
-        if (normalized.Contains("goal") || normalized.Contains("finish") || normalized.Contains("marker") || normalized.Contains("decor") || normalized.Contains("background"))
-        {
-            sprite = PrimitiveSpriteLibrary.CircleOutline();
-            return true;
-        }
-
+        var normalized = id.ToLowerInvariant();
         if (string.Equals(normalized, "agent_alt", StringComparison.Ordinal))
         {
             sprite = PrimitiveSpriteLibrary.CapsuleOutline();
@@ -206,6 +199,25 @@ public static class ContentPackService
         }
 
         return false;
+    }
+
+    private static bool IsPlaceholderPack(ContentPack pack)
+    {
+        return pack != null && string.Equals(pack.name, "DefaultPlaceholderContentPack", StringComparison.Ordinal);
+    }
+
+    private static Sprite GetSquarePlaceholderSprite()
+    {
+        if (squarePlaceholderSprite != null)
+        {
+            return squarePlaceholderSprite;
+        }
+
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+        texture.SetPixel(0, 0, Color.white);
+        texture.Apply(false, false);
+        squarePlaceholderSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return squarePlaceholderSprite;
     }
 
     private static void LogOnce(string key, string message)

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
@@ -30,6 +31,12 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
         if (presets == null || presets.Count == 0)
         {
             EditorGUILayout.HelpBox("No presets discovered.", MessageType.Warning);
+            EditorGUILayout.HelpBox("No IPackPreset implementations found. Ensure pack presets compile (not behind defines/asmdefs).", MessageType.Warning);
+            if (GUILayout.Button("Log preset discovery diagnostics"))
+            {
+                LogPresetDiscoveryDiagnostics();
+            }
+
             return;
         }
 
@@ -103,6 +110,32 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
                 EditorGUIUtility.PingObject(content);
                 Debug.Log(report.Summary);
             }
+        }
+    }
+
+
+    private static void LogPresetDiscoveryDiagnostics()
+    {
+        var presetTypes = ModuleRegistry.ListPackPresetTypes();
+        var failures = ModuleRegistry.ListPresetInstantiationFailures();
+
+        Debug.Log($"[PresetDiagnostics] IPackPreset type count: {presetTypes.Count}");
+        for (var i = 0; i < presetTypes.Count; i++)
+        {
+            var type = presetTypes[i];
+            Debug.Log($"[PresetDiagnostics] Type[{i}] {type.FullName}");
+        }
+
+        if (failures.Count == 0)
+        {
+            Debug.Log("[PresetDiagnostics] Instantiation failures: none");
+            return;
+        }
+
+        Debug.LogWarning($"[PresetDiagnostics] Instantiation failures: {failures.Count}");
+        for (var i = 0; i < failures.Count; i++)
+        {
+            Debug.LogWarning($"[PresetDiagnostics] Failure[{i}] {failures[i]}");
         }
     }
 
