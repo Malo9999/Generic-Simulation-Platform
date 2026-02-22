@@ -6,19 +6,21 @@ public static class ReferenceInboxScaffolder
 {
     public static string ProjectRoot() => Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
 
-    public static void EnsureStructure(PackRecipe recipe)
+    public static string[] EnsureStructure(PackRecipe recipe)
     {
+        var createdPaths = new System.Collections.Generic.List<string>();
         if (recipe == null || string.IsNullOrWhiteSpace(recipe.simulationId))
         {
-            return;
+            return createdPaths.ToArray();
         }
 
         var simulationFolder = Path.Combine(ProjectRoot(), "_References", recipe.simulationId);
         Directory.CreateDirectory(simulationFolder);
+        createdPaths.Add(simulationFolder);
 
         if (recipe.referenceAssets == null)
         {
-            return;
+            return createdPaths.ToArray();
         }
 
         foreach (var referenceNeed in recipe.referenceAssets)
@@ -35,6 +37,9 @@ public static class ReferenceInboxScaffolder
             Directory.CreateDirectory(assetFolder);
             Directory.CreateDirectory(imagesFolder);
             Directory.CreateDirectory(topviewFolder);
+            createdPaths.Add(assetFolder);
+            createdPaths.Add(imagesFolder);
+            createdPaths.Add(topviewFolder);
 
             var readmePath = Path.Combine(assetFolder, "README.txt");
             if (!File.Exists(readmePath))
@@ -48,5 +53,7 @@ public static class ReferenceInboxScaffolder
                 File.WriteAllText(readmePath, builder.ToString());
             }
         }
+
+        return createdPaths.ToArray();
     }
 }

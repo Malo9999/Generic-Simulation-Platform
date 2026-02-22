@@ -12,6 +12,7 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
     private int agentSpriteSize = 64;
     private bool overwrite;
     private readonly Dictionary<string, int> speciesOverrides = new();
+    private string currentRecipePath;
 
     [MenuItem("Tools/Generic Simulation Platform/Packs/New Simulation Pack…")]
     public static void Open() => GetWindow<NewSimulationPackWizardWindow>("New Simulation Pack");
@@ -46,41 +47,113 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
             speciesOverrides[key] = EditorGUILayout.IntField($"{entity.entityId} Species", value);
         }
 
-        if (GUILayout.Button("Create"))
+        EditorGUILayout.Space(8f);
+        EditorGUILayout.LabelField("References-first Workflow", EditorStyles.boldLabel);
+
+        if (GUILayout.Button("1) Create / Update Recipe"))
         {
-            var recipe = presets[presetIndex].CreateDefaultRecipe(packId, seed);
-            recipe.tileSize = tileSize;
-            recipe.agentSpriteSize = agentSpriteSize;
-            recipe.outputFolder = $"Assets/Presentation/Packs/{recipe.simulationId}/{packId}";
-            ImportSettingsUtil.EnsureFolder(recipe.outputFolder);
-            foreach (var entity in recipe.entities)
+            var recipe = CreateOrUpdateRecipe();
+            if (recipe != null)
             {
-                if (speciesOverrides.TryGetValue(entity.entityId, out var count)) entity.speciesCount = Mathf.Max(1, count);
+                Debug.Log($"[Wizard] Recipe ready: {currentRecipePath}");
             }
+        }
 
-            var recipePath = $"{recipe.outputFolder}/PackRecipe.asset";
-            var existing = AssetDatabase.LoadAssetAtPath<PackRecipe>(recipePath);
-            if (existing != null)
+        if (GUILayout.Button("2) Create Reference Folder Structure"))
+        {
+            var recipe = GetOrCreateRecipe();
+            if (recipe != null)
             {
-                EditorUtility.CopySerialized(recipe, existing);
-                DestroyImmediate(recipe);
-                recipe = existing;
+                var paths = ReferenceInboxScaffolder.EnsureStructure(recipe);
+                for (var i = 0; i < paths.Length; i++)
+                {
+                    Debug.Log($"[References] {paths[i]}");
+                }
             }
-            else
+        }
+
+        EditorGUILayout.HelpBox("3) Drop source images into _References/<Sim>/<Asset>/Images (optional Topview).", MessageType.Info);
+
+        if (GUILayout.Button("4) Calibrate From References"))
+        {
+            var recipe = GetOrCreateRecipe();
+            if (recipe != null)
             {
-                AssetDatabase.CreateAsset(recipe, recipePath);
+                var report = ReferenceCalibrationService.Calibrate(recipe);
+                Debug.Log(report.Summary);
+                for (var i = 0; i < report.warnings.Count; i++)
+                {
+                    Debug.LogWarning($"[References] {report.warnings[i]}");
+                }
             }
+        }
 
-            ReferenceInboxScaffolder.EnsureStructure(recipe);
-            Debug.Log($"[References] Created/verified folder structure at {ReferenceInboxScaffolder.ProjectRoot()}/_References/{recipe.simulationId}/...");
-
-            var report = PackBuildPipeline.Build(recipe, overwrite);
-            var content = AssetDatabase.LoadAssetAtPath<ContentPack>($"{recipe.outputFolder}/ContentPack.asset");
-            AssignDefaultContentPack(recipe.simulationId, content);
-            EditorGUIUtility.PingObject(content);
-            Debug.Log(report.Summary);
+        if (GUILayout.Button("5) Build Pack"))
+        {
+            var recipe = GetOrCreateRecipe();
+            if (recipe != null)
+            {
+                var report = PackBuildPipeline.Build(recipe, overwrite);
+                var content = AssetDatabase.LoadAssetAtPath<ContentPack>($"{recipe.outputFolder}/ContentPack.asset");
+                AssignDefaultContentPack(recipe.simulationId, content);
+                EditorGUIUtility.PingObject(content);
+                Debug.Log(report.Summary);
+            }
         }
     }
+
+    private PackRecipe GetOrCreateRecipe()
+    {
+        var path = BuildRecipePath();
+        var existing = AssetDatabase.LoadAssetAtPath<PackRecipe>(path);
+        if (existing != null)
+        {
+            currentRecipePath = path;
+            return existing;
+        }
+
+        return CreateOrUpdateRecipe();
+    }
+
+    private PackRecipe CreateOrUpdateRecipe()
+    {
+        var recipe = presets[presetIndex].CreateDefaultRecipe(packId, seed);
+        recipe.tileSize = tileSize;
+        recipe.agentSpriteSize = agentSpriteSize;
+        recipe.outputFolder = $"Assets/Presentation/Packs/{recipe.simulationId}/{packId}";
+        ImportSettingsUtil.EnsureFolder(recipe.outputFolder);
+        foreach (var entity in recipe.entities)
+        {
+            if (speciesOverrides.TryGetValue(entity.entityId, out var count)) entity.speciesCount = Mathf.Max(1, count);
+        }
+
+        var recipePath = BuildRecipePath(recipe);
+        var existing = AssetDatabase.LoadAssetAtPath<PackRecipe>(recipePath);
+        if (existing != null)
+        {
+            EditorUtility.CopySerialized(recipe, existing);
+            DestroyImmediate(recipe);
+            recipe = existing;
+        }
+        else
+        {
+            AssetDatabase.CreateAsset(recipe, recipePath);
+        }
+
+        currentRecipePath = recipePath;
+        AssetDatabase.SaveAssets();
+        return recipe;
+    }
+
+    private string BuildRecipePath()
+    {
+        var recipe = presets[presetIndex].CreateDefaultRecipe(packId, seed);
+        var path = BuildRecipePath(recipe);
+        DestroyImmediate(recipe);
+        return path;
+    }
+
+    private static string BuildRecipePath(PackRecipe recipe) => $"Assets/Presentation/Packs/{recipe.simulationId}/{recipe.packId}/PackRecipe.asset";
     private static void AssignDefaultContentPack(string simulationId, ContentPack builtContentPack)
     {
         if (builtContentPack == null || string.IsNullOrWhiteSpace(simulationId))
