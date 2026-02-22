@@ -27,10 +27,13 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
     private static Sprite debugFallbackSprite;
     private bool hasLoggedAssignedSpriteIds;
+    private AntWorldState worldState;
 
     public void Initialize(ScenarioConfig config)
     {
+        Shutdown();
         EnsureMainCamera();
+        BuildWorld(config);
         BuildAnts(config);
         Debug.Log($"{nameof(AntColoniesRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
     }
@@ -77,6 +80,12 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
+        var worldView = transform.Find("AntWorldView");
+        if (worldView != null)
+        {
+            Destroy(worldView.gameObject);
+        }
+
         ants = null;
         antBaseRenderers = null;
         antMaskRenderers = null;
@@ -84,12 +93,19 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         velocities = null;
         identities = null;
         roles = null;
+        worldState = null;
         Debug.Log("AntColoniesRunner Shutdown");
+    }
+
+
+    private void BuildWorld(ScenarioConfig config)
+    {
+        worldState = AntWorldGenerator.Generate(config);
+        AntWorldViewBuilder.BuildOrRefresh(transform, config, worldState);
     }
 
     private void BuildAnts(ScenarioConfig config)
     {
-        Shutdown();
         nextEntityId = 0;
         hasLoggedAssignedSpriteIds = false;
 
