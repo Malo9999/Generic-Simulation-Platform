@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7df0d9e39c564fd4b4857e888f9b26bb, type: 3}
+  m_Name: AntColonies_StyleSpec
+  m_EditorClassIdentifier: Assembly-CSharp::SimulationStyleSpec
+  simulationId: AntColonies
+  styleId: ANT_PIXEL_V1
+  frameSize: 64
+  sheetCols: 5
+  sheetRows: 2
+  paddingPx: 2
+  paletteHex: []
+  outlineHex: 
+  shadingRule: flat + 1 highlight + 1 shadow
+  promptPrefix: Pixel art, true top-down, crisp 1-pixel dark outline, no anti-aliasing,
+    limited palette (max 10 colors), flat shading with 1 highlight + 1 shadow only,
+    transparent background, readable at tiny scale, no text, no borders, no drop
+    shadows.
