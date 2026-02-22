@@ -13,6 +13,7 @@ public class ScenarioConfig
     public RecordingConfig recording = new();
     public ReplayConfig replay = new();
     public RenderingConfig rendering = new();
+    public AntColoniesConfig antColonies = new();
 
     public void NormalizeAliases()
     {
@@ -27,6 +28,8 @@ public class ScenarioConfig
         recording ??= new RecordingConfig();
         replay ??= new ReplayConfig();
         rendering ??= new RenderingConfig();
+        antColonies ??= new AntColoniesConfig();
+        antColonies.Normalize();
     }
 }
 

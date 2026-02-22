@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "scenarioName": "Ant World v1",
+  "mode": "Sim",
+  "seed": 12345,
+  "activeSimulation": "AntColonies",
+  "world": {
+    "arenaWidth": 64,
+    "arenaHeight": 64,
+    "walls": true,
+    "obstacleDensity": 0.0
+  },
+  "antColonies": {
+    "worldRecipe": {
+      "nestCount": 5,
+      "nestMinDistance": 18,
+      "nestBorderMargin": 8,
+      "nestHp": 500,
+      "foodCount": 10,
+      "foodAmount": 60,
+      "foodEdgeMargin": 5,
+      "foodRespawnDelayTicks": 900,
+      "obstacleCountMin": 2,
+      "obstacleCountMax": 4,
+      "obstacleRadiusRange": {
+        "x": 1.5,
+        "y": 2.5
+      },
+      "decorCountMin": 80,
+      "decorCountMax": 200,
+      "decorTargetCount": 120,
+      "decorBorderMargin": 2.5,
+      "decorClearCenterRadius": 7,
+      "decorMinSpacing": 0.6,
+      "decorMaxAttempts": 5000,
+      "baseGrassRatio": 0.8,
+      "dirtPatches": 12,
+      "pathStrength": 0.7
+    }
+  },
+  "recording": {
+    "enabled": true,
+    "snapshotEveryNTicks": 30,
+    "eventsEnabled": true,
+    "outputRoot": "Runs"
+  },
+  "rendering": {
+    "targetUpscale": 4,
+    "targetFps": 60
+  },
+  "replay": {
+    "runFolder": "",
+    "rendererOnly": false
+  }
+}
