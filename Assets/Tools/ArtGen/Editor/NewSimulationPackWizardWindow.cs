@@ -71,6 +71,9 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
                 AssetDatabase.CreateAsset(recipe, recipePath);
             }
 
+            ReferenceInboxScaffolder.EnsureStructure(recipe);
+            Debug.Log($"[References] Created/verified folder structure at {ReferenceInboxScaffolder.ProjectRoot()}/_References/{recipe.simulationId}/...");
+
             var report = PackBuildPipeline.Build(recipe, overwrite);
             var content = AssetDatabase.LoadAssetAtPath<ContentPack>($"{recipe.outputFolder}/ContentPack.asset");
             AssignDefaultContentPack(recipe.simulationId, content);

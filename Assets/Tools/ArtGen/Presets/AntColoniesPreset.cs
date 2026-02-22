@@ -53,6 +53,13 @@ public sealed class AntColoniesPreset : IPackPreset
             new() { propId = "rock_scatter", importance = "background" }
         };
 
+        recipe.referenceAssets = new List<PackRecipe.ReferenceAssetNeed>
+        {
+            new() { assetId = "FireAnt", topviewOptional = true, minImages = 5 },
+            new() { assetId = "CarpenterAnt", topviewOptional = true, minImages = 5 },
+            new() { assetId = "PharaohAnt", topviewOptional = true, minImages = 5 }
+        };
+
         recipe.generationPolicy.generateBlueprints = true;
         recipe.generationPolicy.compileSpritesheets = true;
         recipe.generationPolicy.exportCompatibilityAntContentPack = true;

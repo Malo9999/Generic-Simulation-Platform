@@ -49,6 +49,14 @@ public sealed class PackRecipe : ScriptableObject
         public bool exportCompatibilityAntContentPack;
     }
 
+    [Serializable]
+    public sealed class ReferenceAssetNeed
+    {
+        public string assetId;
+        public bool topviewOptional = true;
+        public int minImages = 5;
+    }
+
     public string simulationId = "Simulation";
     public string packId = "Pack";
     public int seed = 12345;
@@ -58,5 +66,6 @@ public sealed class PackRecipe : ScriptableObject
     public string environmentId = "env.default";
     public List<EntityRequirement> entities = new();
     public List<PropRequirement> props = new();
+    public List<ReferenceAssetNeed> referenceAssets = new();
     public GenerationPolicy generationPolicy = new();
 }

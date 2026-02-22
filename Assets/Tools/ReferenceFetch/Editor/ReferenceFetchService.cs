@@ -42,9 +42,11 @@ internal sealed class ReferenceFetchService
 
             var assetName = asset.Trim();
             var assetFolder = Path.Combine(simulationFolder, Sanitize(assetName));
+            var imagesFolder = Path.Combine(assetFolder, "Images");
             Directory.CreateDirectory(assetFolder);
+            Directory.CreateDirectory(imagesFolder);
 
-            var metadataPath = Path.Combine(assetFolder, "meta.jsonl");
+            var metadataPath = Path.Combine(imagesFolder, "meta.jsonl");
             EnsureFileExists(metadataPath);
             var knownHashes = LoadKnownHashes(metadataPath);
             var mergedStats = new ReferenceCandidateStats();
@@ -122,7 +124,7 @@ internal sealed class ReferenceFetchService
                     }
 
                     var extension = string.IsNullOrWhiteSpace(candidate.FileExtension) ? GetExtension(candidate.FileUrl) : candidate.FileExtension;
-                    var imagePath = Path.Combine(assetFolder, NextImageFileName(assetFolder, extension));
+                    var imagePath = Path.Combine(imagesFolder, NextImageFileName(imagesFolder, extension));
                     File.WriteAllBytes(imagePath, bytes);
 
                     var row = new ReferenceMetadataRow
@@ -165,7 +167,7 @@ internal sealed class ReferenceFetchService
                 }
             }
 
-            Debug.Log($"[ReferenceFetch] Asset '{assetName}' downloaded {downloaded} image(s) to {assetFolder}");
+            Debug.Log($"[ReferenceFetch] Asset '{assetName}' downloaded {downloaded} image(s) to {imagesFolder}");
 
             fetchReport.Assets.Add(new AssetFetchReport
             {
