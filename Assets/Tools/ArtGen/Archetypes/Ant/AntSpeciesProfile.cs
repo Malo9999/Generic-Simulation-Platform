@@ -17,4 +17,6 @@ public sealed class AntSpeciesProfile
     public float soldierMandibleMultiplier = 1.2f;
     public float queenAbdomenMultiplier = 1.3f;
     public ReferencePack2D referencePack;
+    public bool hasFittedModel;
+    public AntTopdownModel fittedModel;
 }

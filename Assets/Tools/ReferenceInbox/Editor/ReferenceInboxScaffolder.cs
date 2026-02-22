@@ -32,26 +32,16 @@ public static class ReferenceInboxScaffolder
 
             var assetFolder = Path.Combine(simulationFolder, referenceNeed.assetId);
             var imagesFolder = Path.Combine(assetFolder, "Images");
-            var topviewFolder = Path.Combine(assetFolder, "Topview");
 
             Directory.CreateDirectory(assetFolder);
             Directory.CreateDirectory(imagesFolder);
-            Directory.CreateDirectory(topviewFolder);
             createdPaths.Add(assetFolder);
             createdPaths.Add(imagesFolder);
-            createdPaths.Add(topviewFolder);
 
             var readmePath = Path.Combine(assetFolder, "README.txt");
-            if (!File.Exists(readmePath))
-            {
-                var builder = new StringBuilder();
-                builder.AppendLine($"Reference inbox for simulation '{recipe.simulationId}' asset '{referenceNeed.assetId}'.");
-                builder.AppendLine();
-                builder.AppendLine("- Put profile/reference photos in Images/");
-                builder.AppendLine("- Put optional top-down images in Topview/");
-                builder.AppendLine("- Run \"Normalize Inbox...\" after dropping images to auto-rename consistently.");
-                File.WriteAllText(readmePath, builder.ToString());
-            }
+            var builder = new StringBuilder();
+            builder.AppendLine("Drop top-down images into Images/. Recommended 1–5 good images.");
+            File.WriteAllText(readmePath, builder.ToString());
         }
 
         return createdPaths.ToArray();

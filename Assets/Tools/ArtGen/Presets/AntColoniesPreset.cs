@@ -55,9 +55,11 @@ public sealed class AntColoniesPreset : IPackPreset
 
         recipe.referenceAssets = new List<PackRecipe.ReferenceAssetNeed>
         {
-            new() { assetId = "FireAnt", topviewOptional = true, minImages = 5 },
-            new() { assetId = "CarpenterAnt", topviewOptional = true, minImages = 5 },
-            new() { assetId = "PharaohAnt", topviewOptional = true, minImages = 5 }
+            new() { assetId = "FireAnt", minImages = 1 },
+            new() { assetId = "CarpenterAnt", minImages = 1 },
+            new() { assetId = "PharaohAnt", minImages = 1 },
+            new() { assetId = "BlackGardenAnt", minImages = 1 },
+            new() { assetId = "RedWoodAnt", minImages = 1 }
         };
 
         recipe.generationPolicy.generateBlueprints = true;

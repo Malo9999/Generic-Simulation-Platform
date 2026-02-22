@@ -53,8 +53,7 @@ public sealed class PackRecipe : ScriptableObject
     public sealed class ReferenceAssetNeed
     {
         public string assetId;
-        public bool topviewOptional = true;
-        public int minImages = 5;
+        public int minImages = 1;
     }
 
     public string simulationId = "Simulation";

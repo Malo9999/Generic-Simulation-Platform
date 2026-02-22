@@ -72,7 +72,7 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
             }
         }
 
-        EditorGUILayout.HelpBox("3) Drop source images into _References/<Sim>/<Asset>/Images (optional Topview).", MessageType.Info);
+        EditorGUILayout.HelpBox("3) Drop source images into _References/<Sim>/<Asset>/Images.", MessageType.Info);
 
         if (GUILayout.Button("4) Calibrate From References"))
         {
