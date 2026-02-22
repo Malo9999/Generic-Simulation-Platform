@@ -1,9 +1,17 @@
+using System.Linq;
+
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using UnityEngine;
+using Newtonsoft.Json.Serialization;
 
 public static class ConfigMerge
 {
+    private static readonly JsonSerializer SafeSerializer = JsonSerializer.Create(new JsonSerializerSettings
+    {
+        ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+        ContractResolver = new WritableMembersOnlyContractResolver()
+    });
+
     public static ScenarioConfig CreateBaseDefaults()
     {
         var config = new ScenarioConfig();
@@ -13,7 +21,7 @@ public static class ConfigMerge
 
     public static ScenarioConfig Merge(ScenarioConfig defaults, string presetJson)
     {
-        var defaultsObject = JObject.FromObject(defaults ?? CreateBaseDefaults());
+        var defaultsObject = JObject.FromObject(defaults ?? CreateBaseDefaults(), SafeSerializer);
 
         if (!string.IsNullOrWhiteSpace(presetJson))
         {
@@ -30,7 +38,11 @@ public static class ConfigMerge
     {
         config ??= CreateBaseDefaults();
         config.NormalizeAliases();
-        return JsonConvert.SerializeObject(config, Formatting.Indented);
+        return JsonConvert.SerializeObject(config, Formatting.Indented, new JsonSerializerSettings
+        {
+            ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+            ContractResolver = new WritableMembersOnlyContractResolver()
+        });
     }
 
     private static void DeepMerge(JObject target, JObject source)
@@ -51,6 +63,15 @@ public static class ConfigMerge
             {
                 target[property.Name] = property.Value;
             }
+        }
+    }
+
+    private sealed class WritableMembersOnlyContractResolver : DefaultContractResolver
+    {
+        protected override System.Collections.Generic.IList<JsonProperty> CreateProperties(System.Type type, MemberSerialization memberSerialization)
+        {
+            var properties = base.CreateProperties(type, memberSerialization);
+            return properties.Where(property => property.Writable || !property.Readable).ToList();
         }
     }
 }
