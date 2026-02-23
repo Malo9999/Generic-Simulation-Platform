@@ -7,12 +7,14 @@ public static class BlueprintRasterizer
         public readonly string layerName;
         public readonly ToneRamp ramp;
         public readonly bool drawOutline;
+        public readonly string outlineMaskLayerName;
 
-        public LayerStyle(string layerName, ToneRamp ramp, bool drawOutline = true)
+        public LayerStyle(string layerName, ToneRamp ramp, bool drawOutline = true, string outlineMaskLayerName = null)
         {
             this.layerName = layerName;
             this.ramp = ramp;
             this.drawOutline = drawOutline;
+            this.outlineMaskLayerName = outlineMaskLayerName;
         }
     }
 
@@ -32,71 +34,28 @@ public static class BlueprintRasterizer
         }
     }
 
-    public static void Render(PixelBlueprint2D blueprint, string layerName, int targetSize, int ox, int oy, Color32 color, Color32[] outPixels, int outWidth)
+    public static void Render(PixelBlueprint2D blueprint, string layerName, int targetSize, int ox, int oy, Color32 color, Color32[] outPixels, int outWidth, string outlineMaskLayerName = null)
     {
         if (blueprint == null) return;
-        var layer = blueprint.EnsureLayer(layerName);
-        var filled = new bool[targetSize * targetSize];
 
-        for (var y = 0; y < targetSize; y++)
-        for (var x = 0; x < targetSize; x++)
-        {
-            var sx = Mathf.Clamp(Mathf.FloorToInt((x / (float)targetSize) * blueprint.width), 0, blueprint.width - 1);
-            var sy = Mathf.Clamp(Mathf.FloorToInt((y / (float)targetSize) * blueprint.height), 0, blueprint.height - 1);
-            filled[(y * targetSize) + x] = layer.pixels[(sy * blueprint.width) + sx] > 0;
-        }
+        var filled = BuildFilledMask(blueprint, layerName, targetSize);
+        var outlineMask = BuildOutlineMask(blueprint, layerName, outlineMaskLayerName, targetSize);
+        var drawOutline = string.Equals(layerName, "body", System.StringComparison.OrdinalIgnoreCase) || !string.IsNullOrWhiteSpace(outlineMaskLayerName);
+        var ramp = new ToneRamp(
+            baseColor: color,
+            shadowColor: ScaleColor(color, 0.90f),
+            highlightColor: ScaleColor(color, 1.08f),
+            outlineColor: new Color32((byte)(color.r * 0.35f), (byte)(color.g * 0.35f), (byte)(color.b * 0.35f), 255));
 
-        var drawOutline = string.Equals(layerName, "body", System.StringComparison.OrdinalIgnoreCase);
-        var outlineColor = new Color32((byte)(color.r * 0.35f), (byte)(color.g * 0.35f), (byte)(color.b * 0.35f), 255);
-
-        for (var y = 0; y < targetSize; y++)
-        for (var x = 0; x < targetSize; x++)
-        {
-            var idx = (y * targetSize) + x;
-            if (filled[idx])
-            {
-                var shade = Mathf.Lerp(1.08f, 0.90f, y / (float)Mathf.Max(1, targetSize - 1));
-                outPixels[((oy + y) * outWidth) + ox + x] = new Color32(
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * shade), 0, 255),
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * shade), 0, 255),
-                    (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * shade), 0, 255),
-                    color.a);
-            }
-            else if (drawOutline && HasFilledNeighbor(filled, targetSize, targetSize, x, y))
-            {
-                outPixels[((oy + y) * outWidth) + ox + x] = outlineColor;
-            }
-        }
+        DrawFilledAndOutline(filled, outlineMask, targetSize, ox, oy, outPixels, outWidth, ramp, drawOutline);
     }
 
-    public static void Render(PixelBlueprint2D blueprint, string layerName, int targetSize, int ox, int oy, ToneRamp ramp, Color32[] outPixels, int outWidth, bool drawOutline = true)
+    public static void Render(PixelBlueprint2D blueprint, string layerName, int targetSize, int ox, int oy, ToneRamp ramp, Color32[] outPixels, int outWidth, bool drawOutline = true, string outlineMaskLayerName = null)
     {
         if (blueprint == null) return;
-        var layer = blueprint.EnsureLayer(layerName);
-        var filled = new bool[targetSize * targetSize];
-
-        for (var y = 0; y < targetSize; y++)
-        for (var x = 0; x < targetSize; x++)
-        {
-            var sx = Mathf.Clamp(Mathf.FloorToInt((x / (float)targetSize) * blueprint.width), 0, blueprint.width - 1);
-            var sy = Mathf.Clamp(Mathf.FloorToInt((y / (float)targetSize) * blueprint.height), 0, blueprint.height - 1);
-            filled[(y * targetSize) + x] = layer.pixels[(sy * blueprint.width) + sx] > 0;
-        }
-
-        for (var y = 0; y < targetSize; y++)
-        for (var x = 0; x < targetSize; x++)
-        {
-            var idx = (y * targetSize) + x;
-            if (filled[idx])
-            {
-                var tone = SelectFlatTone(filled, targetSize, x, y, ramp);
-                outPixels[((oy + y) * outWidth) + ox + x] = tone;
-            }
-            else if (drawOutline && HasFilledNeighbor(filled, targetSize, targetSize, x, y))
-            {
-                outPixels[((oy + y) * outWidth) + ox + x] = ramp.outlineColor;
-            }
-        }
+        var filled = BuildFilledMask(blueprint, layerName, targetSize);
+        var outlineMask = BuildOutlineMask(blueprint, layerName, outlineMaskLayerName, targetSize);
+        DrawFilledAndOutline(filled, outlineMask, targetSize, ox, oy, outPixels, outWidth, ramp, drawOutline);
     }
 
     public static void RenderLayers(PixelBlueprint2D blueprint, int targetSize, int ox, int oy, Color32[] outPixels, int outWidth, params LayerStyle[] styles)
@@ -114,38 +73,70 @@ public static class BlueprintRasterizer
                 continue;
             }
 
-            Render(blueprint, style.layerName, targetSize, ox, oy, style.ramp, outPixels, outWidth, style.drawOutline);
+            Render(blueprint, style.layerName, targetSize, ox, oy, style.ramp, outPixels, outWidth, style.drawOutline, style.outlineMaskLayerName);
         }
     }
 
-    private static Color32 SelectFlatTone(bool[] filled, int size, int x, int y, ToneRamp ramp)
+    private static void DrawFilledAndOutline(bool[] filled, bool[] outlineMask, int targetSize, int ox, int oy, Color32[] outPixels, int outWidth, ToneRamp ramp, bool drawOutline)
     {
-        var leftOpen = IsOpen(filled, size, x - 1, y);
-        var rightOpen = IsOpen(filled, size, x + 1, y);
-        var upOpen = IsOpen(filled, size, x, y - 1);
-        var downOpen = IsOpen(filled, size, x, y + 1);
-
-        if (upOpen || leftOpen)
+        for (var y = 0; y < targetSize; y++)
+        for (var x = 0; x < targetSize; x++)
         {
-            return ramp.highlightColor;
+            var idx = (y * targetSize) + x;
+            if (filled[idx])
+            {
+                outPixels[((oy + y) * outWidth) + ox + x] = SelectBandTone(targetSize, y, ramp);
+            }
+            else if (drawOutline && HasFilledNeighbor(outlineMask, targetSize, targetSize, x, y))
+            {
+                outPixels[((oy + y) * outWidth) + ox + x] = ramp.outlineColor;
+            }
+        }
+    }
+
+    private static Color32 SelectBandTone(int size, int y, ToneRamp ramp)
+    {
+        if (size <= 1)
+        {
+            return ramp.baseColor;
         }
 
-        if (downOpen || rightOpen)
-        {
-            return ramp.shadowColor;
-        }
-
+        var topBandEnd = Mathf.FloorToInt((size - 1) * 0.33f);
+        var bottomBandStart = Mathf.CeilToInt((size - 1) * 0.67f);
+        if (y <= topBandEnd) return ramp.highlightColor;
+        if (y >= bottomBandStart) return ramp.shadowColor;
         return ramp.baseColor;
     }
 
-    private static bool IsOpen(bool[] filled, int size, int x, int y)
+    private static bool[] BuildFilledMask(PixelBlueprint2D blueprint, string layerName, int targetSize)
     {
-        if (x < 0 || y < 0 || x >= size || y >= size)
+        var layer = blueprint.EnsureLayer(layerName);
+        var filled = new bool[targetSize * targetSize];
+
+        for (var y = 0; y < targetSize; y++)
+        for (var x = 0; x < targetSize; x++)
         {
-            return true;
+            var sx = Mathf.Clamp(Mathf.FloorToInt((x / (float)targetSize) * blueprint.width), 0, blueprint.width - 1);
+            var sy = Mathf.Clamp(Mathf.FloorToInt((y / (float)targetSize) * blueprint.height), 0, blueprint.height - 1);
+            filled[(y * targetSize) + x] = layer.pixels[(sy * blueprint.width) + sx] > 0;
         }
 
-        return !filled[(y * size) + x];
+        return filled;
+    }
+
+    private static bool[] BuildOutlineMask(PixelBlueprint2D blueprint, string layerName, string outlineMaskLayerName, int targetSize)
+    {
+        var resolvedLayerName = string.IsNullOrWhiteSpace(outlineMaskLayerName) ? layerName : outlineMaskLayerName;
+        return BuildFilledMask(blueprint, resolvedLayerName, targetSize);
+    }
+
+    private static Color32 ScaleColor(Color32 color, float factor)
+    {
+        return new Color32(
+            (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * factor), 0, 255),
+            (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * factor), 0, 255),
+            (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * factor), 0, 255),
+            color.a);
     }
 
     private static bool HasFilledNeighbor(bool[] filled, int width, int height, int x, int y)

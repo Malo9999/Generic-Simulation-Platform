@@ -19,6 +19,11 @@ public sealed class SynthesizedFrame
     public string spriteId;
     public PixelBlueprint2D bodyBlueprint;
     public PixelBlueprint2D maskBlueprint;
+    public Color32 outlineColor;
+    public Color32 baseColor;
+    public Color32 shadowColor;
+    public Color32 highlightColor;
+    public Color32? stripeColor;
 }
 
 public sealed class ArchetypeSynthesisResult
