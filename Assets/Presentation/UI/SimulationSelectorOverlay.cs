@@ -22,6 +22,7 @@ public class SimulationSelectorOverlay : MonoBehaviour
         GUILayout.Label($"Preset: {bootstrapper.CurrentPresetSource}");
         GUILayout.Label($"Tick: {bootstrapper.TickCount}");
         GUILayout.Label($"FPS: {bootstrapper.CurrentFps:F1}");
+        GUILayout.Label($"ContentPack: {bootstrapper.CurrentContentPackName}");
 
         GUILayout.Space(8f);
         GUILayout.BeginHorizontal();
