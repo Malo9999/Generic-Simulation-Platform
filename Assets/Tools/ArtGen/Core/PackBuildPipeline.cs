@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEditor;
 using UnityEditor.U2D.Sprites;
 using UnityEngine;
@@ -279,6 +281,8 @@ public static class PackBuildPipeline
         var cells = new List<SheetCell>();
         var isAntEntity = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase);
         var states = isAntEntity ? AntContractStates() : entity.states;
+        var previewSpecies = isAntEntity && displaySpecies.Count > 0 ? displaySpecies[0] : string.Empty;
+        var speciesFrameHashes = new Dictionary<string, Dictionary<string, List<string>>>(StringComparer.Ordinal);
         for (var i = 0; i < displaySpecies.Count; i++)
         {
             var species = displaySpecies[i];
@@ -286,9 +290,11 @@ public static class PackBuildPipeline
             if (!File.Exists(outlinePath)) continue;
             var fillColor = ReferenceColorSampler.SampleOrFallback(recipe.simulationId, species, new Color32(126, 92, 62, 255));
             var basePixels = LoadAndNormalizeOutline(outlinePath, recipe.agentSpriteSize, fillColor);
+            var frameHashesByState = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (var state in states)
             {
                 var frameCount = isAntEntity ? AntContractLocalFrameCount(state) : entity.animationPolicy.FramesForState(state);
+                var frameHashes = new List<string>(frameCount);
                 for (var frame = 0; frame < frameCount; frame++)
                 {
                     var contractFrame = isAntEntity ? ContractFrameIndex(state, frame) : frame;
@@ -298,8 +304,26 @@ public static class PackBuildPipeline
                         : $"agent:{entity.entityId}:{species}:worker:adult:{state}:{contractFrame:00}";
                     cells.Add(new SheetCell { id = id, pixels = warped });
                     cells.Add(new SheetCell { id = id + "_mask", pixels = MakeMask(warped) });
+                    frameHashes.Add(HashPixels(warped));
+
+                    if (isAntEntity && string.Equals(species, previewSpecies, StringComparison.Ordinal))
+                    {
+                        DumpFramePreview(recipe, species, id, warped, recipe.agentSpriteSize);
+                    }
                 }
+
+                frameHashesByState[state] = frameHashes;
             }
+
+            if (isAntEntity && frameHashesByState.Count > 0)
+            {
+                speciesFrameHashes[species] = frameHashesByState;
+            }
+        }
+
+        foreach (var speciesEntry in speciesFrameHashes)
+        {
+            WarnOnIdenticalFrames(speciesEntry.Key, speciesEntry.Value);
         }
 
         return cells;
@@ -319,47 +343,354 @@ public static class PackBuildPipeline
 
     private static Color32[] LoadAndNormalizeOutline(string path, int size, Color32 fillColor)
     {
-        var tex = new Texture2D(2,2,TextureFormat.RGBA32,false);
+        const byte alphaThreshold = 96;
+        var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
         tex.LoadImage(File.ReadAllBytes(path));
+
         var src = tex.GetPixels32();
-        var dst = new Color32[size*size];
-        for (var y=0;y<size;y++) for (var x=0;x<size;x++)
+        var srcMask = new bool[tex.width * tex.height];
+        for (var i = 0; i < src.Length; i++)
         {
-            var sx = Mathf.Clamp(Mathf.FloorToInt((x/(float)size)*tex.width),0,tex.width-1);
-            var sy = Mathf.Clamp(Mathf.FloorToInt((y/(float)size)*tex.height),0,tex.height-1);
-            var v = src[sy*tex.width+sx].a > 127;
-            dst[y*size+x] = v ? fillColor : new Color32(0,0,0,0);
+            srcMask[i] = src[i].a >= alphaThreshold;
         }
+
+        KeepLargestConnectedComponent(srcMask, tex.width, tex.height);
+
+        var scaledMask = new bool[size * size];
+        for (var y = 0; y < size; y++)
+        for (var x = 0; x < size; x++)
+        {
+            var sx = Mathf.Clamp(Mathf.FloorToInt((x / (float)size) * tex.width), 0, tex.width - 1);
+            var sy = Mathf.Clamp(Mathf.FloorToInt((y / (float)size) * tex.height), 0, tex.height - 1);
+            scaledMask[y * size + x] = srcMask[sy * tex.width + sx];
+        }
+
+        var pixels = new Color32[size * size];
+        ApplyFlatShading(scaledMask, size, size, fillColor, pixels);
+        AddOutline(pixels, size, size, MultiplyColor(fillColor, 0.35f));
+
         UnityEngine.Object.DestroyImmediate(tex);
-        AddOutline(dst, size, size);
-        return dst;
+        return pixels;
     }
 
     private static Color32[] WarpFrame(Color32[] src, int w, int h, int frame, string state)
     {
-        var dst = new Color32[src.Length];
-        Array.Copy(src, dst, src.Length);
-        var shift = (frame % 3) - 1;
-        if (state == "idle") shift = frame % 2;
-        for (var y = h - 1; y >= 0; y--) for (var x = w - 1; x >= 0; x--)
+        var fillMask = new bool[w * h];
+        var fillColors = new Color32[w * h];
+        for (var i = 0; i < src.Length; i++)
         {
-            var nx = Mathf.Clamp(x + shift, 0, w - 1);
-            dst[y*w+nx] = src[y*w+x];
+            if (src[i].a == 0 || IsDarkOutline(src[i])) continue;
+            fillMask[i] = true;
+            fillColors[i] = src[i];
         }
-        return dst;
+
+        if (!TryGetBounds(fillMask, w, h, out var minX, out var maxX, out var minY, out var maxY))
+        {
+            return (Color32[])src.Clone();
+        }
+
+        var stateKey = state?.ToLowerInvariant() ?? string.Empty;
+        var warpedMask = new bool[w * h];
+        var warpedColors = new Color32[w * h];
+
+        var bboxWidth = Mathf.Max(1, maxX - minX + 1);
+        var bboxHeight = Mathf.Max(1, maxY - minY + 1);
+        var headMaxY = minY + Mathf.FloorToInt(bboxHeight * 0.25f);
+        var legsMinY = minY + Mathf.FloorToInt(bboxHeight * 0.25f);
+        var legsMaxY = minY + Mathf.FloorToInt(bboxHeight * 0.75f);
+        var centerX = (minX + maxX) / 2;
+        var leftEdgeLimit = minX + Mathf.Max(1, bboxWidth / 5);
+        var rightEdgeLimit = maxX - Mathf.Max(1, bboxWidth / 5);
+
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            var index = y * w + x;
+            if (!fillMask[index]) continue;
+
+            var dx = 0;
+            var dy = 0;
+            switch (stateKey)
+            {
+                case "idle":
+                    if (y <= headMaxY && (x == minX || x == maxX || y == minY))
+                    {
+                        dx = frame % 2 == 0 ? 1 : -1;
+                    }
+                    break;
+                case "walk":
+                    if (y >= legsMinY && y <= legsMaxY)
+                    {
+                        var phase = frame % 3;
+                        if (x <= leftEdgeLimit) dx = phase == 1 ? 1 : (phase == 2 ? -1 : 0);
+                        if (x >= rightEdgeLimit) dx = phase == 1 ? -1 : (phase == 2 ? 1 : 0);
+                    }
+                    break;
+                case "run":
+                    if (frame % 2 == 1) dy = -1;
+                    dx = 1;
+                    if (y >= legsMinY && y <= maxY)
+                    {
+                        var phase = frame % 4;
+                        if (x <= leftEdgeLimit) dx += phase < 2 ? 2 : -2;
+                        if (x >= rightEdgeLimit) dx += phase < 2 ? -2 : 2;
+                    }
+                    break;
+                case "fight":
+                    if (y <= headMaxY && x < centerX) dx = -1;
+                    if (y <= headMaxY && x > centerX) dx = 1;
+                    if (y >= legsMinY && x <= leftEdgeLimit) dx = 1;
+                    break;
+            }
+
+            CopyFillPixel(x + dx, y + dy, fillColors[index], warpedMask, warpedColors, w, h);
+        }
+
+        if (stateKey == "fight")
+        {
+            var sourceColor = fillColors[minY * w + centerX];
+            var mandibleY = Mathf.Clamp(minY, 0, h - 1);
+            CopyFillPixel(centerX - 1, mandibleY, sourceColor, warpedMask, warpedColors, w, h);
+            CopyFillPixel(centerX + 1, mandibleY, sourceColor, warpedMask, warpedColors, w, h);
+            CopyFillPixel(centerX - 2, Mathf.Clamp(mandibleY + 1, 0, h - 1), sourceColor, warpedMask, warpedColors, w, h);
+            CopyFillPixel(centerX + 2, Mathf.Clamp(mandibleY + 1, 0, h - 1), sourceColor, warpedMask, warpedColors, w, h);
+        }
+
+        var result = new Color32[w * h];
+        for (var i = 0; i < result.Length; i++)
+        {
+            result[i] = warpedMask[i] ? warpedColors[i] : new Color32(0, 0, 0, 0);
+        }
+
+        AddOutline(result, w, h, new Color32(24, 18, 12, 255));
+        return result;
     }
 
-    private static void AddOutline(Color32[] px, int w, int h)
+    private static void ApplyFlatShading(bool[] mask, int w, int h, Color32 fillColor, Color32[] dst)
+    {
+        var baseColor = fillColor;
+        var highlightColor = MultiplyColor(fillColor, 1.15f);
+        var shadowColor = MultiplyColor(fillColor, 0.75f);
+        var centroid = ComputeCentroid(mask, w, h);
+
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            var index = y * w + x;
+            if (!mask[index])
+            {
+                dst[index] = new Color32(0, 0, 0, 0);
+                continue;
+            }
+
+            var relation = (x - centroid.x) + (y - centroid.y);
+            dst[index] = relation < 0f ? highlightColor : relation > 0f ? shadowColor : baseColor;
+        }
+    }
+
+    private static void AddOutline(Color32[] px, int w, int h, Color32 outlineColor)
     {
         var copy = (Color32[])px.Clone();
-        for (var y=1;y<h-1;y++) for (var x=1;x<w-1;x++)
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
         {
-            var i = y*w+x;
+            var i = y * w + x;
             if (copy[i].a > 0) continue;
             var near = false;
-            for (var oy=-1;oy<=1;oy++) for (var ox=-1;ox<=1;ox++) if (copy[(y+oy)*w+(x+ox)].a>0) near = true;
-            if (near) px[i] = new Color32(24, 18, 12, 255);
+            if (x > 0 && copy[i - 1].a > 0) near = true;
+            if (x < w - 1 && copy[i + 1].a > 0) near = true;
+            if (y > 0 && copy[i - w].a > 0) near = true;
+            if (y < h - 1 && copy[i + w].a > 0) near = true;
+            if (near) px[i] = outlineColor;
         }
+    }
+
+    private static void KeepLargestConnectedComponent(bool[] mask, int w, int h)
+    {
+        var visited = new bool[mask.Length];
+        var largest = new List<int>();
+        var queue = new Queue<int>();
+        var component = new List<int>();
+
+        for (var i = 0; i < mask.Length; i++)
+        {
+            if (!mask[i] || visited[i]) continue;
+            component.Clear();
+            queue.Clear();
+            queue.Enqueue(i);
+            visited[i] = true;
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                component.Add(current);
+                var cx = current % w;
+                var cy = current / w;
+                VisitNeighbor(cx - 1, cy);
+                VisitNeighbor(cx + 1, cy);
+                VisitNeighbor(cx, cy - 1);
+                VisitNeighbor(cx, cy + 1);
+            }
+
+            if (component.Count > largest.Count)
+            {
+                largest = new List<int>(component);
+            }
+        }
+
+        for (var i = 0; i < mask.Length; i++) mask[i] = false;
+        foreach (var idx in largest) mask[idx] = true;
+
+        void VisitNeighbor(int x, int y)
+        {
+            if (x < 0 || x >= w || y < 0 || y >= h) return;
+            var ni = y * w + x;
+            if (!mask[ni] || visited[ni]) return;
+            visited[ni] = true;
+            queue.Enqueue(ni);
+        }
+    }
+
+    private static Vector2 ComputeCentroid(bool[] mask, int w, int h)
+    {
+        var sumX = 0f;
+        var sumY = 0f;
+        var count = 0;
+
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            if (!mask[y * w + x]) continue;
+            sumX += x;
+            sumY += y;
+            count++;
+        }
+
+        if (count == 0) return new Vector2(w / 2f, h / 2f);
+        return new Vector2(sumX / count, sumY / count);
+    }
+
+    private static Color32 MultiplyColor(Color32 color, float factor)
+    {
+        var r = (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * factor), 0, 255);
+        var g = (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * factor), 0, 255);
+        var b = (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * factor), 0, 255);
+        return new Color32(r, g, b, color.a);
+    }
+
+    private static bool IsDarkOutline(Color32 color)
+    {
+        return color.a > 0 && color.r <= 32 && color.g <= 32 && color.b <= 32;
+    }
+
+    private static bool TryGetBounds(bool[] mask, int w, int h, out int minX, out int maxX, out int minY, out int maxY)
+    {
+        minX = w;
+        minY = h;
+        maxX = 0;
+        maxY = 0;
+        var found = false;
+
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            if (!mask[y * w + x]) continue;
+            found = true;
+            minX = Mathf.Min(minX, x);
+            maxX = Mathf.Max(maxX, x);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+
+        return found;
+    }
+
+    private static void CopyFillPixel(int x, int y, Color32 color, bool[] mask, Color32[] colors, int w, int h)
+    {
+        if (x < 0 || x >= w || y < 0 || y >= h) return;
+        var index = y * w + x;
+        mask[index] = true;
+        colors[index] = color;
+    }
+
+    private static string HashPixels(Color32[] pixels)
+    {
+        using (var sha1 = SHA1.Create())
+        {
+            var bytes = new byte[pixels.Length * 4];
+            for (var i = 0; i < pixels.Length; i++)
+            {
+                var offset = i * 4;
+                bytes[offset] = pixels[i].r;
+                bytes[offset + 1] = pixels[i].g;
+                bytes[offset + 2] = pixels[i].b;
+                bytes[offset + 3] = pixels[i].a;
+            }
+
+            return BitConverter.ToString(sha1.ComputeHash(bytes)).Replace("-", string.Empty);
+        }
+    }
+
+    private static void WarnOnIdenticalFrames(string speciesId, Dictionary<string, List<string>> frameHashesByState)
+    {
+        var duplicates = new List<string>();
+        foreach (var stateEntry in frameHashesByState)
+        {
+            var groups = stateEntry.Value
+                .Select((hash, index) => new { hash, index })
+                .GroupBy(x => x.hash)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            foreach (var group in groups)
+            {
+                duplicates.Add($"{stateEntry.Key}[{string.Join(",", group.Select(x => x.index))}]");
+            }
+        }
+
+        if (duplicates.Count == 0)
+        {
+            return;
+        }
+
+        Debug.LogWarning($"[PackBuildPipeline] Identical outline-driven ant frames for species '{speciesId}': {string.Join("; ", duplicates)}");
+    }
+
+    private static void DumpFramePreview(PackRecipe recipe, string species, string id, Color32[] pixels, int size)
+    {
+        var simSafe = SanitizePathToken(recipe.simulationId);
+        var packSafe = SanitizePathToken(Path.GetFileName(recipe.outputFolder));
+        var speciesSafe = SanitizePathToken(species);
+        var previewDir = $"Assets/Presentation/Packs/{simSafe}/{packSafe}/Debug/FramePreviews/{speciesSafe}";
+
+        ImportSettingsUtil.EnsureFolder("Assets/Presentation");
+        ImportSettingsUtil.EnsureFolder("Assets/Presentation/Packs");
+        ImportSettingsUtil.EnsureFolder($"Assets/Presentation/Packs/{simSafe}");
+        ImportSettingsUtil.EnsureFolder($"Assets/Presentation/Packs/{simSafe}/{packSafe}");
+        ImportSettingsUtil.EnsureFolder($"Assets/Presentation/Packs/{simSafe}/{packSafe}/Debug");
+        ImportSettingsUtil.EnsureFolder($"Assets/Presentation/Packs/{simSafe}/{packSafe}/Debug/FramePreviews");
+        ImportSettingsUtil.EnsureFolder(previewDir);
+
+        var frameToken = id.Split(':').LastOrDefault() ?? "00";
+        var filePath = $"{previewDir}/{frameToken}.png";
+        var texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        texture.SetPixels32(pixels);
+        texture.Apply(false, false);
+        File.WriteAllBytes(filePath, texture.EncodeToPNG());
+        UnityEngine.Object.DestroyImmediate(texture);
+        AssetDatabase.ImportAsset(filePath, ImportAssetOptions.ForceSynchronousImport);
+    }
+
+    private static string SanitizePathToken(string token)
+    {
+        if (string.IsNullOrWhiteSpace(token)) return "default";
+        var sb = new StringBuilder(token.Length);
+        foreach (var ch in token)
+        {
+            sb.Append(char.IsLetterOrDigit(ch) || ch == '-' || ch == '_' ? ch : '_');
+        }
+
+        return sb.ToString();
     }
 
     private static List<string> BuildDisplaySpeciesIds(List<PackRecipe.ReferenceAssetNeed> assets, int speciesCount)
