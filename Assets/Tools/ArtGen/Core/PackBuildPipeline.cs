@@ -60,15 +60,19 @@ public static class PackBuildPipeline
             speciesSelections.Add(new ContentPack.SpeciesSelection { entityId = entity.entityId, speciesIds = new List<string>(resolvedSpeciesIds) });
             var cells = useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, speciesIds, module);
 
+            var clipStates = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase) ? AntContractStates() : entity.states;
             foreach (var role in entity.roles)
             foreach (var stage in entity.lifeStages)
-            foreach (var state in entity.states)
+            foreach (var state in clipStates)
             {
+                var frameCount = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase)
+                    ? AntContractLocalFrameCount(state)
+                    : Mathf.Max(1, entity.animationPolicy.FramesForState(state));
                 clipMetadata.Add(new ContentPack.ClipMetadataEntry
                 {
                     keyPrefix = $"agent:{entity.entityId}:{role}:{stage}:{state}",
                     fps = Mathf.Max(1, entity.animationPolicy.defaultFps),
-                    frameCount = Mathf.Max(1, entity.animationPolicy.FramesForState(state))
+                    frameCount = frameCount
                 });
             }
 
@@ -807,19 +811,22 @@ public static class PackBuildPipeline
             }
 
             var isMaskCell = cells[i].id.EndsWith("_mask", StringComparison.Ordinal);
-            var bodyColor = Color.white;
-            if (!isMaskCell)
+            var bodyColor = new Color32(56, 44, 31, 255);
+            var isAntCell = TryParseAntSpeciesFromSpriteId(cells[i].id, out var speciesId);
+            if (isAntCell)
             {
-                bodyColor = new Color32(56, 44, 31, 255);
-                if (TryParseAntSpeciesFromSpriteId(cells[i].id, out var speciesId))
-                {
-                    bodyColor = ReferenceColorSampler.SampleOrFallback(simulationId, speciesId, bodyColor);
-                }
+                bodyColor = ReferenceColorSampler.SampleOrFallback(simulationId, speciesId, bodyColor);
             }
 
             if (isMaskCell)
             {
                 RenderSolidMask(cells[i].body, cellSize, (int)rect.x, (int)rect.y, pixels, width);
+                continue;
+            }
+
+            if (isAntCell)
+            {
+                RenderAntLayers(cells[i].body, cells[i].mask, cellSize, (int)rect.x, (int)rect.y, pixels, width, bodyColor);
                 continue;
             }
 
@@ -837,6 +844,40 @@ public static class PackBuildPipeline
         var rects = new List<SpriteRect>(cells.Count);
         for (var i = 0; i < cells.Count; i++) rects.Add(new SpriteRect { name = cells[i].id, rect = SheetLayout.CellRect(i, columns, cellSize, cells.Count), alignment = SpriteAlignment.Center, pivot = new Vector2(0.5f, 0.5f), spriteID = GUID.Generate() });
         return ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, cellSize, rects);
+    }
+
+    private static void RenderAntLayers(PixelBlueprint2D body, PixelBlueprint2D stripe, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 bodyColor)
+    {
+        var outline = new Color32(20, 16, 12, 255);
+        var bodyRamp = BuildToneRamp(bodyColor, outline);
+        var legsRamp = BuildToneRamp(ScaleColor(bodyColor, 0.82f), outline);
+        var mandibleRamp = BuildToneRamp(ScaleColor(bodyColor, 0.78f), outline);
+        var eyeRamp = new BlueprintRasterizer.ToneRamp(new Color32(232, 220, 156, 255), new Color32(171, 149, 92, 255), new Color32(255, 236, 176, 255), outline);
+
+        BlueprintRasterizer.Render(body, "legs", cellSize, ox, oy, legsRamp, pixels, width);
+        BlueprintRasterizer.Render(body, "antennae", cellSize, ox, oy, legsRamp, pixels, width);
+        BlueprintRasterizer.Render(body, "abdomen", cellSize, ox, oy, bodyRamp, pixels, width);
+        BlueprintRasterizer.Render(body, "thorax", cellSize, ox, oy, bodyRamp, pixels, width);
+        BlueprintRasterizer.Render(body, "head", cellSize, ox, oy, bodyRamp, pixels, width);
+        BlueprintRasterizer.Render(body, "shadow", cellSize, ox, oy, new BlueprintRasterizer.ToneRamp(bodyRamp.shadowColor, bodyRamp.shadowColor, bodyRamp.shadowColor, outline), pixels, width, false);
+        BlueprintRasterizer.Render(body, "highlight", cellSize, ox, oy, new BlueprintRasterizer.ToneRamp(bodyRamp.highlightColor, bodyRamp.highlightColor, bodyRamp.highlightColor, outline), pixels, width, false);
+        BlueprintRasterizer.Render(body, "mandibles", cellSize, ox, oy, mandibleRamp, pixels, width);
+        BlueprintRasterizer.Render(body, "eyes", cellSize, ox, oy, eyeRamp, pixels, width);
+        BlueprintRasterizer.Render(stripe, "stripe", cellSize, ox, oy, new Color32(245, 238, 210, 255), pixels, width);
+    }
+
+    private static BlueprintRasterizer.ToneRamp BuildToneRamp(Color32 baseColor, Color32 outline)
+    {
+        return new BlueprintRasterizer.ToneRamp(baseColor, ScaleColor(baseColor, 0.72f), ScaleColor(baseColor, 1.18f), outline);
+    }
+
+    private static Color32 ScaleColor(Color32 color, float factor)
+    {
+        return new Color32(
+            (byte)Mathf.Clamp(Mathf.RoundToInt(color.r * factor), 0, 255),
+            (byte)Mathf.Clamp(Mathf.RoundToInt(color.g * factor), 0, 255),
+            (byte)Mathf.Clamp(Mathf.RoundToInt(color.b * factor), 0, 255),
+            255);
     }
 
     private static bool TryParseAntSpeciesFromSpriteId(string spriteId, out string speciesId)
