@@ -42,7 +42,18 @@ public sealed class AntArchetypeModule : IArchetypeModule
         var result = new ArchetypeSynthesisResult();
         var contractFrame = ContractFrame(req.state, req.frameIndex);
         var id = $"agent:{req.entity.entityId}:{req.speciesId}:{req.role}:{req.stage}:{req.state}:{contractFrame:00}";
-        result.frames.Add(new SynthesizedFrame { spriteId = id, bodyBlueprint = body, maskBlueprint = stripe });
+        var palette = AntSpeciesPaletteResolver.Resolve(profile.baseColorId);
+        result.frames.Add(new SynthesizedFrame
+        {
+            spriteId = id,
+            bodyBlueprint = body,
+            maskBlueprint = stripe,
+            outlineColor = palette.outlineColor,
+            baseColor = palette.baseColor,
+            shadowColor = palette.shadowColor,
+            highlightColor = palette.highlightColor,
+            stripeColor = palette.stripeColor
+        });
         return result;
     }
 

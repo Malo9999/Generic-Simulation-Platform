@@ -26,6 +26,11 @@ public static class PackBuildPipeline
         public PixelBlueprint2D body;
         public PixelBlueprint2D mask;
         public Color32[] pixels;
+        public Color32 outlineColor;
+        public Color32 baseColor;
+        public Color32 shadowColor;
+        public Color32 highlightColor;
+        public Color32? stripeColor;
     }
 
     private readonly struct CompileSheetOptions
@@ -196,7 +201,17 @@ public static class PackBuildPipeline
                     var spriteId = isAntEntity
                         ? BuildAntSpriteId(speciesId, role, stage, state, contractFrame)
                         : RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]);
-                    cells.Add(new SheetCell { id = spriteId, body = sf.bodyBlueprint, mask = null });
+                    cells.Add(new SheetCell
+                    {
+                        id = spriteId,
+                        body = sf.bodyBlueprint,
+                        mask = sf.maskBlueprint,
+                        outlineColor = sf.outlineColor,
+                        baseColor = sf.baseColor,
+                        shadowColor = sf.shadowColor,
+                        highlightColor = sf.highlightColor,
+                        stripeColor = sf.stripeColor
+                    });
                     if (!isAntEntity || recipe.generationPolicy.includeAntMaskSpritesInMainPack)
                     {
                         var maskBlueprint = sf.maskBlueprint ?? BuildMaskBlueprintFromBody(sf.bodyBlueprint);
@@ -862,11 +877,11 @@ public static class PackBuildPipeline
             }
 
             var isMaskCell = cells[i].id.EndsWith("_mask", StringComparison.Ordinal);
-            var bodyColor = new Color32(56, 44, 31, 255);
             var isAntCell = TryParseAntSpeciesFromSpriteId(cells[i].id, out var speciesId);
+            var fallbackBaseColor = new Color32(56, 44, 31, 255);
             if (isAntCell)
             {
-                bodyColor = ReferenceColorSampler.SampleOrFallback(simulationId, speciesId, bodyColor);
+                fallbackBaseColor = ReferenceColorSampler.SampleOrFallback(simulationId, speciesId, fallbackBaseColor);
             }
 
             if (isMaskCell)
@@ -877,11 +892,11 @@ public static class PackBuildPipeline
 
             if (isAntCell)
             {
-                RenderAntLayers(cells[i].body, cells[i].mask, cellSize, (int)rect.x, (int)rect.y, pixels, width, bodyColor, options.renderAntStripeOverlay);
+                RenderAntLayers(cells[i], cellSize, (int)rect.x, (int)rect.y, pixels, width, fallbackBaseColor, options.renderAntStripeOverlay);
                 continue;
             }
 
-            BlueprintRasterizer.Render(cells[i].body, "body", cellSize, (int)rect.x, (int)rect.y, bodyColor, pixels, width);
+            BlueprintRasterizer.Render(cells[i].body, "body", cellSize, (int)rect.x, (int)rect.y, fallbackBaseColor, pixels, width);
             BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
         }
 
@@ -897,29 +912,31 @@ public static class PackBuildPipeline
         return ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, cellSize, rects);
     }
 
-    private static void RenderAntLayers(PixelBlueprint2D body, PixelBlueprint2D stripe, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 bodyColor, bool renderStripeOverlay)
+    private static void RenderAntLayers(SheetCell cell, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 fallbackBaseColor, bool renderStripeOverlay)
     {
-        var outline = new Color32(20, 16, 12, 255);
-        var bodyRamp = BuildToneRamp(bodyColor, outline);
-        var legsRamp = BuildToneRamp(ScaleColor(bodyColor, 0.82f), outline);
-        var mandibleRamp = BuildToneRamp(ScaleColor(bodyColor, 0.78f), outline);
+        var outline = cell.outlineColor.a > 0 ? cell.outlineColor : new Color32(20, 16, 12, 255);
+        var baseColor = cell.baseColor.a > 0 ? cell.baseColor : fallbackBaseColor;
+        var bodyRamp = BuildToneRamp(baseColor, outline, cell.shadowColor, cell.highlightColor);
+        var legsRamp = BuildToneRamp(ScaleColor(baseColor, 0.82f), outline);
+        var mandibleRamp = BuildToneRamp(ScaleColor(baseColor, 0.78f), outline);
         var eyeRamp = new BlueprintRasterizer.ToneRamp(new Color32(232, 220, 156, 255), new Color32(171, 149, 92, 255), new Color32(255, 236, 176, 255), outline);
 
         BlueprintRasterizer.RenderLayers(
-            body,
+            cell.body,
             cellSize,
             ox,
             oy,
             pixels,
             width,
-            new BlueprintRasterizer.LayerStyle("body", bodyRamp, true),
+            new BlueprintRasterizer.LayerStyle("body", bodyRamp, true, "body"),
             new BlueprintRasterizer.LayerStyle("legs", legsRamp, false),
             new BlueprintRasterizer.LayerStyle("antennae", legsRamp, false),
             new BlueprintRasterizer.LayerStyle("mandibles", mandibleRamp, false),
             new BlueprintRasterizer.LayerStyle("eyes", eyeRamp, false));
         if (renderStripeOverlay)
         {
-            BlueprintRasterizer.Render(stripe, "stripe", cellSize, ox, oy, new Color32(245, 238, 210, 255), pixels, width);
+            var stripeColor = cell.stripeColor ?? new Color32(245, 238, 210, 255);
+            BlueprintRasterizer.Render(cell.mask, "stripe", cellSize, ox, oy, stripeColor, pixels, width);
         }
     }
 
@@ -944,9 +961,11 @@ public static class PackBuildPipeline
         return compatCells;
     }
 
-    private static BlueprintRasterizer.ToneRamp BuildToneRamp(Color32 baseColor, Color32 outline)
+    private static BlueprintRasterizer.ToneRamp BuildToneRamp(Color32 baseColor, Color32 outline, Color32? shadowOverride = null, Color32? highlightOverride = null)
     {
-        return new BlueprintRasterizer.ToneRamp(baseColor, ScaleColor(baseColor, 0.72f), ScaleColor(baseColor, 1.18f), outline);
+        var shadow = shadowOverride.HasValue && shadowOverride.Value.a > 0 ? shadowOverride.Value : ScaleColor(baseColor, 0.72f);
+        var highlight = highlightOverride.HasValue && highlightOverride.Value.a > 0 ? highlightOverride.Value : ScaleColor(baseColor, 1.18f);
+        return new BlueprintRasterizer.ToneRamp(baseColor, shadow, highlight, outline);
     }
 
     private static Color32 ScaleColor(Color32 color, float factor)
