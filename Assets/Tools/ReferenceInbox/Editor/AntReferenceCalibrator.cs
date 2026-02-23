@@ -40,6 +40,17 @@ public sealed class AntReferenceCalibrator : IReferenceCalibrator
             if (!string.Equals(asset.entityId, "ant", StringComparison.OrdinalIgnoreCase)) continue;
             report.assetsProcessed++;
 
+            if (asset.generationMode == PackRecipe.GenerationMode.Procedural)
+            {
+                report.assets.Add(new ReferenceCalibrationReport.AssetSummary
+                {
+                    calibratorId = CalibratorId,
+                    assetId = asset.assetId,
+                    mappedSpeciesId = ResolveSpeciesId(asset, library)
+                });
+                continue;
+            }
+
             var images = EnumerateAssetImages(simulationFolder, asset.assetId);
             OutlineExtraction.OutlineResult bestOutline = null;
             string bestPath = null;
@@ -64,12 +75,7 @@ public sealed class AntReferenceCalibrator : IReferenceCalibrator
             }
 
             var mappedSpeciesId = ResolveSpeciesId(asset, library);
-            var profile = library.profiles.FirstOrDefault(p => string.Equals(p.speciesId, mappedSpeciesId, StringComparison.OrdinalIgnoreCase));
-            if (profile == null)
-            {
-                report.warnings.Add($"No profile found for mapped species '{mappedSpeciesId}' from asset '{asset.assetId}'.");
-                continue;
-            }
+            var profile = GetOrCreateProfile(library, mappedSpeciesId);
 
             var fitted = AntTopdownFitter.TryFit(bestOutline.mask, bestOutline.width, bestOutline.height, bestOutline.report.bbox, out var model);
             profile.hasFittedModel = fitted;
@@ -105,7 +111,68 @@ public sealed class AntReferenceCalibrator : IReferenceCalibrator
     private static string ResolveSpeciesId(PackRecipe.ReferenceAssetNeed asset, AntSpeciesLibrary library)
     {
         if (!string.IsNullOrWhiteSpace(asset.mappedSpeciesId)) return asset.mappedSpeciesId;
-        return library.profiles[0].speciesId;
+        var fallback = library.profiles.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.speciesId));
+        return fallback?.speciesId ?? "default";
+    }
+
+    private static AntSpeciesProfile GetOrCreateProfile(AntSpeciesLibrary library, string speciesId)
+    {
+        var existing = library.profiles.FirstOrDefault(p => string.Equals(p.speciesId, speciesId, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) return existing;
+
+        var defaultProfile = library.profiles.FirstOrDefault(p => string.Equals(p.speciesId, "default", StringComparison.OrdinalIgnoreCase));
+        var profile = defaultProfile != null ? CloneProfile(defaultProfile) : BuildReasonableDefault();
+        profile.speciesId = speciesId;
+        if (string.IsNullOrWhiteSpace(profile.displayName))
+        {
+            profile.displayName = speciesId;
+        }
+
+        library.profiles.Add(profile);
+        return profile;
+    }
+
+    private static AntSpeciesProfile CloneProfile(AntSpeciesProfile source)
+    {
+        return new AntSpeciesProfile
+        {
+            speciesId = source.speciesId,
+            displayName = source.displayName,
+            baseColorId = source.baseColorId,
+            headScale = source.headScale,
+            thoraxScale = source.thoraxScale,
+            abdomenScale = source.abdomenScale,
+            legLengthScale = source.legLengthScale,
+            antennaLengthScale = source.antennaLengthScale,
+            petiolePinchStrength = source.petiolePinchStrength,
+            soldierHeadMultiplier = source.soldierHeadMultiplier,
+            soldierMandibleMultiplier = source.soldierMandibleMultiplier,
+            queenAbdomenMultiplier = source.queenAbdomenMultiplier,
+            referencePack = source.referencePack,
+            hasFittedModel = source.hasFittedModel,
+            fittedModel = source.fittedModel
+        };
+    }
+
+    private static AntSpeciesProfile BuildReasonableDefault()
+    {
+        return new AntSpeciesProfile
+        {
+            speciesId = "default",
+            displayName = "Default",
+            baseColorId = "color.ant.default",
+            headScale = 1f,
+            thoraxScale = 1f,
+            abdomenScale = 1f,
+            legLengthScale = 1f,
+            antennaLengthScale = 1f,
+            petiolePinchStrength = 1f,
+            soldierHeadMultiplier = 1.2f,
+            soldierMandibleMultiplier = 1.2f,
+            queenAbdomenMultiplier = 1.3f,
+            hasFittedModel = false,
+            fittedModel = null
+        };
     }
 
     private static List<string> EnumerateAssetImages(string simulationFolder, string assetId)

@@ -33,6 +33,7 @@ public class Bootstrapper : MonoBehaviour
     public bool ShowOverlay => options == null || options.showOverlay;
     public int TickCount => tickCount;
     public float CurrentFps => smoothedFps;
+    public string CurrentContentPackName => ContentPackService.Current != null ? ContentPackService.Current.name : "<none>";
     public int CurrentTick => IsReplayMode ? replayDriver?.CurrentTick ?? 0 : simDriver?.CurrentTick ?? 0;
     public bool IsPaused => IsReplayMode ? replayDriver?.IsPaused ?? false : simDriver?.IsPaused ?? false;
     public float TimeScale => IsReplayMode ? replayDriver?.TimeScale ?? 1f : simDriver?.TimeScale ?? 1f;
@@ -177,7 +178,7 @@ public class Bootstrapper : MonoBehaviour
         AntAtlasLibrary.ClearCache();
 
         var selectedContentPack = ResolveContentPack(simulationId);
-        Debug.Log($"[Bootstrapper] sim={simulationId} contentPack={(selectedContentPack != null ? selectedContentPack.name : "<none>")}");
+        Debug.Log($"[Bootstrapper] simId={simulationId} contentPack={DescribeContentPack(selectedContentPack)}");
         if (selectedContentPack != null)
         {
             ContentPackService.Set(selectedContentPack);
@@ -246,6 +247,21 @@ public class Bootstrapper : MonoBehaviour
         }
 
         return null;
+    }
+
+    private static string DescribeContentPack(ContentPack pack)
+    {
+        if (pack == null)
+        {
+            return "<none> path=<none>";
+        }
+
+#if UNITY_EDITOR
+        var path = AssetDatabase.GetAssetPath(pack);
+        return string.IsNullOrWhiteSpace(path) ? $"{pack.name} path=<unknown>" : $"{pack.name} path={path}";
+#else
+        return $"{pack.name} path=<runtime>";
+#endif
     }
 
     private string GetFallbackSimulationId()
