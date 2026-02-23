@@ -158,6 +158,7 @@ public static class PackBuildPipeline
         foreach (var state in states)
         {
             var frameCount = isAntEntity ? AntContractLocalFrameCount(state) : entity.animationPolicy.FramesForState(state);
+            var lastAntFrameMask = default(byte[]);
             for (var frame = 0; frame < frameCount; frame++)
             {
                 var speciesId = speciesIds[s];
@@ -175,6 +176,24 @@ public static class PackBuildPipeline
                     cells.Add(new SheetCell { id = spriteId, body = sf.bodyBlueprint, mask = null });
                     var maskBlueprint = sf.maskBlueprint ?? BuildMaskBlueprintFromBody(sf.bodyBlueprint);
                     cells.Add(new SheetCell { id = spriteId + "_mask", body = maskBlueprint, mask = null });
+
+                    if (isAntEntity && (string.Equals(state, "walk", StringComparison.OrdinalIgnoreCase) || string.Equals(state, "run", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var currentMask = SnapshotLayer(sf.bodyBlueprint, "body");
+                        if (lastAntFrameMask != null)
+                        {
+                            var pixelDiff = PixelDiff(lastAntFrameMask, currentMask);
+                            if (pixelDiff < 12)
+                            {
+                                var prefix = $"agent:{entity.entityId}:{speciesId}:{role}:{stage}:{state}";
+                                var warning = $"[PackBuildPipeline] Similar ant frames detected for '{prefix}' around frame {contractFrame:00} (pixel diff={pixelDiff}).";
+                                report.warnings.Add(warning);
+                                Debug.LogWarning(warning);
+                            }
+                        }
+
+                        lastAntFrameMask = currentMask;
+                    }
 
                     report.blueprintCount += sf.bodyBlueprint != null ? 1 : 0;
                 }
@@ -861,15 +880,11 @@ public static class PackBuildPipeline
             oy,
             pixels,
             width,
-            new BlueprintRasterizer.LayerStyle("legs", legsRamp),
-            new BlueprintRasterizer.LayerStyle("antennae", legsRamp),
-            new BlueprintRasterizer.LayerStyle("abdomen", bodyRamp),
-            new BlueprintRasterizer.LayerStyle("thorax", bodyRamp),
-            new BlueprintRasterizer.LayerStyle("head", bodyRamp),
-            new BlueprintRasterizer.LayerStyle("shadow", new BlueprintRasterizer.ToneRamp(bodyRamp.shadowColor, bodyRamp.shadowColor, bodyRamp.shadowColor, outline), false),
-            new BlueprintRasterizer.LayerStyle("highlight", new BlueprintRasterizer.ToneRamp(bodyRamp.highlightColor, bodyRamp.highlightColor, bodyRamp.highlightColor, outline), false),
-            new BlueprintRasterizer.LayerStyle("mandibles", mandibleRamp),
-            new BlueprintRasterizer.LayerStyle("eyes", eyeRamp));
+            new BlueprintRasterizer.LayerStyle("body", bodyRamp, true),
+            new BlueprintRasterizer.LayerStyle("legs", legsRamp, false),
+            new BlueprintRasterizer.LayerStyle("antennae", legsRamp, false),
+            new BlueprintRasterizer.LayerStyle("mandibles", mandibleRamp, false),
+            new BlueprintRasterizer.LayerStyle("eyes", eyeRamp, false));
         BlueprintRasterizer.Render(stripe, "stripe", cellSize, ox, oy, new Color32(245, 238, 210, 255), pixels, width);
     }
 
@@ -903,6 +918,45 @@ public static class PackBuildPipeline
 
         speciesId = tokens[2];
         return !string.IsNullOrWhiteSpace(speciesId);
+    }
+
+    private static byte[] SnapshotLayer(PixelBlueprint2D blueprint, string layerName)
+    {
+        if (blueprint == null)
+        {
+            return null;
+        }
+
+        var layer = blueprint.EnsureLayer(layerName);
+        var snapshot = new byte[blueprint.width * blueprint.height];
+        var length = Mathf.Min(snapshot.Length, layer.pixels.Length);
+        for (var i = 0; i < length; i++)
+        {
+            snapshot[i] = layer.pixels[i] > 0 ? (byte)1 : (byte)0;
+        }
+
+        return snapshot;
+    }
+
+    private static int PixelDiff(byte[] a, byte[] b)
+    {
+        if (a == null || b == null)
+        {
+            return int.MaxValue;
+        }
+
+        var length = Mathf.Min(a.Length, b.Length);
+        var diff = 0;
+        for (var i = 0; i < length; i++)
+        {
+            if (a[i] != b[i])
+            {
+                diff++;
+            }
+        }
+
+        diff += Mathf.Abs(a.Length - b.Length);
+        return diff;
     }
 
     private static void RenderSolidMask(PixelBlueprint2D blueprint, int targetSize, int ox, int oy, Color32[] outPixels, int outWidth)

@@ -40,8 +40,21 @@ public sealed class AntArchetypeModule : IArchetypeModule
         var profile = lib.profiles.FirstOrDefault(p => p.speciesId == req.speciesId) ?? lib.profiles[0];
         var (body, stripe) = AntBlueprintSynthesizer.Build(profile, req);
         var result = new ArchetypeSynthesisResult();
-        var id = $"agent:{req.entity.entityId}:{req.speciesId}:{req.role}:{req.stage}:{req.state}:{req.frameIndex:00}";
+        var contractFrame = ContractFrame(req.state, req.frameIndex);
+        var id = $"agent:{req.entity.entityId}:{req.speciesId}:{req.role}:{req.stage}:{req.state}:{contractFrame:00}";
         result.frames.Add(new SynthesizedFrame { spriteId = id, bodyBlueprint = body, maskBlueprint = stripe });
         return result;
+    }
+
+    private static int ContractFrame(string state, int localFrame)
+    {
+        switch ((state ?? string.Empty).ToLowerInvariant())
+        {
+            case "idle": return Mathf.Clamp(localFrame, 0, 1);
+            case "walk": return 2 + Mathf.Clamp(localFrame, 0, 2);
+            case "run": return 5 + Mathf.Clamp(localFrame, 0, 3);
+            case "fight": return 9;
+            default: return Mathf.Max(0, localFrame);
+        }
     }
 }
