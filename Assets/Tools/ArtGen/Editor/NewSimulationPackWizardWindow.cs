@@ -6,6 +6,8 @@ using UnityEngine;
 
 public sealed class NewSimulationPackWizardWindow : EditorWindow
 {
+    private static readonly string[] AntSpeciesNames = { "FireAnt", "CarpenterAnt", "PharaohAnt", "WeaverAnt", "ArmyAnt" };
+
     private List<IPackPreset> presets;
     private int presetIndex;
     private string packId = "AntPack_Auto";
@@ -16,6 +18,8 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
     private readonly Dictionary<string, int> speciesOverrides = new();
     private string currentRecipePath;
     private Vector2 referencePlanScroll;
+    private bool advancedReferencePlanEdit;
+    private bool recipeWriteBlocked;
 
     [MenuItem("GSP/Art/New Simulation Pack…")]
     public static void Open() => GetWindow<NewSimulationPackWizardWindow>("New Simulation Pack");
@@ -48,6 +52,10 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
         agentSpriteSize = EditorGUILayout.IntField("Agent Sprite Size", agentSpriteSize);
         overwrite = EditorGUILayout.Toggle("Overwrite", overwrite);
 
+        var recipePath = BuildRecipePath();
+        var recipeExists = AssetDatabase.LoadAssetAtPath<PackRecipe>(recipePath) != null;
+        EditorGUILayout.LabelField($"Recipe path: {recipePath} (exists: {(recipeExists ? "yes" : "no")})");
+
         var preview = presets[presetIndex].CreateDefaultRecipe(packId, seed);
         foreach (var entity in preview.entities)
         {
@@ -66,6 +74,11 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
             {
                 Debug.Log($"[Wizard] Recipe ready: {currentRecipePath}");
             }
+        }
+
+        if (recipeWriteBlocked)
+        {
+            EditorGUILayout.HelpBox("Recipe exists. Enable Overwrite or change PackId.", MessageType.Warning);
         }
 
         DrawReferencePlanTable();
@@ -150,61 +163,88 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
 
         EditorGUILayout.Space(8f);
         EditorGUILayout.LabelField("Reference Asset Plan", EditorStyles.boldLabel);
+        advancedReferencePlanEdit = EditorGUILayout.ToggleLeft("Advanced edit", advancedReferencePlanEdit);
+
+        DrawReferencePlanHeader();
         using var scroll = new EditorGUILayout.ScrollViewScope(referencePlanScroll, GUILayout.MaxHeight(220f));
         referencePlanScroll = scroll.scrollPosition;
 
-        for (var i = 0; i < recipe.referenceAssets.Count; i++)
+        using (new EditorGUI.DisabledScope(!advancedReferencePlanEdit))
         {
-            var item = recipe.referenceAssets[i];
-            if (item == null) continue;
-
-            using (new EditorGUILayout.VerticalScope("box"))
+            for (var i = 0; i < recipe.referenceAssets.Count; i++)
             {
-                EditorGUILayout.BeginHorizontal();
-                item.assetId = EditorGUILayout.TextField("assetId", item.assetId);
-                item.minImages = Mathf.Max(1, EditorGUILayout.IntField("minImages", item.minImages));
-                item.variantCount = Mathf.Max(1, EditorGUILayout.IntField("variants", item.variantCount));
-                EditorGUILayout.EndHorizontal();
+                var item = recipe.referenceAssets[i];
+                if (item == null) continue;
 
-                EditorGUILayout.BeginHorizontal();
-                item.entityId = EditorGUILayout.TextField("entityId", item.entityId);
-                item.mappedSpeciesId = EditorGUILayout.TextField("mappedSpeciesId", item.mappedSpeciesId);
-                item.generationMode = (PackRecipe.GenerationMode)EditorGUILayout.EnumPopup("mode", item.generationMode);
-                EditorGUILayout.EndHorizontal();
-
-                var imagesFolder = GetAssetImageFolder(recipe.simulationId, item.assetId);
-                var foundCount = CountReferenceImages(imagesFolder);
-                EditorGUILayout.LabelField($"foundCount: {foundCount}");
-
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("Create folders"))
+                using (new EditorGUILayout.VerticalScope("box"))
                 {
-                    ReferenceInboxScaffolder.EnsureAssetStructure(recipe.simulationId, item.assetId, item.minImages);
-                }
+                    EditorGUILayout.BeginHorizontal();
+                    item.assetId = EditorGUILayout.TextField(item.assetId ?? string.Empty);
+                    item.entityId = EditorGUILayout.TextField(item.entityId ?? string.Empty);
+                    item.mappedSpeciesId = EditorGUILayout.TextField(item.mappedSpeciesId ?? string.Empty);
+                    item.minImages = Mathf.Max(1, EditorGUILayout.IntField(item.minImages));
+                    item.variantCount = Mathf.Max(1, EditorGUILayout.IntField(item.variantCount));
+                    item.generationMode = (PackRecipe.GenerationMode)EditorGUILayout.EnumPopup(item.generationMode);
+                    EditorGUILayout.EndHorizontal();
 
-                if (GUILayout.Button("Open folder") && Directory.Exists(imagesFolder))
-                {
-                    EditorUtility.RevealInFinder(imagesFolder);
-                }
+                    var imagesFolder = GetAssetImageFolder(recipe.simulationId, item.assetId);
+                    var foundCount = CountReferenceImages(imagesFolder);
+                    EditorGUILayout.LabelField($"foundCount: {foundCount}");
 
-                if (GUILayout.Button("Remove row"))
-                {
-                    recipe.referenceAssets.RemoveAt(i);
-                    EditorUtility.SetDirty(recipe);
-                    AssetDatabase.SaveAssets();
-                    GUIUtility.ExitGUI();
-                }
+                    EditorGUILayout.BeginHorizontal();
+                    if (GUILayout.Button("Create folders"))
+                    {
+                        ReferenceInboxScaffolder.EnsureAssetStructure(recipe.simulationId, item.assetId, item.minImages);
+                    }
 
-                EditorGUILayout.EndHorizontal();
+                    if (GUILayout.Button("Open folder") && Directory.Exists(imagesFolder))
+                    {
+                        EditorUtility.RevealInFinder(imagesFolder);
+                    }
+
+                    if (GUILayout.Button("Remove row"))
+                    {
+                        recipe.referenceAssets.RemoveAt(i);
+                        EditorUtility.SetDirty(recipe);
+                        AssetDatabase.SaveAssets();
+                        GUIUtility.ExitGUI();
+                    }
+
+                    EditorGUILayout.EndHorizontal();
+                }
             }
         }
 
-        if (GUILayout.Button("Add row"))
+        if (!advancedReferencePlanEdit)
         {
-            recipe.referenceAssets.Add(new PackRecipe.ReferenceAssetNeed { assetId = "NewAsset", minImages = 1 });
+            EditorGUILayout.HelpBox("Plan is read-only. Enable Advanced edit to add, remove, or modify rows.", MessageType.Info);
         }
 
-        EditorUtility.SetDirty(recipe);
+        if (advancedReferencePlanEdit && GUILayout.Button("Add row"))
+        {
+            recipe.referenceAssets.Add(new PackRecipe.ReferenceAssetNeed { assetId = "NewAsset", minImages = 1 });
+            EditorUtility.SetDirty(recipe);
+            AssetDatabase.SaveAssets();
+        }
+
+        if (advancedReferencePlanEdit && GUI.changed)
+        {
+            EditorUtility.SetDirty(recipe);
+            AssetDatabase.SaveAssets();
+        }
+    }
+
+    private static void DrawReferencePlanHeader()
+    {
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            EditorGUILayout.LabelField("assetId", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("entityId", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("mappedSpeciesId", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("minImages", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("variants", EditorStyles.miniBoldLabel);
+            EditorGUILayout.LabelField("mode", EditorStyles.miniBoldLabel);
+        }
     }
 
     private static string GetAssetImageFolder(string simulationId, string assetId)
@@ -251,8 +291,18 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
             if (speciesOverrides.TryGetValue(entity.entityId, out var count)) entity.speciesCount = Mathf.Max(1, count);
         }
 
+        ApplySpeciesCountOverrides(recipe, speciesOverrides);
+
         var recipePath = BuildRecipePath(recipe);
         var existing = AssetDatabase.LoadAssetAtPath<PackRecipe>(recipePath);
+        recipeWriteBlocked = existing != null && !overwrite;
+        if (recipeWriteBlocked)
+        {
+            DestroyImmediate(recipe);
+            currentRecipePath = recipePath;
+            return null;
+        }
+
         if (existing != null)
         {
             EditorUtility.CopySerialized(recipe, existing);
@@ -267,6 +317,56 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
         currentRecipePath = recipePath;
         AssetDatabase.SaveAssets();
         return recipe;
+    }
+
+    private static void ApplySpeciesCountOverrides(PackRecipe recipe, IReadOnlyDictionary<string, int> uiSpeciesOverrides)
+    {
+        if (recipe == null || !string.Equals(recipe.simulationId, "AntColonies", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var antSpeciesCount = 1;
+        for (var i = 0; i < recipe.entities.Count; i++)
+        {
+            var entity = recipe.entities[i];
+            if (!string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase)) continue;
+
+            if (uiSpeciesOverrides.TryGetValue(entity.entityId, out var overriddenCount))
+            {
+                entity.speciesCount = overriddenCount;
+            }
+
+            antSpeciesCount = Mathf.Clamp(entity.speciesCount, 1, AntSpeciesNames.Length);
+            entity.speciesCount = antSpeciesCount;
+            break;
+        }
+
+        var updatedReferenceAssets = new List<PackRecipe.ReferenceAssetNeed>();
+        for (var i = 0; i < antSpeciesCount; i++)
+        {
+            var antName = AntSpeciesNames[i];
+            updatedReferenceAssets.Add(new PackRecipe.ReferenceAssetNeed
+            {
+                assetId = antName,
+                entityId = "ant",
+                mappedSpeciesId = antName,
+                minImages = 1,
+                generationMode = PackRecipe.GenerationMode.OutlineDriven,
+                variantCount = 1
+            });
+        }
+
+        for (var i = 0; i < recipe.referenceAssets.Count; i++)
+        {
+            var existing = recipe.referenceAssets[i];
+            if (existing == null) continue;
+            var isNamedAnt = Array.Exists(AntSpeciesNames, name => string.Equals(name, existing.assetId, StringComparison.OrdinalIgnoreCase));
+            if (isNamedAnt) continue;
+            updatedReferenceAssets.Add(existing);
+        }
+
+        recipe.referenceAssets = updatedReferenceAssets;
     }
 
     private string BuildRecipePath()

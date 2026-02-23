@@ -18,7 +18,7 @@ public sealed class AntColoniesPackPreset : IPackPreset
             {
                 entityId = "ant",
                 archetypeId = "archetype.ant",
-                speciesCount = 4,
+                speciesCount = 5,
                 roles = new List<string> { "worker", "soldier" },
                 lifeStages = new List<string> { "adult" },
                 states = new List<string> { "idle", "walk" }
@@ -31,7 +31,11 @@ public sealed class AntColoniesPackPreset : IPackPreset
         };
         recipe.referenceAssets = new List<PackRecipe.ReferenceAssetNeed>
         {
-            new() { assetId = "ant_base", entityId = "ant", mappedSpeciesId = "default", minImages = 1, generationMode = PackRecipe.GenerationMode.OutlineDriven, variantCount = 4 },
+            new() { assetId = "FireAnt", entityId = "ant", mappedSpeciesId = "FireAnt", minImages = 1, generationMode = PackRecipe.GenerationMode.OutlineDriven, variantCount = 1 },
+            new() { assetId = "CarpenterAnt", entityId = "ant", mappedSpeciesId = "CarpenterAnt", minImages = 1, generationMode = PackRecipe.GenerationMode.OutlineDriven, variantCount = 1 },
+            new() { assetId = "PharaohAnt", entityId = "ant", mappedSpeciesId = "PharaohAnt", minImages = 1, generationMode = PackRecipe.GenerationMode.OutlineDriven, variantCount = 1 },
+            new() { assetId = "WeaverAnt", entityId = "ant", mappedSpeciesId = "WeaverAnt", minImages = 1, generationMode = PackRecipe.GenerationMode.OutlineDriven, variantCount = 1 },
+            new() { assetId = "ArmyAnt", entityId = "ant", mappedSpeciesId = "ArmyAnt", minImages = 1, generationMode = PackRecipe.GenerationMode.OutlineDriven, variantCount = 1 },
             new() { assetId = "prop_nest_entrance_medium", entityId = "ant", mappedSpeciesId = "default", minImages = 1, generationMode = PackRecipe.GenerationMode.Procedural, variantCount = 1 },
             new() { assetId = "prop_food_large", entityId = "ant", mappedSpeciesId = "default", minImages = 1, generationMode = PackRecipe.GenerationMode.Procedural, variantCount = 1 }
         };
