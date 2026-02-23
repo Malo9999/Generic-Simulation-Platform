@@ -149,7 +149,13 @@ public static class PackBuildPipeline
                 var synth = module.Synthesize(req);
                 foreach (var sf in synth.frames)
                 {
-                    cells.Add(new SheetCell { id = RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]), body = sf.bodyBlueprint, mask = sf.maskBlueprint });
+                    var spriteId = RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]);
+                    cells.Add(new SheetCell { id = spriteId, body = sf.bodyBlueprint, mask = null });
+                    if (sf.maskBlueprint != null)
+                    {
+                        cells.Add(new SheetCell { id = spriteId + "_mask", body = sf.maskBlueprint, mask = null });
+                    }
+
                     report.blueprintCount += sf.bodyBlueprint != null ? 1 : 0;
                 }
             }
@@ -281,14 +287,22 @@ public static class PackBuildPipeline
                 continue;
             }
 
-            var bodyColor = new Color32(56, 44, 31, 255);
-            if (TryParseAntSpeciesFromSpriteId(cells[i].id, out var speciesId))
+            var isMaskCell = cells[i].id.EndsWith("_mask", StringComparison.Ordinal);
+            var bodyColor = Color.white;
+            if (!isMaskCell)
             {
-                bodyColor = ReferenceColorSampler.SampleOrFallback(simulationId, speciesId, bodyColor);
+                bodyColor = new Color32(56, 44, 31, 255);
+                if (TryParseAntSpeciesFromSpriteId(cells[i].id, out var speciesId))
+                {
+                    bodyColor = ReferenceColorSampler.SampleOrFallback(simulationId, speciesId, bodyColor);
+                }
             }
 
             BlueprintRasterizer.Render(cells[i].body, "body", cellSize, (int)rect.x, (int)rect.y, bodyColor, pixels, width);
-            BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
+            if (!isMaskCell)
+            {
+                BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
+            }
         }
 
         var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
