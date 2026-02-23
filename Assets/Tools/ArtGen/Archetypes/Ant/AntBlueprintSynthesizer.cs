@@ -62,22 +62,19 @@ public static class AntBlueprintSynthesizer
 
         for (var i = 0; i < 6; i++)
         {
-            var isTripodA = i is 0 or 3 or 4;
-            var angleOffset = pose.legSwing * (isTripodA ? 1f : -1f);
-            var strideBoost = string.Equals(req.state, "run", System.StringComparison.OrdinalIgnoreCase) ? 1.2f : 1f;
-            var forwardLean = string.Equals(req.state, "run", System.StringComparison.OrdinalIgnoreCase) ? 6f : 0f;
-            var angle = model.legAnglesDeg[i] + angleOffset + forwardLean;
+            var angle = model.legAnglesDeg[i] + pose.legAngleOffsetsDeg[i] + pose.forwardLeanDeg;
             var a = ToPx(bp, model.legAnchors01[i]);
-            var b = a + Dir(angle) * Mathf.RoundToInt(model.legLengths01[i] * bp.width * strideBoost);
+            var stride = Mathf.Max(0.7f, pose.legStrideScale[i]);
+            var b = a + Dir(angle) * Mathf.RoundToInt(model.legLengths01[i] * bp.width * stride);
             DrawThickLine(bp, "legs", a.x, a.y, b.x, b.y, 1);
         }
 
         for (var i = 0; i < 2; i++)
         {
-            var wiggle = pose.antennaWiggle * (i == 0 ? -1f : 1f);
-            var angle = model.antennaAnglesDeg[i] + wiggle;
+            var angle = model.antennaAnglesDeg[i] + pose.antennaWiggleDeg[i];
             var a = ToPx(bp, model.antennaAnchors01[i]);
-            var b = a + Dir(angle) * Mathf.RoundToInt(model.antennaLen01 * bp.width);
+            var antennaLen = Mathf.Max(0.8f, pose.antennaLengthScale[i]);
+            var b = a + Dir(angle) * Mathf.RoundToInt(model.antennaLen01 * bp.width * antennaLen);
             DrawThickLine(bp, "antennae", a.x, a.y, b.x, b.y, 1);
         }
 
@@ -131,44 +128,79 @@ public static class AntBlueprintSynthesizer
 
     private struct PoseState
     {
-        public readonly float legSwing;
-        public readonly float antennaWiggle;
+        public readonly float[] legAngleOffsetsDeg;
+        public readonly float[] legStrideScale;
+        public readonly float[] antennaWiggleDeg;
+        public readonly float[] antennaLengthScale;
+        public readonly float forwardLeanDeg;
         public readonly int mandibleOpen;
 
-        public PoseState(float legSwing, float antennaWiggle, int mandibleOpen)
+        public PoseState(float[] legAngleOffsetsDeg, float[] legStrideScale, float[] antennaWiggleDeg, float[] antennaLengthScale, float forwardLeanDeg, int mandibleOpen)
         {
-            this.legSwing = legSwing;
-            this.antennaWiggle = antennaWiggle;
+            this.legAngleOffsetsDeg = legAngleOffsetsDeg;
+            this.legStrideScale = legStrideScale;
+            this.antennaWiggleDeg = antennaWiggleDeg;
+            this.antennaLengthScale = antennaLengthScale;
+            this.forwardLeanDeg = forwardLeanDeg;
             this.mandibleOpen = mandibleOpen;
         }
     }
+
+    private static readonly float[] TripodA = { 12f, -10f, 8f, -12f, 10f, -8f };
+    private static readonly float[] TripodB = { -11f, 9f, -7f, 11f, -9f, 7f };
+    private static readonly float[] TripodN = { 0f, 0f, 0f, 0f, 0f, 0f };
+    private static readonly float[] RunA = { 18f, -16f, 14f, -18f, 16f, -14f };
+    private static readonly float[] RunB = { 7f, -6f, 5f, -7f, 6f, -5f };
+    private static readonly float[] RunC = { -8f, 7f, -6f, 8f, -7f, 6f };
+    private static readonly float[] RunD = { -19f, 17f, -15f, 19f, -17f, 15f };
+    private static readonly float[] StrideIdleStill = { 1f, 1f, 1f, 1f, 1f, 1f };
+    private static readonly float[] StrideIdleTwitch = { 1.02f, 0.98f, 1.01f, 0.99f, 1.02f, 0.98f };
+    private static readonly float[] StrideWalkA = { 1.10f, 0.92f, 1.05f, 0.90f, 1.08f, 0.93f };
+    private static readonly float[] StrideWalkB = { 0.95f, 1.04f, 0.96f, 1.05f, 0.95f, 1.04f };
+    private static readonly float[] StrideRunA = { 1.22f, 0.80f, 1.14f, 0.78f, 1.20f, 0.82f };
+    private static readonly float[] StrideRunB = { 1.10f, 0.94f, 1.06f, 0.92f, 1.08f, 0.95f };
+    private static readonly float[] StrideRunC = { 0.96f, 1.08f, 0.95f, 1.10f, 0.96f, 1.06f };
+    private static readonly float[] StrideRunD = { 0.80f, 1.24f, 0.84f, 1.22f, 0.82f, 1.20f };
 
     private static PoseState PoseFor(string state, int frameIndex)
     {
         if (string.Equals(state, "idle", System.StringComparison.OrdinalIgnoreCase))
         {
-            var wiggle = frameIndex % 2 == 0 ? -8f : 8f;
-            return new PoseState(0f, wiggle, 0);
+            if (Mathf.Abs(frameIndex % 2) == 0)
+                return new PoseState(TripodN, StrideIdleStill, new[] { -5f, 5f }, new[] { 1f, 1f }, 0f, 0);
+
+            return new PoseState(new[] { 2f, -2f, 1f, -1f, 2f, -2f }, StrideIdleTwitch, new[] { 6f, -6f }, new[] { 1.04f, 1.04f }, 0f, 0);
         }
 
         if (string.Equals(state, "walk", System.StringComparison.OrdinalIgnoreCase))
         {
-            var curve = new[] { -10f, 0f, 10f };
-            return new PoseState(curve[Mathf.Abs(frameIndex % curve.Length)], 2f, 0);
+            var pose = Mathf.Abs(frameIndex % 3);
+            return pose switch
+            {
+                0 => new PoseState(TripodA, StrideWalkA, new[] { -3f, 3f }, new[] { 1f, 1f }, 0f, 0),
+                1 => new PoseState(TripodN, StrideWalkB, new[] { 0f, 0f }, new[] { 1.02f, 1.02f }, 0f, 0),
+                _ => new PoseState(TripodB, StrideWalkA, new[] { 3f, -3f }, new[] { 1f, 1f }, 0f, 0)
+            };
         }
 
         if (string.Equals(state, "run", System.StringComparison.OrdinalIgnoreCase))
         {
-            var curve = new[] { -14f, -5f, 5f, 14f };
-            return new PoseState(curve[Mathf.Abs(frameIndex % curve.Length)], 3f, 0);
+            var pose = Mathf.Abs(frameIndex % 4);
+            return pose switch
+            {
+                0 => new PoseState(RunA, StrideRunA, new[] { -4f, 4f }, new[] { 1.06f, 1.06f }, 8f, 0),
+                1 => new PoseState(RunB, StrideRunB, new[] { 0f, 0f }, new[] { 1.03f, 1.03f }, 8f, 0),
+                2 => new PoseState(RunC, StrideRunC, new[] { 0f, 0f }, new[] { 1.03f, 1.03f }, 8f, 0),
+                _ => new PoseState(RunD, StrideRunD, new[] { 4f, -4f }, new[] { 1.06f, 1.06f }, 8f, 0)
+            };
         }
 
         if (string.Equals(state, "fight", System.StringComparison.OrdinalIgnoreCase))
         {
-            return new PoseState(-4f, 0f, 2);
+            return new PoseState(new[] { 16f, -12f, -6f, -16f, 12f, 6f }, new[] { 0.9f, 1f, 1f, 0.9f, 1f, 1f }, new[] { 2f, -2f }, new[] { 1f, 1f }, 2f, 3);
         }
 
-        return new PoseState(0f, 0f, 0);
+        return new PoseState(TripodN, StrideIdleStill, new[] { 0f, 0f }, new[] { 1f, 1f }, 0f, 0);
     }
 
     private static void DrawAbdomenStripe(PixelBlueprint2D bp, AntTopdownModel model)

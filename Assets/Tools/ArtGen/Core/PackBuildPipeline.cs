@@ -854,15 +854,22 @@ public static class PackBuildPipeline
         var mandibleRamp = BuildToneRamp(ScaleColor(bodyColor, 0.78f), outline);
         var eyeRamp = new BlueprintRasterizer.ToneRamp(new Color32(232, 220, 156, 255), new Color32(171, 149, 92, 255), new Color32(255, 236, 176, 255), outline);
 
-        BlueprintRasterizer.Render(body, "legs", cellSize, ox, oy, legsRamp, pixels, width);
-        BlueprintRasterizer.Render(body, "antennae", cellSize, ox, oy, legsRamp, pixels, width);
-        BlueprintRasterizer.Render(body, "abdomen", cellSize, ox, oy, bodyRamp, pixels, width);
-        BlueprintRasterizer.Render(body, "thorax", cellSize, ox, oy, bodyRamp, pixels, width);
-        BlueprintRasterizer.Render(body, "head", cellSize, ox, oy, bodyRamp, pixels, width);
-        BlueprintRasterizer.Render(body, "shadow", cellSize, ox, oy, new BlueprintRasterizer.ToneRamp(bodyRamp.shadowColor, bodyRamp.shadowColor, bodyRamp.shadowColor, outline), pixels, width, false);
-        BlueprintRasterizer.Render(body, "highlight", cellSize, ox, oy, new BlueprintRasterizer.ToneRamp(bodyRamp.highlightColor, bodyRamp.highlightColor, bodyRamp.highlightColor, outline), pixels, width, false);
-        BlueprintRasterizer.Render(body, "mandibles", cellSize, ox, oy, mandibleRamp, pixels, width);
-        BlueprintRasterizer.Render(body, "eyes", cellSize, ox, oy, eyeRamp, pixels, width);
+        BlueprintRasterizer.RenderLayers(
+            body,
+            cellSize,
+            ox,
+            oy,
+            pixels,
+            width,
+            new BlueprintRasterizer.LayerStyle("legs", legsRamp),
+            new BlueprintRasterizer.LayerStyle("antennae", legsRamp),
+            new BlueprintRasterizer.LayerStyle("abdomen", bodyRamp),
+            new BlueprintRasterizer.LayerStyle("thorax", bodyRamp),
+            new BlueprintRasterizer.LayerStyle("head", bodyRamp),
+            new BlueprintRasterizer.LayerStyle("shadow", new BlueprintRasterizer.ToneRamp(bodyRamp.shadowColor, bodyRamp.shadowColor, bodyRamp.shadowColor, outline), false),
+            new BlueprintRasterizer.LayerStyle("highlight", new BlueprintRasterizer.ToneRamp(bodyRamp.highlightColor, bodyRamp.highlightColor, bodyRamp.highlightColor, outline), false),
+            new BlueprintRasterizer.LayerStyle("mandibles", mandibleRamp),
+            new BlueprintRasterizer.LayerStyle("eyes", eyeRamp));
         BlueprintRasterizer.Render(stripe, "stripe", cellSize, ox, oy, new Color32(245, 238, 210, 255), pixels, width);
     }
 

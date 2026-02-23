@@ -581,11 +581,18 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         view.maskRenderer.color = new Color(GetTeamColor(ant.teamId).r, GetTeamColor(ant.teamId).g, GetTeamColor(ant.teamId).b, 0.85f);
 
         view.root.localPosition = new Vector3(ant.position.x, ant.position.y, 0f);
+        view.root.localRotation = Quaternion.identity;
+
+        var bodyRotation = Quaternion.identity;
         if (ant.velocity.sqrMagnitude > 0.0001f)
         {
             var angle = Mathf.Atan2(ant.velocity.y, ant.velocity.x) * Mathf.Rad2Deg;
-            view.root.localRotation = Quaternion.Euler(0f, 0f, angle);
+            var snapped = Mathf.Round(angle / 45f) * 45f;
+            bodyRotation = Quaternion.Euler(0f, 0f, snapped);
         }
+
+        view.baseRenderer.transform.localRotation = bodyRotation;
+        view.maskRenderer.transform.localRotation = bodyRotation;
 
         var hpPct = Mathf.Clamp01(ant.hp / Mathf.Max(0.01f, ant.maxHp));
         view.hpFillRenderer.transform.localScale = new Vector3(0.5f * hpPct, 0.06f, 1f);
