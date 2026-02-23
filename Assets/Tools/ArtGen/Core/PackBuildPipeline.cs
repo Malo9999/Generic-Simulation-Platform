@@ -81,9 +81,19 @@ public static class PackBuildPipeline
 
                 if (entity.entityId == "ant")
                 {
+                    var generatedIds = generatedSprites.Select(s => s.name).ToList();
                     antSpeciesLogged = new List<string>(resolvedSpeciesIds);
-                    antSpriteSamples = BuildFireAntContractSamples(generatedSprites.Select(s => s.name));
-                    ValidateAntContractSprites(report, generatedSprites.Select(s => s.name), resolvedSpeciesIds);
+                    if (resolvedSpeciesIds.Count > 0)
+                    {
+                        var firstSpecies = resolvedSpeciesIds[0];
+                        antSpriteSamples = BuildAntContractSamplesForSpecies(generatedIds, firstSpecies).Take(12).ToList();
+                    }
+                    else
+                    {
+                        antSpriteSamples = generatedIds.Take(12).ToList();
+                    }
+
+                    ValidateAntContractSprites(report, generatedIds, resolvedSpeciesIds);
                 }
 
                 if (entity.entityId == "ant")
@@ -122,7 +132,7 @@ public static class PackBuildPipeline
         if (antSpeciesLogged.Count > 0)
         {
             Debug.Log($"[PackBuildPipeline] Ant speciesIds in pack: {string.Join(", ", antSpeciesLogged)}");
-            Debug.Log($"[PackBuildPipeline] FireAnt contract sample IDs: {string.Join(", ", antSpriteSamples)}");
+            Debug.Log($"[PackBuildPipeline] Ant contract sample IDs: {string.Join(", ", antSpriteSamples)}");
         }
 
         AssetDatabase.SaveAssets();
@@ -198,25 +208,29 @@ public static class PackBuildPipeline
     private static IReadOnlyList<string> AntContractStates()
         => new[] { "idle", "walk", "run", "fight" };
 
-    private static List<string> BuildFireAntContractSamples(IEnumerable<string> antSpriteIds)
+    private static List<string> BuildAntContractSamplesForSpecies(IEnumerable<string> antSpriteIds, string speciesId)
     {
-        var all = antSpriteIds.Where(id => !id.EndsWith("_mask", StringComparison.Ordinal)).ToList();
-        var fireAnt = all.Where(id => id.StartsWith("agent:ant:FireAnt:", StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
-        var samples = new List<string>(10);
-        foreach (var expected in ExpectedAntContractSpriteIds("FireAnt"))
+        var all = antSpriteIds
+            .Where(id => !id.EndsWith("_mask", StringComparison.Ordinal))
+            .Where(id => id.Contains($"agent:ant:{speciesId}:", StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var speciesIds = all.ToHashSet(StringComparer.Ordinal);
+        var samples = new List<string>();
+        foreach (var expected in ExpectedAntContractSpriteIds(speciesId))
         {
-            if (fireAnt.Contains(expected))
+            if (speciesIds.Contains(expected))
             {
                 samples.Add(expected);
             }
         }
 
-        if (samples.Count == 10)
+        if (samples.Count > 0)
         {
             return samples;
         }
 
-        return all.Take(10).ToList();
+        return all.OrderBy(id => id, StringComparer.Ordinal).ToList();
     }
 
     private static void ValidateAntContractSprites(BuildReport report, IEnumerable<string> antSpriteIds, List<string> speciesIds)
