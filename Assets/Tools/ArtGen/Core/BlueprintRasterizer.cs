@@ -2,6 +2,22 @@ using UnityEngine;
 
 public static class BlueprintRasterizer
 {
+    public struct ToneRamp
+    {
+        public readonly Color32 baseColor;
+        public readonly Color32 shadowColor;
+        public readonly Color32 highlightColor;
+        public readonly Color32 outlineColor;
+
+        public ToneRamp(Color32 baseColor, Color32 shadowColor, Color32 highlightColor, Color32 outlineColor)
+        {
+            this.baseColor = baseColor;
+            this.shadowColor = shadowColor;
+            this.highlightColor = highlightColor;
+            this.outlineColor = outlineColor;
+        }
+    }
+
     public static void Render(PixelBlueprint2D blueprint, string layerName, int targetSize, int ox, int oy, Color32 color, Color32[] outPixels, int outWidth)
     {
         if (blueprint == null) return;
@@ -35,6 +51,37 @@ public static class BlueprintRasterizer
             else if (drawOutline && HasFilledNeighbor(filled, targetSize, targetSize, x, y))
             {
                 outPixels[((oy + y) * outWidth) + ox + x] = outlineColor;
+            }
+        }
+    }
+
+    public static void Render(PixelBlueprint2D blueprint, string layerName, int targetSize, int ox, int oy, ToneRamp ramp, Color32[] outPixels, int outWidth, bool drawOutline = true)
+    {
+        if (blueprint == null) return;
+        var layer = blueprint.EnsureLayer(layerName);
+        var filled = new bool[targetSize * targetSize];
+
+        for (var y = 0; y < targetSize; y++)
+        for (var x = 0; x < targetSize; x++)
+        {
+            var sx = Mathf.Clamp(Mathf.FloorToInt((x / (float)targetSize) * blueprint.width), 0, blueprint.width - 1);
+            var sy = Mathf.Clamp(Mathf.FloorToInt((y / (float)targetSize) * blueprint.height), 0, blueprint.height - 1);
+            filled[(y * targetSize) + x] = layer.pixels[(sy * blueprint.width) + sx] > 0;
+        }
+
+        for (var y = 0; y < targetSize; y++)
+        for (var x = 0; x < targetSize; x++)
+        {
+            var idx = (y * targetSize) + x;
+            if (filled[idx])
+            {
+                var ny = y / (float)Mathf.Max(1, targetSize - 1);
+                var tone = ny < 0.33f ? ramp.highlightColor : ny > 0.66f ? ramp.shadowColor : ramp.baseColor;
+                outPixels[((oy + y) * outWidth) + ox + x] = tone;
+            }
+            else if (drawOutline && HasFilledNeighbor(filled, targetSize, targetSize, x, y))
+            {
+                outPixels[((oy + y) * outWidth) + ox + x] = ramp.outlineColor;
             }
         }
     }
