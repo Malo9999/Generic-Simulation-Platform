@@ -83,6 +83,7 @@ public static class PackBuildPipeline
                 {
                     antSpeciesLogged = new List<string>(resolvedSpeciesIds);
                     antSpriteSamples = generatedSprites.Select(s => s.name).Take(5).ToList();
+                    ValidateAntContractSprites(report, generatedSprites.Select(s => s.name), resolvedSpeciesIds);
                 }
 
                 if (entity.entityId == "ant")
@@ -133,6 +134,7 @@ public static class PackBuildPipeline
     {
         var cells = new List<SheetCell>();
         var speciesDisplayIds = BuildDisplaySpeciesIds(recipe.referenceAssets.Where(a => a.entityId == entity.entityId).ToList(), speciesIds.Count);
+        var isAntEntity = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase);
         for (var s = 0; s < speciesIds.Count; s++)
         foreach (var role in entity.roles)
         foreach (var stage in entity.lifeStages)
@@ -142,14 +144,17 @@ public static class PackBuildPipeline
             for (var frame = 0; frame < frameCount; frame++)
             {
                 var speciesId = speciesIds[s];
+                var contractFrame = isAntEntity ? ContractFrameIndex(state, frame) : frame;
                 var frameFolder = $"{recipe.outputFolder}/Blueprints/Generated/{entity.entityId}/{speciesId}/{role}/{stage}/{state}";
                 ImportSettingsUtil.EnsureFolder(frameFolder);
-                var bpPath = $"{frameFolder}/{frame:00}.asset";
-                var req = new ArchetypeSynthesisRequest { recipe = recipe, entity = entity, speciesId = speciesId, role = role, stage = stage, state = state, frameIndex = frame, blueprintPath = bpPath, seed = Deterministic.DeriveSeed(recipe.seed, $"{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{frame}") };
+                var bpPath = $"{frameFolder}/{contractFrame:00}.asset";
+                var req = new ArchetypeSynthesisRequest { recipe = recipe, entity = entity, speciesId = speciesId, role = role, stage = stage, state = state, frameIndex = contractFrame, blueprintPath = bpPath, seed = Deterministic.DeriveSeed(recipe.seed, $"{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{contractFrame}") };
                 var synth = module.Synthesize(req);
                 foreach (var sf in synth.frames)
                 {
-                    var spriteId = RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]);
+                    var spriteId = isAntEntity
+                        ? BuildAntSpriteId(speciesId, role, stage, state, contractFrame)
+                        : RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]);
                     cells.Add(new SheetCell { id = spriteId, body = sf.bodyBlueprint, mask = null });
                     if (sf.maskBlueprint != null)
                     {
@@ -162,6 +167,53 @@ public static class PackBuildPipeline
         }
 
         return cells;
+    }
+
+    private static int ContractFrameIndex(string state, int localFrame)
+    {
+        switch (state.ToLowerInvariant())
+        {
+            case "idle": return localFrame;
+            case "walk": return 2 + localFrame;
+            case "run": return 5 + localFrame;
+            case "fight": return 9;
+            default: return localFrame;
+        }
+    }
+
+    private static string BuildAntSpriteId(string speciesId, string role, string stage, string state, int contractFrame)
+        => $"agent:ant:{speciesId}:{role}:{stage}:{state}:{contractFrame:00}";
+
+    private static void ValidateAntContractSprites(BuildReport report, IEnumerable<string> antSpriteIds, List<string> speciesIds)
+    {
+        var actual = new HashSet<string>(antSpriteIds, StringComparer.Ordinal);
+        foreach (var speciesId in speciesIds)
+        {
+            var missing = new List<string>();
+            foreach (var expected in ExpectedAntContractSpriteIds(speciesId))
+            {
+                if (!actual.Contains(expected)) missing.Add(expected);
+                if (!actual.Contains(expected + "_mask")) missing.Add(expected + "_mask");
+            }
+
+            if (missing.Count <= 0)
+            {
+                continue;
+            }
+
+            var sample = string.Join(", ", missing.Take(5));
+            var message = $"Missing {missing.Count} contract sprites for {speciesId} (examples: {sample})";
+            report.warnings.Add(message);
+            Debug.LogError("[PackBuildPipeline] " + message);
+        }
+    }
+
+    private static IEnumerable<string> ExpectedAntContractSpriteIds(string speciesId)
+    {
+        foreach (var frame in Enumerable.Range(0, 2)) yield return BuildAntSpriteId(speciesId, "worker", "adult", "idle", frame);
+        foreach (var frame in Enumerable.Range(2, 3)) yield return BuildAntSpriteId(speciesId, "worker", "adult", "walk", frame);
+        foreach (var frame in Enumerable.Range(5, 4)) yield return BuildAntSpriteId(speciesId, "worker", "adult", "run", frame);
+        yield return BuildAntSpriteId(speciesId, "worker", "adult", "fight", 9);
     }
 
     private static List<SheetCell> BuildOutlineCells(PackRecipe recipe, PackRecipe.EntityRequirement entity, List<string> displaySpecies)
