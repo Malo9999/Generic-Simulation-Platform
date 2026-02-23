@@ -20,6 +20,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private float halfHeight = 32f;
     private AntWorldState worldState;
     private AntWorldRecipe recipe;
+    private bool showHealthBars;
 
     private static Sprite fallbackAntSprite;
     private static Sprite squareSprite;
@@ -31,6 +32,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
         recipe = config?.antColonies?.worldRecipe ?? new AntWorldRecipe();
         recipe.Normalize();
+        showHealthBars = config?.presentation?.showHealthBars ?? false;
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
@@ -530,23 +532,28 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var maskRenderer = maskObj.AddComponent<SpriteRenderer>();
         maskRenderer.sortingOrder = AntSortingOrder + 1;
 
-        var hpBgObj = new GameObject("HpBg");
-        hpBgObj.transform.SetParent(root.transform, false);
-        hpBgObj.transform.localPosition = new Vector3(0f, 0.75f, 0f);
-        hpBgObj.transform.localScale = new Vector3(0.5f, 0.08f, 1f);
-        var hpBgRenderer = hpBgObj.AddComponent<SpriteRenderer>();
-        hpBgRenderer.sprite = GetSquareSprite();
-        hpBgRenderer.color = new Color(0f, 0f, 0f, 0.8f);
-        hpBgRenderer.sortingOrder = AntSortingOrder + 2;
+        SpriteRenderer hpBgRenderer = null;
+        SpriteRenderer hpFillRenderer = null;
+        if (showHealthBars)
+        {
+            var hpBgObj = new GameObject("HpBg");
+            hpBgObj.transform.SetParent(root.transform, false);
+            hpBgObj.transform.localPosition = new Vector3(0f, 0.75f, 0f);
+            hpBgObj.transform.localScale = new Vector3(0.5f, 0.08f, 1f);
+            hpBgRenderer = hpBgObj.AddComponent<SpriteRenderer>();
+            hpBgRenderer.sprite = GetSquareSprite();
+            hpBgRenderer.color = new Color(0f, 0f, 0f, 0.8f);
+            hpBgRenderer.sortingOrder = AntSortingOrder + 2;
 
-        var hpFillObj = new GameObject("HpFill");
-        hpFillObj.transform.SetParent(root.transform, false);
-        hpFillObj.transform.localPosition = new Vector3(-0.25f, 0.75f, 0f);
-        hpFillObj.transform.localScale = new Vector3(0.5f, 0.06f, 1f);
-        var hpFillRenderer = hpFillObj.AddComponent<SpriteRenderer>();
-        hpFillRenderer.sprite = GetSquareSprite();
-        hpFillRenderer.color = new Color(0.2f, 0.95f, 0.2f, 1f);
-        hpFillRenderer.sortingOrder = AntSortingOrder + 3;
+            var hpFillObj = new GameObject("HpFill");
+            hpFillObj.transform.SetParent(root.transform, false);
+            hpFillObj.transform.localPosition = new Vector3(-0.25f, 0.75f, 0f);
+            hpFillObj.transform.localScale = new Vector3(0.5f, 0.06f, 1f);
+            hpFillRenderer = hpFillObj.AddComponent<SpriteRenderer>();
+            hpFillRenderer.sprite = GetSquareSprite();
+            hpFillRenderer.color = new Color(0.2f, 0.95f, 0.2f, 1f);
+            hpFillRenderer.sortingOrder = AntSortingOrder + 3;
+        }
 
         return new AntAgentView
         {
@@ -593,6 +600,11 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
         view.baseRenderer.transform.localRotation = bodyRotation;
         view.maskRenderer.transform.localRotation = bodyRotation;
+
+        if (!showHealthBars || view.hpFillRenderer == null)
+        {
+            return;
+        }
 
         var hpPct = Mathf.Clamp01(ant.hp / Mathf.Max(0.01f, ant.maxHp));
         view.hpFillRenderer.transform.localScale = new Vector3(0.5f * hpPct, 0.06f, 1f);
