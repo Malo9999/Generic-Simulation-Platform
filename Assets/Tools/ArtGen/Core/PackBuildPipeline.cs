@@ -156,7 +156,7 @@ public static class PackBuildPipeline
                         ? BuildAntSpriteId(speciesId, role, stage, state, contractFrame)
                         : RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]);
                     cells.Add(new SheetCell { id = spriteId, body = sf.bodyBlueprint, mask = null });
-                    var maskBlueprint = sf.maskBlueprint ?? sf.bodyBlueprint;
+                    var maskBlueprint = sf.maskBlueprint ?? BuildMaskBlueprintFromBody(sf.bodyBlueprint);
                     cells.Add(new SheetCell { id = spriteId + "_mask", body = maskBlueprint, mask = null });
 
                     report.blueprintCount += sf.bodyBlueprint != null ? 1 : 0;
@@ -336,6 +336,63 @@ public static class PackBuildPipeline
     private static string RewriteSpriteId(string original, string entityId, string originalSpeciesId, string displaySpeciesId)
         => original.Replace($"agent:{entityId}:{originalSpeciesId}:", $"agent:{entityId}:{displaySpeciesId}:");
 
+    private static PixelBlueprint2D BuildMaskBlueprintFromBody(PixelBlueprint2D bodyBlueprint)
+    {
+        if (bodyBlueprint == null)
+        {
+            return null;
+        }
+
+        var maskBlueprint = ScriptableObject.CreateInstance<PixelBlueprint2D>();
+        maskBlueprint.width = Mathf.Max(1, bodyBlueprint.width);
+        maskBlueprint.height = Mathf.Max(1, bodyBlueprint.height);
+        var maskLayer = maskBlueprint.EnsureLayer("body");
+        var maskPixels = maskLayer.pixels;
+
+        var bodyLayer = bodyBlueprint.EnsureLayer("body");
+        var copyLength = Mathf.Min(maskPixels.Length, bodyLayer.pixels.Length);
+        Array.Copy(bodyLayer.pixels, maskPixels, copyLength);
+
+        var hasFilled = false;
+        for (var i = 0; i < copyLength; i++)
+        {
+            if (maskPixels[i] > 0)
+            {
+                hasFilled = true;
+                break;
+            }
+        }
+
+        if (!hasFilled)
+        {
+            foreach (var layer in bodyBlueprint.layers)
+            {
+                if (layer?.pixels == null)
+                {
+                    continue;
+                }
+
+                var length = Mathf.Min(maskPixels.Length, layer.pixels.Length);
+                for (var i = 0; i < length; i++)
+                {
+                    if (layer.pixels[i] > 0)
+                    {
+                        maskPixels[i] = 1;
+                        hasFilled = true;
+                    }
+                }
+
+                if (hasFilled)
+                {
+                    // Keep processing all layers to produce a full silhouette union.
+                    continue;
+                }
+            }
+        }
+
+        return maskBlueprint;
+    }
+
     private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId)
     {
         if (!overwrite && File.Exists(path)) return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
@@ -369,11 +426,14 @@ public static class PackBuildPipeline
                 }
             }
 
-            BlueprintRasterizer.Render(cells[i].body, "body", cellSize, (int)rect.x, (int)rect.y, bodyColor, pixels, width);
-            if (!isMaskCell)
+            if (isMaskCell)
             {
-                BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
+                RenderSolidMask(cells[i].body, cellSize, (int)rect.x, (int)rect.y, pixels, width);
+                continue;
             }
+
+            BlueprintRasterizer.Render(cells[i].body, "body", cellSize, (int)rect.x, (int)rect.y, bodyColor, pixels, width);
+            BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
         }
 
         var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
@@ -404,6 +464,26 @@ public static class PackBuildPipeline
 
         speciesId = tokens[2];
         return !string.IsNullOrWhiteSpace(speciesId);
+    }
+
+    private static void RenderSolidMask(PixelBlueprint2D blueprint, int targetSize, int ox, int oy, Color32[] outPixels, int outWidth)
+    {
+        if (blueprint == null)
+        {
+            return;
+        }
+
+        var layer = blueprint.EnsureLayer("body");
+        for (var y = 0; y < targetSize; y++)
+        for (var x = 0; x < targetSize; x++)
+        {
+            var sx = Mathf.Clamp(Mathf.FloorToInt((x / (float)targetSize) * blueprint.width), 0, blueprint.width - 1);
+            var sy = Mathf.Clamp(Mathf.FloorToInt((y / (float)targetSize) * blueprint.height), 0, blueprint.height - 1);
+            if (layer.pixels[(sy * blueprint.width) + sx] > 0)
+            {
+                outPixels[((oy + y) * outWidth) + ox + x] = Color.white;
+            }
+        }
     }
 
     private static void ExportAntCompatibility(PackRecipe recipe, List<ContentPack.SpriteEntry> sprites, List<ContentPack.TextureEntry> textures)
