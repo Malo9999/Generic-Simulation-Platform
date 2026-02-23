@@ -27,6 +27,12 @@ public sealed class GenericReferenceCalibrator : IReferenceCalibrator
                 mappedSpeciesId = asset.mappedSpeciesId
             };
 
+            if (asset.generationMode == PackRecipe.GenerationMode.Procedural)
+            {
+                report.assets.Add(summary);
+                continue;
+            }
+
             var images = EnumerateAssetImages(simulationFolder, asset.assetId);
             if (images.Count < Math.Max(1, asset.minImages))
             {
