@@ -82,7 +82,7 @@ public static class PackBuildPipeline
                 if (entity.entityId == "ant")
                 {
                     antSpeciesLogged = new List<string>(resolvedSpeciesIds);
-                    antSpriteSamples = generatedSprites.Select(s => s.name).Take(5).ToList();
+                    antSpriteSamples = BuildFireAntContractSamples(generatedSprites.Select(s => s.name));
                     ValidateAntContractSprites(report, generatedSprites.Select(s => s.name), resolvedSpeciesIds);
                 }
 
@@ -122,7 +122,7 @@ public static class PackBuildPipeline
         if (antSpeciesLogged.Count > 0)
         {
             Debug.Log($"[PackBuildPipeline] Ant speciesIds in pack: {string.Join(", ", antSpeciesLogged)}");
-            Debug.Log($"[PackBuildPipeline] Ant sprite sample IDs: {string.Join(", ", antSpriteSamples)}");
+            Debug.Log($"[PackBuildPipeline] FireAnt contract sample IDs: {string.Join(", ", antSpriteSamples)}");
         }
 
         AssetDatabase.SaveAssets();
@@ -135,10 +135,11 @@ public static class PackBuildPipeline
         var cells = new List<SheetCell>();
         var speciesDisplayIds = BuildDisplaySpeciesIds(recipe.referenceAssets.Where(a => a.entityId == entity.entityId).ToList(), speciesIds.Count);
         var isAntEntity = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase);
+        var states = isAntEntity ? AntContractStates() : entity.states;
         for (var s = 0; s < speciesIds.Count; s++)
         foreach (var role in entity.roles)
         foreach (var stage in entity.lifeStages)
-        foreach (var state in entity.states)
+        foreach (var state in states)
         {
             var frameCount = isAntEntity ? AntContractLocalFrameCount(state) : entity.animationPolicy.FramesForState(state);
             for (var frame = 0; frame < frameCount; frame++)
@@ -148,7 +149,7 @@ public static class PackBuildPipeline
                 var frameFolder = $"{recipe.outputFolder}/Blueprints/Generated/{entity.entityId}/{speciesId}/{role}/{stage}/{state}";
                 ImportSettingsUtil.EnsureFolder(frameFolder);
                 var bpPath = $"{frameFolder}/{contractFrame:00}.asset";
-                var req = new ArchetypeSynthesisRequest { recipe = recipe, entity = entity, speciesId = speciesId, role = role, stage = stage, state = state, frameIndex = frame, blueprintPath = bpPath, seed = Deterministic.DeriveSeed(recipe.seed, $"{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{contractFrame}") };
+                var req = new ArchetypeSynthesisRequest { recipe = recipe, entity = entity, speciesId = speciesId, role = role, stage = stage, state = state, frameIndex = frame, blueprintPath = bpPath, seed = Deterministic.DeriveSeed(recipe.seed, $"{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{frame}") };
                 var synth = module.Synthesize(req);
                 foreach (var sf in synth.frames)
                 {
@@ -194,6 +195,30 @@ public static class PackBuildPipeline
     private static string BuildAntSpriteId(string speciesId, string role, string stage, string state, int contractFrame)
         => $"agent:ant:{speciesId}:{role}:{stage}:{state}:{contractFrame:00}";
 
+    private static IReadOnlyList<string> AntContractStates()
+        => new[] { "idle", "walk", "run", "fight" };
+
+    private static List<string> BuildFireAntContractSamples(IEnumerable<string> antSpriteIds)
+    {
+        var all = antSpriteIds.Where(id => !id.EndsWith("_mask", StringComparison.Ordinal)).ToList();
+        var fireAnt = all.Where(id => id.StartsWith("agent:ant:FireAnt:", StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
+        var samples = new List<string>(10);
+        foreach (var expected in ExpectedAntContractSpriteIds("FireAnt"))
+        {
+            if (fireAnt.Contains(expected))
+            {
+                samples.Add(expected);
+            }
+        }
+
+        if (samples.Count == 10)
+        {
+            return samples;
+        }
+
+        return all.Take(10).ToList();
+    }
+
     private static void ValidateAntContractSprites(BuildReport report, IEnumerable<string> antSpriteIds, List<string> speciesIds)
     {
         var actual = new HashSet<string>(antSpriteIds, StringComparer.Ordinal);
@@ -238,7 +263,8 @@ public static class PackBuildPipeline
     private static List<SheetCell> BuildOutlineCells(PackRecipe recipe, PackRecipe.EntityRequirement entity, List<string> displaySpecies)
     {
         var cells = new List<SheetCell>();
-        var total = 10;
+        var isAntEntity = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase);
+        var states = isAntEntity ? AntContractStates() : entity.states;
         for (var i = 0; i < displaySpecies.Count; i++)
         {
             var species = displaySpecies[i];
@@ -246,11 +272,18 @@ public static class PackBuildPipeline
             if (!File.Exists(outlinePath)) continue;
             var fillColor = ReferenceColorSampler.SampleOrFallback(recipe.simulationId, species, new Color32(126, 92, 62, 255));
             var basePixels = LoadAndNormalizeOutline(outlinePath, recipe.agentSpriteSize, fillColor);
-            for (var frame = 0; frame < total; frame++)
+            foreach (var state in states)
             {
-                var warped = WarpFrame(basePixels, recipe.agentSpriteSize, recipe.agentSpriteSize, frame, "idle");
-                var id = $"agent:{entity.entityId}:{species}:worker:adult:idle:{frame:00}";
-                cells.Add(new SheetCell { id = id, pixels = warped });
+                var frameCount = isAntEntity ? AntContractLocalFrameCount(state) : entity.animationPolicy.FramesForState(state);
+                for (var frame = 0; frame < frameCount; frame++)
+                {
+                    var contractFrame = isAntEntity ? ContractFrameIndex(state, frame) : frame;
+                    var warped = WarpFrame(basePixels, recipe.agentSpriteSize, recipe.agentSpriteSize, frame, state);
+                    var id = isAntEntity
+                        ? BuildAntSpriteId(species, "worker", "adult", state, contractFrame)
+                        : $"agent:{entity.entityId}:{species}:worker:adult:{state}:{contractFrame:00}";
+                    cells.Add(new SheetCell { id = id, pixels = warped });
+                }
             }
         }
 
