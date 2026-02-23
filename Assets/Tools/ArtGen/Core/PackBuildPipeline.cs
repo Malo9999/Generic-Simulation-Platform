@@ -40,6 +40,8 @@ public static class PackBuildPipeline
         var antsCompat = new List<ContentPack.SpriteEntry>();
         var speciesSelections = new List<ContentPack.SpeciesSelection>();
         var clipMetadata = new List<ContentPack.ClipMetadataEntry>();
+        var antSpeciesLogged = new List<string>();
+        var antSpriteSamples = new List<string>();
 
         foreach (var entity in recipe.entities)
         {
@@ -49,10 +51,12 @@ public static class PackBuildPipeline
             var useOutline = assetNeeds.Any(a => a.generationMode == PackRecipe.GenerationMode.OutlineDriven);
 
             var speciesIds = module.PickSpeciesIds(Deterministic.DeriveSeed(recipe.seed, "species:" + entity.entityId), entity.speciesCount);
-            var displaySpecies = BuildDisplaySpeciesIds(assetNeeds, entity.speciesCount);
+            var recipeSpeciesIds = BuildRecipeSpeciesIds(entity.entityId, assetNeeds, entity.speciesCount);
+            var displaySpecies = recipeSpeciesIds.Count > 0 ? recipeSpeciesIds : BuildDisplaySpeciesIds(assetNeeds, entity.speciesCount);
+            var resolvedSpeciesIds = recipeSpeciesIds.Count > 0 ? recipeSpeciesIds : speciesIds;
 
-            speciesSelections.Add(new ContentPack.SpeciesSelection { entityId = entity.entityId, speciesIds = new List<string>(displaySpecies) });
-            var cells = useOutline ? BuildOutlineCells(recipe, entity, assetNeeds, displaySpecies) : BuildProceduralCells(recipe, report, entity, speciesIds, module);
+            speciesSelections.Add(new ContentPack.SpeciesSelection { entityId = entity.entityId, speciesIds = new List<string>(resolvedSpeciesIds) });
+            var cells = useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, speciesIds, module);
 
             foreach (var role in entity.roles)
             foreach (var stage in entity.lifeStages)
@@ -70,15 +74,21 @@ public static class PackBuildPipeline
             {
                 var sheetName = entity.entityId == "ant" ? "ants_anim" : entity.entityId + "_anim";
                 var texPath = $"{recipe.outputFolder}/Generated/{sheetName}.png";
-                var generatedSprites = CompileSheet(texPath, cells, recipe.agentSpriteSize, overwrite);
+                var generatedSprites = CompileSheet(texPath, cells, recipe.agentSpriteSize, overwrite, recipe.simulationId);
                 textureEntries.Add(new ContentPack.TextureEntry { id = "sheet:" + sheetName, texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath) });
                 foreach (var sp in generatedSprites) spriteEntries.Add(new ContentPack.SpriteEntry { id = sp.name, category = "agent", sprite = sp });
                 report.spriteCount += generatedSprites.Count;
 
                 if (entity.entityId == "ant")
                 {
+                    antSpeciesLogged = new List<string>(resolvedSpeciesIds);
+                    antSpriteSamples = generatedSprites.Select(s => s.name).Take(5).ToList();
+                }
+
+                if (entity.entityId == "ant")
+                {
                     var compatPath = $"{recipe.outputFolder}/Generated/ants.png";
-                    var compatSprites = CompileSheet(compatPath, cells.Take(4).ToList(), recipe.agentSpriteSize, overwrite);
+                    var compatSprites = CompileSheet(compatPath, cells.Take(4).ToList(), recipe.agentSpriteSize, overwrite, recipe.simulationId);
                     textureEntries.Add(new ContentPack.TextureEntry { id = "sheet:ants", texture = AssetDatabase.LoadAssetAtPath<Texture2D>(compatPath) });
                     foreach (var sp in compatSprites) antsCompat.Add(new ContentPack.SpriteEntry { id = sp.name.Replace("agent:ant:", "ant_").Replace(":", "_"), category = "agent", sprite = sp });
                 }
@@ -107,6 +117,12 @@ public static class PackBuildPipeline
         report.contentPackVersion = pack.Version;
 
         if (recipe.generationPolicy.exportCompatibilityAntContentPack) ExportAntCompatibility(recipe, spriteEntries, textureEntries);
+
+        if (antSpeciesLogged.Count > 0)
+        {
+            Debug.Log($"[PackBuildPipeline] Ant speciesIds in pack: {string.Join(", ", antSpeciesLogged)}");
+            Debug.Log($"[PackBuildPipeline] Ant sprite sample IDs: {string.Join(", ", antSpriteSamples)}");
+        }
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -142,17 +158,17 @@ public static class PackBuildPipeline
         return cells;
     }
 
-    private static List<SheetCell> BuildOutlineCells(PackRecipe recipe, PackRecipe.EntityRequirement entity, List<PackRecipe.ReferenceAssetNeed> assets, List<string> displaySpecies)
+    private static List<SheetCell> BuildOutlineCells(PackRecipe recipe, PackRecipe.EntityRequirement entity, List<string> displaySpecies)
     {
         var cells = new List<SheetCell>();
         var total = 10;
         for (var i = 0; i < displaySpecies.Count; i++)
         {
             var species = displaySpecies[i];
-            var assetId = species.Split("_v")[0];
-            var outlinePath = Path.Combine(recipe.outputFolder, "Debug", "Outlines", $"{assetId}_best.png");
+            var outlinePath = Path.Combine(recipe.outputFolder, "Debug", "Outlines", $"{species}_best.png");
             if (!File.Exists(outlinePath)) continue;
-            var basePixels = LoadAndNormalizeOutline(outlinePath, recipe.agentSpriteSize);
+            var fillColor = ReferenceColorSampler.SampleOrFallback(recipe.simulationId, species, new Color32(126, 92, 62, 255));
+            var basePixels = LoadAndNormalizeOutline(outlinePath, recipe.agentSpriteSize, fillColor);
             for (var frame = 0; frame < total; frame++)
             {
                 var warped = WarpFrame(basePixels, recipe.agentSpriteSize, recipe.agentSpriteSize, frame, "idle");
@@ -164,7 +180,7 @@ public static class PackBuildPipeline
         return cells;
     }
 
-    private static Color32[] LoadAndNormalizeOutline(string path, int size)
+    private static Color32[] LoadAndNormalizeOutline(string path, int size, Color32 fillColor)
     {
         var tex = new Texture2D(2,2,TextureFormat.RGBA32,false);
         tex.LoadImage(File.ReadAllBytes(path));
@@ -175,7 +191,7 @@ public static class PackBuildPipeline
             var sx = Mathf.Clamp(Mathf.FloorToInt((x/(float)size)*tex.width),0,tex.width-1);
             var sy = Mathf.Clamp(Mathf.FloorToInt((y/(float)size)*tex.height),0,tex.height-1);
             var v = src[sy*tex.width+sx].a > 127;
-            dst[y*size+x] = v ? new Color32(126, 92, 62, 255) : new Color32(0,0,0,0);
+            dst[y*size+x] = v ? fillColor : new Color32(0,0,0,0);
         }
         UnityEngine.Object.DestroyImmediate(tex);
         AddOutline(dst, size, size);
@@ -223,10 +239,27 @@ public static class PackBuildPipeline
         return ids.Take(speciesCount).ToList();
     }
 
+    private static List<string> BuildRecipeSpeciesIds(string entityId, List<PackRecipe.ReferenceAssetNeed> assets, int speciesCount)
+    {
+        if (!string.Equals(entityId, "ant", StringComparison.OrdinalIgnoreCase))
+        {
+            return new List<string>();
+        }
+
+        var ids = assets
+            .Where(a => a.generationMode == PackRecipe.GenerationMode.OutlineDriven)
+            .Select(a => a.assetId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Take(Mathf.Max(0, speciesCount))
+            .ToList();
+
+        return ids;
+    }
+
     private static string RewriteSpriteId(string original, string entityId, string originalSpeciesId, string displaySpeciesId)
         => original.Replace($"agent:{entityId}:{originalSpeciesId}:", $"agent:{entityId}:{displaySpeciesId}:");
 
-    private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite)
+    private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId)
     {
         if (!overwrite && File.Exists(path)) return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
         var columns = Mathf.Clamp(Mathf.CeilToInt(Mathf.Sqrt(Mathf.Max(1, cells.Count))), 1, 64);
@@ -248,7 +281,13 @@ public static class PackBuildPipeline
                 continue;
             }
 
-            BlueprintRasterizer.Render(cells[i].body, "body", cellSize, (int)rect.x, (int)rect.y, new Color32(56, 44, 31, 255), pixels, width);
+            var bodyColor = new Color32(56, 44, 31, 255);
+            if (TryParseAntSpeciesFromSpriteId(cells[i].id, out var speciesId))
+            {
+                bodyColor = ReferenceColorSampler.SampleOrFallback(simulationId, speciesId, bodyColor);
+            }
+
+            BlueprintRasterizer.Render(cells[i].body, "body", cellSize, (int)rect.x, (int)rect.y, bodyColor, pixels, width);
             BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
         }
 
@@ -262,6 +301,24 @@ public static class PackBuildPipeline
         var rects = new List<SpriteRect>(cells.Count);
         for (var i = 0; i < cells.Count; i++) rects.Add(new SpriteRect { name = cells[i].id, rect = SheetLayout.CellRect(i, columns, cellSize, cells.Count), alignment = SpriteAlignment.Center, pivot = new Vector2(0.5f, 0.5f), spriteID = GUID.Generate() });
         return ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, cellSize, rects);
+    }
+
+    private static bool TryParseAntSpeciesFromSpriteId(string spriteId, out string speciesId)
+    {
+        speciesId = string.Empty;
+        if (string.IsNullOrWhiteSpace(spriteId))
+        {
+            return false;
+        }
+
+        var tokens = spriteId.Split(':');
+        if (tokens.Length < 4 || !string.Equals(tokens[0], "agent", StringComparison.OrdinalIgnoreCase) || !string.Equals(tokens[1], "ant", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        speciesId = tokens[2];
+        return !string.IsNullOrWhiteSpace(speciesId);
     }
 
     private static void ExportAntCompatibility(PackRecipe recipe, List<ContentPack.SpriteEntry> sprites, List<ContentPack.TextureEntry> textures)
