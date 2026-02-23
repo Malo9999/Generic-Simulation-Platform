@@ -20,6 +20,7 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
     private Vector2 referencePlanScroll;
     private bool advancedReferencePlanEdit;
     private bool recipeWriteBlocked;
+    private string assignmentStatusLine;
 
     [MenuItem("GSP/Art/New Simulation Pack…")]
     public static void Open() => GetWindow<NewSimulationPackWizardWindow>("New Simulation Pack");
@@ -119,10 +120,15 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
             {
                 var report = PackBuildPipeline.Build(recipe, overwrite);
                 var content = AssetDatabase.LoadAssetAtPath<ContentPack>($"{recipe.outputFolder}/ContentPack.asset");
-                AssignDefaultContentPack(recipe.simulationId, content);
+                assignmentStatusLine = AssignDefaultContentPack(recipe.simulationId, content);
                 EditorGUIUtility.PingObject(content);
                 Debug.Log(report.Summary);
             }
+        }
+
+        if (!string.IsNullOrWhiteSpace(assignmentStatusLine))
+        {
+            EditorGUILayout.HelpBox(assignmentStatusLine, MessageType.Info);
         }
     }
 
@@ -378,30 +384,33 @@ public sealed class NewSimulationPackWizardWindow : EditorWindow
     }
 
     private static string BuildRecipePath(PackRecipe recipe) => $"Assets/Presentation/Packs/{recipe.simulationId}/{recipe.packId}/PackRecipe.asset";
-    private static void AssignDefaultContentPack(string simulationId, ContentPack builtContentPack)
+    private static string AssignDefaultContentPack(string simulationId, ContentPack builtContentPack)
     {
         if (builtContentPack == null || string.IsNullOrWhiteSpace(simulationId))
         {
-            return;
+            return "Default content pack assignment skipped: missing simulation id or generated ContentPack.";
         }
 
         var catalog = FindSimulationCatalog();
         if (catalog == null)
         {
             Debug.LogWarning("NewSimulationPackWizardWindow: SimulationCatalog not found; skipping default content pack assignment.");
-            return;
+            return "Default content pack assignment skipped: SimulationCatalog not found.";
         }
 
         var entry = catalog.FindById(simulationId);
         if (entry == null)
         {
             Debug.LogWarning($"NewSimulationPackWizardWindow: Simulation '{simulationId}' not found in catalog.");
-            return;
+            return $"Default content pack assignment skipped: simulation '{simulationId}' not found in SimulationCatalog.";
         }
 
         entry.defaultContentPack = builtContentPack;
         EditorUtility.SetDirty(catalog);
         AssetDatabase.SaveAssets();
+
+        var packPath = AssetDatabase.GetAssetPath(builtContentPack);
+        return $"Assigned Default Content Pack for {simulationId} = {packPath}";
     }
 
     private static SimulationCatalog FindSimulationCatalog()
