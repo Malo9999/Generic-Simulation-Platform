@@ -2,6 +2,20 @@ using UnityEngine;
 
 public static class BlueprintRasterizer
 {
+    public struct LayerStyle
+    {
+        public readonly string layerName;
+        public readonly ToneRamp ramp;
+        public readonly bool drawOutline;
+
+        public LayerStyle(string layerName, ToneRamp ramp, bool drawOutline = true)
+        {
+            this.layerName = layerName;
+            this.ramp = ramp;
+            this.drawOutline = drawOutline;
+        }
+    }
+
     public struct ToneRamp
     {
         public readonly Color32 baseColor;
@@ -75,8 +89,7 @@ public static class BlueprintRasterizer
             var idx = (y * targetSize) + x;
             if (filled[idx])
             {
-                var ny = y / (float)Mathf.Max(1, targetSize - 1);
-                var tone = ny < 0.33f ? ramp.highlightColor : ny > 0.66f ? ramp.shadowColor : ramp.baseColor;
+                var tone = SelectFlatTone(filled, targetSize, x, y, ramp);
                 outPixels[((oy + y) * outWidth) + ox + x] = tone;
             }
             else if (drawOutline && HasFilledNeighbor(filled, targetSize, targetSize, x, y))
@@ -84,6 +97,55 @@ public static class BlueprintRasterizer
                 outPixels[((oy + y) * outWidth) + ox + x] = ramp.outlineColor;
             }
         }
+    }
+
+    public static void RenderLayers(PixelBlueprint2D blueprint, int targetSize, int ox, int oy, Color32[] outPixels, int outWidth, params LayerStyle[] styles)
+    {
+        if (styles == null)
+        {
+            return;
+        }
+
+        for (var i = 0; i < styles.Length; i++)
+        {
+            var style = styles[i];
+            if (string.IsNullOrWhiteSpace(style.layerName))
+            {
+                continue;
+            }
+
+            Render(blueprint, style.layerName, targetSize, ox, oy, style.ramp, outPixels, outWidth, style.drawOutline);
+        }
+    }
+
+    private static Color32 SelectFlatTone(bool[] filled, int size, int x, int y, ToneRamp ramp)
+    {
+        var leftOpen = IsOpen(filled, size, x - 1, y);
+        var rightOpen = IsOpen(filled, size, x + 1, y);
+        var upOpen = IsOpen(filled, size, x, y - 1);
+        var downOpen = IsOpen(filled, size, x, y + 1);
+
+        if (upOpen || leftOpen)
+        {
+            return ramp.highlightColor;
+        }
+
+        if (downOpen || rightOpen)
+        {
+            return ramp.shadowColor;
+        }
+
+        return ramp.baseColor;
+    }
+
+    private static bool IsOpen(bool[] filled, int size, int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= size || y >= size)
+        {
+            return true;
+        }
+
+        return !filled[(y * size) + x];
     }
 
     private static bool HasFilledNeighbor(bool[] filled, int width, int height, int x, int y)
