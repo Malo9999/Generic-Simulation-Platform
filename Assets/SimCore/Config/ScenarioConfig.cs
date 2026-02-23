@@ -13,6 +13,7 @@ public class ScenarioConfig
     public RecordingConfig recording = new();
     public ReplayConfig replay = new();
     public RenderingConfig rendering = new();
+    public PresentationConfig presentation = new();
     public AntColoniesConfig antColonies = new();
 
     public void NormalizeAliases()
@@ -28,6 +29,7 @@ public class ScenarioConfig
         recording ??= new RecordingConfig();
         replay ??= new ReplayConfig();
         rendering ??= new RenderingConfig();
+        presentation ??= new PresentationConfig();
         antColonies ??= new AntColoniesConfig();
         antColonies.Normalize();
     }
@@ -63,4 +65,10 @@ public class RenderingConfig
 {
     public int targetUpscale = 4;
     public int targetFps = 60;
+}
+
+[Serializable]
+public class PresentationConfig
+{
+    public bool showHealthBars = false;
 }
