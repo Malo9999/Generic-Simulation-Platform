@@ -46,6 +46,8 @@ public sealed class PackRecipe : ScriptableObject
     {
         public bool generateBlueprints = true;
         public bool compileSpritesheets = true;
+        public bool renderAntStripeOverlay;
+        public bool includeAntMaskSpritesInMainPack;
         public bool exportCompatibilityAntContentPack;
     }
 
