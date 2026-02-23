@@ -40,6 +40,7 @@ public static class AntWorldGenerator
 
     private static void PlaceNests(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, SeededRng rng)
     {
+        var speciesOrder = ResolveSpeciesOrder();
         var minDistance = recipe.nestMinDistance;
         for (var team = 0; team < 5; team++)
         {
@@ -70,7 +71,7 @@ public static class AntWorldGenerator
 
                     state.nests.Add(new AntWorldState.NestEntry
                     {
-                        speciesId = SpeciesOrder[team],
+                        speciesId = speciesOrder[team % speciesOrder.Count],
                         teamId = team,
                         position = p,
                         hp = recipe.nestHp,
@@ -302,5 +303,17 @@ public static class AntWorldGenerator
 
         var filtered = source.Where(id => terms.Any(term => id.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
         return filtered;
+    }
+
+    private static List<string> ResolveSpeciesOrder()
+    {
+        var pack = ContentPackService.Current;
+        var packSpecies = pack?.Selections?
+            .FirstOrDefault(selection => string.Equals(selection.entityId, "ant", StringComparison.OrdinalIgnoreCase))
+            .speciesIds?
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToList();
+
+        return packSpecies != null && packSpecies.Count > 0 ? packSpecies : SpeciesOrder.ToList();
     }
 }
