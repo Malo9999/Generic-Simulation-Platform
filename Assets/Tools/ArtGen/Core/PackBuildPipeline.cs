@@ -140,7 +140,7 @@ public static class PackBuildPipeline
         foreach (var stage in entity.lifeStages)
         foreach (var state in entity.states)
         {
-            var frameCount = entity.animationPolicy.FramesForState(state);
+            var frameCount = isAntEntity ? AntContractLocalFrameCount(state) : entity.animationPolicy.FramesForState(state);
             for (var frame = 0; frame < frameCount; frame++)
             {
                 var speciesId = speciesIds[s];
@@ -148,7 +148,7 @@ public static class PackBuildPipeline
                 var frameFolder = $"{recipe.outputFolder}/Blueprints/Generated/{entity.entityId}/{speciesId}/{role}/{stage}/{state}";
                 ImportSettingsUtil.EnsureFolder(frameFolder);
                 var bpPath = $"{frameFolder}/{contractFrame:00}.asset";
-                var req = new ArchetypeSynthesisRequest { recipe = recipe, entity = entity, speciesId = speciesId, role = role, stage = stage, state = state, frameIndex = contractFrame, blueprintPath = bpPath, seed = Deterministic.DeriveSeed(recipe.seed, $"{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{contractFrame}") };
+                var req = new ArchetypeSynthesisRequest { recipe = recipe, entity = entity, speciesId = speciesId, role = role, stage = stage, state = state, frameIndex = frame, blueprintPath = bpPath, seed = Deterministic.DeriveSeed(recipe.seed, $"{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{contractFrame}") };
                 var synth = module.Synthesize(req);
                 foreach (var sf in synth.frames)
                 {
@@ -156,10 +156,8 @@ public static class PackBuildPipeline
                         ? BuildAntSpriteId(speciesId, role, stage, state, contractFrame)
                         : RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]);
                     cells.Add(new SheetCell { id = spriteId, body = sf.bodyBlueprint, mask = null });
-                    if (sf.maskBlueprint != null)
-                    {
-                        cells.Add(new SheetCell { id = spriteId + "_mask", body = sf.maskBlueprint, mask = null });
-                    }
+                    var maskBlueprint = sf.maskBlueprint ?? sf.bodyBlueprint;
+                    cells.Add(new SheetCell { id = spriteId + "_mask", body = maskBlueprint, mask = null });
 
                     report.blueprintCount += sf.bodyBlueprint != null ? 1 : 0;
                 }
@@ -181,6 +179,18 @@ public static class PackBuildPipeline
         }
     }
 
+    private static int AntContractLocalFrameCount(string state)
+    {
+        switch (state.ToLowerInvariant())
+        {
+            case "idle": return 2;
+            case "walk": return 3;
+            case "run": return 4;
+            case "fight": return 1;
+            default: return 0;
+        }
+    }
+
     private static string BuildAntSpriteId(string speciesId, string role, string stage, string state, int contractFrame)
         => $"agent:ant:{speciesId}:{role}:{stage}:{state}:{contractFrame:00}";
 
@@ -189,20 +199,29 @@ public static class PackBuildPipeline
         var actual = new HashSet<string>(antSpriteIds, StringComparer.Ordinal);
         foreach (var speciesId in speciesIds)
         {
-            var missing = new List<string>();
+            string firstMissing = null;
             foreach (var expected in ExpectedAntContractSpriteIds(speciesId))
             {
-                if (!actual.Contains(expected)) missing.Add(expected);
-                if (!actual.Contains(expected + "_mask")) missing.Add(expected + "_mask");
+                if (!actual.Contains(expected))
+                {
+                    firstMissing = expected;
+                    break;
+                }
+
+                var maskId = expected + "_mask";
+                if (!actual.Contains(maskId))
+                {
+                    firstMissing = maskId;
+                    break;
+                }
             }
 
-            if (missing.Count <= 0)
+            if (firstMissing == null)
             {
                 continue;
             }
 
-            var sample = string.Join(", ", missing.Take(5));
-            var message = $"Missing {missing.Count} contract sprites for {speciesId} (examples: {sample})";
+            var message = $"Missing required ant contract sprite for {speciesId}: {firstMissing}";
             report.warnings.Add(message);
             Debug.LogError("[PackBuildPipeline] " + message);
         }
