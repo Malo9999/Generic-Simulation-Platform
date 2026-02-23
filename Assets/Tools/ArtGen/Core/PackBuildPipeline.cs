@@ -28,6 +28,16 @@ public static class PackBuildPipeline
         public Color32[] pixels;
     }
 
+    private readonly struct CompileSheetOptions
+    {
+        public readonly bool renderAntStripeOverlay;
+
+        public CompileSheetOptions(bool renderAntStripeOverlay)
+        {
+            this.renderAntStripeOverlay = renderAntStripeOverlay;
+        }
+    }
+
     public static BuildReport Build(PackRecipe recipe, bool overwrite)
     {
         Validate(recipe);
@@ -39,7 +49,8 @@ public static class PackBuildPipeline
         var report = new BuildReport { outputFolder = recipe.outputFolder };
         var textureEntries = new List<ContentPack.TextureEntry>();
         var spriteEntries = new List<ContentPack.SpriteEntry>();
-        var antsCompat = new List<ContentPack.SpriteEntry>();
+        var antsCompatForExport = new List<ContentPack.SpriteEntry>();
+        Texture2D antsCompatTextureForExport = null;
         var speciesSelections = new List<ContentPack.SpeciesSelection>();
         var clipMetadata = new List<ContentPack.ClipMetadataEntry>();
         var antSpeciesLogged = new List<string>();
@@ -80,7 +91,13 @@ public static class PackBuildPipeline
             {
                 var sheetName = entity.entityId == "ant" ? "ants_anim" : entity.entityId + "_anim";
                 var texPath = $"{recipe.outputFolder}/Generated/{sheetName}.png";
-                var generatedSprites = CompileSheet(texPath, cells, recipe.agentSpriteSize, overwrite, recipe.simulationId);
+                var generatedSprites = CompileSheet(
+                    texPath,
+                    cells,
+                    recipe.agentSpriteSize,
+                    overwrite,
+                    recipe.simulationId,
+                    new CompileSheetOptions(recipe.generationPolicy.renderAntStripeOverlay));
                 textureEntries.Add(new ContentPack.TextureEntry { id = "sheet:" + sheetName, texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath) });
                 foreach (var sp in generatedSprites) spriteEntries.Add(new ContentPack.SpriteEntry { id = sp.name, category = "agent", sprite = sp });
                 report.spriteCount += generatedSprites.Count;
@@ -99,15 +116,22 @@ public static class PackBuildPipeline
                         antSpriteSamples = generatedIds.Take(12).ToList();
                     }
 
-                    ValidateAntContractSprites(report, generatedIds, resolvedSpeciesIds);
+                    ValidateAntContractSprites(report, generatedIds, resolvedSpeciesIds, recipe.generationPolicy.includeAntMaskSpritesInMainPack);
                 }
 
-                if (entity.entityId == "ant")
+                if (entity.entityId == "ant" && recipe.generationPolicy.exportCompatibilityAntContentPack)
                 {
                     var compatPath = $"{recipe.outputFolder}/Generated/ants.png";
-                    var compatSprites = CompileSheet(compatPath, cells.Take(4).ToList(), recipe.agentSpriteSize, overwrite, recipe.simulationId);
-                    textureEntries.Add(new ContentPack.TextureEntry { id = "sheet:ants", texture = AssetDatabase.LoadAssetAtPath<Texture2D>(compatPath) });
-                    foreach (var sp in compatSprites) antsCompat.Add(new ContentPack.SpriteEntry { id = sp.name.Replace("agent:ant:", "ant_").Replace(":", "_"), category = "agent", sprite = sp });
+                    var compatCells = BuildAntCompatibilityCells(cells);
+                    var compatSprites = CompileSheet(
+                        compatPath,
+                        compatCells,
+                        recipe.agentSpriteSize,
+                        overwrite,
+                        recipe.simulationId,
+                        new CompileSheetOptions(renderAntStripeOverlay: true));
+                    antsCompatTextureForExport = AssetDatabase.LoadAssetAtPath<Texture2D>(compatPath);
+                    foreach (var sp in compatSprites) antsCompatForExport.Add(new ContentPack.SpriteEntry { id = sp.name.Replace("agent:ant:", "ant_").Replace(":", "_"), category = "agent", sprite = sp });
                 }
             }
         }
@@ -126,14 +150,13 @@ public static class PackBuildPipeline
         }
 
         pack.SetMetadata(recipe);
-        spriteEntries.AddRange(antsCompat);
         pack.SetEntries(textureEntries, spriteEntries);
         pack.SetSelections(speciesSelections);
         pack.SetClipMetadata(clipMetadata);
         EditorUtility.SetDirty(pack);
         report.contentPackVersion = pack.Version;
 
-        if (recipe.generationPolicy.exportCompatibilityAntContentPack) ExportAntCompatibility(recipe, spriteEntries, textureEntries);
+        if (recipe.generationPolicy.exportCompatibilityAntContentPack) ExportAntCompatibility(recipe, spriteEntries, textureEntries, antsCompatTextureForExport, antsCompatForExport);
 
         if (antSpeciesLogged.Count > 0)
         {
@@ -174,8 +197,11 @@ public static class PackBuildPipeline
                         ? BuildAntSpriteId(speciesId, role, stage, state, contractFrame)
                         : RewriteSpriteId(sf.spriteId, entity.entityId, speciesId, speciesDisplayIds[s]);
                     cells.Add(new SheetCell { id = spriteId, body = sf.bodyBlueprint, mask = null });
-                    var maskBlueprint = sf.maskBlueprint ?? BuildMaskBlueprintFromBody(sf.bodyBlueprint);
-                    cells.Add(new SheetCell { id = spriteId + "_mask", body = maskBlueprint, mask = null });
+                    if (!isAntEntity || recipe.generationPolicy.includeAntMaskSpritesInMainPack)
+                    {
+                        var maskBlueprint = sf.maskBlueprint ?? BuildMaskBlueprintFromBody(sf.bodyBlueprint);
+                        cells.Add(new SheetCell { id = spriteId + "_mask", body = maskBlueprint, mask = null });
+                    }
 
                     if (isAntEntity && (string.Equals(state, "walk", StringComparison.OrdinalIgnoreCase) || string.Equals(state, "run", StringComparison.OrdinalIgnoreCase)))
                     {
@@ -258,7 +284,7 @@ public static class PackBuildPipeline
         return all.OrderBy(id => id, StringComparer.Ordinal).ToList();
     }
 
-    private static void ValidateAntContractSprites(BuildReport report, IEnumerable<string> antSpriteIds, List<string> speciesIds)
+    private static void ValidateAntContractSprites(BuildReport report, IEnumerable<string> antSpriteIds, List<string> speciesIds, bool requireMaskSprites)
     {
         var actual = new HashSet<string>(antSpriteIds, StringComparer.Ordinal);
         foreach (var speciesId in speciesIds)
@@ -272,11 +298,14 @@ public static class PackBuildPipeline
                     break;
                 }
 
-                var maskId = expected + "_mask";
-                if (!actual.Contains(maskId))
+                if (requireMaskSprites)
                 {
-                    firstMissing = maskId;
-                    break;
+                    var maskId = expected + "_mask";
+                    if (!actual.Contains(maskId))
+                    {
+                        firstMissing = maskId;
+                        break;
+                    }
                 }
             }
 
@@ -326,7 +355,10 @@ public static class PackBuildPipeline
                         ? BuildAntSpriteId(species, "worker", "adult", state, contractFrame)
                         : $"agent:{entity.entityId}:{species}:worker:adult:{state}:{contractFrame:00}";
                     cells.Add(new SheetCell { id = id, pixels = warped });
-                    cells.Add(new SheetCell { id = id + "_mask", pixels = MakeMask(warped) });
+                    if (!isAntEntity || recipe.generationPolicy.includeAntMaskSpritesInMainPack)
+                    {
+                        cells.Add(new SheetCell { id = id + "_mask", pixels = MakeMask(warped) });
+                    }
                     frameHashes.Add(HashPixels(warped));
 
                     if (isAntEntity && string.Equals(species, previewSpecies, StringComparison.Ordinal))
@@ -807,7 +839,7 @@ public static class PackBuildPipeline
         return maskBlueprint;
     }
 
-    private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId)
+    private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId, CompileSheetOptions options)
     {
         if (!overwrite && File.Exists(path)) return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
         var columns = Mathf.Clamp(Mathf.CeilToInt(Mathf.Sqrt(Mathf.Max(1, cells.Count))), 1, 64);
@@ -845,7 +877,7 @@ public static class PackBuildPipeline
 
             if (isAntCell)
             {
-                RenderAntLayers(cells[i].body, cells[i].mask, cellSize, (int)rect.x, (int)rect.y, pixels, width, bodyColor);
+                RenderAntLayers(cells[i].body, cells[i].mask, cellSize, (int)rect.x, (int)rect.y, pixels, width, bodyColor, options.renderAntStripeOverlay);
                 continue;
             }
 
@@ -865,7 +897,7 @@ public static class PackBuildPipeline
         return ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, cellSize, rects);
     }
 
-    private static void RenderAntLayers(PixelBlueprint2D body, PixelBlueprint2D stripe, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 bodyColor)
+    private static void RenderAntLayers(PixelBlueprint2D body, PixelBlueprint2D stripe, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 bodyColor, bool renderStripeOverlay)
     {
         var outline = new Color32(20, 16, 12, 255);
         var bodyRamp = BuildToneRamp(bodyColor, outline);
@@ -885,7 +917,31 @@ public static class PackBuildPipeline
             new BlueprintRasterizer.LayerStyle("antennae", legsRamp, false),
             new BlueprintRasterizer.LayerStyle("mandibles", mandibleRamp, false),
             new BlueprintRasterizer.LayerStyle("eyes", eyeRamp, false));
-        BlueprintRasterizer.Render(stripe, "stripe", cellSize, ox, oy, new Color32(245, 238, 210, 255), pixels, width);
+        if (renderStripeOverlay)
+        {
+            BlueprintRasterizer.Render(stripe, "stripe", cellSize, ox, oy, new Color32(245, 238, 210, 255), pixels, width);
+        }
+    }
+
+    private static List<SheetCell> BuildAntCompatibilityCells(List<SheetCell> cells)
+    {
+        var compatCells = new List<SheetCell>();
+        var bodyCells = cells.Where(c => !c.id.EndsWith("_mask", StringComparison.Ordinal)).Take(2);
+        foreach (var bodyCell in bodyCells)
+        {
+            compatCells.Add(bodyCell);
+            var maskCell = cells.FirstOrDefault(c => string.Equals(c.id, bodyCell.id + "_mask", StringComparison.Ordinal));
+            if (maskCell != null)
+            {
+                compatCells.Add(maskCell);
+                continue;
+            }
+
+            var generatedMask = bodyCell.body != null ? BuildMaskBlueprintFromBody(bodyCell.body) : null;
+            compatCells.Add(new SheetCell { id = bodyCell.id + "_mask", body = generatedMask, mask = null, pixels = bodyCell.pixels != null ? MakeMask(bodyCell.pixels) : null });
+        }
+
+        return compatCells;
     }
 
     private static BlueprintRasterizer.ToneRamp BuildToneRamp(Color32 baseColor, Color32 outline)
@@ -979,14 +1035,14 @@ public static class PackBuildPipeline
         }
     }
 
-    private static void ExportAntCompatibility(PackRecipe recipe, List<ContentPack.SpriteEntry> sprites, List<ContentPack.TextureEntry> textures)
+    private static void ExportAntCompatibility(PackRecipe recipe, List<ContentPack.SpriteEntry> sprites, List<ContentPack.TextureEntry> textures, Texture2D antsCompatTexture, List<ContentPack.SpriteEntry> antsCompatSprites)
     {
         var antPackPath = $"{recipe.outputFolder}/AntContentPack.asset";
         var antPack = AssetDatabase.LoadAssetAtPath<AntContentPack>(antPackPath) ?? ScriptableObject.CreateInstance<AntContentPack>();
         if (AssetDatabase.LoadAssetAtPath<AntContentPack>(antPackPath) == null) AssetDatabase.CreateAsset(antPack, antPackPath);
         antPack.SetMetadata(recipe.seed, recipe.tileSize, "Generated");
-        antPack.SetTextures(textures.FirstOrDefault(t => t.id == "tile:surface").texture, textures.FirstOrDefault(t => t.id == "tile:underground").texture, textures.FirstOrDefault(t => t.id == "sheet:ants").texture, null, textures.FirstOrDefault(t => t.id == "prop:sheet").texture);
-        antPack.SetLookups(sprites.Where(s => s.id.StartsWith("tile:ant:surface:")).Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList(), sprites.Where(s => s.id.StartsWith("tile:ant:underground:")).Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList(), sprites.Where(s => s.id.StartsWith("ant_")).Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList(), null, sprites.Where(s => s.id.StartsWith("prop:ant:")).Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList());
+        antPack.SetTextures(textures.FirstOrDefault(t => t.id == "tile:surface").texture, textures.FirstOrDefault(t => t.id == "tile:underground").texture, antsCompatTexture, null, textures.FirstOrDefault(t => t.id == "prop:sheet").texture);
+        antPack.SetLookups(sprites.Where(s => s.id.StartsWith("tile:ant:surface:")).Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList(), sprites.Where(s => s.id.StartsWith("tile:ant:underground:")).Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList(), antsCompatSprites.Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList(), null, sprites.Where(s => s.id.StartsWith("prop:ant:")).Select(s => new AntContentPack.SpriteLookupEntry { id = s.id, sprite = s.sprite }).ToList());
         EditorUtility.SetDirty(antPack);
     }
 
