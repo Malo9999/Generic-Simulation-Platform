@@ -22,7 +22,7 @@ MonoBehaviour:
   entities:
   - entityId: ant
     archetypeId: archetype.ant
-    speciesCount: 3
+    speciesCount: 5
     roles:
     - worker
     - soldier
@@ -42,12 +42,36 @@ MonoBehaviour:
   - propId: prop_food_large
     importance: critical
   referenceAssets:
-  - assetId: ant_base
+  - assetId: FireAnt
     entityId: ant
-    mappedSpeciesId: default
+    mappedSpeciesId: FireAnt
     minImages: 1
     generationMode: 1
-    variantCount: 4
+    variantCount: 1
+  - assetId: CarpenterAnt
+    entityId: ant
+    mappedSpeciesId: CarpenterAnt
+    minImages: 1
+    generationMode: 1
+    variantCount: 1
+  - assetId: PharaohAnt
+    entityId: ant
+    mappedSpeciesId: PharaohAnt
+    minImages: 1
+    generationMode: 1
+    variantCount: 1
+  - assetId: WeaverAnt
+    entityId: ant
+    mappedSpeciesId: WeaverAnt
+    minImages: 1
+    generationMode: 1
+    variantCount: 1
+  - assetId: ArmyAnt
+    entityId: ant
+    mappedSpeciesId: ArmyAnt
+    minImages: 1
+    generationMode: 1
+    variantCount: 1
   - assetId: prop_nest_entrance_medium
     entityId: ant
     mappedSpeciesId: default
