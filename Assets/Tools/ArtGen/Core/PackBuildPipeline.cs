@@ -297,11 +297,24 @@ public static class PackBuildPipeline
                         ? BuildAntSpriteId(species, "worker", "adult", state, contractFrame)
                         : $"agent:{entity.entityId}:{species}:worker:adult:{state}:{contractFrame:00}";
                     cells.Add(new SheetCell { id = id, pixels = warped });
+                    cells.Add(new SheetCell { id = id + "_mask", pixels = MakeMask(warped) });
                 }
             }
         }
 
         return cells;
+    }
+
+    private static Color32[] MakeMask(Color32[] pixels)
+    {
+        var mask = new Color32[pixels.Length];
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            var alpha = pixels[i].a;
+            mask[i] = alpha > 0 ? new Color32(255, 255, 255, alpha) : new Color32(0, 0, 0, 0);
+        }
+
+        return mask;
     }
 
     private static Color32[] LoadAndNormalizeOutline(string path, int size, Color32 fillColor)
