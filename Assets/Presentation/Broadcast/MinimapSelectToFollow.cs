@@ -18,24 +18,6 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
         minimapRect = GetComponent<RectTransform>();
     }
 
-    private void Update()
-    {
-        if (followController == null)
-        {
-            return;
-        }
-
-        if (Input.GetKeyDown(KeyCode.F))
-        {
-            followController.followEnabled = !followController.followEnabled;
-        }
-
-        if (Input.GetKeyDown(KeyCode.Escape))
-        {
-            ClearSelection();
-        }
-    }
-
     public void OnPointerClick(PointerEventData eventData)
     {
         if (eventData.button != PointerEventData.InputButton.Right)
@@ -88,7 +70,7 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
         }
     }
 
-    private void ClearSelection()
+    public void ClearSelection()
     {
         selectedTarget = null;
 
