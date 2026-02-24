@@ -72,6 +72,7 @@ public static class RecreateBroadcastUiMenu
 
         EnsureEventSystem();
         AttachAndWireClickToPan(view);
+        AttachAndWireMinimapSelection(view, minimapCamera, presentationRoot);
 
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
         Selection.activeGameObject = canvasObject;
@@ -615,6 +616,31 @@ public static class RecreateBroadcastUiMenu
         }
 
         clickToPan.worldBounds = new Rect(-32f, -32f, 64f, 64f);
+    }
+
+    private static void AttachAndWireMinimapSelection(GameObject minimapView, GameObject minimapCameraObject, GameObject presentationRoot)
+    {
+        var minimapRect = minimapView.GetComponent<RectTransform>();
+        var minimapCamera = minimapCameraObject != null ? minimapCameraObject.GetComponent<Camera>() : null;
+        var mainCamera = ResolveMainCamera();
+
+        var overlay = GetOrAdd<MinimapMarkerOverlay>(minimapView);
+        overlay.minimapRect = minimapRect;
+        overlay.minimapCamera = minimapCamera;
+
+        var followHost = mainCamera != null ? mainCamera.gameObject : presentationRoot;
+        var followController = GetOrAdd<CameraFollowController>(followHost);
+        followController.mainCamera = mainCamera;
+
+        var selectToFollow = GetOrAdd<MinimapSelectToFollow>(minimapView);
+        selectToFollow.mainCamera = mainCamera;
+        selectToFollow.overlay = overlay;
+        selectToFollow.followController = followController;
+
+        var clickToPan = minimapView.GetComponent<MinimapClickToPan>();
+        var bounds = clickToPan != null ? clickToPan.worldBounds : new Rect(-32f, -32f, 64f, 64f);
+        selectToFollow.worldBounds = bounds;
+        followController.worldBounds = bounds;
     }
 
     private static Camera ResolveMainCamera()
