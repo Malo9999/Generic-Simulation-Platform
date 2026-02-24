@@ -22,14 +22,19 @@ public static class ArenaDecorBuilder
         Generic
     }
 
-    public static void BuildDecor(Transform arenaRoot, ScenarioConfig config, string simId)
+    public static void BuildDecor(Transform decorRootParent, Transform arenaRoot, ScenarioConfig config, string simId)
     {
         if (arenaRoot == null || config == null)
         {
             return;
         }
 
-        var decorRoot = EnsureDecorRoot(arenaRoot);
+        var decorRoot = EnsureDecorRoot(decorRootParent);
+        if (decorRoot == null)
+        {
+            return;
+        }
+
         ClearChildren(decorRoot);
 
         var bounds = ResolveBounds(arenaRoot, config);
@@ -70,16 +75,26 @@ public static class ArenaDecorBuilder
     }
 
 
-    public static Transform EnsureDecorRoot(Transform arenaRoot)
+    public static Transform EnsureDecorRoot(Transform decorRootParent)
     {
-        var existing = arenaRoot.Find("Decor");
+        if (decorRootParent == null)
+        {
+            return null;
+        }
+
+        if (string.Equals(decorRootParent.name, "DecorRoot", StringComparison.Ordinal))
+        {
+            return decorRootParent;
+        }
+
+        var existing = decorRootParent.Find("DecorRoot");
         if (existing != null)
         {
             return existing;
         }
 
-        var decorRoot = new GameObject("Decor");
-        decorRoot.transform.SetParent(arenaRoot, false);
+        var decorRoot = new GameObject("DecorRoot");
+        decorRoot.transform.SetParent(decorRootParent, false);
         decorRoot.transform.localPosition = Vector3.zero;
         return decorRoot.transform;
     }
