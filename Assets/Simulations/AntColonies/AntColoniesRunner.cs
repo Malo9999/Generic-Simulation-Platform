@@ -23,6 +23,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private bool showHealthBars;
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
+    private SimulationSceneGraph sceneGraph;
+    private Transform antWorldViewRoot;
 
     private static Sprite fallbackAntSprite;
     private static Sprite squareSprite;
@@ -30,6 +32,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     public void Initialize(ScenarioConfig config)
     {
         Shutdown();
+        sceneGraph = SceneGraphUtil.PrepareRunner(transform, "AntColonies");
         EnsureMainCamera();
 
         recipe = config?.antColonies?.worldRecipe ?? new AntWorldRecipe();
@@ -40,7 +43,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
         worldState = AntWorldGenerator.Generate(config);
-        AntWorldViewBuilder.BuildOrRefresh(transform, config, worldState);
+        AntWorldViewBuilder.BuildOrRefresh(sceneGraph.WorldObjectsRoot, config, worldState);
+        antWorldViewRoot = sceneGraph.WorldObjectsRoot.Find("AntWorldView");
         CacheWorldRenderers();
         ResolveArtPipeline();
 
@@ -152,10 +156,10 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        var worldView = transform.Find("AntWorldView");
-        if (worldView != null)
+        if (antWorldViewRoot != null)
         {
-            Destroy(worldView.gameObject);
+            Destroy(antWorldViewRoot.gameObject);
+            antWorldViewRoot = null;
         }
 
         ants.Clear();
@@ -523,8 +527,9 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
     private AntAgentView CreateAntView(AntAgentState ant)
     {
-        var root = new GameObject($"Ant_{ant.id}");
-        root.transform.SetParent(transform, false);
+        var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, ant.teamId);
+        var root = new GameObject($"Sim_{ant.id:0000}");
+        root.transform.SetParent(groupRoot, false);
 
         GameObject pipelineRenderer = null;
         SpriteRenderer baseRenderer = null;
@@ -695,7 +700,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private void CacheWorldRenderers()
     {
         foodRenderers.Clear();
-        var foodRoot = transform.Find("AntWorldView/Food");
+        var foodRoot = antWorldViewRoot != null ? antWorldViewRoot.Find("Food") : null;
         if (foodRoot == null)
         {
             return;
