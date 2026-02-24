@@ -21,6 +21,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private AntWorldState worldState;
     private AntWorldRecipe recipe;
     private bool showHealthBars;
+    private ArtModeSelector artSelector;
+    private ArtPipelineBase activePipeline;
 
     private static Sprite fallbackAntSprite;
     private static Sprite squareSprite;
@@ -40,6 +42,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         worldState = AntWorldGenerator.Generate(config);
         AntWorldViewBuilder.BuildOrRefresh(transform, config, worldState);
         CacheWorldRenderers();
+        ResolveArtPipeline();
 
         nextAntId = 0;
         RebuildAntIndex();
@@ -161,6 +164,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         foodRenderers.Clear();
         worldState = null;
         recipe = null;
+        artSelector = null;
+        activePipeline = null;
     }
 
     private void SpawnAnts(int tickIndex)
@@ -521,10 +526,39 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var root = new GameObject($"Ant_{ant.id}");
         root.transform.SetParent(transform, false);
 
-        var baseObj = new GameObject("Base");
-        baseObj.transform.SetParent(root.transform, false);
-        var baseRenderer = baseObj.AddComponent<SpriteRenderer>();
-        baseRenderer.sortingOrder = AntSortingOrder;
+        GameObject pipelineRenderer = null;
+        SpriteRenderer baseRenderer = null;
+
+        var visualKey = new VisualKey
+        {
+            simulationId = "AntColonies",
+            entityId = "ant",
+            kind = string.IsNullOrWhiteSpace(ant.identity.role) ? $"species-{ant.speciesId}" : ant.identity.role,
+            state = "idle",
+            variantSeed = ant.id,
+            facingMode = FacingMode.Auto
+        };
+
+        if (activePipeline != null)
+        {
+            pipelineRenderer = activePipeline.CreateRenderer(visualKey, root.transform);
+            if (pipelineRenderer != null)
+            {
+                baseRenderer = pipelineRenderer.GetComponent<SpriteRenderer>() ?? pipelineRenderer.GetComponentInChildren<SpriteRenderer>();
+                if (baseRenderer != null)
+                {
+                    baseRenderer.sortingOrder = AntSortingOrder;
+                }
+            }
+        }
+
+        if (baseRenderer == null)
+        {
+            var baseObj = new GameObject("Base");
+            baseObj.transform.SetParent(root.transform, false);
+            baseRenderer = baseObj.AddComponent<SpriteRenderer>();
+            baseRenderer.sortingOrder = AntSortingOrder;
+        }
 
         var maskObj = new GameObject("Mask");
         maskObj.transform.SetParent(root.transform, false);
@@ -558,10 +592,14 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         {
             antId = ant.id,
             root = root.transform,
+            pipelineRenderer = pipelineRenderer,
             baseRenderer = baseRenderer,
             maskRenderer = maskRenderer,
             hpBgRenderer = hpBgRenderer,
-            hpFillRenderer = hpFillRenderer
+            hpFillRenderer = hpFillRenderer,
+            visualKey = visualKey,
+            lastPos = root.transform.position,
+            hasLastPos = false
         };
     }
 
@@ -573,6 +611,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var state = ant.state == AntBehaviorState.Fight
             ? "fight"
             : (ant.velocity.magnitude >= recipe.runSpeed * 0.8f ? "run" : (ant.velocity.magnitude >= recipe.walkSpeed * 0.4f ? "walk" : "idle"));
+        view.visualKey.state = state;
 
         var species = worldState.nests[Mathf.Clamp(ant.speciesId, 0, worldState.nests.Count - 1)].speciesId;
         var frame = ResolveFrameFromContract(state, tickIndex);
@@ -589,6 +628,13 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         view.root.localPosition = new Vector3(ant.position.x, ant.position.y, 0f);
         view.root.localRotation = Quaternion.identity;
 
+        var pos = (Vector2)view.root.position;
+        var vel = view.hasLastPos
+            ? (pos - view.lastPos) / Mathf.Max(0.0001f, Time.deltaTime)
+            : Vector2.zero;
+        view.lastPos = pos;
+        view.hasLastPos = true;
+
         var bodyRotation = Quaternion.identity;
         if (ant.velocity.sqrMagnitude > 0.0001f)
         {
@@ -600,6 +646,11 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         view.baseRenderer.transform.localRotation = bodyRotation;
         view.maskRenderer.transform.localRotation = bodyRotation;
 
+        if (activePipeline != null && view.pipelineRenderer != null)
+        {
+            activePipeline.ApplyVisual(view.pipelineRenderer, view.visualKey, vel, Time.deltaTime);
+        }
+
         if (!showHealthBars || view.hpFillRenderer == null)
         {
             return;
@@ -608,6 +659,21 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var hpPct = Mathf.Clamp01(ant.hp / Mathf.Max(0.01f, ant.maxHp));
         view.hpFillRenderer.transform.localScale = new Vector3(0.5f * hpPct, 0.06f, 1f);
         view.hpFillRenderer.transform.localPosition = new Vector3(-0.25f + 0.25f * hpPct, 0.75f, 0f);
+    }
+
+    private void ResolveArtPipeline()
+    {
+        artSelector = UnityEngine.Object.FindFirstObjectByType<ArtModeSelector>()
+            ?? UnityEngine.Object.FindAnyObjectByType<ArtModeSelector>();
+
+        activePipeline = artSelector != null ? artSelector.GetPipeline() : null;
+        if (activePipeline != null)
+        {
+            Debug.Log($"{nameof(AntColoniesRunner)} using art pipeline '{activePipeline.DisplayName}' ({activePipeline.Mode}).");
+            return;
+        }
+
+        Debug.Log($"{nameof(AntColoniesRunner)} no {nameof(ArtModeSelector)} / active pipeline found; using default ant renderers.");
     }
 
     private int ResolveFrameFromContract(string state, int tickIndex)
