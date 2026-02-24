@@ -78,11 +78,9 @@ public class ArtModeSelector : MonoBehaviour
 
     private string ResolveSimulationId()
     {
-        var serializedSimulationId = simulationId;
-        var shouldTryBootstrapper = followBootstrapper || string.IsNullOrWhiteSpace(serializedSimulationId);
-        var effectiveSimulationId = serializedSimulationId;
+        var effectiveSimulationId = simulationId;
 
-        if (shouldTryBootstrapper)
+        if (manifestOverride == null && followBootstrapper)
         {
             var bootstrapper = UnityEngine.Object.FindFirstObjectByType<Bootstrapper>()
                 ?? UnityEngine.Object.FindAnyObjectByType<Bootstrapper>();

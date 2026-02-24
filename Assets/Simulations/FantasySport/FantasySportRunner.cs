@@ -126,7 +126,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var visualKey = new VisualKey
             {
                 simulationId = "FantasySport",
-                entityId = "athlete",
+                entityId = identity.entityId.ToString(),
                 kind = string.IsNullOrWhiteSpace(identity.role) ? "athlete" : identity.role,
                 state = "run",
                 variantSeed = identity.entityId,

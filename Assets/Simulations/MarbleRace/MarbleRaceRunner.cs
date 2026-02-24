@@ -115,7 +115,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             var visualKey = new VisualKey
             {
                 simulationId = "MarbleRace",
-                entityId = "marble",
+                entityId = identity.entityId.ToString(),
                 kind = string.IsNullOrWhiteSpace(identity.role) ? "marble" : identity.role,
                 state = "idle",
                 variantSeed = identity.entityId,

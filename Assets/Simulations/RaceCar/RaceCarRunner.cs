@@ -122,7 +122,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             var visualKey = new VisualKey
             {
                 simulationId = "RaceCar",
-                entityId = "car",
+                entityId = identity.entityId.ToString(),
                 kind = string.IsNullOrWhiteSpace(identity.role) ? "car" : identity.role,
                 state = "drive",
                 variantSeed = identity.entityId,
