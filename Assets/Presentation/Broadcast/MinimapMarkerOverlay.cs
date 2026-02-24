@@ -9,6 +9,7 @@ public class MinimapMarkerOverlay : MonoBehaviour
     public Image markerImage;
 
     private const string MarkerName = "SelectedMarker";
+    private static Sprite s_markerSprite;
 
     private void OnEnable()
     {
@@ -22,7 +23,11 @@ public class MinimapMarkerOverlay : MonoBehaviour
 
     private void Update()
     {
-        EnsureMarker();
+        if (markerImage == null)
+        {
+            EnsureMarker();
+        }
+
         if (markerImage == null || minimapRect == null || minimapCamera == null || target == null)
         {
             SetMarkerVisible(false);
@@ -84,7 +89,7 @@ public class MinimapMarkerOverlay : MonoBehaviour
             return;
         }
 
-        image.sprite = Resources.GetBuiltinResource<Sprite>("UI/Skin/UISprite.psd");
+        image.sprite = GetMarkerSprite();
         image.color = Color.yellow;
         image.raycastTarget = false;
 
@@ -93,6 +98,19 @@ public class MinimapMarkerOverlay : MonoBehaviour
         rect.anchorMax = new Vector2(0.5f, 0.5f);
         rect.pivot = new Vector2(0.5f, 0.5f);
         rect.sizeDelta = new Vector2(10f, 10f);
+    }
+
+    private static Sprite GetMarkerSprite()
+    {
+        if (s_markerSprite != null)
+        {
+            return s_markerSprite;
+        }
+
+        var tex = Texture2D.whiteTexture;
+        s_markerSprite = Sprite.Create(tex, new Rect(0f, 0f, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        s_markerSprite.name = "MinimapMarkerSprite";
+        return s_markerSprite;
     }
 
     private void SetMarkerVisible(bool visible)
