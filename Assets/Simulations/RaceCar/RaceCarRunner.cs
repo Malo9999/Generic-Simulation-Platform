@@ -12,6 +12,10 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private Vector2[] positions;
     private Vector2[] velocities;
     private float[] laneTargets;
+    private ArtModeSelector artSelector;
+    private ArtPipelineBase activePipeline;
+    private GameObject[] pipelineRenderers;
+    private VisualKey[] visualKeys;
     private int nextEntityId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
@@ -32,6 +36,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < cars.Length; i++)
         {
+            var oldPosition = positions[i];
             positions[i].x += velocities[i].x * dt;
 
             if (positions[i].x < -halfWidth || positions[i].x > halfWidth)
@@ -48,6 +53,12 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             if (Mathf.Abs(velocities[i].x) > 0.0001f)
             {
                 cars[i].right = new Vector2(Mathf.Sign(velocities[i].x), 0f);
+            }
+
+            if (activePipeline != null && pipelineRenderers[i] != null)
+            {
+                var velocity = (positions[i] - oldPosition) / Mathf.Max(0.0001f, dt);
+                activePipeline.ApplyVisual(pipelineRenderers[i], visualKeys[i], velocity, dt);
             }
         }
     }
@@ -70,6 +81,8 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         positions = null;
         velocities = null;
         laneTargets = null;
+        pipelineRenderers = null;
+        visualKeys = null;
         Debug.Log("RaceCarRunner Shutdown");
     }
 
@@ -86,6 +99,12 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         positions = new Vector2[CarCount];
         velocities = new Vector2[CarCount];
         laneTargets = new float[CarCount];
+        pipelineRenderers = new GameObject[CarCount];
+        visualKeys = new VisualKey[CarCount];
+
+        ResolveArtPipeline();
+
+        var rng = RngService.Fork("SIM:RaceCar:SPAWN");
 
         for (var i = 0; i < CarCount; i++)
         {
@@ -100,15 +119,35 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "RaceCar");
 
+            var visualKey = new VisualKey
+            {
+                simulationId = "RaceCar",
+                entityId = "car",
+                kind = string.IsNullOrWhiteSpace(identity.role) ? "car" : identity.role,
+                state = "drive",
+                variantSeed = identity.entityId,
+                facingMode = FacingMode.Auto
+            };
+
+            var visualParent = car.transform;
+            if (activePipeline != null)
+            {
+                pipelineRenderers[i] = activePipeline.CreateRenderer(visualKey, car.transform);
+                if (pipelineRenderers[i] != null)
+                {
+                    visualParent = pipelineRenderers[i].transform;
+                }
+            }
+
             var iconRoot = new GameObject("IconRoot");
-            iconRoot.transform.SetParent(car.transform, false);
+            iconRoot.transform.SetParent(visualParent, false);
             EntityIconFactory.BuildCar(iconRoot.transform, identity);
 
-            var startX = RngService.Global.Range(-halfWidth, halfWidth);
+            var startX = rng.Range(-halfWidth, halfWidth);
             var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / CarCount);
-            var jitterY = RngService.Global.Range(-0.35f, 0.35f);
-            var speed = RngService.Global.Range(10f, 17f);
-            if (RngService.Global.Value() < 0.5f)
+            var jitterY = rng.Range(-0.35f, 0.35f);
+            var speed = rng.Range(10f, 17f);
+            if (rng.Value() < 0.5f)
             {
                 speed *= -1f;
             }
@@ -124,12 +163,28 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             }
             cars[i] = car.transform;
             identities[i] = identity;
+            visualKeys[i] = visualKey;
 
             if (logSpawnIdentity && i < SpawnDebugCount)
             {
                 Debug.Log($"{nameof(RaceCarRunner)} spawn[{i}] {identity}");
             }
         }
+    }
+
+    private void ResolveArtPipeline()
+    {
+        artSelector = UnityEngine.Object.FindFirstObjectByType<ArtModeSelector>()
+            ?? UnityEngine.Object.FindAnyObjectByType<ArtModeSelector>();
+
+        activePipeline = artSelector != null ? artSelector.GetPipeline() : null;
+        if (activePipeline != null)
+        {
+            Debug.Log($"{nameof(RaceCarRunner)} using art pipeline '{activePipeline.DisplayName}' ({activePipeline.Mode}).");
+            return;
+        }
+
+        Debug.Log($"{nameof(RaceCarRunner)} no {nameof(ArtModeSelector)} / active pipeline found; using default car renderers.");
     }
 
     private void EnsureMainCamera()

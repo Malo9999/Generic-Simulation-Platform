@@ -11,6 +11,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private EntityIdentity[] identities;
     private Vector2[] positions;
     private Vector2[] velocities;
+    private ArtModeSelector artSelector;
+    private ArtPipelineBase activePipeline;
+    private GameObject[] pipelineRenderers;
+    private VisualKey[] visualKeys;
     private int nextEntityId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
@@ -46,6 +50,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+
+            if (activePipeline != null && pipelineRenderers[i] != null)
+            {
+                activePipeline.ApplyVisual(pipelineRenderers[i], visualKeys[i], velocities[i], dt);
+            }
         }
     }
 
@@ -66,6 +75,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         identities = null;
         positions = null;
         velocities = null;
+        pipelineRenderers = null;
+        visualKeys = null;
         Debug.Log("MarbleRaceRunner Shutdown");
     }
 
@@ -81,6 +92,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         identities = new EntityIdentity[MarbleCount];
         positions = new Vector2[MarbleCount];
         velocities = new Vector2[MarbleCount];
+        pipelineRenderers = new GameObject[MarbleCount];
+        visualKeys = new VisualKey[MarbleCount];
+
+        ResolveArtPipeline();
 
         var rng = RngService.Fork("SIM:MarbleRace:SPAWN");
 
@@ -97,8 +112,28 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "MarbleRace");
 
+            var visualKey = new VisualKey
+            {
+                simulationId = "MarbleRace",
+                entityId = "marble",
+                kind = string.IsNullOrWhiteSpace(identity.role) ? "marble" : identity.role,
+                state = "idle",
+                variantSeed = identity.entityId,
+                facingMode = FacingMode.Auto
+            };
+
+            var visualParent = marble.transform;
+            if (activePipeline != null)
+            {
+                pipelineRenderers[i] = activePipeline.CreateRenderer(visualKey, marble.transform);
+                if (pipelineRenderers[i] != null)
+                {
+                    visualParent = pipelineRenderers[i].transform;
+                }
+            }
+
             var iconRoot = new GameObject("IconRoot");
-            iconRoot.transform.SetParent(marble.transform, false);
+            iconRoot.transform.SetParent(visualParent, false);
             EntityIconFactory.BuildMarble(iconRoot.transform, identity);
 
             var startX = rng.Range(-halfWidth, halfWidth);
@@ -113,12 +148,28 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             marble.transform.localScale = Vector3.one;
             marbles[i] = marble.transform;
             identities[i] = identity;
+            visualKeys[i] = visualKey;
 
             if (logSpawnIdentity && i < SpawnDebugCount)
             {
                 Debug.Log($"{nameof(MarbleRaceRunner)} spawn[{i}] {identity}");
             }
         }
+    }
+
+    private void ResolveArtPipeline()
+    {
+        artSelector = UnityEngine.Object.FindFirstObjectByType<ArtModeSelector>()
+            ?? UnityEngine.Object.FindAnyObjectByType<ArtModeSelector>();
+
+        activePipeline = artSelector != null ? artSelector.GetPipeline() : null;
+        if (activePipeline != null)
+        {
+            Debug.Log($"{nameof(MarbleRaceRunner)} using art pipeline '{activePipeline.DisplayName}' ({activePipeline.Mode}).");
+            return;
+        }
+
+        Debug.Log($"{nameof(MarbleRaceRunner)} no {nameof(ArtModeSelector)} / active pipeline found; using default marble renderers.");
     }
 
     private void EnsureMainCamera()
