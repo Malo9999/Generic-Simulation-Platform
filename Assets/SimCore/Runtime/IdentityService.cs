@@ -38,6 +38,17 @@ public static class StableHashUtility
         }
     }
 
+
+    public static int CombineSeed(int rootSeed, string salt)
+    {
+        unchecked
+        {
+            var saltHash = Fnv1a32(salt);
+            var combined = ((ulong)(uint)rootSeed << 32) | saltHash;
+            return unchecked((int)Mix64(combined));
+        }
+    }
+
     public static uint Fnv1a32(string value)
     {
         unchecked

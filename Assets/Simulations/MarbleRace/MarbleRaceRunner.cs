@@ -82,6 +82,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         positions = new Vector2[MarbleCount];
         velocities = new Vector2[MarbleCount];
 
+        var rng = RngService.Fork("SIM:MarbleRace:SPAWN");
+
         for (var i = 0; i < MarbleCount; i++)
         {
             var marble = new GameObject($"Marble_{i}");
@@ -99,10 +101,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             iconRoot.transform.SetParent(marble.transform, false);
             EntityIconFactory.BuildMarble(iconRoot.transform, identity);
 
-            var startX = RngService.Global.Range(-halfWidth, halfWidth);
-            var startY = RngService.Global.Range(-halfHeight, halfHeight);
-            var speed = RngService.Global.Range(5f, 14f);
-            var angle = RngService.Global.Range(0f, Mathf.PI * 2f);
+            var startX = rng.Range(-halfWidth, halfWidth);
+            var startY = rng.Range(-halfHeight, halfHeight);
+            var speed = rng.Range(5f, 14f);
+            var angle = rng.Range(0f, Mathf.PI * 2f);
 
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
