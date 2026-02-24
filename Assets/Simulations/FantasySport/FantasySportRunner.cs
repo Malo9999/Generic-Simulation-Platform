@@ -11,6 +11,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private EntityIdentity[] identities;
     private Vector2[] positions;
     private Vector2[] velocities;
+    private IRng[] turnRngs;
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
     private GameObject[] pipelineRenderers;
@@ -37,7 +38,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             if (tickIndex % 60 == 0)
             {
-                var turn = RngService.Global.Range(-0.45f, 0.45f);
+                var turn = turnRngs[i].Range(-0.45f, 0.45f);
                 var cos = Mathf.Cos(turn);
                 var sin = Mathf.Sin(turn);
                 var vx = velocities[i].x;
@@ -86,6 +87,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         identities = null;
         positions = null;
         velocities = null;
+        turnRngs = null;
         pipelineRenderers = null;
         visualKeys = null;
         Debug.Log("FantasySportRunner Shutdown");
@@ -103,10 +105,16 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         identities = new EntityIdentity[AthleteCount];
         positions = new Vector2[AthleteCount];
         velocities = new Vector2[AthleteCount];
+        turnRngs = new IRng[AthleteCount];
         pipelineRenderers = new GameObject[AthleteCount];
         visualKeys = new VisualKey[AthleteCount];
 
         ResolveArtPipeline();
+
+        for (var i = 0; i < AthleteCount; i++)
+        {
+            turnRngs[i] = RngService.Fork($"SIM:FantasySport:TURN:{i}");
+        }
 
         var rng = RngService.Fork("SIM:FantasySport:SPAWN");
 
