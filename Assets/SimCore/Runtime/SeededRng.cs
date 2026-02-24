@@ -4,57 +4,26 @@ using UnityEngine;
 
 public sealed class SeededRng : IRng
 {
-    private ulong state0;
-    private ulong state1;
+    private readonly Pcg32Rng pcg;
 
     public SeededRng(int seed)
     {
         Seed = seed;
-
-        var sm = (ulong)(uint)seed;
-        state0 = SplitMix64(ref sm);
-        state1 = SplitMix64(ref sm);
-        if (state0 == 0UL && state1 == 0UL)
-        {
-            state1 = 0x9E3779B97F4A7C15UL;
-        }
+        pcg = new Pcg32Rng(seed);
     }
 
     public int Seed { get; }
 
-    public uint NextUInt()
-    {
-        var s1 = state0;
-        var s0 = state1;
-        state0 = s0;
-        s1 ^= s1 << 23;
-        state1 = s1 ^ s0 ^ (s1 >> 17) ^ (s0 >> 26);
-        var sum = state1 + s0;
-        return (uint)(sum & 0xFFFFFFFFu);
-    }
+    public uint NextUInt() => pcg.NextUInt();
 
     public int NextInt(int minInclusive, int maxExclusive)
     {
-        if (maxExclusive <= minInclusive)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxExclusive), "maxExclusive must be greater than minInclusive.");
-        }
-
-        var range = (uint)(maxExclusive - minInclusive);
-        var limit = uint.MaxValue - (uint.MaxValue % range);
-        uint value;
-        do
-        {
-            value = NextUInt();
-        } while (value >= limit);
-
-        return minInclusive + (int)(value % range);
+        return pcg.NextInt(minInclusive, maxExclusive);
     }
 
     public float NextFloat01()
     {
-        // 24-bit precision float in [0,1).
-        return (NextUInt() >> 8) * (1.0f / 16777216.0f);
+        return pcg.NextFloat01();
     }
 
     public float Range(float minInclusive, float maxInclusive)
@@ -137,13 +106,4 @@ public sealed class SeededRng : IRng
     public int Range(int minInclusive, int maxExclusive) => NextInt(minInclusive, maxExclusive);
 
     public double NextDouble() => NextFloat01();
-
-    private static ulong SplitMix64(ref ulong state)
-    {
-        state += 0x9E3779B97F4A7C15UL;
-        var z = state;
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9UL;
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EBUL;
-        return z ^ (z >> 31);
-    }
 }

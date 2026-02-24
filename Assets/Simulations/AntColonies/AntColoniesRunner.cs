@@ -203,8 +203,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var nest = worldState.nests[nestIndex];
         var antId = nextAntId++;
 
-        var spawnSeed = unchecked((int)(ArenaDecorBuilder.StableHash32("ANTS:SPAWN") ^ (uint)(antId ^ (worldState.nests.Count * 131))));
-        var spawnRng = new SeededRng(spawnSeed);
+        var spawnRng = RngService.Fork($"ANTS:SPAWN:{antId}");
+        var spawnSeed = spawnRng.Seed;
         var angle = spawnRng.Range(0f, Mathf.PI * 2f);
         var radius = spawnRng.Range(0f, recipe.spawnOffsetRadius);
         var pos = nest.position + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
@@ -276,8 +276,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
     private Vector2 PickRespawnFoodPosition(int foodId, int tickIndex)
     {
-        var seed = unchecked((int)((uint)foodId ^ ArenaDecorBuilder.StableHash32("ANTS:FOOD_RESPAWN") ^ (uint)tickIndex));
-        var rng = new SeededRng(seed);
+        var rng = RngService.Fork($"ANTS:FOOD_RESPAWN:{foodId}:{tickIndex}");
         for (var attempt = 0; attempt < 64; attempt++)
         {
             var edge = rng.Range(0, 4);

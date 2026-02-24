@@ -69,7 +69,6 @@ public static class ArenaDecorBuilder
         }
     }
 
-    public static uint StableHash32(string text) => StableHash.StableHash32(text);
 
     public static Transform EnsureDecorRoot(Transform arenaRoot)
     {
