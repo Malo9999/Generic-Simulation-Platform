@@ -642,6 +642,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 808576137}
+  - component: {fileID: 808576138}
   m_Layer: 0
   m_Name: SimRoot
   m_TagString: Untagged
@@ -664,6 +665,22 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &808576138
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 808576136}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29bf921440a04b06bdb5a6356c74f446, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ArtModeSelector
+  simulationId: 
+  requestedMode: 0
+  registry: {fileID: 11400000, guid: 8d22013c1c8d4f55b7be2159e4d724ee, type: 2}
+  manifestOverride: {fileID: 11400000, guid: 543ed952d475453a86a7f159ab783f59, type: 2}
 --- !u!1 &826939079
 GameObject:
   m_ObjectHideFlags: 0
