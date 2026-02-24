@@ -73,6 +73,7 @@ public static class RecreateBroadcastUiMenu
         EnsureEventSystem();
         AttachAndWireClickToPan(view);
         AttachAndWireMinimapSelection(view, minimapCamera, presentationRoot);
+        EnsureSelectionRuntime(presentationRoot, view, ResolveMainCamera());
         EnsureBroadcastHotkeys(presentationRoot, canvasObject, view);
 
         EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
@@ -642,6 +643,39 @@ public static class RecreateBroadcastUiMenu
         var bounds = clickToPan != null ? clickToPan.worldBounds : new Rect(-32f, -32f, 64f, 64f);
         selectToFollow.worldBounds = bounds;
         followController.worldBounds = bounds;
+    }
+
+    private static void EnsureSelectionRuntime(GameObject presentationRoot, GameObject minimapView, Camera mainCamera)
+    {
+        if (presentationRoot == null)
+        {
+            return;
+        }
+
+        var selectionHost = GetOrCreateRoot("SelectionService", presentationRoot.transform);
+        var selectionService = GetOrAdd<SelectionService>(selectionHost);
+
+        var highlighterHost = GetOrCreateRoot("WorldSelectionHighlighter", presentationRoot.transform);
+        var highlighter = GetOrAdd<WorldSelectionHighlighter>(highlighterHost);
+        highlighter.selectionService = selectionService;
+
+        if (mainCamera != null)
+        {
+            var clickSelector = GetOrAdd<GameClickSelector>(mainCamera.gameObject);
+            clickSelector.worldCamera = mainCamera;
+            clickSelector.selectionService = selectionService;
+        }
+
+        if (minimapView != null)
+        {
+            var overlay = GetOrAdd<MinimapMarkerOverlay>(minimapView);
+            var bridge = GetOrAdd<MinimapSelectionBridge>(minimapView);
+            bridge.selectionService = selectionService;
+            bridge.overlay = overlay;
+
+            var selector = GetOrAdd<MinimapSelectToFollow>(minimapView);
+            selector.selectionService = selectionService;
+        }
     }
 
     private static void EnsureBroadcastHotkeys(GameObject presentationRoot, GameObject canvasObject, GameObject minimapView)
