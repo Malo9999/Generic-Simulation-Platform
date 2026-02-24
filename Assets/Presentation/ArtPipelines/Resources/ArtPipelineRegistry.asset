@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39b65c5d89d04d0983973414ecc1fc0c, type: 3}
+  m_Name: ArtPipelineRegistry
+  m_EditorClassIdentifier: 
+  pipelines:
+  - {fileID: 11400000, guid: 44e9c46fc7db4edd9916286f478e6b2d, type: 2}
+  - {fileID: 11400000, guid: 3dec2c4410e54c15b9c3f81e1173e3a1, type: 2}
+  - {fileID: 11400000, guid: 625aff9b78114a108affd7c3589f92d6, type: 2}
+  - {fileID: 11400000, guid: 646c79590892425988fb3119d5dc3b9d, type: 2}
+  - {fileID: 11400000, guid: 5bf5210dcdc04c2bab1dbb54832f3448, type: 2}
