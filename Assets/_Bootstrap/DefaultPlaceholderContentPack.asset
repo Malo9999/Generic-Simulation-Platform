@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 586bbca064023ed41a8e53c7a374fd40, type: 3}
+  m_Name: DefaultPlaceholderContentPack
+  m_EditorClassIdentifier: 
+  version: 1
+  seed: 0
+  tileSize: 0
+  spriteSize: 64
+  simulationId: __global__
+  packId: placeholder
+  textures: []
+  sprites: []
+  selections: []
+  clipMetadata: []

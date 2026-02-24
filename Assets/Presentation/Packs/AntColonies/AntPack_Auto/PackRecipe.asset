@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8d152f503eb139846bff9a0b3912a357, type: 3}
-  m_Name: PackRecipe
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PackRecipe
   simulationId: AntColonies
   packId: AntPack_Auto
@@ -22,95 +22,47 @@ MonoBehaviour:
   entities:
   - entityId: ant
     archetypeId: archetype.ant
-    speciesCount: 5
+    speciesCount: 1
     roles:
-    - queen
     - worker
     - soldier
     lifeStages:
-    - egg
-    - larva
-    - pupa
     - adult
     states:
     - idle
     - walk
-    - run
-    - work
-    - eat
-    - reproduce
-    - fight
-    - defend
-    - hurt
-    - death
     animationPolicy:
       idleFrames: 2
       walkFrames: 4
       runFrames: 4
-      defaultFps: 8
-  - entityId: spider
-    archetypeId: archetype.arachnid
-    speciesCount: 1
-    roles:
-    - adult
-    lifeStages:
-    - adult
-    states:
-    - idle
-    - walk
-    - run
-    - fight
-    - hurt
-    - death
-    animationPolicy:
-      idleFrames: 2
-      walkFrames: 4
-      runFrames: 4
-      defaultFps: 8
-  - entityId: beetle
-    archetypeId: archetype.beetle
-    speciesCount: 1
-    roles:
-    - adult
-    lifeStages:
-    - adult
-    states:
-    - idle
-    - walk
-    - hurt
-    - death
-    animationPolicy:
-      idleFrames: 2
-      walkFrames: 2
-      runFrames: 2
       defaultFps: 8
   props:
-  - propId: nest_entrance
-    importance: hero
-  - propId: food_pile_small
-    importance: hero
-  - propId: food_pile_med
-    importance: hero
-  - propId: food_pile_large
-    importance: hero
-  - propId: egg_cluster
-    importance: hero
-  - propId: foliage_scatter
-    importance: background
-  - propId: rock_scatter
-    importance: background
+  - propId: prop_nest_entrance_medium
+    importance: critical
+  - propId: prop_food_large
+    importance: critical
   referenceAssets:
   - assetId: FireAnt
+    entityId: ant
+    mappedSpeciesId: FireAnt
     minImages: 1
-  - assetId: CarpenterAnt
+    generationMode: 1
+    variantCount: 1
+  - assetId: prop_nest_entrance_medium
+    entityId: ant
+    mappedSpeciesId: default
     minImages: 1
-  - assetId: PharaohAnt
+    generationMode: 0
+    variantCount: 1
+  - assetId: prop_food_large
+    entityId: ant
+    mappedSpeciesId: default
     minImages: 1
-  - assetId: BlackGardenAnt
-    minImages: 1
-  - assetId: RedWoodAnt
-    minImages: 1
+    generationMode: 0
+    variantCount: 1
   generationPolicy:
     generateBlueprints: 1
     compileSpritesheets: 1
-    exportCompatibilityAntContentPack: 1
+    renderAntStripeOverlay: 0
+    includeAntMaskSpritesInMainPack: 0
+    exportCompatibilityAntContentPack: 0

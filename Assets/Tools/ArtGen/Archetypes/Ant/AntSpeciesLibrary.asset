@@ -237,3 +237,283 @@ MonoBehaviour:
         Image 22 feb 2026, 15_54_32.png
       sourceW: 1024
       sourceH: 1024
+  - speciesId: FireAnt
+    displayName: Default
+    baseColorId: color.ant.default
+    headScale: 1
+    thoraxScale: 1
+    abdomenScale: 1
+    legLengthScale: 1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+    referencePack: {fileID: 0}
+    hasFittedModel: 1
+    fittedModel:
+      headCenter01: {x: 0.56010425, y: 0.009036288}
+      thoraxCenter01: {x: 0.4997616, y: 0.40371466}
+      abdomenCenter01: {x: 0.5145269, y: 0.88764197}
+      headRadii01: {x: 0.25, y: 0.03}
+      thoraxRadii01: {x: 0.25, y: 0.03}
+      abdomenRadii01: {x: 0.25, y: 0.03}
+      pinchStrength: 0.6280316
+      legAnchors01:
+      - {x: 0.14438824, y: 0.30371466}
+      - {x: 0.14438824, y: 0.40371466}
+      - {x: 0.14438824, y: 0.5037147}
+      - {x: 0.85513496, y: 0.30371466}
+      - {x: 0.85513496, y: 0.40371466}
+      - {x: 0.85513496, y: 0.5037147}
+      legAnglesDeg:
+      - -150
+      - -130
+      - -110
+      - -30
+      - -10
+      - 10
+      legLengths01:
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      antennaAnchors01:
+      - {x: 0.20597067, y: 0.0050688633}
+      - {x: 0.91423786, y: 0.0050688633}
+      antennaAnglesDeg:
+      - -130
+      - -50
+      antennaLen01: 0.16
+      eyeLeft01: {x: 0.46, y: 0.16}
+      eyeRight01: {x: 0.54, y: 0.16}
+      sourceImagePath: Q:\GSP\Generic Simulation Project\_References\AntColonies\FireAnt\Images\ChatGPT
+        Image 22 feb 2026, 15_52_10.png
+      sourceW: 1024
+      sourceH: 1024
+  - speciesId: CarpenterAnt
+    displayName: Default
+    baseColorId: color.ant.default
+    headScale: 1
+    thoraxScale: 1
+    abdomenScale: 1
+    legLengthScale: 1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+    referencePack: {fileID: 0}
+    hasFittedModel: 1
+    fittedModel:
+      headCenter01: {x: 0.5791655, y: 0.010329712}
+      thoraxCenter01: {x: 0.50098336, y: 0.40840957}
+      abdomenCenter01: {x: 0.5070549, y: 0.8920095}
+      headRadii01: {x: 0.25, y: 0.03}
+      thoraxRadii01: {x: 0.25, y: 0.03}
+      abdomenRadii01: {x: 0.25, y: 0.03}
+      pinchStrength: 0.63010997
+      legAnchors01:
+      - {x: 0.051251236, y: 0.30840957}
+      - {x: 0.051251236, y: 0.40840957}
+      - {x: 0.051251236, y: 0.50840956}
+      - {x: 0.9507155, y: 0.30840957}
+      - {x: 0.9507155, y: 0.40840957}
+      - {x: 0.9507155, y: 0.50840956}
+      legAnglesDeg:
+      - -150
+      - -130
+      - -110
+      - -30
+      - -10
+      - 10
+      legLengths01:
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      antennaAnchors01:
+      - {x: 0.22856164, y: 0.006635569}
+      - {x: 0.9297694, y: 0.006635569}
+      antennaAnglesDeg:
+      - -130
+      - -50
+      antennaLen01: 0.16
+      eyeLeft01: {x: 0.46, y: 0.16}
+      eyeRight01: {x: 0.54, y: 0.16}
+      sourceImagePath: Q:\GSP\Generic Simulation Project\_References\AntColonies\CarpenterAnt\Images\ChatGPT
+        Image 22 feb 2026, 15_52_12.png
+      sourceW: 1024
+      sourceH: 1024
+  - speciesId: PharaohAnt
+    displayName: Default
+    baseColorId: color.ant.default
+    headScale: 1
+    thoraxScale: 1
+    abdomenScale: 1
+    legLengthScale: 1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+    referencePack: {fileID: 0}
+    hasFittedModel: 1
+    fittedModel:
+      headCenter01: {x: 0.5178786, y: 0.012528126}
+      thoraxCenter01: {x: 0.4961393, y: 0.41120592}
+      abdomenCenter01: {x: 0.49849388, y: 0.89036393}
+      headRadii01: {x: 0.25, y: 0.03}
+      thoraxRadii01: {x: 0.25, y: 0.03}
+      abdomenRadii01: {x: 0.25, y: 0.03}
+      pinchStrength: 0.6316531
+      legAnchors01:
+      - {x: 0.1369956, y: 0.31120592}
+      - {x: 0.1369956, y: 0.41120592}
+      - {x: 0.1369956, y: 0.5112059}
+      - {x: 0.85528296, y: 0.31120592}
+      - {x: 0.85528296, y: 0.41120592}
+      - {x: 0.85528296, y: 0.5112059}
+      legAnglesDeg:
+      - -150
+      - -130
+      - -110
+      - -30
+      - -10
+      - 10
+      legLengths01:
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      antennaAnchors01:
+      - {x: 0.16191941, y: 0.00865484}
+      - {x: 0.87383777, y: 0.00865484}
+      antennaAnglesDeg:
+      - -130
+      - -50
+      antennaLen01: 0.16
+      eyeLeft01: {x: 0.46, y: 0.16}
+      eyeRight01: {x: 0.54, y: 0.16}
+      sourceImagePath: Q:\GSP\Generic Simulation Project\_References\AntColonies\PharaohAnt\Images\ChatGPT
+        Image 22 feb 2026, 15_52_17.png
+      sourceW: 1024
+      sourceH: 1024
+  - speciesId: WeaverAnt
+    displayName: Default
+    baseColorId: color.ant.default
+    headScale: 1
+    thoraxScale: 1
+    abdomenScale: 1
+    legLengthScale: 1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+    referencePack: {fileID: 0}
+    hasFittedModel: 1
+    fittedModel:
+      headCenter01: {x: 0.50479573, y: 0.014021412}
+      thoraxCenter01: {x: 0.4966459, y: 0.41467604}
+      abdomenCenter01: {x: 0.5023987, y: 0.8911032}
+      headRadii01: {x: 0.25, y: 0.03}
+      thoraxRadii01: {x: 0.25, y: 0.03}
+      abdomenRadii01: {x: 0.25, y: 0.03}
+      pinchStrength: 0.66171527
+      legAnchors01:
+      - {x: 0.15465654, y: 0.31467605}
+      - {x: 0.15465654, y: 0.41467604}
+      - {x: 0.15465654, y: 0.51467603}
+      - {x: 0.83863527, y: 0.31467605}
+      - {x: 0.83863527, y: 0.41467604}
+      - {x: 0.83863527, y: 0.51467603}
+      legAnglesDeg:
+      - -150
+      - -130
+      - -110
+      - -30
+      - -10
+      - 10
+      legLengths01:
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      antennaAnchors01:
+      - {x: 0.14795497, y: 0.0101534845}
+      - {x: 0.8616365, y: 0.0101534845}
+      antennaAnglesDeg:
+      - -130
+      - -50
+      antennaLen01: 0.16
+      eyeLeft01: {x: 0.46, y: 0.16}
+      eyeRight01: {x: 0.54, y: 0.16}
+      sourceImagePath: Q:\GSP\Generic Simulation Project\_References\AntColonies\WeaverAnt\Images\ChatGPT
+        Image 22 feb 2026, 15_54_32.png
+      sourceW: 1024
+      sourceH: 1024
+  - speciesId: ArmyAnt
+    displayName: Default
+    baseColorId: color.ant.default
+    headScale: 1
+    thoraxScale: 1
+    abdomenScale: 1
+    legLengthScale: 1
+    antennaLengthScale: 1
+    petiolePinchStrength: 1
+    soldierHeadMultiplier: 1.2
+    soldierMandibleMultiplier: 1.2
+    queenAbdomenMultiplier: 1.3
+    referencePack: {fileID: 0}
+    hasFittedModel: 1
+    fittedModel:
+      headCenter01: {x: 0.5017625, y: 0.014965021}
+      thoraxCenter01: {x: 0.50465286, y: 0.41294894}
+      abdomenCenter01: {x: 0.5001897, y: 0.89497256}
+      headRadii01: {x: 0.25, y: 0.03}
+      thoraxRadii01: {x: 0.25, y: 0.03}
+      abdomenRadii01: {x: 0.25, y: 0.03}
+      pinchStrength: 0.6765363
+      legAnchors01:
+      - {x: 0.11636199, y: 0.31294894}
+      - {x: 0.11636199, y: 0.41294894}
+      - {x: 0.11636199, y: 0.51294893}
+      - {x: 0.89294374, y: 0.31294894}
+      - {x: 0.89294374, y: 0.41294894}
+      - {x: 0.89294374, y: 0.51294893}
+      legAnglesDeg:
+      - -150
+      - -130
+      - -110
+      - -30
+      - -10
+      - 10
+      legLengths01:
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      - 0.18
+      antennaAnchors01:
+      - {x: 0.1492236, y: 0.011122157}
+      - {x: 0.85430145, y: 0.011122157}
+      antennaAnglesDeg:
+      - -130
+      - -50
+      antennaLen01: 0.16
+      eyeLeft01: {x: 0.46, y: 0.16}
+      eyeRight01: {x: 0.54, y: 0.16}
+      sourceImagePath: Q:\GSP\Generic Simulation Project\_References\AntColonies\ArmyAnt\Images\ChatGPT
+        Image 22 feb 2026, 15_56_10.png
+      sourceW: 1024
+      sourceH: 1024

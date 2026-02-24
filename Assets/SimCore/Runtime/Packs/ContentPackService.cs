@@ -6,11 +6,15 @@ public static class ContentPackService
 {
     public static ContentPack Current { get; private set; }
     private static readonly HashSet<string> MissingLogged = new(StringComparer.Ordinal);
+    private static Sprite squarePlaceholderSprite;
+    private static bool hasLoggedMissingAgentSprite;
+
 
     public static void Set(ContentPack pack)
     {
         Current = pack;
         MissingLogged.Clear();
+        hasLoggedMissingAgentSprite = false;
         if (pack != null)
         {
             Debug.Log($"[ContentPack] Set '{pack.name}' sprites={pack.Sprites.Count} selections={pack.Selections.Count}");
@@ -21,6 +25,7 @@ public static class ContentPackService
     {
         Current = null;
         MissingLogged.Clear();
+        hasLoggedMissingAgentSprite = false;
         Debug.LogWarning("[ContentPack] Cleared (no pack)");
     }
 
@@ -28,9 +33,7 @@ public static class ContentPackService
     {
         if (Current == null)
         {
-            LogOnce("NO_PACK", $"[ContentPack] No content pack loaded; sprite lookup failed for id: {id}");
-            sprite = null;
-            return false;
+            return TryGetPlaceholderSprite(id, out sprite);
         }
 
         if (Current.TryGetSprite(id, out sprite))
@@ -51,6 +54,17 @@ public static class ContentPackService
         if (TryGetWithSpeciesFallback(id, out sprite))
         {
             return true;
+        }
+
+        if (IsPlaceholderPack(Current) && TryGetPlaceholderSprite(id, out sprite))
+        {
+            return true;
+        }
+
+        if (id != null && id.StartsWith("agent:", StringComparison.Ordinal))
+        {
+            LogMissingAgentSpriteOnce(id);
+            return false;
         }
 
         LogOnce(id ?? string.Empty, $"[ContentPack] Missing sprite id: {id} (pack={Current.name})");
@@ -154,6 +168,77 @@ public static class ContentPackService
         parts[2] = inferredSpecies;
         var alternateId = string.Join(":", parts);
         return Current.TryGetSprite(alternateId, out sprite);
+    }
+
+    private static bool TryGetPlaceholderSprite(string id, out Sprite sprite)
+    {
+        sprite = null;
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            return false;
+        }
+
+        if (id.StartsWith("prop:", StringComparison.Ordinal))
+        {
+            sprite = id.Contains("outline", StringComparison.OrdinalIgnoreCase)
+                ? PrimitiveSpriteLibrary.RoundedRectOutline()
+                : PrimitiveSpriteLibrary.CircleFill();
+            return true;
+        }
+
+        if (id.StartsWith("tile:", StringComparison.Ordinal))
+        {
+            sprite = GetSquarePlaceholderSprite();
+            return true;
+        }
+
+        if (id.StartsWith("agent:", StringComparison.Ordinal))
+        {
+            sprite = id.Contains("mask", StringComparison.OrdinalIgnoreCase) || id.Contains("outline", StringComparison.OrdinalIgnoreCase)
+                ? PrimitiveSpriteLibrary.CapsuleOutline()
+                : PrimitiveSpriteLibrary.CapsuleFill();
+            return true;
+        }
+
+        var normalized = id.ToLowerInvariant();
+        if (string.Equals(normalized, "agent_alt", StringComparison.Ordinal))
+        {
+            sprite = PrimitiveSpriteLibrary.CapsuleOutline();
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsPlaceholderPack(ContentPack pack)
+    {
+        return pack != null && string.Equals(pack.name, "DefaultPlaceholderContentPack", StringComparison.Ordinal);
+    }
+
+    private static Sprite GetSquarePlaceholderSprite()
+    {
+        if (squarePlaceholderSprite != null)
+        {
+            return squarePlaceholderSprite;
+        }
+
+        var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
+        texture.SetPixel(0, 0, Color.white);
+        texture.Apply(false, false);
+        squarePlaceholderSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return squarePlaceholderSprite;
+    }
+
+    private static void LogMissingAgentSpriteOnce(string id)
+    {
+        if (hasLoggedMissingAgentSprite)
+        {
+            return;
+        }
+
+        hasLoggedMissingAgentSprite = true;
+        var packName = Current != null ? Current.name : "<none>";
+        Debug.LogWarning($"Missing agent sprite id: {id} (pack={packName})");
     }
 
     private static void LogOnce(string key, string message)

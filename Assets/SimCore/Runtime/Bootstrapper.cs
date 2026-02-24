@@ -33,6 +33,7 @@ public class Bootstrapper : MonoBehaviour
     public bool ShowOverlay => options == null || options.showOverlay;
     public int TickCount => tickCount;
     public float CurrentFps => smoothedFps;
+    public string CurrentContentPackName => ContentPackService.Current != null ? ContentPackService.Current.name : "<none>";
     public int CurrentTick => IsReplayMode ? replayDriver?.CurrentTick ?? 0 : simDriver?.CurrentTick ?? 0;
     public bool IsPaused => IsReplayMode ? replayDriver?.IsPaused ?? false : simDriver?.IsPaused ?? false;
     public float TimeScale => IsReplayMode ? replayDriver?.TimeScale ?? 1f : simDriver?.TimeScale ?? 1f;
@@ -177,7 +178,7 @@ public class Bootstrapper : MonoBehaviour
         AntAtlasLibrary.ClearCache();
 
         var selectedContentPack = ResolveContentPack(simulationId);
-        Debug.Log($"[Bootstrapper] sim={simulationId} contentPack={(selectedContentPack != null ? selectedContentPack.name : "<none>")}");
+        Debug.Log($"[Bootstrapper] simId={simulationId} contentPack={DescribeContentPack(selectedContentPack)}");
         if (selectedContentPack != null)
         {
             ContentPackService.Set(selectedContentPack);
@@ -239,69 +240,29 @@ public class Bootstrapper : MonoBehaviour
         {
             return entry.defaultContentPack;
         }
+        var catalog = options?.simulationCatalog;
+        if (catalog != null && catalog.GlobalDefaultContentPack != null)
+        {
+            return catalog.GlobalDefaultContentPack;
+        }
 
-#if UNITY_EDITOR
-        return FindEditorFallbackContentPack(simulationId);
-#else
         return null;
-#endif
     }
+
+    private static string DescribeContentPack(ContentPack pack)
+    {
+        if (pack == null)
+        {
+            return "<none> path=<none>";
+        }
 
 #if UNITY_EDITOR
-    private static ContentPack FindEditorFallbackContentPack(string simulationId)
-    {
-        if (string.IsNullOrWhiteSpace(simulationId))
-        {
-            return null;
-        }
-
-        var searchRoot = $"Assets/Presentation/Packs/{simulationId}";
-        if (!AssetDatabase.IsValidFolder(searchRoot))
-        {
-            return null;
-        }
-
-        var guids = AssetDatabase.FindAssets("t:ContentPack", new[] { searchRoot });
-        if (guids == null || guids.Length == 0)
-        {
-            return null;
-        }
-
-        ContentPack bestPack = null;
-        DateTime newestWriteTime = DateTime.MinValue;
-        string bestPath = null;
-
-        for (var i = 0; i < guids.Length; i++)
-        {
-            var path = AssetDatabase.GUIDToAssetPath(guids[i]);
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                continue;
-            }
-
-            var absolutePath = Path.GetFullPath(path);
-            var writeTime = File.Exists(absolutePath) ? File.GetLastWriteTimeUtc(absolutePath) : DateTime.MinValue;
-            var candidate = AssetDatabase.LoadAssetAtPath<ContentPack>(path);
-            if (candidate == null)
-            {
-                continue;
-            }
-
-            var isNewer = writeTime > newestWriteTime;
-            var isTieButEarlierPath = writeTime == newestWriteTime && string.Compare(path, bestPath, StringComparison.Ordinal) < 0;
-            if (!isNewer && !isTieButEarlierPath)
-            {
-                continue;
-            }
-
-            newestWriteTime = writeTime;
-            bestPath = path;
-            bestPack = candidate;
-        }
-
-        return bestPack;
-    }
+        var path = AssetDatabase.GetAssetPath(pack);
+        return string.IsNullOrWhiteSpace(path) ? $"{pack.name} path=<unknown>" : $"{pack.name} path={path}";
+#else
+        return $"{pack.name} path=<runtime>";
 #endif
+    }
 
     private string GetFallbackSimulationId()
     {
@@ -341,6 +302,7 @@ public class Bootstrapper : MonoBehaviour
 
 #if UNITY_EDITOR
         options.simulationCatalog = EnsureSimulationCatalogAsset();
+        options.simulationCatalog?.AssignGlobalDefaultContentPackIfMissing();
         EditorUtility.SetDirty(options);
 #else
         options.simulationCatalog = Resources.Load<SimulationCatalog>("SimulationCatalog");
@@ -405,6 +367,7 @@ public class Bootstrapper : MonoBehaviour
         catalog = ScriptableObject.CreateInstance<SimulationCatalog>();
         AssetDatabase.CreateAsset(catalog, assetPath);
         catalog.AutoDiscoverSimulations();
+        catalog.AssignGlobalDefaultContentPackIfMissing();
         AssetDatabase.SaveAssets();
         Debug.Log($"Bootstrapper: Created SimulationCatalog asset at {assetPath}");
         return catalog;
@@ -537,7 +500,8 @@ public class Bootstrapper : MonoBehaviour
         Debug.Log($"Bootstrapper: RNG sanity check seed={seed} values=[{sampleA:F6}, {sampleB:F6}, {sampleC:F6}]");
 
         UnityEngine.Random.InitState(seed);
-        RngService.SetGlobal(new SeededRng(seed));
+        RngService.SetGlobalSeed(seed);
+        Debug.Log($"Bootstrapper: Deterministic RNG signature {RngService.BuildSignature(seed)}");
     }
 
     private void SpawnRunner(ScenarioConfig config)

@@ -46,6 +46,8 @@ public sealed class PackRecipe : ScriptableObject
     {
         public bool generateBlueprints = true;
         public bool compileSpritesheets = true;
+        public bool renderAntStripeOverlay;
+        public bool includeAntMaskSpritesInMainPack;
         public bool exportCompatibilityAntContentPack;
     }
 
@@ -53,7 +55,17 @@ public sealed class PackRecipe : ScriptableObject
     public sealed class ReferenceAssetNeed
     {
         public string assetId;
+        public string entityId = "ant";
+        public string mappedSpeciesId;
         public int minImages = 1;
+        public GenerationMode generationMode = GenerationMode.OutlineDriven;
+        public int variantCount = 1;
+    }
+
+    public enum GenerationMode
+    {
+        Procedural = 0,
+        OutlineDriven = 1
     }
 
     public string simulationId = "Simulation";

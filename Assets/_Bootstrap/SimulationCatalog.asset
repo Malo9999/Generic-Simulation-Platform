@@ -12,11 +12,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a34dd4de6c8e4a4db2eb6e2ce5b20947, type: 3}
   m_Name: SimulationCatalog
   m_EditorClassIdentifier: 
+  globalDefaultContentPack: {fileID: 11400000, guid: c3d1fc265ecf433cb8856f2ad4f8f768, type: 2}
   simulations:
   - simulationId: AntColonies
     runnerPrefab: {fileID: 7091845627640690864, guid: abf769fd9606e274ca690a4492d53f0d, type: 3}
     defaultPreset: {fileID: 4900000, guid: 383db04756422d4428c4ec4499c34806, type: 3}
-    defaultContentPack: {fileID: 11400000, guid: 932d911e0b1c4df43b63caccc0e025fd, type: 2}
+    defaultContentPack: {fileID: 11400000, guid: b68e0f7ec30675b479c4aed78bf4f91a, type: 2}
   - simulationId: FantasySport
     runnerPrefab: {fileID: 2556959760160797046, guid: 5bd2445ff5636d144b3b1129490eeb2b, type: 3}
     defaultPreset: {fileID: 4900000, guid: 60b9e10de70d42f4aba97e45c9a58a7b, type: 3}

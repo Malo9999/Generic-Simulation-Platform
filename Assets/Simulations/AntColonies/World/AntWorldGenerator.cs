@@ -22,12 +22,13 @@ public static class AntWorldGenerator
 
         var halfWidth = Mathf.Max(8f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         var halfHeight = Mathf.Max(8f, (config?.world?.arenaHeight ?? 64) * 0.5f);
-        var seed = unchecked((config?.seed ?? 0) ^ (int)ArenaDecorBuilder.StableHash32("ANTS:WORLDv1"));
-        var rng = new SeededRng(seed);
+        var rng = RngService.Fork("ANTS:WORLDv1");
 
         var state = new AntWorldState();
         var propIds = GetSpriteIdsByPrefix("prop:");
         var tileIds = GetSpriteIdsByPrefix("tile:");
+        propIds.Sort(StringComparer.Ordinal);
+        tileIds.Sort(StringComparer.Ordinal);
 
         PlaceNests(state, recipe, halfWidth, halfHeight, rng);
         PlaceFood(state, recipe, halfWidth, halfHeight, rng);
@@ -38,8 +39,9 @@ public static class AntWorldGenerator
         return state;
     }
 
-    private static void PlaceNests(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, SeededRng rng)
+    private static void PlaceNests(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, IRng rng)
     {
+        var speciesOrder = ResolveSpeciesOrder();
         var minDistance = recipe.nestMinDistance;
         for (var team = 0; team < 5; team++)
         {
@@ -70,7 +72,7 @@ public static class AntWorldGenerator
 
                     state.nests.Add(new AntWorldState.NestEntry
                     {
-                        speciesId = SpeciesOrder[team],
+                        speciesId = speciesOrder[team % speciesOrder.Count],
                         teamId = team,
                         position = p,
                         hp = recipe.nestHp,
@@ -84,7 +86,7 @@ public static class AntWorldGenerator
         }
     }
 
-    private static void PlaceFood(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, SeededRng rng)
+    private static void PlaceFood(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, IRng rng)
     {
         for (var i = 0; i < recipe.foodCount; i++)
         {
@@ -125,7 +127,7 @@ public static class AntWorldGenerator
         }
     }
 
-    private static void PlaceObstacles(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, SeededRng rng)
+    private static void PlaceObstacles(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, IRng rng)
     {
         var count = rng.Range(recipe.obstacleCountMin, recipe.obstacleCountMax + 1);
         for (var i = 0; i < count; i++)
@@ -150,7 +152,7 @@ public static class AntWorldGenerator
         }
     }
 
-    private static void PlaceDecor(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, SeededRng rng, List<string> propIds)
+    private static void PlaceDecor(AntWorldState state, AntWorldRecipe recipe, float halfWidth, float halfHeight, IRng rng, List<string> propIds)
     {
         var count = Mathf.Clamp(recipe.decorTargetCount, recipe.decorCountMin, recipe.decorCountMax);
         count = Mathf.Clamp(count, 80, 200);
@@ -158,6 +160,9 @@ public static class AntWorldGenerator
         var grass = FilterByAny(propIds, "grass", "tuft");
         var stones = FilterByAny(propIds, "stone", "rock", "pebble");
         var plants = FilterByAny(propIds, "plant", "tree", "flower", "leaf");
+        grass.Sort(StringComparer.Ordinal);
+        stones.Sort(StringComparer.Ordinal);
+        plants.Sort(StringComparer.Ordinal);
         var fallbackPool = propIds.Count > 0 ? propIds : new List<string>();
 
         var occupied = new List<Vector2>();
@@ -209,11 +214,15 @@ public static class AntWorldGenerator
         }
     }
 
-    private static void BuildTiles(AntWorldState state, AntWorldRecipe recipe, SeededRng rng, List<string> tileIds, float halfWidth, float halfHeight)
+    private static void BuildTiles(AntWorldState state, AntWorldRecipe recipe, IRng rng, List<string> tileIds, float halfWidth, float halfHeight)
     {
         var grassIds = FilterByAny(tileIds, "grass", "surface");
         var dirtIds = FilterByAny(tileIds, "dirt", "ground", "underground");
         var pathIds = FilterByAny(tileIds, "path", "tunnel");
+
+        grassIds.Sort(StringComparer.Ordinal);
+        dirtIds.Sort(StringComparer.Ordinal);
+        pathIds.Sort(StringComparer.Ordinal);
 
         if (grassIds.Count == 0) grassIds = tileIds;
         if (dirtIds.Count == 0) dirtIds = grassIds;
@@ -302,5 +311,17 @@ public static class AntWorldGenerator
 
         var filtered = source.Where(id => terms.Any(term => id.IndexOf(term, StringComparison.OrdinalIgnoreCase) >= 0)).ToList();
         return filtered;
+    }
+
+    private static List<string> ResolveSpeciesOrder()
+    {
+        var pack = ContentPackService.Current;
+        var packSpecies = pack?.Selections?
+            .FirstOrDefault(selection => string.Equals(selection.entityId, "ant", StringComparison.OrdinalIgnoreCase))
+            .speciesIds?
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToList();
+
+        return packSpecies != null && packSpecies.Count > 0 ? packSpecies : SpeciesOrder.ToList();
     }
 }

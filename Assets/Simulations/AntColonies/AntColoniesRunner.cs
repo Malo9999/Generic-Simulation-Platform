@@ -20,6 +20,9 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private float halfHeight = 32f;
     private AntWorldState worldState;
     private AntWorldRecipe recipe;
+    private bool showHealthBars;
+    private ArtModeSelector artSelector;
+    private ArtPipelineBase activePipeline;
 
     private static Sprite fallbackAntSprite;
     private static Sprite squareSprite;
@@ -31,6 +34,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
         recipe = config?.antColonies?.worldRecipe ?? new AntWorldRecipe();
         recipe.Normalize();
+        showHealthBars = config?.presentation?.showHealthBars ?? false;
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
@@ -38,6 +42,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         worldState = AntWorldGenerator.Generate(config);
         AntWorldViewBuilder.BuildOrRefresh(transform, config, worldState);
         CacheWorldRenderers();
+        ResolveArtPipeline();
 
         nextAntId = 0;
         RebuildAntIndex();
@@ -159,6 +164,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         foodRenderers.Clear();
         worldState = null;
         recipe = null;
+        artSelector = null;
+        activePipeline = null;
     }
 
     private void SpawnAnts(int tickIndex)
@@ -201,8 +208,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var nest = worldState.nests[nestIndex];
         var antId = nextAntId++;
 
-        var spawnSeed = unchecked((int)(ArenaDecorBuilder.StableHash32("ANTS:SPAWN") ^ (uint)(antId ^ (worldState.nests.Count * 131))));
-        var spawnRng = new SeededRng(spawnSeed);
+        var spawnRng = RngService.Fork($"ANTS:SPAWN:{antId}");
+        var spawnSeed = spawnRng.Seed;
         var angle = spawnRng.Range(0f, Mathf.PI * 2f);
         var radius = spawnRng.Range(0f, recipe.spawnOffsetRadius);
         var pos = nest.position + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
@@ -274,8 +281,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
     private Vector2 PickRespawnFoodPosition(int foodId, int tickIndex)
     {
-        var seed = unchecked((int)((uint)foodId ^ ArenaDecorBuilder.StableHash32("ANTS:FOOD_RESPAWN") ^ (uint)tickIndex));
-        var rng = new SeededRng(seed);
+        var rng = RngService.Fork($"ANTS:FOOD_RESPAWN:{foodId}:{tickIndex}");
         for (var attempt = 0; attempt < 64; attempt++)
         {
             var edge = rng.Range(0, 4);
@@ -520,42 +526,80 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var root = new GameObject($"Ant_{ant.id}");
         root.transform.SetParent(transform, false);
 
-        var baseObj = new GameObject("Base");
-        baseObj.transform.SetParent(root.transform, false);
-        var baseRenderer = baseObj.AddComponent<SpriteRenderer>();
-        baseRenderer.sortingOrder = AntSortingOrder;
+        GameObject pipelineRenderer = null;
+        SpriteRenderer baseRenderer = null;
+
+        var visualKey = new VisualKey
+        {
+            simulationId = "AntColonies",
+            entityId = "ant",
+            kind = string.IsNullOrWhiteSpace(ant.identity.role) ? $"species-{ant.speciesId}" : ant.identity.role,
+            state = "idle",
+            variantSeed = ant.id,
+            facingMode = FacingMode.Auto
+        };
+
+        if (activePipeline != null)
+        {
+            pipelineRenderer = activePipeline.CreateRenderer(visualKey, root.transform);
+            if (pipelineRenderer != null)
+            {
+                baseRenderer = pipelineRenderer.GetComponent<SpriteRenderer>() ?? pipelineRenderer.GetComponentInChildren<SpriteRenderer>();
+                if (baseRenderer != null)
+                {
+                    baseRenderer.sortingOrder = AntSortingOrder;
+                }
+            }
+        }
+
+        if (baseRenderer == null)
+        {
+            var baseObj = new GameObject("Base");
+            baseObj.transform.SetParent(root.transform, false);
+            baseRenderer = baseObj.AddComponent<SpriteRenderer>();
+            baseRenderer.sortingOrder = AntSortingOrder;
+        }
 
         var maskObj = new GameObject("Mask");
         maskObj.transform.SetParent(root.transform, false);
         var maskRenderer = maskObj.AddComponent<SpriteRenderer>();
         maskRenderer.sortingOrder = AntSortingOrder + 1;
 
-        var hpBgObj = new GameObject("HpBg");
-        hpBgObj.transform.SetParent(root.transform, false);
-        hpBgObj.transform.localPosition = new Vector3(0f, 0.75f, 0f);
-        hpBgObj.transform.localScale = new Vector3(0.5f, 0.08f, 1f);
-        var hpBgRenderer = hpBgObj.AddComponent<SpriteRenderer>();
-        hpBgRenderer.sprite = GetSquareSprite();
-        hpBgRenderer.color = new Color(0f, 0f, 0f, 0.8f);
-        hpBgRenderer.sortingOrder = AntSortingOrder + 2;
+        SpriteRenderer hpBgRenderer = null;
+        SpriteRenderer hpFillRenderer = null;
+        if (showHealthBars)
+        {
+            var hpBgObj = new GameObject("HpBg");
+            hpBgObj.transform.SetParent(root.transform, false);
+            hpBgObj.transform.localPosition = new Vector3(0f, 0.75f, 0f);
+            hpBgObj.transform.localScale = new Vector3(0.5f, 0.08f, 1f);
+            hpBgRenderer = hpBgObj.AddComponent<SpriteRenderer>();
+            hpBgRenderer.sprite = GetSquareSprite();
+            hpBgRenderer.color = new Color(0f, 0f, 0f, 0.8f);
+            hpBgRenderer.sortingOrder = AntSortingOrder + 2;
 
-        var hpFillObj = new GameObject("HpFill");
-        hpFillObj.transform.SetParent(root.transform, false);
-        hpFillObj.transform.localPosition = new Vector3(-0.25f, 0.75f, 0f);
-        hpFillObj.transform.localScale = new Vector3(0.5f, 0.06f, 1f);
-        var hpFillRenderer = hpFillObj.AddComponent<SpriteRenderer>();
-        hpFillRenderer.sprite = GetSquareSprite();
-        hpFillRenderer.color = new Color(0.2f, 0.95f, 0.2f, 1f);
-        hpFillRenderer.sortingOrder = AntSortingOrder + 3;
+            var hpFillObj = new GameObject("HpFill");
+            hpFillObj.transform.SetParent(root.transform, false);
+            hpFillObj.transform.localPosition = new Vector3(-0.25f, 0.75f, 0f);
+            hpFillObj.transform.localScale = new Vector3(0.5f, 0.06f, 1f);
+            hpFillRenderer = hpFillObj.AddComponent<SpriteRenderer>();
+            hpFillRenderer.sprite = GetSquareSprite();
+            hpFillRenderer.color = new Color(0.2f, 0.95f, 0.2f, 1f);
+            hpFillRenderer.sortingOrder = AntSortingOrder + 3;
+        }
 
         return new AntAgentView
         {
             antId = ant.id,
             root = root.transform,
+            pipelineRenderer = pipelineRenderer,
             baseRenderer = baseRenderer,
             maskRenderer = maskRenderer,
             hpBgRenderer = hpBgRenderer,
-            hpFillRenderer = hpFillRenderer
+            hpFillRenderer = hpFillRenderer,
+            visualKey = visualKey,
+            lastPos = root.transform.position,
+            hasLastPos = false
         };
     }
 
@@ -567,6 +611,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var state = ant.state == AntBehaviorState.Fight
             ? "fight"
             : (ant.velocity.magnitude >= recipe.runSpeed * 0.8f ? "run" : (ant.velocity.magnitude >= recipe.walkSpeed * 0.4f ? "walk" : "idle"));
+        view.visualKey.state = state;
 
         var species = worldState.nests[Mathf.Clamp(ant.speciesId, 0, worldState.nests.Count - 1)].speciesId;
         var frame = ResolveFrameFromContract(state, tickIndex);
@@ -581,15 +626,54 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         view.maskRenderer.color = new Color(GetTeamColor(ant.teamId).r, GetTeamColor(ant.teamId).g, GetTeamColor(ant.teamId).b, 0.85f);
 
         view.root.localPosition = new Vector3(ant.position.x, ant.position.y, 0f);
+        view.root.localRotation = Quaternion.identity;
+
+        var pos = (Vector2)view.root.position;
+        var vel = view.hasLastPos
+            ? (pos - view.lastPos) / Mathf.Max(0.0001f, Time.deltaTime)
+            : Vector2.zero;
+        view.lastPos = pos;
+        view.hasLastPos = true;
+
+        var bodyRotation = Quaternion.identity;
         if (ant.velocity.sqrMagnitude > 0.0001f)
         {
             var angle = Mathf.Atan2(ant.velocity.y, ant.velocity.x) * Mathf.Rad2Deg;
-            view.root.localRotation = Quaternion.Euler(0f, 0f, angle);
+            var snapped = Mathf.Round(angle / 45f) * 45f;
+            bodyRotation = Quaternion.Euler(0f, 0f, snapped);
+        }
+
+        view.baseRenderer.transform.localRotation = bodyRotation;
+        view.maskRenderer.transform.localRotation = bodyRotation;
+
+        if (activePipeline != null && view.pipelineRenderer != null)
+        {
+            activePipeline.ApplyVisual(view.pipelineRenderer, view.visualKey, vel, Time.deltaTime);
+        }
+
+        if (!showHealthBars || view.hpFillRenderer == null)
+        {
+            return;
         }
 
         var hpPct = Mathf.Clamp01(ant.hp / Mathf.Max(0.01f, ant.maxHp));
         view.hpFillRenderer.transform.localScale = new Vector3(0.5f * hpPct, 0.06f, 1f);
         view.hpFillRenderer.transform.localPosition = new Vector3(-0.25f + 0.25f * hpPct, 0.75f, 0f);
+    }
+
+    private void ResolveArtPipeline()
+    {
+        artSelector = UnityEngine.Object.FindFirstObjectByType<ArtModeSelector>()
+            ?? UnityEngine.Object.FindAnyObjectByType<ArtModeSelector>();
+
+        activePipeline = artSelector != null ? artSelector.GetPipeline() : null;
+        if (activePipeline != null)
+        {
+            Debug.Log($"{nameof(AntColoniesRunner)} using art pipeline '{activePipeline.DisplayName}' ({activePipeline.Mode}).");
+            return;
+        }
+
+        Debug.Log($"{nameof(AntColoniesRunner)} no {nameof(ArtModeSelector)} / active pipeline found; using default ant renderers.");
     }
 
     private int ResolveFrameFromContract(string state, int tickIndex)

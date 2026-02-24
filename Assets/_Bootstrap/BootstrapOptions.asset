@@ -15,7 +15,7 @@ MonoBehaviour:
   simulationId: AntColonies
   simulationCatalog: {fileID: 11400000, guid: d59dd5f11ea34adf9d4bc5f86f9e9497, type: 2}
   presetJson: {fileID: 11500000, guid: f50d466e4d902d04aa296e665392b7bd, type: 3}
-  seedPolicy: 0
+  seedPolicy: 1
   fixedSeed: 12345
   allowHotkeySwitch: 1
   showOverlay: 1

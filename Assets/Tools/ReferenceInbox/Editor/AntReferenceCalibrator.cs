@@ -9,7 +9,7 @@ public sealed class AntReferenceCalibrator : IReferenceCalibrator
 {
     private const string LibraryPath = "Assets/Tools/ArtGen/Archetypes/Ant/AntSpeciesLibrary.asset";
 
-    public string CalibratorId => "calibrator.ant.v2";
+    public string CalibratorId => "calibrator.ant.v3";
 
     public bool CanCalibrate(PackRecipe recipe)
     {
@@ -21,11 +21,7 @@ public sealed class AntReferenceCalibrator : IReferenceCalibrator
     public ReferenceCalibrationReport Calibrate(PackRecipe recipe)
     {
         var report = new ReferenceCalibrationReport { simulationId = recipe?.simulationId ?? "unknown" };
-        if (recipe == null)
-        {
-            report.warnings.Add("Recipe is null.");
-            return report;
-        }
+        if (recipe == null) return report;
 
         var library = AssetDatabase.LoadAssetAtPath<AntSpeciesLibrary>(LibraryPath);
         if (library == null)
@@ -35,101 +31,154 @@ public sealed class AntReferenceCalibrator : IReferenceCalibrator
         }
 
         var simulationFolder = Path.Combine(ReferenceInboxScaffolder.ProjectRoot(), "_References", recipe.simulationId);
-        var debugOutlineFolder = Path.Combine(recipe.outputFolder, "Debug", "Outlines");
         var debugModelFolder = Path.Combine(recipe.outputFolder, "Debug", "Models");
-        Directory.CreateDirectory(debugOutlineFolder);
         Directory.CreateDirectory(debugModelFolder);
 
         foreach (var asset in recipe.referenceAssets ?? new List<PackRecipe.ReferenceAssetNeed>())
         {
             if (asset == null || string.IsNullOrWhiteSpace(asset.assetId)) continue;
+            if (!string.Equals(asset.entityId, "ant", StringComparison.OrdinalIgnoreCase)) continue;
             report.assetsProcessed++;
 
-            var images = EnumerateAssetImages(simulationFolder, asset.assetId);
-            if (images.Count == 0)
+            if (asset.generationMode == PackRecipe.GenerationMode.Procedural)
             {
-                report.warnings.Add($"No images found for asset '{asset.assetId}'.");
+                report.assets.Add(new ReferenceCalibrationReport.AssetSummary
+                {
+                    calibratorId = CalibratorId,
+                    assetId = asset.assetId,
+                    mappedSpeciesId = ResolveSpeciesId(asset, library)
+                });
                 continue;
             }
 
-            var best = OutlineExtraction.SelectBestTopdownImage(images);
-            if (string.IsNullOrWhiteSpace(best) || !OutlineExtraction.TryExtract(best, out var outline))
+            var images = EnumerateAssetImages(simulationFolder, asset.assetId);
+            OutlineExtraction.OutlineResult bestOutline = null;
+            string bestPath = null;
+            var bestScore = float.MinValue;
+            foreach (var image in images)
+            {
+                if (!OutlineExtraction.TryExtract(image, out var outline)) continue;
+                report.imagesAnalyzed++;
+                var score = OutlineExtraction.Score(outline);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestOutline = outline;
+                    bestPath = image;
+                }
+            }
+
+            if (bestOutline == null)
             {
                 report.warnings.Add($"{asset.assetId}: outline extraction failed.");
                 continue;
             }
 
-            report.imagesAnalyzed++;
-            var mappedSpeciesId = MapAssetToSpeciesId(asset.assetId, library);
-            var profile = library.profiles.FirstOrDefault(p => string.Equals(p.speciesId, mappedSpeciesId, StringComparison.OrdinalIgnoreCase));
-            if (profile == null)
-            {
-                report.warnings.Add($"No profile found for mapped species '{mappedSpeciesId}' from asset '{asset.assetId}'.");
-                continue;
-            }
+            var mappedSpeciesId = ResolveSpeciesId(asset, library);
+            var profile = GetOrCreateProfile(library, mappedSpeciesId);
 
-            var fitted = AntTopdownFitter.TryFit(outline.mask, outline.width, outline.height, outline.report.bbox, out var model);
+            var fitted = AntTopdownFitter.TryFit(bestOutline.mask, bestOutline.width, bestOutline.height, bestOutline.report.bbox, out var model);
             profile.hasFittedModel = fitted;
             profile.fittedModel = fitted ? model : null;
-
             if (fitted)
             {
-                model.sourceImagePath = best;
-                model.sourceW = outline.width;
-                model.sourceH = outline.height;
-                profile.headScale = Mathf.Clamp(model.headRadii01.x / 0.08f, 0.6f, 1.8f);
-                profile.thoraxScale = Mathf.Clamp(model.thoraxRadii01.x / 0.1f, 0.6f, 1.8f);
-                profile.abdomenScale = Mathf.Clamp(model.abdomenRadii01.x / 0.15f, 0.6f, 1.9f);
-                profile.petiolePinchStrength = Mathf.Clamp(0.8f + model.pinchStrength, 0.6f, 2.5f);
-                profile.legLengthScale = Mathf.Clamp(model.legLengths01.Average() / 0.18f, 0.8f, 1.5f);
-                profile.antennaLengthScale = Mathf.Clamp(model.antennaLen01 / 0.16f, 0.8f, 1.4f);
+                model.sourceImagePath = bestPath;
+                model.sourceW = bestOutline.width;
+                model.sourceH = bestOutline.height;
                 report.profilesUpdated++;
             }
-            else
-            {
-                report.warnings.Add($"{asset.assetId}: fitted model invalid, will use golden ant fallback.");
-            }
 
-            var debugPng = Path.Combine(debugOutlineFolder, $"{asset.assetId}_silhouette.png").Replace('\\', '/');
-            OutlineExtraction.SaveMaskPng(debugPng, outline.mask, outline.width, outline.height);
             var modelJson = JsonUtility.ToJson(fitted ? model : new AntTopdownModel(), true);
-            var refModelPath = Path.Combine(simulationFolder, asset.assetId, "ant_model.json");
-            Directory.CreateDirectory(Path.GetDirectoryName(refModelPath) ?? string.Empty);
-            File.WriteAllText(refModelPath, modelJson);
             File.WriteAllText(Path.Combine(debugModelFolder, $"{asset.assetId}_ant_model.json"), modelJson);
 
-            Debug.Log($"[References] {asset.assetId}: fittedModel={(fitted ? "OK" : "FALLBACK")} (w={outline.width}, coverage={outline.report.coverage:F3}, pinch={(fitted ? model.pinchStrength : 0f):F2})");
-            foreach (var warning in outline.report.warnings) report.warnings.Add($"{asset.assetId}: {warning}");
+            report.assets.Add(new ReferenceCalibrationReport.AssetSummary
+            {
+                calibratorId = CalibratorId,
+                assetId = asset.assetId,
+                mappedSpeciesId = mappedSpeciesId,
+                bestImagePath = bestPath,
+                score = bestScore,
+                fragmentCount = bestOutline.report.fragmentCount,
+                warnings = new List<string>(bestOutline.report.warnings)
+            });
         }
 
         EditorUtility.SetDirty(library);
         AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
         return report;
+    }
+
+    private static string ResolveSpeciesId(PackRecipe.ReferenceAssetNeed asset, AntSpeciesLibrary library)
+    {
+        if (!string.IsNullOrWhiteSpace(asset.mappedSpeciesId)) return asset.mappedSpeciesId;
+        var fallback = library.profiles.FirstOrDefault(p => !string.IsNullOrWhiteSpace(p.speciesId));
+        return fallback?.speciesId ?? "default";
+    }
+
+    private static AntSpeciesProfile GetOrCreateProfile(AntSpeciesLibrary library, string speciesId)
+    {
+        var existing = library.profiles.FirstOrDefault(p => string.Equals(p.speciesId, speciesId, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) return existing;
+
+        var defaultProfile = library.profiles.FirstOrDefault(p => string.Equals(p.speciesId, "default", StringComparison.OrdinalIgnoreCase));
+        var profile = defaultProfile != null ? CloneProfile(defaultProfile) : BuildReasonableDefault();
+        profile.speciesId = speciesId;
+        if (string.IsNullOrWhiteSpace(profile.displayName))
+        {
+            profile.displayName = speciesId;
+        }
+
+        library.profiles.Add(profile);
+        return profile;
+    }
+
+    private static AntSpeciesProfile CloneProfile(AntSpeciesProfile source)
+    {
+        return new AntSpeciesProfile
+        {
+            speciesId = source.speciesId,
+            displayName = source.displayName,
+            baseColorId = source.baseColorId,
+            headScale = source.headScale,
+            thoraxScale = source.thoraxScale,
+            abdomenScale = source.abdomenScale,
+            legLengthScale = source.legLengthScale,
+            antennaLengthScale = source.antennaLengthScale,
+            petiolePinchStrength = source.petiolePinchStrength,
+            soldierHeadMultiplier = source.soldierHeadMultiplier,
+            soldierMandibleMultiplier = source.soldierMandibleMultiplier,
+            queenAbdomenMultiplier = source.queenAbdomenMultiplier,
+            referencePack = source.referencePack,
+            hasFittedModel = source.hasFittedModel,
+            fittedModel = source.fittedModel
+        };
+    }
+
+    private static AntSpeciesProfile BuildReasonableDefault()
+    {
+        return new AntSpeciesProfile
+        {
+            speciesId = "default",
+            displayName = "Default",
+            baseColorId = "color.ant.default",
+            headScale = 1f,
+            thoraxScale = 1f,
+            abdomenScale = 1f,
+            legLengthScale = 1f,
+            antennaLengthScale = 1f,
+            petiolePinchStrength = 1f,
+            soldierHeadMultiplier = 1.2f,
+            soldierMandibleMultiplier = 1.2f,
+            queenAbdomenMultiplier = 1.3f,
+            hasFittedModel = false,
+            fittedModel = null
+        };
     }
 
     private static List<string> EnumerateAssetImages(string simulationFolder, string assetId)
     {
         var folder = Path.Combine(simulationFolder, assetId, "Images");
         if (!Directory.Exists(folder)) return new List<string>();
-        return Directory.GetFiles(folder)
-            .Where(path =>
-            {
-                var ext = Path.GetExtension(path).ToLowerInvariant();
-                return ext is ".png" or ".jpg" or ".jpeg" or ".webp";
-            })
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-    }
-
-    private static string MapAssetToSpeciesId(string assetId, AntSpeciesLibrary library)
-    {
-        var normalized = assetId.Replace(" ", string.Empty).Replace("_", string.Empty).ToLowerInvariant();
-        if (normalized.Contains("fire")) return "solenopsis_like";
-        if (normalized.Contains("carpenter")) return "camponotus_like";
-        if (normalized.Contains("pharaoh")) return "lasius_niger_like";
-        if (normalized.Contains("black")) return "lasius_niger_like";
-        if (normalized.Contains("redwood")) return "formica_like";
-        return library.profiles[0].speciesId;
+        return Directory.GetFiles(folder).Where(path => new[] { ".png", ".jpg", ".jpeg", ".webp" }.Contains(Path.GetExtension(path).ToLowerInvariant())).ToList();
     }
 }

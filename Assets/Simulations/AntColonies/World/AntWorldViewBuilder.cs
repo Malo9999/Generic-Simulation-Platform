@@ -163,7 +163,7 @@ public static class AntWorldViewBuilder
     {
         if (circleSprite != null) return circleSprite;
         const int size = 32;
-        var tx = new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear };
+        var tx = new Texture2D(size, size, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point };
         var c = (size - 1) * 0.5f;
         for (var y = 0; y < size; y++)
         {
