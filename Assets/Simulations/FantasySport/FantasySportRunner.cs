@@ -18,10 +18,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private VisualKey[] visualKeys;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
+    private SimulationSceneGraph sceneGraph;
     private int nextEntityId;
 
     public void Initialize(ScenarioConfig config)
     {
+        sceneGraph = SceneGraphUtil.PrepareRunner(transform, "FantasySport");
         EnsureMainCamera();
         BuildAthletes(config);
         Debug.Log($"{nameof(FantasySportRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
@@ -120,9 +122,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < AthleteCount; i++)
         {
-            var athlete = new GameObject($"Athlete_{i}");
-            athlete.transform.SetParent(transform, false);
-
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
                 teamId: i % 2,
@@ -130,6 +129,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 variantCount: 3,
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "FantasySport");
+
+            var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, identity.teamId);
+
+            var athlete = new GameObject($"Sim_{identity.entityId:0000}");
+            athlete.transform.SetParent(groupRoot, false);
 
             var visualKey = new VisualKey
             {

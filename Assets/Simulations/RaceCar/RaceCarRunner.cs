@@ -19,9 +19,11 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private int nextEntityId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
+    private SimulationSceneGraph sceneGraph;
 
     public void Initialize(ScenarioConfig config)
     {
+        sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
         EnsureMainCamera();
         BuildCars(config);
         Debug.Log($"{nameof(RaceCarRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
@@ -108,9 +110,6 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < CarCount; i++)
         {
-            var car = new GameObject($"Car_{i}");
-            car.transform.SetParent(transform, false);
-
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
                 teamId: i % 2,
@@ -118,6 +117,11 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                 variantCount: 4,
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "RaceCar");
+
+            var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, identity.teamId);
+
+            var car = new GameObject($"Sim_{identity.entityId:0000}");
+            car.transform.SetParent(groupRoot, false);
 
             var visualKey = new VisualKey
             {

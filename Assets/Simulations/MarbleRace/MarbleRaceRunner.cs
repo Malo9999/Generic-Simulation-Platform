@@ -18,9 +18,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private int nextEntityId;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
+    private SimulationSceneGraph sceneGraph;
 
     public void Initialize(ScenarioConfig config)
     {
+        sceneGraph = SceneGraphUtil.PrepareRunner(transform, "MarbleRace");
         EnsureMainCamera();
         BuildMarbles(config);
         Debug.Log($"{nameof(MarbleRaceRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
@@ -101,9 +103,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < MarbleCount; i++)
         {
-            var marble = new GameObject($"Marble_{i}");
-            marble.transform.SetParent(transform, false);
-
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
                 teamId: i % 2,
@@ -111,6 +110,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 variantCount: 4,
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "MarbleRace");
+
+            var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, identity.teamId);
+
+            var marble = new GameObject($"Sim_{identity.entityId:0000}");
+            marble.transform.SetParent(groupRoot, false);
 
             var visualKey = new VisualKey
             {
