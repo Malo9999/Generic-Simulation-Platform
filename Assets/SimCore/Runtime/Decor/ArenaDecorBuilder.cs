@@ -36,8 +36,7 @@ public static class ArenaDecorBuilder
         var normalizedId = NormalizeSimId(ResolveSimId(config, simId));
         var theme = ResolveTheme(normalizedId);
 
-        var seedDecor = unchecked(config.seed ^ (int)StableHash32($"DECOR:{normalizedId}"));
-        var rng = new SeededRng(seedDecor);
+        var rng = RngService.Fork($"DECOR:{normalizedId}");
         var budget = Mathf.Clamp(Mathf.RoundToInt((bounds.halfWidth * bounds.halfHeight) * 0.12f), 80, 250);
         if (theme == DecorTheme.Generic)
         {
@@ -70,21 +69,7 @@ public static class ArenaDecorBuilder
         }
     }
 
-    public static uint StableHash32(string text)
-    {
-        var value = string.IsNullOrEmpty(text) ? string.Empty : text;
-        const uint offsetBasis = 2166136261;
-        const uint prime = 16777619;
-
-        var hash = offsetBasis;
-        for (var i = 0; i < value.Length; i++)
-        {
-            hash ^= value[i];
-            hash *= prime;
-        }
-
-        return hash;
-    }
+    public static uint StableHash32(string text) => StableHash.StableHash32(text);
 
     public static Transform EnsureDecorRoot(Transform arenaRoot)
     {
@@ -201,7 +186,7 @@ public static class ArenaDecorBuilder
         return DecorTheme.Generic;
     }
 
-    private static int BuildAntDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, SeededRng rng, int cap)
+    private static int BuildAntDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, IRng rng, int cap)
     {
         var count = 0;
         var grass = Mathf.Min(cap - count, rng.Range(40, 121));
@@ -260,9 +245,9 @@ public static class ArenaDecorBuilder
         return count;
     }
 
-    private static int BuildMarbleDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, SeededRng rng, int cap)
+    private static int BuildMarbleDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, IRng rng, int cap)
     {
-        rng = new SeededRng(unchecked(rng.Seed ^ (int)StableHash32("DECOR:MarbleRace")));
+        rng = RngService.Fork("DECOR:MARBLE_RACE");
         var count = 0;
         var minHalf = Mathf.Min(b.halfWidth, b.halfHeight);
         var laneWidth = Mathf.Clamp(minHalf * 0.2f, 5f, 12f);
@@ -356,7 +341,7 @@ public static class ArenaDecorBuilder
         return count;
     }
 
-    private static int BuildRaceCarDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, SeededRng rng, int cap)
+    private static int BuildRaceCarDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, IRng rng, int cap)
     {
         var count = 0;
         var curbTiles = Mathf.Min(cap - count, rng.Range(10, 31));
@@ -404,9 +389,9 @@ public static class ArenaDecorBuilder
         return count;
     }
 
-    private static int BuildFantasySportDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, SeededRng rng, int cap)
+    private static int BuildFantasySportDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, IRng rng, int cap)
     {
-        rng = new SeededRng(unchecked(rng.Seed ^ (int)StableHash32("DECOR:FantasySport")));
+        rng = RngService.Fork("DECOR:FANTASY_SPORT");
         var count = 0;
         var lineColor = new Color(0.95f, 0.95f, 0.9f, 0.6f);
         var insetW = b.halfWidth - b.margin;
@@ -450,7 +435,7 @@ public static class ArenaDecorBuilder
         return count;
     }
 
-    private static int BuildGenericDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, SeededRng rng, int cap)
+    private static int BuildGenericDecor(Transform root, (float halfWidth, float halfHeight, float margin, float clearRadius) b, IRng rng, int cap)
     {
         var count = 0;
         var dots = Mathf.Min(cap, rng.Range(20, 60));
@@ -465,12 +450,12 @@ public static class ArenaDecorBuilder
         return count;
     }
 
-    private static Vector2 RandomPoint(SeededRng rng, float halfW, float halfH, float margin)
+    private static Vector2 RandomPoint(IRng rng, float halfW, float halfH, float margin)
     {
         return new Vector2(rng.Range(-halfW + margin, halfW - margin), rng.Range(-halfH + margin, halfH - margin));
     }
 
-    private static Vector2 EdgeBiasedPoint(SeededRng rng, float halfW, float halfH, float margin)
+    private static Vector2 EdgeBiasedPoint(IRng rng, float halfW, float halfH, float margin)
     {
         var p = RandomPoint(rng, halfW, halfH, margin);
         p *= rng.Range(1.05f, 1.35f);
@@ -480,13 +465,11 @@ public static class ArenaDecorBuilder
     }
 
 
-    private static Vector2 RandomInCircle(SeededRng rng)
+    private static Vector2 RandomInCircle(IRng rng)
     {
-        var angle = rng.Range(0f, Mathf.PI * 2f);
-        var radius = Mathf.Sqrt(rng.Value());
-        return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+        return rng.InsideUnitCircle();
     }
-    private static Vector2 RandomScale(SeededRng rng, float min, float max)
+    private static Vector2 RandomScale(IRng rng, float min, float max)
     {
         var scale = rng.Range(min, max) * rng.Range(0.8f, 1.3f);
         return Vector2.one * scale;

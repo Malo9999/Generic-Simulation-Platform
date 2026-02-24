@@ -500,7 +500,8 @@ public class Bootstrapper : MonoBehaviour
         Debug.Log($"Bootstrapper: RNG sanity check seed={seed} values=[{sampleA:F6}, {sampleB:F6}, {sampleC:F6}]");
 
         UnityEngine.Random.InitState(seed);
-        RngService.SetGlobal(new SeededRng(seed));
+        RngService.SetGlobal(seed);
+        Debug.Log($"Bootstrapper: Deterministic RNG signature {RngService.BuildSignature(seed)}");
     }
 
     private void SpawnRunner(ScenarioConfig config)

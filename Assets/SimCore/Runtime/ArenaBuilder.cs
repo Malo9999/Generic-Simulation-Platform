@@ -49,7 +49,7 @@ public static class ArenaBuilder
         var simId = ResolveSimId(config);
         if (ShouldBuildGenericObstacles(simId) && world.obstacleDensity > 0f)
         {
-            BuildObstacles(arenaRoot.transform, config.seed, world.obstacleDensity, halfWidth, halfHeight, obstacles);
+            BuildObstacles(arenaRoot.transform, world.obstacleDensity, halfWidth, halfHeight, obstacles);
         }
 
         var layout = arenaRoot.AddComponent<ArenaLayout>();
@@ -148,8 +148,7 @@ public static class ArenaBuilder
 
         var gridW = Mathf.Max(1, Mathf.RoundToInt(width));
         var gridH = Mathf.Max(1, Mathf.RoundToInt(height));
-        var localSeed = unchecked(config.seed ^ (int)ArenaDecorBuilder.StableHash32("GROUND_TILES"));
-        var rng = new SeededRng(localSeed);
+        var rng = RngService.Fork("WORLD:GROUND_TILES");
         var startX = -width * 0.5f + 0.5f;
         var startY = -height * 0.5f + 0.5f;
 
@@ -205,8 +204,7 @@ public static class ArenaBuilder
         var clearRadius = Mathf.Clamp(minHalf * 0.2f, 6f, 8f);
         var budget = Mathf.Clamp(Mathf.RoundToInt((halfWidth * halfHeight) * 0.12f), 80, 200);
 
-        var localSeed = unchecked(config.seed ^ (int)ArenaDecorBuilder.StableHash32("DECOR"));
-        var rng = new SeededRng(localSeed);
+        var rng = RngService.Fork("DECOR:PACK_PROPS");
 
         for (var i = 0; i < budget; i++)
         {
@@ -337,7 +335,6 @@ public static class ArenaBuilder
 
     private static void BuildObstacles(
         Transform parent,
-        int seed,
         float density,
         float halfWidth,
         float halfHeight,
@@ -347,8 +344,7 @@ public static class ArenaBuilder
         obstaclesRoot.transform.SetParent(parent, false);
         obstaclesRoot.transform.localPosition = Vector3.zero;
 
-        var localSeed = seed ^ unchecked((int)0xA8F1D2C3);
-        var rng = new SeededRng(localSeed);
+        var rng = RngService.Fork("WORLD:OBSTACLES");
 
         var width = halfWidth * 2f;
         var height = halfHeight * 2f;
@@ -411,7 +407,7 @@ public static class ArenaBuilder
 
     private static void CreateObstacle(
         Transform parent,
-        SeededRng rng,
+        IRng rng,
         int index,
         Vector2 position,
         int shapeRoll,
