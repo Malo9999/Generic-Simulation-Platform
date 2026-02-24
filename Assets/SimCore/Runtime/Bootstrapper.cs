@@ -158,6 +158,7 @@ public class Bootstrapper : MonoBehaviour
         ShutdownCurrentRunner();
         EnsureSimulationRoot();
         ClearSimulationRootChildren();
+        SimulationSceneGraph.Ensure(simulationRoot.transform);
 
         var presetText = LoadPresetJson(simulationId, out currentPresetSource);
         var resolved = ConfigMerge.Merge(ConfigMerge.CreateBaseDefaults(), presetText);
