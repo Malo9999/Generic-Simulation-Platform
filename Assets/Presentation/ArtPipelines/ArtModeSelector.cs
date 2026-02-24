@@ -4,6 +4,7 @@ using UnityEngine;
 public class ArtModeSelector : MonoBehaviour
 {
     [SerializeField] private string simulationId;
+    [SerializeField] private bool followBootstrapper = true;
     [SerializeField] private ArtMode requestedMode = ArtMode.Simple;
     [SerializeField] private ArtPipelineRegistry registry;
     [SerializeField] private ArtManifest manifestOverride;
@@ -11,6 +12,7 @@ public class ArtModeSelector : MonoBehaviour
     public ArtPipelineBase ActivePipeline { get; private set; }
 
     private ArtManifest runtimeManifest;
+    private string resolvedSimulationId;
 
     private void Awake()
     {
@@ -31,8 +33,9 @@ public class ArtModeSelector : MonoBehaviour
             return new List<ArtMode>();
         }
 
+        var effectiveSimulationId = ResolveSimulationId();
         ArtManifest manifest = GetManifest();
-        return registry.GetAvailableModes(simulationId, manifest);
+        return registry.GetAvailableModes(effectiveSimulationId, manifest);
     }
 
     private void EnsureResolved()
@@ -45,8 +48,9 @@ public class ArtModeSelector : MonoBehaviour
             return;
         }
 
+        var effectiveSimulationId = ResolveSimulationId();
         runtimeManifest = GetManifest();
-        ActivePipeline = registry.Resolve(simulationId, runtimeManifest, requestedMode);
+        ActivePipeline = registry.Resolve(effectiveSimulationId, runtimeManifest, requestedMode);
     }
 
     private void EnsureRegistry()
@@ -66,9 +70,39 @@ public class ArtModeSelector : MonoBehaviour
 
         if (runtimeManifest == null)
         {
-            runtimeManifest = ArtManifest.LoadForSimulation(simulationId);
+            runtimeManifest = ArtManifest.LoadForSimulation(resolvedSimulationId);
         }
 
         return runtimeManifest;
+    }
+
+    private string ResolveSimulationId()
+    {
+        var serializedSimulationId = simulationId;
+        var shouldTryBootstrapper = followBootstrapper || string.IsNullOrWhiteSpace(serializedSimulationId);
+        var effectiveSimulationId = serializedSimulationId;
+
+        if (shouldTryBootstrapper)
+        {
+            var bootstrapper = UnityEngine.Object.FindFirstObjectByType<Bootstrapper>()
+                ?? UnityEngine.Object.FindAnyObjectByType<Bootstrapper>();
+            if (bootstrapper != null && !string.IsNullOrWhiteSpace(bootstrapper.CurrentSimulationId))
+            {
+                effectiveSimulationId = bootstrapper.CurrentSimulationId;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(effectiveSimulationId))
+        {
+            effectiveSimulationId = "MarbleRace";
+        }
+
+        if (!string.Equals(resolvedSimulationId, effectiveSimulationId))
+        {
+            resolvedSimulationId = effectiveSimulationId;
+            runtimeManifest = null;
+        }
+
+        return resolvedSimulationId;
     }
 }

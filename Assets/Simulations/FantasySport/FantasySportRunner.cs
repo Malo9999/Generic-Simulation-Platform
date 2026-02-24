@@ -11,6 +11,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private EntityIdentity[] identities;
     private Vector2[] positions;
     private Vector2[] velocities;
+    private ArtModeSelector artSelector;
+    private ArtPipelineBase activePipeline;
+    private GameObject[] pipelineRenderers;
+    private VisualKey[] visualKeys;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
     private int nextEntityId;
@@ -57,6 +61,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             athletes[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             FaceVelocity(athletes[i], velocities[i]);
+
+            if (activePipeline != null && pipelineRenderers[i] != null)
+            {
+                activePipeline.ApplyVisual(pipelineRenderers[i], visualKeys[i], velocities[i], dt);
+            }
         }
     }
 
@@ -77,6 +86,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         identities = null;
         positions = null;
         velocities = null;
+        pipelineRenderers = null;
+        visualKeys = null;
         Debug.Log("FantasySportRunner Shutdown");
     }
 
@@ -92,6 +103,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         identities = new EntityIdentity[AthleteCount];
         positions = new Vector2[AthleteCount];
         velocities = new Vector2[AthleteCount];
+        pipelineRenderers = new GameObject[AthleteCount];
+        visualKeys = new VisualKey[AthleteCount];
+
+        ResolveArtPipeline();
+
+        var rng = RngService.Fork("SIM:FantasySport:SPAWN");
 
         for (var i = 0; i < AthleteCount; i++)
         {
@@ -106,29 +123,65 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "FantasySport");
 
+            var visualKey = new VisualKey
+            {
+                simulationId = "FantasySport",
+                entityId = "athlete",
+                kind = string.IsNullOrWhiteSpace(identity.role) ? "athlete" : identity.role,
+                state = "run",
+                variantSeed = identity.entityId,
+                facingMode = FacingMode.Auto
+            };
+
+            var visualParent = athlete.transform;
+            if (activePipeline != null)
+            {
+                pipelineRenderers[i] = activePipeline.CreateRenderer(visualKey, athlete.transform);
+                if (pipelineRenderers[i] != null)
+                {
+                    visualParent = pipelineRenderers[i].transform;
+                }
+            }
+
             var iconRoot = new GameObject("IconRoot");
-            iconRoot.transform.SetParent(athlete.transform, false);
+            iconRoot.transform.SetParent(visualParent, false);
             EntityIconFactory.BuildAthlete(iconRoot.transform, identity);
 
-            var startX = RngService.Global.Range(-halfWidth, halfWidth);
-            var startY = RngService.Global.Range(-halfHeight, halfHeight);
-            var speed = RngService.Global.Range(3f, 7f);
-            var angle = RngService.Global.Range(0f, Mathf.PI * 2f);
+            var startX = rng.Range(-halfWidth, halfWidth);
+            var startY = rng.Range(-halfHeight, halfHeight);
+            var speed = rng.Range(3f, 7f);
+            var angle = rng.Range(0f, Mathf.PI * 2f);
 
             positions[i] = new Vector2(startX, startY);
             velocities[i] = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed;
 
             athlete.transform.localPosition = new Vector3(startX, startY, 0f);
-            athlete.transform.localScale = Vector3.one * RngService.Global.Range(0.95f, 1.1f);
+            athlete.transform.localScale = Vector3.one * rng.Range(0.95f, 1.1f);
             FaceVelocity(athlete.transform, velocities[i]);
             athletes[i] = athlete.transform;
             identities[i] = identity;
+            visualKeys[i] = visualKey;
 
             if (logSpawnIdentity && i < SpawnDebugCount)
             {
                 Debug.Log($"{nameof(FantasySportRunner)} spawn[{i}] {identity}");
             }
         }
+    }
+
+    private void ResolveArtPipeline()
+    {
+        artSelector = UnityEngine.Object.FindFirstObjectByType<ArtModeSelector>()
+            ?? UnityEngine.Object.FindAnyObjectByType<ArtModeSelector>();
+
+        activePipeline = artSelector != null ? artSelector.GetPipeline() : null;
+        if (activePipeline != null)
+        {
+            Debug.Log($"{nameof(FantasySportRunner)} using art pipeline '{activePipeline.DisplayName}' ({activePipeline.Mode}).");
+            return;
+        }
+
+        Debug.Log($"{nameof(FantasySportRunner)} no {nameof(ArtModeSelector)} / active pipeline found; using default athlete renderers.");
     }
 
     private static void FaceVelocity(Transform target, Vector2 velocity)
