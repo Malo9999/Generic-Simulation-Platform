@@ -6,16 +6,33 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
     public Rect worldBounds = new Rect(-32f, -32f, 64f, 64f);
     public MinimapMarkerOverlay overlay;
     public CameraFollowController followController;
+    public SelectionService selectionService;
     public float maxRadius = 6f;
 
     [HideInInspector] public Camera mainCamera;
 
     private RectTransform minimapRect;
-    private Transform selectedTarget;
-
     private void Awake()
     {
         minimapRect = GetComponent<RectTransform>();
+
+        if (selectionService == null)
+        {
+            selectionService = SelectionService.Instance;
+        }
+
+        if (selectionService != null)
+        {
+            selectionService.SelectedChanged += OnSelectedChanged;
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (selectionService != null)
+        {
+            selectionService.SelectedChanged -= OnSelectedChanged;
+        }
     }
 
     public void OnPointerClick(PointerEventData eventData)
@@ -57,24 +74,34 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
             return;
         }
 
-        selectedTarget = nearest;
-        if (overlay != null)
+        if (selectionService == null)
         {
-            overlay.target = selectedTarget;
+            selectionService = SelectionService.Instance;
+        }
+
+        if (selectionService != null)
+        {
+            selectionService.SetSelected(nearest);
+        }
+        else if (overlay != null)
+        {
+            overlay.target = nearest;
         }
 
         if (followController != null)
         {
-            followController.target = selectedTarget;
+            followController.target = nearest;
             followController.followEnabled = true;
         }
     }
 
     public void ClearSelection()
     {
-        selectedTarget = null;
-
-        if (overlay != null)
+        if (selectionService != null)
+        {
+            selectionService.Clear();
+        }
+        else if (overlay != null)
         {
             overlay.target = null;
         }
@@ -87,25 +114,17 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
 
     private Transform FindNearestTarget(Vector2 worldPoint)
     {
-        var simulationRoot = GameObject.Find("SimulationRoot")?.transform;
-        if (simulationRoot == null)
-        {
-            simulationRoot = GameObject.Find("SimRoot")?.transform;
-        }
-
-        if (simulationRoot == null)
+        var entitiesRoot = SelectionRules.FindEntitiesRoot();
+        if (entitiesRoot == null)
         {
             return null;
         }
 
-        var candidates = simulationRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        var candidates = entitiesRoot.GetComponentsInChildren<SpriteRenderer>(true);
         if (candidates == null || candidates.Length == 0)
         {
             return null;
         }
-
-        var agentsLayer = LayerMask.NameToLayer("Agents");
-        var requireAgentsLayer = agentsLayer >= 0;
 
         Transform nearest = null;
         var bestDistanceSq = maxRadius * maxRadius;
@@ -117,8 +136,8 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
                 continue;
             }
 
-            var candidateTransform = renderer.transform;
-            if (requireAgentsLayer && candidateTransform.gameObject.layer != agentsLayer)
+            var candidateTransform = SelectionRules.ResolveSelectableSim(renderer.transform, entitiesRoot);
+            if (candidateTransform == null)
             {
                 continue;
             }
@@ -137,5 +156,13 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
         }
 
         return nearest;
+    }
+
+    private void OnSelectedChanged(Transform selected)
+    {
+        if (overlay != null)
+        {
+            overlay.target = selected;
+        }
     }
 }
