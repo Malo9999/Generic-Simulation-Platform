@@ -22,7 +22,7 @@ MonoBehaviour:
   entities:
   - entityId: ant
     archetypeId: archetype.ant
-    speciesCount: 5
+    speciesCount: 1
     roles:
     - worker
     - soldier
@@ -48,30 +48,6 @@ MonoBehaviour:
     minImages: 1
     generationMode: 1
     variantCount: 1
-  - assetId: CarpenterAnt
-    entityId: ant
-    mappedSpeciesId: CarpenterAnt
-    minImages: 1
-    generationMode: 1
-    variantCount: 1
-  - assetId: PharaohAnt
-    entityId: ant
-    mappedSpeciesId: PharaohAnt
-    minImages: 1
-    generationMode: 1
-    variantCount: 1
-  - assetId: WeaverAnt
-    entityId: ant
-    mappedSpeciesId: WeaverAnt
-    minImages: 1
-    generationMode: 1
-    variantCount: 1
-  - assetId: ArmyAnt
-    entityId: ant
-    mappedSpeciesId: ArmyAnt
-    minImages: 1
-    generationMode: 1
-    variantCount: 1
   - assetId: prop_nest_entrance_medium
     entityId: ant
     mappedSpeciesId: default
@@ -87,4 +63,6 @@ MonoBehaviour:
   generationPolicy:
     generateBlueprints: 1
     compileSpritesheets: 1
+    renderAntStripeOverlay: 0
+    includeAntMaskSpritesInMainPack: 0
     exportCompatibilityAntContentPack: 0
