@@ -81,7 +81,7 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
 
         if (selectionService != null)
         {
-            selectionService.SetSelected(nearest);
+            selectionService.SetSelected(nearest, SelectionSource.Minimap);
         }
         else if (overlay != null)
         {
@@ -90,7 +90,6 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
 
         if (followController != null)
         {
-            followController.target = nearest;
             followController.followEnabled = true;
         }
     }
