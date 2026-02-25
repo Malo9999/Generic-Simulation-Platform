@@ -38,6 +38,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < athletes.Length; i++)
         {
+            var athlete = athletes[i];
+            if (!athlete)
+            {
+                continue;
+            }
+
             if (tickIndex % 60 == 0)
             {
                 var turn = turnRngs[i].Range(-0.45f, 0.45f);
@@ -62,12 +68,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 velocities[i].y *= -1f;
             }
 
-            athletes[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            FaceVelocity(athletes[i], velocities[i]);
+            athlete.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            FaceVelocity(athlete, velocities[i]);
 
-            if (activePipeline != null && pipelineRenderers[i] != null)
+            var pipelineRenderer = pipelineRenderers != null ? pipelineRenderers[i] : null;
+            if (activePipeline != null && pipelineRenderer != null)
             {
-                activePipeline.ApplyVisual(pipelineRenderers[i], visualKeys[i], velocities[i], dt);
+                activePipeline.ApplyVisual(pipelineRenderer, visualKeys[i], velocities[i], dt);
             }
         }
     }
