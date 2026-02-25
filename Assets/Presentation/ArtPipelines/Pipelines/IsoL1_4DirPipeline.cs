@@ -46,8 +46,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         var spriteRenderer = spriteObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = DebugShapeSpriteFactory.GetDiamondSprite();
         spriteRenderer.color = BuildStableColor(key);
-        spriteRenderer.sortingLayerName = "Default";
-        spriteRenderer.sortingOrder = 50;
+        RenderOrder.Apply(spriteRenderer, RenderOrder.EntityBody);
         spriteRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 
         var arrowObject = new GameObject("Arrow");
@@ -56,8 +55,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         var arrowRenderer = arrowObject.AddComponent<SpriteRenderer>();
         arrowRenderer.sprite = DebugShapeSpriteFactory.GetArrowSprite();
         arrowRenderer.color = Color.Lerp(spriteRenderer.color, Color.white, 0.2f);
-        arrowRenderer.sortingLayerName = "Default";
-        arrowRenderer.sortingOrder = 51;
+        RenderOrder.Apply(arrowRenderer, RenderOrder.EntityArrow);
         arrowRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 
         return rendererObject;
@@ -72,18 +70,35 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
 
         if (forceDebugPlaceholder)
         {
+            ApplyPlaceholderSorting(renderer, debugOn: true);
             SetIconRootVisibility(renderer, false);
             SetPlaceholderVisible(renderer, true);
             ApplySnappedFacing(renderer, velocity);
             return;
         }
 
+        ApplyPlaceholderSorting(renderer, debugOn: false);
         // Keep placeholder-only in this phase, while preserving the toggle interface.
         SetIconRootVisibility(renderer, false);
         SetPlaceholderVisible(renderer, true);
         ApplySnappedFacing(renderer, velocity);
     }
 
+
+    private static void ApplyPlaceholderSorting(GameObject renderer, bool debugOn)
+    {
+        var spriteRenderer = renderer.transform.Find("Sprite")?.GetComponent<SpriteRenderer>();
+        if (spriteRenderer != null)
+        {
+            RenderOrder.Apply(spriteRenderer, debugOn ? RenderOrder.DebugEntity : RenderOrder.EntityBody);
+        }
+
+        var arrowRenderer = renderer.transform.Find("Arrow")?.GetComponent<SpriteRenderer>();
+        if (arrowRenderer != null)
+        {
+            RenderOrder.Apply(arrowRenderer, debugOn ? RenderOrder.DebugArrow : RenderOrder.EntityArrow);
+        }
+    }
     private static void ApplySnappedFacing(GameObject renderer, Vector2 velocity)
     {
         var arrow = renderer.transform.Find("Arrow");

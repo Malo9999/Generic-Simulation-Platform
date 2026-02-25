@@ -34,8 +34,7 @@ public class FlatArtPipeline : ArtPipelineBase
         var spriteRenderer = spriteObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = DebugShapeSpriteFactory.GetSquareSprite();
         spriteRenderer.color = BuildStableColor(key);
-        spriteRenderer.sortingLayerName = "Default";
-        spriteRenderer.sortingOrder = 50;
+        RenderOrder.Apply(spriteRenderer, RenderOrder.EntityBody);
         spriteRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 
         return rendererObject;
@@ -50,14 +49,25 @@ public class FlatArtPipeline : ArtPipelineBase
 
         if (forceDebugPlaceholder)
         {
+            ApplyPlaceholderSorting(renderer, debugOn: true);
             SetIconRootVisibility(renderer, false);
             SetPlaceholderVisible(renderer, true);
             return;
         }
 
+        ApplyPlaceholderSorting(renderer, debugOn: false);
         // Flat keeps placeholder visuals for now even when debug forcing is disabled.
         SetIconRootVisibility(renderer, false);
         SetPlaceholderVisible(renderer, true);
+    }
+
+    private static void ApplyPlaceholderSorting(GameObject renderer, bool debugOn)
+    {
+        var spriteRenderer = renderer.transform.Find("Sprite")?.GetComponent<SpriteRenderer>();
+        if (spriteRenderer != null)
+        {
+            RenderOrder.Apply(spriteRenderer, debugOn ? RenderOrder.DebugEntity : RenderOrder.EntityBody);
+        }
     }
 
     private static void SetPlaceholderVisible(GameObject renderer, bool visible)

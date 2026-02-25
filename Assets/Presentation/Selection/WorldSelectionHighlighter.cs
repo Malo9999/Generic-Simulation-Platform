@@ -42,13 +42,13 @@ public class WorldSelectionHighlighter : MonoBehaviour
         activeHalo.transform.SetParent(selected, false);
         activeHalo.transform.localPosition = Vector3.zero;
 
-        CreateHaloRenderer(activeHalo.transform, "HaloBase", SelectionHaloSpriteFactory.GetBaseHaloSprite(), 2000, Color.white);
+        CreateHaloRenderer(activeHalo.transform, "HaloBase", SelectionHaloSpriteFactory.GetBaseHaloSprite(), RenderOrder.SelectionRing, Color.white);
 
         var shineRenderer = CreateHaloRenderer(
             activeHalo.transform,
             "HaloShine",
             SelectionHaloSpriteFactory.GetShineHaloSprite(),
-            2001,
+            RenderOrder.SelectionHalo,
             Color.white);
 
         shineRenderer.gameObject.AddComponent<SelectionHaloTwinkle>();
@@ -87,7 +87,7 @@ public class WorldSelectionHighlighter : MonoBehaviour
         var renderer = child.GetComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.color = color;
-        renderer.sortingOrder = sortingOrder;
+        RenderOrder.Apply(renderer, sortingOrder);
         renderer.drawMode = SpriteDrawMode.Simple;
         return renderer;
     }

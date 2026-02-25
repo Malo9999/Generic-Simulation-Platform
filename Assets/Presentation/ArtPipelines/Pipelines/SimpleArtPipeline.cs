@@ -49,8 +49,7 @@ public class SimpleArtPipeline : ArtPipelineBase
         var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
         dotRenderer.sprite = DebugShapeSpriteFactory.GetCircleSprite();
         dotRenderer.color = BuildStableColor(key);
-        dotRenderer.sortingLayerName = "Default";
-        dotRenderer.sortingOrder = 50;
+        RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
 
         var arrowObject = new GameObject(PlaceholderArrowName);
         arrowObject.transform.SetParent(rendererObject.transform, false);
@@ -58,8 +57,7 @@ public class SimpleArtPipeline : ArtPipelineBase
         var arrowRenderer = arrowObject.AddComponent<SpriteRenderer>();
         arrowRenderer.sprite = DebugShapeSpriteFactory.GetArrowSprite();
         arrowRenderer.color = Color.Lerp(dotRenderer.color, Color.white, 0.2f);
-        arrowRenderer.sortingLayerName = "Default";
-        arrowRenderer.sortingOrder = 51;
+        RenderOrder.Apply(arrowRenderer, RenderOrder.EntityArrow);
 
         var animator = rendererObject.AddComponent<SimplePipelineSpriteAnimator>();
         animator.Initialize(dotRenderer, arrowRenderer, placeholderScale);
@@ -82,12 +80,14 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         if (forceDebugPlaceholder)
         {
+            ApplyPlaceholderSorting(renderer, debugOn: true);
             SetDebugVisibility(renderer, true);
             animator.ApplyDebugFacing(velocity);
             animator.ApplyPulse(deltaTime);
             return;
         }
 
+        ApplyPlaceholderSorting(renderer, debugOn: false);
         SetDebugVisibility(renderer, false);
 
         var resolvedSource = ResolveSpriteBase(key);
@@ -103,6 +103,21 @@ public class SimpleArtPipeline : ArtPipelineBase
         animator.Apply(frames, frameIndex);
         animator.ApplyContentFacing(velocity);
         animator.SetRendererVisibility(true, false);
+    }
+
+    private static void ApplyPlaceholderSorting(GameObject rendererRoot, bool debugOn)
+    {
+        var dotRenderer = rendererRoot.transform.Find(PlaceholderSpriteName)?.GetComponent<SpriteRenderer>();
+        if (dotRenderer != null)
+        {
+            RenderOrder.Apply(dotRenderer, debugOn ? RenderOrder.DebugEntity : RenderOrder.EntityBody);
+        }
+
+        var arrowRenderer = rendererRoot.transform.Find(PlaceholderArrowName)?.GetComponent<SpriteRenderer>();
+        if (arrowRenderer != null)
+        {
+            RenderOrder.Apply(arrowRenderer, debugOn ? RenderOrder.DebugArrow : RenderOrder.EntityArrow);
+        }
     }
 
     private static void SetDebugVisibility(GameObject rendererRoot, bool debugOn)

@@ -7,8 +7,8 @@ public static class ArenaDecorBuilder
 {
     private const int HardCap = 300;
     private const int GenericCap = 60;
-    private const int DecorOrderMin = -8;
-    private const int DecorOrderMax = -2;
+    private const int DecorOrderOffsetMin = -8;
+    private const int DecorOrderOffsetMax = -2;
 
     private static Sprite whitePixelSprite;
     private static readonly HashSet<string> warnedUnknownSims = new();
@@ -570,7 +570,8 @@ public static class ArenaDecorBuilder
         var renderer = go.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite != null ? sprite : GetWhitePixelSprite();
         renderer.color = color;
-        renderer.sortingOrder = Mathf.Clamp(sortingOrder, DecorOrderMin, DecorOrderMax);
+        var clampedOffset = Mathf.Clamp(sortingOrder, DecorOrderOffsetMin, DecorOrderOffsetMax);
+        RenderOrder.Apply(renderer, RenderOrder.WorldDeco + clampedOffset);
         return go;
     }
 

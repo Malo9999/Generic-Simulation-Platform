@@ -158,7 +158,7 @@ public static class EntityIconFactory
         var renderer = go.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.color = tint;
-        renderer.sortingOrder = sortingOrder;
+        RenderOrder.Apply(renderer, RenderOrder.EntityBody + sortingOrder);
     }
 
     private static Color ColorFromIdentity(EntityIdentity identity, float minChannel, float maxChannel, uint salt)
