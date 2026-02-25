@@ -154,77 +154,97 @@ public class Bootstrapper : MonoBehaviour
         {
             options.simulationId = simulationId;
         }
-
-        ShutdownCurrentRunner();
-        EnsureSimulationRoot();
-        ClearSimulationRootChildren();
-        SimulationSceneGraph.Ensure(simulationRoot.transform);
-
-        var presetText = LoadPresetJson(simulationId, out currentPresetSource);
-        var resolved = ConfigMerge.Merge(ConfigMerge.CreateBaseDefaults(), presetText);
-        resolved.simulationId = simulationId;
-        resolved.activeSimulation = simulationId;
-        ApplyBootstrapOverrides(resolved);
-        resolved.seed = ResolveSeed(resolved);
-        resolved.NormalizeAliases();
-        currentConfig = resolved;
-        tickCount = 0;
-
-        QualitySettings.vSyncCount = 0;
-        Application.targetFrameRate = Mathf.Clamp(currentConfig.rendering?.targetFps ?? 60, 30, 240);
-
-        ConfigureDeterminism(currentConfig.seed);
-        EventBusService.ResetGlobal();
-        PrimitiveSpriteLibrary.ClearCache();
-        AntAtlasLibrary.ClearCache();
-
-        var selectedContentPack = ResolveContentPack(simulationId);
-        Debug.Log($"[Bootstrapper] simId={simulationId} contentPack={DescribeContentPack(selectedContentPack)}");
-        if (selectedContentPack != null)
+        try
         {
-            ContentPackService.Set(selectedContentPack);
-        }
-        else
-        {
-            ContentPackService.Clear();
-        }
+            ShutdownCurrentRunner();
+            EnsureSimulationRoot();
+            ClearSimulationRootChildren();
+            SimulationSceneGraph.Ensure(simulationRoot.transform);
 
-        ArenaBuilder.Build(simulationRoot.transform, currentConfig);
-        SpawnRunner(currentConfig);
+            var presetText = LoadPresetJson(simulationId, out currentPresetSource);
+            var resolved = ConfigMerge.Merge(ConfigMerge.CreateBaseDefaults(), presetText);
+            resolved.simulationId = simulationId;
+            resolved.activeSimulation = simulationId;
+            ApplyBootstrapOverrides(resolved);
+            resolved.seed = ResolveSeed(resolved);
+            resolved.NormalizeAliases();
+            currentConfig = resolved;
+            tickCount = 0;
 
-        if (IsReplayMode)
-        {
-            currentRunFolder = currentConfig.replay?.runFolder;
-            replayDriver?.SetRunner(activeRunner);
-            var replayLoaded = replayDriver?.Load(currentConfig) ?? false;
-            if (replayLoaded && replayDriver != null && !replayDriver.ValidateRunnerForLoadedConfig(currentConfig.simulationId))
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = Mathf.Clamp(currentConfig.rendering?.targetFps ?? 60, 30, 240);
+
+            ConfigureDeterminism(currentConfig.seed);
+            EventBusService.ResetGlobal();
+            PrimitiveSpriteLibrary.ClearCache();
+            AntAtlasLibrary.ClearCache();
+
+            var selectedContentPack = ResolveContentPack(simulationId);
+            Debug.Log($"[Bootstrapper] simId={simulationId} contentPack={DescribeContentPack(selectedContentPack)}");
+            if (selectedContentPack != null)
             {
-                var required = currentConfig.replay != null && currentConfig.replay.rendererOnly
-                    ? "IReplayableSimulationRunner"
-                    : "IReplayableSimulationRunner or ITickableSimulationRunner";
-                throw new InvalidOperationException(
-                    $"Bootstrapper: Replay runner contract mismatch for simulation '{currentConfig.simulationId}'. " +
-                    $"Runner '{activeRunnerObject?.name ?? "<null>"}' must implement {required} for replay mode.");
+                ContentPackService.Set(selectedContentPack);
+            }
+            else
+            {
+                ContentPackService.Clear();
             }
 
+            ArenaBuilder.Build(simulationRoot.transform, currentConfig);
+            var runnerSpawned = SpawnRunner(currentConfig);
+
+            if (IsReplayMode)
+            {
+                currentRunFolder = currentConfig.replay?.runFolder;
+                replayDriver?.SetRunner(activeRunner);
+                var replayLoaded = replayDriver?.Load(currentConfig) ?? false;
+                if (replayLoaded && replayDriver != null && !replayDriver.ValidateRunnerForLoadedConfig(currentConfig.simulationId))
+                {
+                    var required = currentConfig.replay != null && currentConfig.replay.rendererOnly
+                        ? "IReplayableSimulationRunner"
+                        : "IReplayableSimulationRunner or ITickableSimulationRunner";
+                    throw new InvalidOperationException(
+                        $"Bootstrapper: Replay runner contract mismatch for simulation '{currentConfig.simulationId}'. " +
+                        $"Runner '{activeRunnerObject?.name ?? "<null>"}' must implement {required} for replay mode.");
+                }
+
+                simDriver?.SetRunner(null);
+                simDriver?.ConfigureRecording(currentConfig, null, EventBusService.Global);
+            }
+            else
+            {
+                currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
+                simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
+
+                if (runnerSpawned)
+                {
+                    // Unified tick contract: all live simulation ticks must go through exactly one ITickableSimulationRunner.
+                    var tickableRunner = RunnerContract.RequireTickable(activeRunnerObject, currentConfig.simulationId, "bootstrap pre-tick validation");
+                    simDriver?.SetRunner(tickableRunner);
+                }
+                else
+                {
+                    simDriver?.SetRunner(null);
+                }
+
+                replayDriver?.SetRunner(null);
+            }
+
+            if (!initialRun)
+            {
+                Debug.Log($"Switched simulation to {simulationId} mode={currentConfig.mode} seed={currentConfig.seed}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Bootstrapper] StartSimulation failed for simId={simulationId}: {ex}");
+            EnsureSimulationRoot();
+            SimulationSceneGraph.Ensure(simulationRoot.transform);
             simDriver?.SetRunner(null);
-            simDriver?.ConfigureRecording(currentConfig, null, EventBusService.Global);
-        }
-        else
-        {
-            currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
-            simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
-
-            // Unified tick contract: all live simulation ticks must go through exactly one ITickableSimulationRunner.
-            var tickableRunner = RunnerContract.RequireTickable(activeRunnerObject, currentConfig.simulationId, "bootstrap pre-tick validation");
-            simDriver?.SetRunner(tickableRunner);
-
             replayDriver?.SetRunner(null);
-        }
-
-        if (!initialRun)
-        {
-            Debug.Log($"Switched simulation to {simulationId} mode={currentConfig.mode} seed={currentConfig.seed}");
+            activeRunner = null;
+            activeRunnerObject = null;
+            return;
         }
     }
 
@@ -505,7 +525,7 @@ public class Bootstrapper : MonoBehaviour
         Debug.Log($"Bootstrapper: Deterministic RNG signature {RngService.BuildSignature(seed)}");
     }
 
-    private void SpawnRunner(ScenarioConfig config)
+    private bool SpawnRunner(ScenarioConfig config)
     {
         var prefab = options?.simulationCatalog?.FindById(config.simulationId)?.runnerPrefab;
         prefab ??= SimulationRegistry.LoadRunnerPrefab(config.simulationId);
@@ -523,14 +543,28 @@ public class Bootstrapper : MonoBehaviour
         }
 
         activeRunnerObject = runnerObject;
-        activeRunner = RunnerContract.RequireTickable(activeRunnerObject, config.simulationId, "runner instantiation");
-
-        activeRunner.Initialize(config);
+        try
+        {
+            activeRunner = RunnerContract.RequireTickable(activeRunnerObject, config.simulationId, "runner instantiation");
+            activeRunner.Initialize(config);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Bootstrapper] SpawnRunner failed for simId={config.simulationId}: {ex}");
+            activeRunner = null;
+            activeRunnerObject = null;
+            var runnerError = new GameObject($"{config.simulationId}RunnerError");
+            runnerError.transform.SetParent(simulationRoot.transform, false);
+            simDriver?.SetRunner(null);
+            replayDriver?.SetRunner(null);
+            return false;
+        }
     }
 
     private void EnsureSimulationRoot()
     {
-        if (simulationRoot == null)
+        if (!simulationRoot)
         {
             var existing = GameObject.Find(SimulationRootName);
             simulationRoot = existing != null ? existing : new GameObject(SimulationRootName);
@@ -539,14 +573,36 @@ public class Bootstrapper : MonoBehaviour
 
     private void ClearSimulationRootChildren()
     {
-        if (simulationRoot == null)
+        if (!simulationRoot)
         {
             return;
         }
 
-        for (var i = simulationRoot.transform.childCount - 1; i >= 0; i--)
+        var rootTransform = simulationRoot.transform;
+        for (var i = rootTransform.childCount - 1; i >= 0; i--)
         {
-            Destroy(simulationRoot.transform.GetChild(i).gameObject);
+            Transform child = null;
+            try
+            {
+                child = rootTransform.GetChild(i);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!child)
+            {
+                continue;
+            }
+
+            var childGameObject = child.gameObject;
+            if (!childGameObject)
+            {
+                continue;
+            }
+
+            Destroy(childGameObject);
         }
     }
 
