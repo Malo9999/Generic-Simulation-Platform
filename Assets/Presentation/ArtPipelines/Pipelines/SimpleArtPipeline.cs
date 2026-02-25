@@ -11,6 +11,10 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const float IdleAnimRate = 1.8f;
     private const float WalkAnimRate = 5f;
     private const float RunAnimRate = 8f;
+    private const string PlaceholderSpriteName = "PlaceholderSprite";
+    private const string PlaceholderArrowName = "PlaceholderArrow";
+    private const string MaskName = "Mask";
+    private const string IconRootName = "IconRoot";
 
     private readonly Dictionary<string, Sprite[]> framesByBaseId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ResolvedSpriteSource> resolvedBaseByKey = new(StringComparer.Ordinal);
@@ -40,19 +44,22 @@ public class SimpleArtPipeline : ArtPipelineBase
         var fallbackRenderer = rendererObject.AddComponent<SpriteRenderer>();
         fallbackRenderer.sprite = null;
 
-        var spriteObject = new GameObject("Sprite");
+        var spriteObject = new GameObject(PlaceholderSpriteName);
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
         dotRenderer.sprite = DebugShapeSpriteFactory.GetCircleSprite();
         dotRenderer.color = BuildStableColor(key);
+        dotRenderer.sortingLayerName = "Default";
+        dotRenderer.sortingOrder = 50;
 
-        var arrowObject = new GameObject("Arrow");
+        var arrowObject = new GameObject(PlaceholderArrowName);
         arrowObject.transform.SetParent(rendererObject.transform, false);
         arrowObject.transform.localPosition = new Vector3(0f, 0.08f, 0f);
         var arrowRenderer = arrowObject.AddComponent<SpriteRenderer>();
         arrowRenderer.sprite = DebugShapeSpriteFactory.GetArrowSprite();
         arrowRenderer.color = Color.Lerp(dotRenderer.color, Color.white, 0.2f);
-        arrowRenderer.sortingOrder = dotRenderer.sortingOrder + 1;
+        arrowRenderer.sortingLayerName = "Default";
+        arrowRenderer.sortingOrder = 51;
 
         var animator = rendererObject.AddComponent<SimplePipelineSpriteAnimator>();
         animator.Initialize(dotRenderer, arrowRenderer, placeholderScale);
@@ -75,17 +82,17 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         if (forceDebugPlaceholder)
         {
+            SetDebugVisibility(renderer, true);
             animator.ApplyDebugFacing(velocity);
             animator.ApplyPulse(deltaTime);
-            SetIconRootVisibility(renderer, false);
-            animator.SetRendererVisibility(true, true);
             return;
         }
+
+        SetDebugVisibility(renderer, false);
 
         var resolvedSource = ResolveSpriteBase(key);
         if (!resolvedSource.HasValue || !TryGetFrames(resolvedSource, out var frames))
         {
-            SetIconRootVisibility(renderer, true);
             animator.SetRendererVisibility(false, false);
             return;
         }
@@ -95,8 +102,84 @@ public class SimpleArtPipeline : ArtPipelineBase
         animator.lastSpriteBaseId = resolvedSource.BaseId;
         animator.Apply(frames, frameIndex);
         animator.ApplyContentFacing(velocity);
-        SetIconRootVisibility(renderer, false);
         animator.SetRendererVisibility(true, false);
+    }
+
+    private static void SetDebugVisibility(GameObject rendererRoot, bool debugOn)
+    {
+        if (rendererRoot == null)
+        {
+            return;
+        }
+
+        var spriteRenderers = rendererRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var spriteRenderer in spriteRenderers)
+        {
+            if (spriteRenderer == null)
+            {
+                continue;
+            }
+
+            var objectName = spriteRenderer.gameObject.name;
+            var isPlaceholder = string.Equals(objectName, PlaceholderSpriteName, StringComparison.Ordinal) ||
+                                string.Equals(objectName, PlaceholderArrowName, StringComparison.Ordinal);
+
+            if (debugOn)
+            {
+                if (isPlaceholder)
+                {
+                    spriteRenderer.enabled = true;
+                }
+                else if (!string.Equals(objectName, MaskName, StringComparison.Ordinal))
+                {
+                    spriteRenderer.enabled = false;
+                }
+
+                continue;
+            }
+
+            if (isPlaceholder)
+            {
+                spriteRenderer.enabled = false;
+                continue;
+            }
+
+            spriteRenderer.enabled = true;
+        }
+
+        SetChildActiveByName(rendererRoot, IconRootName, !debugOn);
+    }
+
+    private static void SetChildActiveByName(GameObject rendererRoot, string childName, bool active)
+    {
+        var transforms = rendererRoot.GetComponentsInChildren<Transform>(true);
+        foreach (var child in transforms)
+        {
+            if (!string.Equals(child.name, childName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            child.gameObject.SetActive(active);
+            return;
+        }
+
+        if (rendererRoot.transform.parent == null)
+        {
+            return;
+        }
+
+        transforms = rendererRoot.transform.parent.GetComponentsInChildren<Transform>(true);
+        foreach (var child in transforms)
+        {
+            if (!string.Equals(child.name, childName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            child.gameObject.SetActive(active);
+            return;
+        }
     }
 
     private ResolvedSpriteSource ResolveSpriteBase(VisualKey key)
@@ -301,20 +384,6 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         animator.animTime += deltaTime * WalkAnimRate;
         return 2 + (Mathf.FloorToInt(animator.animTime) % 3);
-    }
-
-    private static void SetIconRootVisibility(GameObject renderer, bool fallbackVisible)
-    {
-        var iconRoot = renderer.transform.Find("IconRoot");
-        if (iconRoot == null && renderer.transform.parent != null)
-        {
-            iconRoot = renderer.transform.parent.Find("IconRoot");
-        }
-
-        if (iconRoot != null)
-        {
-            iconRoot.gameObject.SetActive(fallbackVisible);
-        }
     }
 
     private static Color BuildStableColor(VisualKey key)
