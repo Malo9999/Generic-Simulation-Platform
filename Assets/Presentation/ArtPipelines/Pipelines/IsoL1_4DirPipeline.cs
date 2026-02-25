@@ -15,11 +15,21 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
 
     public override bool IsAvailable(ArtManifest manifest)
     {
+        if (forceDebugPlaceholder)
+        {
+            return true;
+        }
+
         return manifest != null && manifest.Has(Requirement);
     }
 
     public override List<string> MissingRequirements(ArtManifest manifest)
     {
+        if (forceDebugPlaceholder)
+        {
+            return new List<string>();
+        }
+
         return IsAvailable(manifest) ? new List<string>() : new List<string> { Requirement };
     }
 

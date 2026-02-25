@@ -148,16 +148,36 @@ public class SimpleArtPipeline : ArtPipelineBase
     {
         if (string.Equals(entityType, "ant", StringComparison.Ordinal))
         {
-            yield return $"agent:ant:{species}:{role}:adult:{state}";
-            yield return $"agent:ant:{species}:{role}:{state}";
-            yield return $"agent:ant:{role}:{state}";
-            yield return $"agent:ant:{state}";
+            foreach (var lookupState in BuildAntStateLookupOrder(state))
+            {
+                yield return $"agent:ant:{species}:{role}:adult:{lookupState}";
+                yield return $"agent:ant:{species}:{role}:{lookupState}";
+                yield return $"agent:ant:{role}:{lookupState}";
+                yield return $"agent:ant:{lookupState}";
+            }
+
             yield break;
         }
 
         yield return $"agent:{entityType}:{species}:{role}:{state}";
         yield return $"agent:{entityType}:{role}:{state}";
         yield return $"agent:{entityType}:{state}";
+    }
+
+    private static IEnumerable<string> BuildAntStateLookupOrder(string desiredState)
+    {
+        var normalizedDesired = NormalizeSegment(desiredState, "idle");
+
+        yield return normalizedDesired;
+        if (!string.Equals(normalizedDesired, "walk", StringComparison.Ordinal))
+        {
+            yield return "walk";
+        }
+
+        if (!string.Equals(normalizedDesired, "idle", StringComparison.Ordinal))
+        {
+            yield return "idle";
+        }
     }
 
     private static bool TryResolveSource(string baseId, out ResolvedSpriteSource resolvedSource)
