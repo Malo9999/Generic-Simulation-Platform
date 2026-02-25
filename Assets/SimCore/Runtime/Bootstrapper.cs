@@ -154,12 +154,28 @@ public class Bootstrapper : MonoBehaviour
         {
             options.simulationId = simulationId;
         }
+
+        simDriver?.SetRunner(null);
+        replayDriver?.SetRunner(null);
+        EnsureSimulationRoot();
+
         try
         {
-            ShutdownCurrentRunner();
-            EnsureSimulationRoot();
+            try
+            {
+                ShutdownCurrentRunner();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Bootstrapper] ShutdownCurrentRunner failed: {ex}");
+                activeRunner = null;
+                activeRunnerObject = null;
+            }
+
+            Debug.Log("[Bootstrapper] Clearing SimulationRoot...");
             ClearSimulationRootChildren();
             SimulationSceneGraph.Ensure(simulationRoot.transform);
+            Debug.Log("[Bootstrapper] SceneGraph ready.");
 
             var presetText = LoadPresetJson(simulationId, out currentPresetSource);
             var resolved = ConfigMerge.Merge(ConfigMerge.CreateBaseDefaults(), presetText);
@@ -237,14 +253,20 @@ public class Bootstrapper : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[Bootstrapper] StartSimulation failed for simId={simulationId}: {ex}");
+            Debug.LogError($"[Bootstrapper] StartSimulation FAILED simId={simulationId}\n{ex}");
             EnsureSimulationRoot();
             SimulationSceneGraph.Ensure(simulationRoot.transform);
             simDriver?.SetRunner(null);
             replayDriver?.SetRunner(null);
             activeRunner = null;
             activeRunnerObject = null;
-            return;
+
+            var runnerRoot = simulationRoot.transform.Find("RunnerRoot");
+            if (runnerRoot != null)
+            {
+                var go = new GameObject($"{simulationId}Runner_ERROR");
+                go.transform.SetParent(runnerRoot, false);
+            }
         }
     }
 
@@ -579,7 +601,8 @@ public class Bootstrapper : MonoBehaviour
         }
 
         var rootTransform = simulationRoot.transform;
-        for (var i = rootTransform.childCount - 1; i >= 0; i--)
+        var toDestroy = new System.Collections.Generic.List<GameObject>(rootTransform.childCount);
+        for (var i = 0; i < rootTransform.childCount; i++)
         {
             Transform child = null;
             try
@@ -596,13 +619,22 @@ public class Bootstrapper : MonoBehaviour
                 continue;
             }
 
-            var childGameObject = child.gameObject;
-            if (!childGameObject)
+            var childObject = child.gameObject;
+            if (!childObject)
             {
                 continue;
             }
 
-            Destroy(childGameObject);
+            toDestroy.Add(childObject);
+        }
+
+        for (var i = 0; i < toDestroy.Count; i++)
+        {
+            var go = toDestroy[i];
+            if (go)
+            {
+                UnityEngine.Object.Destroy(go);
+            }
         }
     }
 
