@@ -1,5 +1,8 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 public class GameClickSelector : MonoBehaviour
 {
@@ -9,10 +12,22 @@ public class GameClickSelector : MonoBehaviour
 
     private void Update()
     {
-        if (!WasPrimaryClickThisFrame())
+#if ENABLE_INPUT_SYSTEM
+        var mouse = Mouse.current;
+        if (mouse == null)
         {
             return;
         }
+
+        if (!mouse.leftButton.wasPressedThisFrame)
+        {
+            return;
+        }
+
+        var screenPos = mouse.position.ReadValue();
+#else
+        return;
+#endif
 
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
         {
@@ -35,7 +50,7 @@ public class GameClickSelector : MonoBehaviour
             return;
         }
 
-        var world = cameraToUse.ScreenToWorldPoint(Input.mousePosition);
+        var world = cameraToUse.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, -cameraToUse.transform.position.z));
         var worldPoint = new Vector2(world.x, world.y);
         var entitiesRoot = SelectionRules.FindEntitiesRoot();
         var target = FindNearestSelectable(worldPoint, entitiesRoot);
@@ -90,17 +105,5 @@ public class GameClickSelector : MonoBehaviour
         }
 
         return nearest;
-    }
-
-    private static bool WasPrimaryClickThisFrame()
-    {
-#if ENABLE_INPUT_SYSTEM
-        var mouse = UnityEngine.InputSystem.Mouse.current;
-        if (mouse != null)
-        {
-            return mouse.leftButton.wasPressedThisFrame;
-        }
-#endif
-        return Input.GetMouseButtonDown(0);
     }
 }
