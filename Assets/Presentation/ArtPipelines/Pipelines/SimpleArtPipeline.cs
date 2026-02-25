@@ -16,6 +16,9 @@ public class SimpleArtPipeline : ArtPipelineBase
     private readonly Dictionary<string, ResolvedSpriteSource> resolvedBaseByKey = new(StringComparer.Ordinal);
     private readonly HashSet<string> missingBaseLogged = new(StringComparer.Ordinal);
 
+    [SerializeField] private bool forceDebugPlaceholder = true;
+    [SerializeField] private float placeholderScale = 0.5f;
+
     public override ArtMode Mode => ArtMode.Simple;
     public override string DisplayName => "Simple";
 
@@ -39,11 +42,20 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         var spriteObject = new GameObject("Sprite");
         spriteObject.transform.SetParent(rendererObject.transform, false);
-        var pipelineRenderer = spriteObject.AddComponent<SpriteRenderer>();
-        pipelineRenderer.sprite = null;
+        var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
+        dotRenderer.sprite = DebugShapeSpriteFactory.GetCircleSprite();
+        dotRenderer.color = BuildStableColor(key);
+
+        var arrowObject = new GameObject("Arrow");
+        arrowObject.transform.SetParent(rendererObject.transform, false);
+        arrowObject.transform.localPosition = new Vector3(0f, 0.08f, 0f);
+        var arrowRenderer = arrowObject.AddComponent<SpriteRenderer>();
+        arrowRenderer.sprite = DebugShapeSpriteFactory.GetArrowSprite();
+        arrowRenderer.color = Color.Lerp(dotRenderer.color, Color.white, 0.2f);
+        arrowRenderer.sortingOrder = dotRenderer.sortingOrder + 1;
 
         var animator = rendererObject.AddComponent<SimplePipelineSpriteAnimator>();
-        animator.Initialize(pipelineRenderer);
+        animator.Initialize(dotRenderer, arrowRenderer, placeholderScale);
 
         return rendererObject;
     }
@@ -61,10 +73,20 @@ public class SimpleArtPipeline : ArtPipelineBase
             return;
         }
 
+        if (forceDebugPlaceholder)
+        {
+            animator.ApplyDebugFacing(velocity);
+            animator.ApplyPulse(deltaTime);
+            SetIconRootVisibility(renderer, false);
+            animator.SetRendererVisibility(true, true);
+            return;
+        }
+
         var resolvedSource = ResolveSpriteBase(key);
         if (!resolvedSource.HasValue || !TryGetFrames(resolvedSource, out var frames))
         {
-            SetFallbackVisibility(renderer, true);
+            SetIconRootVisibility(renderer, true);
+            animator.SetRendererVisibility(false, false);
             return;
         }
 
@@ -72,8 +94,9 @@ public class SimpleArtPipeline : ArtPipelineBase
         var frameIndex = SelectFrameIndex(key.state, speed, animator, deltaTime);
         animator.lastSpriteBaseId = resolvedSource.BaseId;
         animator.Apply(frames, frameIndex);
-        animator.ApplyFacing(velocity);
-        SetFallbackVisibility(renderer, false);
+        animator.ApplyContentFacing(velocity);
+        SetIconRootVisibility(renderer, false);
+        animator.SetRendererVisibility(true, false);
     }
 
     private ResolvedSpriteSource ResolveSpriteBase(VisualKey key)
@@ -260,7 +283,7 @@ public class SimpleArtPipeline : ArtPipelineBase
         return 2 + (Mathf.FloorToInt(animator.animTime) % 3);
     }
 
-    private static void SetFallbackVisibility(GameObject renderer, bool fallbackVisible)
+    private static void SetIconRootVisibility(GameObject renderer, bool fallbackVisible)
     {
         var iconRoot = renderer.transform.Find("IconRoot");
         if (iconRoot == null && renderer.transform.parent != null)
@@ -272,12 +295,32 @@ public class SimpleArtPipeline : ArtPipelineBase
         {
             iconRoot.gameObject.SetActive(fallbackVisible);
         }
+    }
 
-        var pipelineRenderer = renderer.GetComponent<SimplePipelineSpriteAnimator>()?.SpriteRenderer;
-        if (pipelineRenderer != null)
+    private static Color BuildStableColor(VisualKey key)
+    {
+        var hashSource = $"{key.entityId}|{key.kind}|{key.variantSeed}";
+        var hash = ComputeStableHash(hashSource);
+        var hue = (hash % 360u) / 360f;
+        return Color.HSVToRGB(hue, 0.7f, 0.95f);
+    }
+
+    private static uint ComputeStableHash(string value)
+    {
+        const uint fnvPrime = 16777619u;
+        var hash = 2166136261u;
+        if (string.IsNullOrEmpty(value))
         {
-            pipelineRenderer.enabled = !fallbackVisible;
+            return hash;
         }
+
+        for (var i = 0; i < value.Length; i++)
+        {
+            hash ^= value[i];
+            hash *= fnvPrime;
+        }
+
+        return hash;
     }
 
     private enum FrameIndexScheme
@@ -304,19 +347,33 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     private sealed class SimplePipelineSpriteAnimator : MonoBehaviour
     {
-        public SpriteRenderer SpriteRenderer { get; private set; }
+        public SpriteRenderer DotRenderer { get; private set; }
+        public SpriteRenderer ArrowRenderer { get; private set; }
         public string lastSpriteBaseId;
         public float animTime;
         public int lastFrame = -1;
         public bool initialized;
+        private float debugScale = 0.5f;
 
         private float lastFacingDegrees;
         private bool hasFacing;
 
-        public void Initialize(SpriteRenderer spriteRenderer)
+        public void Initialize(SpriteRenderer dotRenderer, SpriteRenderer arrowRenderer, float scale)
         {
-            SpriteRenderer = spriteRenderer;
-            initialized = SpriteRenderer != null;
+            DotRenderer = dotRenderer;
+            ArrowRenderer = arrowRenderer;
+            debugScale = Mathf.Max(0.1f, scale);
+            if (DotRenderer != null)
+            {
+                DotRenderer.transform.localScale = Vector3.one * debugScale;
+            }
+
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.transform.localScale = Vector3.one * debugScale;
+            }
+
+            initialized = DotRenderer != null;
         }
 
         public void Apply(Sprite[] frames, int frameIndex)
@@ -327,19 +384,19 @@ public class SimpleArtPipeline : ArtPipelineBase
             }
 
             var clamped = Mathf.Clamp(frameIndex, 0, frames.Length - 1);
-            if (clamped == lastFrame && SpriteRenderer.sprite == frames[clamped])
+            if (clamped == lastFrame && DotRenderer.sprite == frames[clamped])
             {
                 return;
             }
 
-            SpriteRenderer.sprite = frames[clamped];
-            SpriteRenderer.drawMode = SpriteDrawMode.Simple;
-            SpriteRenderer.transform.localPosition = Vector3.zero;
-            SpriteRenderer.transform.localScale = Vector3.one;
+            DotRenderer.sprite = frames[clamped];
+            DotRenderer.drawMode = SpriteDrawMode.Simple;
+            DotRenderer.transform.localPosition = Vector3.zero;
+            DotRenderer.transform.localScale = Vector3.one;
             lastFrame = clamped;
         }
 
-        public void ApplyFacing(Vector2 velocity)
+        public void ApplyContentFacing(Vector2 velocity)
         {
             if (!initialized)
             {
@@ -357,7 +414,62 @@ public class SimpleArtPipeline : ArtPipelineBase
                 return;
             }
 
-            SpriteRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, lastFacingDegrees);
+            DotRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, lastFacingDegrees);
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.transform.localRotation = Quaternion.identity;
+            }
+        }
+
+        public void ApplyDebugFacing(Vector2 velocity)
+        {
+            if (ArrowRenderer == null)
+            {
+                return;
+            }
+
+            if (velocity.sqrMagnitude > 0.0001f)
+            {
+                lastFacingDegrees = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
+                hasFacing = true;
+            }
+
+            if (!hasFacing)
+            {
+                return;
+            }
+
+            DotRenderer.transform.localRotation = Quaternion.identity;
+            ArrowRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, lastFacingDegrees);
+        }
+
+        public void ApplyPulse(float deltaTime)
+        {
+            if (DotRenderer == null)
+            {
+                return;
+            }
+
+            animTime += deltaTime;
+            var pulse = 1f + (0.08f * Mathf.Sin(animTime * Mathf.PI * 2f));
+            DotRenderer.transform.localScale = Vector3.one * (debugScale * pulse);
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.transform.localScale = Vector3.one * debugScale;
+            }
+        }
+
+        public void SetRendererVisibility(bool dotVisible, bool arrowVisible)
+        {
+            if (DotRenderer != null)
+            {
+                DotRenderer.enabled = dotVisible;
+            }
+
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.enabled = arrowVisible;
+            }
         }
     }
 }
