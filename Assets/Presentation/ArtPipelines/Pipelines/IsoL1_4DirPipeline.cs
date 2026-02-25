@@ -46,6 +46,8 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         var spriteRenderer = spriteObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = DebugShapeSpriteFactory.GetDiamondSprite();
         spriteRenderer.color = BuildStableColor(key);
+        spriteRenderer.sortingLayerName = "Default";
+        spriteRenderer.sortingOrder = 50;
         spriteRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 
         var arrowObject = new GameObject("Arrow");
@@ -54,7 +56,8 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         var arrowRenderer = arrowObject.AddComponent<SpriteRenderer>();
         arrowRenderer.sprite = DebugShapeSpriteFactory.GetArrowSprite();
         arrowRenderer.color = Color.Lerp(spriteRenderer.color, Color.white, 0.2f);
-        arrowRenderer.sortingOrder = spriteRenderer.sortingOrder + 1;
+        arrowRenderer.sortingLayerName = "Default";
+        arrowRenderer.sortingOrder = 51;
         arrowRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 
         return rendererObject;

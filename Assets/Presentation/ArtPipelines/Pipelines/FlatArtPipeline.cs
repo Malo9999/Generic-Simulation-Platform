@@ -34,6 +34,8 @@ public class FlatArtPipeline : ArtPipelineBase
         var spriteRenderer = spriteObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = DebugShapeSpriteFactory.GetSquareSprite();
         spriteRenderer.color = BuildStableColor(key);
+        spriteRenderer.sortingLayerName = "Default";
+        spriteRenderer.sortingOrder = 50;
         spriteRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 
         return rendererObject;
