@@ -25,6 +25,15 @@ public static class RecreateBroadcastUiMenu
     [MenuItem("GSP/Dev/Recreate Broadcast UI (Minimap + HUD)")]
     public static void RecreateBroadcastUi()
     {
+        if (Application.isPlaying)
+        {
+            EditorUtility.DisplayDialog(
+                "Recreate Broadcast UI",
+                "This tool modifies the scene and cannot run in Play Mode. Stop Play Mode and run it again.",
+                "OK");
+            return;
+        }
+
         var rt = LoadMinimapRenderTexture();
         if (rt == null)
         {
@@ -76,7 +85,10 @@ public static class RecreateBroadcastUiMenu
         EnsureSelectionRuntime(presentationRoot, view, ResolveMainCamera());
         EnsureBroadcastHotkeys(presentationRoot, canvasObject, view);
 
-        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        if (!Application.isPlaying)
+        {
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        }
         Selection.activeGameObject = canvasObject;
         Debug.Log("Recreate Broadcast UI complete: hierarchy ensured and wired.");
     }
@@ -189,6 +201,7 @@ public static class RecreateBroadcastUiMenu
     {
         var image = frame.GetComponent<Image>() ?? frame.AddComponent<Image>();
         image.color = new Color(0f, 0f, 0f, 0.35f);
+        image.raycastTarget = false;
 
         var rect = frame.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(1f, 1f);
