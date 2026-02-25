@@ -13,7 +13,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const float RunAnimRate = 8f;
 
     private readonly Dictionary<string, Sprite[]> framesByBaseId = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> resolvedBaseByKey = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ResolvedSpriteSource> resolvedBaseByKey = new(StringComparer.Ordinal);
     private readonly HashSet<string> missingBaseLogged = new(StringComparer.Ordinal);
 
     public override ArtMode Mode => ArtMode.Simple;
@@ -50,7 +50,7 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     public override void ApplyVisual(GameObject renderer, VisualKey key, Vector2 velocity, float deltaTime)
     {
-        if (renderer == null || !IsAntColoniesAnt(key))
+        if (renderer == null)
         {
             return;
         }
@@ -61,8 +61,8 @@ public class SimpleArtPipeline : ArtPipelineBase
             return;
         }
 
-        var resolvedBase = ResolveSpriteBase(key);
-        if (string.IsNullOrEmpty(resolvedBase) || !TryGetFrames(resolvedBase, out var frames))
+        var resolvedSource = ResolveSpriteBase(key);
+        if (!resolvedSource.HasValue || !TryGetFrames(resolvedSource, out var frames))
         {
             SetFallbackVisibility(renderer, true);
             return;
@@ -70,68 +70,95 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         var speed = velocity.magnitude;
         var frameIndex = SelectFrameIndex(key.state, speed, animator, deltaTime);
-        animator.lastSpriteBaseId = resolvedBase;
+        animator.lastSpriteBaseId = resolvedSource.BaseId;
         animator.Apply(frames, frameIndex);
         animator.ApplyFacing(velocity);
         SetFallbackVisibility(renderer, false);
     }
 
-    private static bool IsAntColoniesAnt(VisualKey key)
+    private ResolvedSpriteSource ResolveSpriteBase(VisualKey key)
     {
-        return string.Equals(key.simulationId, "AntColonies", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(key.entityId, "ant", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private string ResolveSpriteBase(VisualKey key)
-    {
-        var cacheKey = $"{key.entityId}|{key.kind}|{key.state}|{key.variantSeed}";
-        if (resolvedBaseByKey.TryGetValue(cacheKey, out var cachedBase))
-        {
-            return cachedBase;
-        }
-
-        var role = string.IsNullOrWhiteSpace(key.kind) ? "worker" : key.kind.Trim().ToLowerInvariant();
-        var state = string.IsNullOrWhiteSpace(key.state) ? "idle" : key.state.Trim().ToLowerInvariant();
-        var species = ContentPackService.GetSpeciesId("ant", key.variantSeed);
+        var entityType = NormalizeSegment(key.entityId, "default");
+        var role = NormalizeSegment(key.kind, "default");
+        var state = NormalizeSegment(key.state, "idle");
+        var species = ContentPackService.GetSpeciesId(entityType, key.variantSeed);
         if (string.IsNullOrWhiteSpace(species))
         {
             species = "default";
         }
 
-        var candidates = new[]
+        var cacheKey = $"{entityType}|{role}|{state}|{species}";
+        if (resolvedBaseByKey.TryGetValue(cacheKey, out var cachedBase))
         {
-            $"ant.{species}.{role}.{state}",
-            $"ant.{role}.{state}",
-            $"ant.{state}"
-        };
+            return cachedBase;
+        }
 
-        foreach (var candidate in candidates)
+        foreach (var candidate in BuildCandidates(entityType, species, role, state))
         {
-            if (HasFrame(candidate, 1))
+            if (TryResolveSource(candidate, out var resolvedSource))
             {
-                resolvedBaseByKey[cacheKey] = candidate;
-                return candidate;
+                resolvedBaseByKey[cacheKey] = resolvedSource;
+                return resolvedSource;
             }
         }
 
-        resolvedBaseByKey[cacheKey] = string.Empty;
-        return string.Empty;
+        if (missingBaseLogged.Add(cacheKey))
+        {
+            Debug.LogWarning($"[SimpleArtPipeline] No sprite prefix found for '{cacheKey}'. Falling back to icon renderer.");
+        }
+
+        resolvedBaseByKey[cacheKey] = default;
+        return default;
     }
 
-    private bool HasFrame(string baseId, int frameNumber)
+    private static string NormalizeSegment(string raw, string fallback)
     {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        return raw.Trim().ToLowerInvariant();
+    }
+
+    private static IEnumerable<string> BuildCandidates(string entityType, string species, string role, string state)
+    {
+        if (string.Equals(entityType, "ant", StringComparison.Ordinal))
+        {
+            yield return $"agent:ant:{species}:{role}:adult:{state}";
+            yield return $"agent:ant:{species}:{role}:{state}";
+            yield return $"agent:ant:{role}:{state}";
+            yield return $"agent:ant:{state}";
+            yield break;
+        }
+
+        yield return $"agent:{entityType}:{species}:{role}:{state}";
+        yield return $"agent:{entityType}:{role}:{state}";
+        yield return $"agent:{entityType}:{state}";
+    }
+
+    private static bool TryResolveSource(string baseId, out ResolvedSpriteSource resolvedSource)
+    {
+        resolvedSource = default;
         var pack = ContentPackService.Current;
         if (pack == null)
         {
             return false;
         }
 
-        return pack.TryGetSprite(BuildFrameId(baseId, frameNumber), out _);
+        if (TryDetectScheme(pack, baseId, out var scheme))
+        {
+            resolvedSource = new ResolvedSpriteSource(baseId, scheme);
+            return true;
+        }
+
+        return false;
     }
 
-    private bool TryGetFrames(string baseId, out Sprite[] frames)
+    private bool TryGetFrames(ResolvedSpriteSource resolvedSource, out Sprite[] frames)
     {
-        if (framesByBaseId.TryGetValue(baseId, out frames))
+        var cacheId = resolvedSource.CacheId;
+        if (framesByBaseId.TryGetValue(cacheId, out frames))
         {
             return true;
         }
@@ -145,12 +172,12 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         for (var i = 0; i < TotalFrames; i++)
         {
-            var spriteId = BuildFrameId(baseId, i + 1);
+            var spriteId = BuildFrameId(resolvedSource.BaseId, resolvedSource.Scheme, i);
             if (!pack.TryGetSprite(spriteId, out frames[i]) || frames[i] == null)
             {
-                if (missingBaseLogged.Add(baseId))
+                if (missingBaseLogged.Add(cacheId))
                 {
-                    Debug.LogWarning($"[SimpleArtPipeline] Missing frame '{spriteId}' for '{baseId}'. Falling back to icon renderer.");
+                    Debug.LogWarning($"[SimpleArtPipeline] Missing frame '{spriteId}' for '{resolvedSource.BaseId}'. Falling back to icon renderer.");
                 }
 
                 return false;
@@ -162,13 +189,50 @@ public class SimpleArtPipeline : ArtPipelineBase
             }
         }
 
-        framesByBaseId[baseId] = frames;
+        framesByBaseId[cacheId] = frames;
         return true;
     }
 
-    private static string BuildFrameId(string baseId, int frameNumber)
+    private static bool TryDetectScheme(ContentPack pack, string prefix, out FrameIndexScheme scheme)
     {
-        return $"{baseId}.f{frameNumber:00}";
+        if (pack.TryGetSprite($"{prefix}:00", out _))
+        {
+            scheme = FrameIndexScheme.ZeroBasedTwoDigit;
+            return true;
+        }
+
+        if (pack.TryGetSprite($"{prefix}:0", out _))
+        {
+            scheme = FrameIndexScheme.ZeroBasedPlain;
+            return true;
+        }
+
+        if (pack.TryGetSprite($"{prefix}:01", out _))
+        {
+            scheme = FrameIndexScheme.OneBasedTwoDigit;
+            return true;
+        }
+
+        if (pack.TryGetSprite($"{prefix}:1", out _))
+        {
+            scheme = FrameIndexScheme.OneBasedPlain;
+            return true;
+        }
+
+        scheme = default;
+        return false;
+    }
+
+    private static string BuildFrameId(string baseId, FrameIndexScheme scheme, int frameIndex)
+    {
+        return scheme switch
+        {
+            FrameIndexScheme.ZeroBasedTwoDigit => $"{baseId}:{frameIndex:00}",
+            FrameIndexScheme.ZeroBasedPlain => $"{baseId}:{frameIndex}",
+            FrameIndexScheme.OneBasedTwoDigit => $"{baseId}:{frameIndex + 1:00}",
+            FrameIndexScheme.OneBasedPlain => $"{baseId}:{frameIndex + 1}",
+            _ => $"{baseId}:{frameIndex:00}"
+        };
     }
 
     private static int SelectFrameIndex(string state, float speed, SimplePipelineSpriteAnimator animator, float deltaTime)
@@ -198,30 +262,15 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     private static void SetFallbackVisibility(GameObject renderer, bool fallbackVisible)
     {
-        var fallbackRenderer = renderer.GetComponent<SpriteRenderer>();
-        if (fallbackRenderer != null)
+        var iconRoot = renderer.transform.Find("IconRoot");
+        if (iconRoot == null && renderer.transform.parent != null)
         {
-            fallbackRenderer.enabled = fallbackVisible;
+            iconRoot = renderer.transform.parent.Find("IconRoot");
         }
 
-        var externalRenderers = renderer.transform.parent != null
-            ? renderer.transform.parent.GetComponentsInChildren<SpriteRenderer>(true)
-            : Array.Empty<SpriteRenderer>();
-
-        for (var i = 0; i < externalRenderers.Length; i++)
+        if (iconRoot != null)
         {
-            var sr = externalRenderers[i];
-            if (sr == null || sr.transform.IsChildOf(renderer.transform))
-            {
-                continue;
-            }
-
-            if (string.Equals(sr.gameObject.name, "Base", StringComparison.Ordinal)
-                || string.Equals(sr.gameObject.name, "Mask", StringComparison.Ordinal)
-                || string.Equals(sr.gameObject.name, "IconRoot", StringComparison.Ordinal))
-            {
-                sr.enabled = fallbackVisible;
-            }
+            iconRoot.gameObject.SetActive(fallbackVisible);
         }
 
         var pipelineRenderer = renderer.GetComponent<SimplePipelineSpriteAnimator>()?.SpriteRenderer;
@@ -229,6 +278,28 @@ public class SimpleArtPipeline : ArtPipelineBase
         {
             pipelineRenderer.enabled = !fallbackVisible;
         }
+    }
+
+    private enum FrameIndexScheme
+    {
+        ZeroBasedTwoDigit,
+        ZeroBasedPlain,
+        OneBasedTwoDigit,
+        OneBasedPlain
+    }
+
+    private readonly struct ResolvedSpriteSource
+    {
+        public ResolvedSpriteSource(string baseId, FrameIndexScheme scheme)
+        {
+            BaseId = baseId;
+            Scheme = scheme;
+        }
+
+        public string BaseId { get; }
+        public FrameIndexScheme Scheme { get; }
+        public bool HasValue => !string.IsNullOrEmpty(BaseId);
+        public string CacheId => $"{BaseId}|{Scheme}";
     }
 
     private sealed class SimplePipelineSpriteAnimator : MonoBehaviour
