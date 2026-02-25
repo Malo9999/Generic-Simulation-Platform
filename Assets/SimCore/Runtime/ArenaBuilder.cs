@@ -6,13 +6,6 @@ using UnityEngine;
 public static class ArenaBuilder
 {
     private const float PixelsPerUnit = 8f;
-    private const int BackgroundSortingOrder = -100;
-    private const int GroundTileSortingOrder = -90;
-    private const int PackDecorOrderMin = -20;
-    private const int PackDecorOrderMax = -15;
-    private const int BorderSortingOrder = -10;
-    private const int ObstacleFillSortingOrder = -5;
-    private const int ObstacleOutlineSortingOrder = -4;
     private const float ObstacleOverlapPadding = 0.4f;
 
     private static Sprite whitePixelSprite;
@@ -175,7 +168,7 @@ public static class ArenaBuilder
                 tile.transform.localPosition = new Vector3(startX + x, startY + y, 0f);
 
                 var renderer = tile.AddComponent<SpriteRenderer>();
-                renderer.sortingOrder = GroundTileSortingOrder;
+                RenderOrder.Apply(renderer, RenderOrder.WorldTiles);
                 renderer.sprite = sprites[rng.Range(0, sprites.Count)];
                 renderer.color = Color.white;
             }
@@ -239,7 +232,7 @@ public static class ArenaBuilder
             var renderer = prop.AddComponent<SpriteRenderer>();
             renderer.sprite = sprites[rng.Range(0, sprites.Count)];
             renderer.color = new Color(1f, 1f, 1f, rng.Range(0.25f, 0.8f));
-            renderer.sortingOrder = rng.Range(PackDecorOrderMin, PackDecorOrderMax + 1);
+            RenderOrder.Apply(renderer, RenderOrder.WorldDeco);
 
             var scale = rng.Range(0.8f, 1.3f);
             prop.transform.localScale = new Vector3(scale, scale, 1f);
@@ -302,7 +295,7 @@ public static class ArenaBuilder
         background.transform.localPosition = Vector3.zero;
 
         var renderer = background.AddComponent<SpriteRenderer>();
-        renderer.sortingOrder = BackgroundSortingOrder;
+        RenderOrder.Apply(renderer, RenderOrder.WorldBase);
 
         var texWidth = Mathf.Max(8, Mathf.RoundToInt(width * PixelsPerUnit));
         var texHeight = Mathf.Max(8, Mathf.RoundToInt(height * PixelsPerUnit));
@@ -459,8 +452,8 @@ public static class ArenaBuilder
         obstacle.transform.localScale = new Vector3(baseScale * stretch, baseScale, 1f);
         obstacle.transform.localRotation = Quaternion.Euler(0f, 0f, rng.Range(0f, 360f));
 
-        fillRenderer.sortingOrder = ObstacleFillSortingOrder;
-        outlineRenderer.sortingOrder = ObstacleOutlineSortingOrder;
+        RenderOrder.Apply(fillRenderer, RenderOrder.WorldAbove);
+        RenderOrder.Apply(outlineRenderer, RenderOrder.WorldAbove + 1);
 
         var tint = new Color(
             rng.Range(0.28f, 0.44f),
@@ -483,7 +476,7 @@ public static class ArenaBuilder
         var renderer = segment.AddComponent<SpriteRenderer>();
         renderer.sprite = GetWhitePixelSprite();
         renderer.color = color;
-        renderer.sortingOrder = BorderSortingOrder;
+        RenderOrder.Apply(renderer, RenderOrder.WorldAbove);
     }
 
     private static Sprite GetWhitePixelSprite()

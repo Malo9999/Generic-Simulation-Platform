@@ -5,7 +5,6 @@ using UnityEngine;
 public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 {
     private const int SpawnDebugCount = 5;
-    private const int AntSortingOrder = 10;
 
     [SerializeField] private bool logSpawnIdentity = true;
 
@@ -550,7 +549,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
                 baseRenderer = pipelineRenderer.GetComponent<SpriteRenderer>() ?? pipelineRenderer.GetComponentInChildren<SpriteRenderer>();
                 if (baseRenderer != null)
                 {
-                    baseRenderer.sortingOrder = AntSortingOrder;
+                    RenderOrder.Apply(baseRenderer, RenderOrder.EntityBody);
                 }
             }
         }
@@ -560,13 +559,13 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             var baseObj = new GameObject("Base");
             baseObj.transform.SetParent(root.transform, false);
             baseRenderer = baseObj.AddComponent<SpriteRenderer>();
-            baseRenderer.sortingOrder = AntSortingOrder;
+            RenderOrder.Apply(baseRenderer, RenderOrder.EntityBody);
         }
 
         var maskObj = new GameObject("Mask");
         maskObj.transform.SetParent(root.transform, false);
         var maskRenderer = maskObj.AddComponent<SpriteRenderer>();
-        maskRenderer.sortingOrder = AntSortingOrder + 1;
+        RenderOrder.Apply(maskRenderer, RenderOrder.EntityBody + 1);
 
         SpriteRenderer hpBgRenderer = null;
         SpriteRenderer hpFillRenderer = null;
@@ -579,7 +578,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             hpBgRenderer = hpBgObj.AddComponent<SpriteRenderer>();
             hpBgRenderer.sprite = GetSquareSprite();
             hpBgRenderer.color = new Color(0f, 0f, 0f, 0.8f);
-            hpBgRenderer.sortingOrder = AntSortingOrder + 2;
+            RenderOrder.Apply(hpBgRenderer, RenderOrder.EntityFx);
 
             var hpFillObj = new GameObject("HpFill");
             hpFillObj.transform.SetParent(root.transform, false);
@@ -588,7 +587,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             hpFillRenderer = hpFillObj.AddComponent<SpriteRenderer>();
             hpFillRenderer.sprite = GetSquareSprite();
             hpFillRenderer.color = new Color(0.2f, 0.95f, 0.2f, 1f);
-            hpFillRenderer.sortingOrder = AntSortingOrder + 3;
+            RenderOrder.Apply(hpFillRenderer, RenderOrder.EntityFx + 1);
         }
 
         return new AntAgentView

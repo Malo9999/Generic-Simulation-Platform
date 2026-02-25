@@ -3,10 +3,6 @@ using UnityEngine;
 
 public static class AntWorldViewBuilder
 {
-    private const int TileOrder = -50;
-    private const int DecorOrder = -20;
-    private const int EntityOrder = -5;
-
     private static Sprite squareSprite;
     private static Sprite circleSprite;
 
@@ -56,7 +52,7 @@ public static class AntWorldViewBuilder
                 tile.transform.localScale = new Vector3(sx, sy, 1f);
 
                 var sr = tile.AddComponent<SpriteRenderer>();
-                sr.sortingOrder = TileOrder;
+                RenderOrder.Apply(sr, RenderOrder.WorldTiles);
                 sr.sprite = TrySprite(state.tileSpriteIds[idx], out var sprite) ? sprite : GetSquareSprite();
                 sr.color = sr.sprite == squareSprite ? new Color(0.25f, 0.4f, 0.2f, 1f) : Color.white;
             }
@@ -77,7 +73,7 @@ public static class AntWorldViewBuilder
             go.transform.localScale = Vector3.one * entry.scale;
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sortingOrder = DecorOrder;
+            RenderOrder.Apply(sr, RenderOrder.WorldDeco);
             sr.sprite = TrySprite(entry.spriteId, out var sprite) ? sprite : GetCircleSprite();
             sr.color = sr.sprite == circleSprite ? new Color(0.3f, 0.6f, 0.3f, entry.alpha) : new Color(1f, 1f, 1f, entry.alpha);
         }
@@ -99,7 +95,7 @@ public static class AntWorldViewBuilder
             var nestId = "prop:ant:prop_nest_entrance_medium:default:na:na:00";
             sr.sprite = TrySprite(nestId, out var sprite) ? sprite : GetCircleSprite();
             sr.color = sr.sprite == circleSprite ? n.teamColor : Color.white;
-            sr.sortingOrder = EntityOrder;
+            RenderOrder.Apply(sr, RenderOrder.EntityBody);
         }
     }
 
@@ -120,7 +116,7 @@ public static class AntWorldViewBuilder
                 ? sprite
                 : GetSquareSprite();
             sr.color = sr.sprite == squareSprite ? new Color(0.9f, 0.78f, 0.2f, 1f) : Color.white;
-            sr.sortingOrder = EntityOrder + 1;
+            RenderOrder.Apply(sr, RenderOrder.EntityBody + 1);
         }
     }
 
@@ -139,7 +135,7 @@ public static class AntWorldViewBuilder
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = GetCircleSprite();
             sr.color = new Color(0.38f, 0.38f, 0.4f, 1f);
-            sr.sortingOrder = DecorOrder + 1;
+            RenderOrder.Apply(sr, RenderOrder.WorldDeco + 1);
         }
     }
 
