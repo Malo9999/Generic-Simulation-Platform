@@ -41,7 +41,7 @@ public class GameClickSelector : MonoBehaviour
         var target = FindNearestSelectable(worldPoint, entitiesRoot);
         if (target != null)
         {
-            selectionService.SetSelected(target);
+            selectionService.SetSelected(target, SelectionSource.Game);
         }
     }
 

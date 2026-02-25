@@ -38,7 +38,7 @@ public static class SelectionSyncEditor
             return;
         }
 
-        Apply(() => service.SetSelected(selectable));
+        Apply(() => service.SetSelected(selectable, SelectionSource.Hierarchy));
     }
 
     private static void Apply(System.Action action)
