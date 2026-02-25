@@ -174,7 +174,8 @@ public class Bootstrapper : MonoBehaviour
 
             Debug.Log("[Bootstrapper] Clearing SimulationRoot...");
             ClearSimulationRootChildren();
-            SimulationSceneGraph.Ensure(simulationRoot.transform);
+            SimulationSceneGraph.Rebuild(simulationRoot.transform);
+            Debug.Log($"[Bootstrapper] SimulationRoot children after rebuild: {simulationRoot.transform.childCount}");
             Debug.Log("[Bootstrapper] SceneGraph ready.");
 
             var presetText = LoadPresetJson(simulationId, out currentPresetSource);
@@ -255,7 +256,7 @@ public class Bootstrapper : MonoBehaviour
         {
             Debug.LogError($"[Bootstrapper] StartSimulation FAILED simId={simulationId}\n{ex}");
             EnsureSimulationRoot();
-            SimulationSceneGraph.Ensure(simulationRoot.transform);
+            SimulationSceneGraph.Rebuild(simulationRoot.transform);
             simDriver?.SetRunner(null);
             replayDriver?.SetRunner(null);
             activeRunner = null;

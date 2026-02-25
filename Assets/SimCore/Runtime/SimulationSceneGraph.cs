@@ -35,12 +35,55 @@ public sealed class SimulationSceneGraph
         return graph;
     }
 
+    public static SimulationSceneGraph Rebuild(Transform simulationRoot)
+    {
+        if (simulationRoot == null)
+        {
+            throw new ArgumentNullException(nameof(simulationRoot));
+        }
+
+        var graph = new SimulationSceneGraph
+        {
+            WorldRoot = RebuildChild(simulationRoot, "WorldRoot"),
+            RunnerRoot = RebuildChild(simulationRoot, "RunnerRoot"),
+            EntitiesRoot = RebuildChild(simulationRoot, "EntitiesRoot"),
+            DebugRoot = RebuildChild(simulationRoot, "DebugRoot")
+        };
+
+        graph.ArenaRootParent = graph.WorldRoot;
+        RebuildChild(graph.WorldRoot, "ArenaRoot");
+        graph.DecorRoot = RebuildChild(graph.WorldRoot, "DecorRoot");
+        graph.WorldObjectsRoot = RebuildChild(graph.WorldRoot, "WorldObjects");
+
+        return graph;
+    }
+
     private static Transform EnsureChild(Transform parent, string name)
     {
         var existing = parent.Find(name);
         if (existing != null)
         {
             return existing;
+        }
+
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale = Vector3.one;
+        return go.transform;
+    }
+
+    private static Transform RebuildChild(Transform parent, string name)
+    {
+        var existing = parent.Find(name);
+        if (existing != null)
+        {
+            existing.name = name + "_OLD_" + Time.frameCount;
+            if (existing.gameObject != null)
+            {
+                existing.gameObject.SetActive(false);
+            }
         }
 
         var go = new GameObject(name);
