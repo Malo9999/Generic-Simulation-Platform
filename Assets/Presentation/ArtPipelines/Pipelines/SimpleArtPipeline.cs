@@ -31,7 +31,7 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     public override GameObject CreateRenderer(VisualKey key, Transform parent)
     {
-        GameObject rendererObject = new($"Renderer_{key.entityId}");
+        GameObject rendererObject = new($"Renderer_{key.entityId}_{key.instanceId}");
         rendererObject.transform.SetParent(parent, false);
 
         var fallbackRenderer = rendererObject.AddComponent<SpriteRenderer>();
@@ -84,7 +84,7 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     private string ResolveSpriteBase(VisualKey key)
     {
-        var cacheKey = $"{key.entityId}|{key.kind}|{key.state}";
+        var cacheKey = $"{key.entityId}|{key.kind}|{key.state}|{key.variantSeed}";
         if (resolvedBaseByKey.TryGetValue(cacheKey, out var cachedBase))
         {
             return cachedBase;
@@ -102,7 +102,6 @@ public class SimpleArtPipeline : ArtPipelineBase
         {
             $"ant.{species}.{role}.{state}",
             $"ant.{role}.{state}",
-            $"ant.{key.entityId}.{state}",
             $"ant.{state}"
         };
 

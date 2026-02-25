@@ -534,15 +534,13 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         GameObject pipelineRenderer = null;
         SpriteRenderer baseRenderer = null;
 
-        var visualKey = new VisualKey
-        {
-            simulationId = "AntColonies",
-            entityId = "ant",
-            kind = string.IsNullOrWhiteSpace(ant.identity.role) ? $"species-{ant.speciesId}" : ant.identity.role,
-            state = "idle",
-            variantSeed = ant.id,
-            facingMode = FacingMode.Auto
-        };
+        var visualKey = VisualKeyBuilder.Create(
+            simulationId: "AntColonies",
+            entityType: "ant",
+            instanceId: ant.id,
+            kind: string.IsNullOrWhiteSpace(ant.identity.role) ? $"species-{ant.speciesId}" : ant.identity.role,
+            state: "idle",
+            facingMode: FacingMode.Auto);
 
         if (activePipeline != null)
         {
