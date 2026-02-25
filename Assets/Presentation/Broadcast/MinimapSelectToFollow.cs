@@ -37,7 +37,8 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
 
     public void OnPointerClick(PointerEventData eventData)
     {
-        if (eventData.button != PointerEventData.InputButton.Right)
+        if (eventData.button != PointerEventData.InputButton.Right &&
+            eventData.button != PointerEventData.InputButton.Left)
         {
             return;
         }
@@ -67,6 +68,29 @@ public class MinimapSelectToFollow : MonoBehaviour, IPointerClickHandler
         var worldPoint = new Vector2(
             Mathf.Lerp(worldBounds.xMin, worldBounds.xMax, u),
             Mathf.Lerp(worldBounds.yMin, worldBounds.yMax, v));
+
+        if (eventData.button == PointerEventData.InputButton.Left)
+        {
+            if (followController != null)
+            {
+                followController.followEnabled = false;
+            }
+
+            var cameraToMove = followController != null && followController.mainCamera != null
+                ? followController.mainCamera
+                : (mainCamera != null ? mainCamera : Camera.main);
+
+            if (cameraToMove == null)
+            {
+                return;
+            }
+
+            var cameraPosition = cameraToMove.transform.position;
+            var clampedX = Mathf.Clamp(worldPoint.x, worldBounds.xMin, worldBounds.xMax);
+            var clampedY = Mathf.Clamp(worldPoint.y, worldBounds.yMin, worldBounds.yMax);
+            cameraToMove.transform.position = new Vector3(clampedX, clampedY, cameraPosition.z);
+            return;
+        }
 
         var nearest = FindNearestTarget(worldPoint);
         if (nearest == null)
