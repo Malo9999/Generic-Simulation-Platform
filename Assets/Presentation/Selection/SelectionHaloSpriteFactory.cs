@@ -3,6 +3,10 @@ using UnityEngine;
 
 public static class SelectionHaloSpriteFactory
 {
+    public const int DefaultSize = 64;
+    public const int DefaultRadius = 22;
+    public const float HaloPixelsPerUnit = 32f;
+
     private readonly struct HaloKey
     {
         public HaloKey(int size, int radius, int ringThickness, int outlineThickness, bool includeShine)
@@ -23,12 +27,12 @@ public static class SelectionHaloSpriteFactory
 
     private static readonly Dictionary<HaloKey, Sprite> Cache = new();
 
-    public static Sprite GetBaseHaloSprite(int size = 64, int radius = 22, int ringThickness = 2, int outlineThickness = 1)
+    public static Sprite GetBaseHaloSprite(int size = DefaultSize, int radius = DefaultRadius, int ringThickness = 2, int outlineThickness = 1)
     {
         return GetHaloSprite(new HaloKey(size, radius, ringThickness, outlineThickness, includeShine: false));
     }
 
-    public static Sprite GetShineHaloSprite(int size = 64, int radius = 22, int ringThickness = 2)
+    public static Sprite GetShineHaloSprite(int size = DefaultSize, int radius = DefaultRadius, int ringThickness = 2)
     {
         return GetHaloSprite(new HaloKey(size, radius, ringThickness, outlineThickness: 0, includeShine: true));
     }
@@ -48,14 +52,15 @@ public static class SelectionHaloSpriteFactory
         };
 
         var clear = new Color(0f, 0f, 0f, 0f);
-        var center = (key.Size - 1) * 0.5f;
-        var baseRing = new Color(1f, 0.93f, 0.35f, 0.95f);
-        var darkOutline = new Color(0.28f, 0.2f, 0.06f, 0.98f);
-        var brightArc = new Color(1f, 1f, 0.86f, 1f);
+        var center = key.Size * 0.5f;
+        var baseRing = new Color(1f, 0.84f, 0.2f, 1f);
+        var darkOutline = new Color(0.15f, 0.1f, 0.03f, 1f);
+        var brightArc = new Color(1f, 0.97f, 0.82f, 1f);
 
-        var innerRadius = key.Radius - (key.RingThickness * 0.5f);
-        var outerRadius = key.Radius + (key.RingThickness * 0.5f);
-        var outlineOuterRadius = outerRadius + key.OutlineThickness;
+        var ringInnerRadius = key.Radius - 1f;
+        var ringOuterRadius = key.Radius + 1f;
+        var outlineInnerRadius = key.Radius + 1f;
+        var outlineOuterRadius = key.Radius + 2f;
 
         for (var y = 0; y < key.Size; y++)
         {
@@ -63,17 +68,19 @@ public static class SelectionHaloSpriteFactory
             {
                 texture.SetPixel(x, y, clear);
 
-                var dx = x - center;
-                var dy = y - center;
+                var dx = (x + 0.5f) - center;
+                var dy = (y + 0.5f) - center;
                 var distance = Mathf.Sqrt((dx * dx) + (dy * dy));
+                var isRingPixel = distance >= ringInnerRadius && distance <= ringOuterRadius;
+                var isOutlinePixel = distance >= outlineInnerRadius && distance < outlineOuterRadius;
 
                 if (!key.IncludeShine)
                 {
-                    if (distance >= innerRadius && distance <= outerRadius)
+                    if (isRingPixel)
                     {
                         texture.SetPixel(x, y, baseRing);
                     }
-                    else if (key.OutlineThickness > 0 && distance > outerRadius && distance <= outlineOuterRadius)
+                    else if (key.OutlineThickness > 0 && isOutlinePixel)
                     {
                         texture.SetPixel(x, y, darkOutline);
                     }
@@ -88,7 +95,7 @@ public static class SelectionHaloSpriteFactory
                 }
 
                 var isInArc = angle >= 120f && angle <= 200f;
-                if (isInArc && distance >= innerRadius && distance <= outerRadius + 0.5f)
+                if (isRingPixel && isInArc)
                 {
                     texture.SetPixel(x, y, brightArc);
                 }
@@ -97,9 +104,9 @@ public static class SelectionHaloSpriteFactory
 
         if (key.IncludeShine)
         {
-            DrawSparkle(texture, key.Size / 2 - 12, key.Size / 2 + 14, brightArc);
-            DrawSparkle(texture, key.Size / 2 - 7, key.Size / 2 + 18, brightArc);
-            DrawSparkle(texture, key.Size / 2 - 18, key.Size / 2 + 9, brightArc);
+            DrawSparkle(texture, center, -10, 12, brightArc);
+            DrawSparkle(texture, center, -13, 9, brightArc);
+            DrawSparkle(texture, center, -7, 15, brightArc);
         }
 
         texture.Apply(updateMipmaps: false, makeNoLongerReadable: false);
@@ -108,7 +115,7 @@ public static class SelectionHaloSpriteFactory
             texture,
             new Rect(0f, 0f, key.Size, key.Size),
             new Vector2(0.5f, 0.5f),
-            key.Size,
+            HaloPixelsPerUnit,
             0,
             SpriteMeshType.FullRect);
 
@@ -118,8 +125,11 @@ public static class SelectionHaloSpriteFactory
         return sprite;
     }
 
-    private static void DrawSparkle(Texture2D texture, int x, int y, Color color)
+    private static void DrawSparkle(Texture2D texture, float center, int offsetX, int offsetY, Color color)
     {
+        var x = Mathf.RoundToInt(center + offsetX);
+        var y = Mathf.RoundToInt(center + offsetY);
+
         SetIfInside(texture, x, y, color);
         SetIfInside(texture, x - 1, y, color);
         SetIfInside(texture, x + 1, y, color);

@@ -53,15 +53,19 @@ public class WorldSelectionHighlighter : MonoBehaviour
 
         shineRenderer.gameObject.AddComponent<SelectionHaloTwinkle>();
 
-        var scale = 1.75f;
+        var scale = 1f;
         var selectedRenderer = selected.GetComponentInChildren<SpriteRenderer>();
         if (selectedRenderer != null)
         {
-            var bounds = selectedRenderer.bounds.size;
-            var maxDimension = Mathf.Max(bounds.x, bounds.y);
-            scale = Mathf.Clamp(maxDimension * 1.35f, 1.2f, 3f);
+            var radiusWorld = Mathf.Max(selectedRenderer.bounds.extents.x, selectedRenderer.bounds.extents.y);
+            var desiredWorldRadius = radiusWorld * 1.15f;
+            var ringWorldRadiusAtScale1 = SelectionHaloSpriteFactory.DefaultRadius / SelectionHaloSpriteFactory.HaloPixelsPerUnit;
+            scale = ringWorldRadiusAtScale1 > 0f
+                ? desiredWorldRadius / ringWorldRadiusAtScale1
+                : 1f;
         }
 
+        scale = Mathf.Clamp(scale, 0.8f, 2.2f);
         activeHalo.transform.localScale = new Vector3(scale, scale, 1f);
     }
 
@@ -84,6 +88,7 @@ public class WorldSelectionHighlighter : MonoBehaviour
         renderer.sprite = sprite;
         renderer.color = color;
         renderer.sortingOrder = sortingOrder;
+        renderer.drawMode = SpriteDrawMode.Simple;
         return renderer;
     }
 }
