@@ -147,7 +147,7 @@ public static class EntityIconFactory
         AddPart(node, "Fill", fillSprite, fillTint, Vector3.zero, Vector3.one, 1);
     }
 
-    private static void AddPart(Transform parent, string name, Sprite sprite, Color tint, Vector3 localPosition, Vector3 localScale, int sortingOrder, float rotationZ = 0f)
+    private static void AddPart(Transform parent, string name, Sprite sprite, Color tint, Vector3 localPosition, Vector3 localScale, int sortingOffset, float rotationZ = 0f)
     {
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
@@ -158,7 +158,7 @@ public static class EntityIconFactory
         var renderer = go.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.color = tint;
-        RenderOrder.Apply(renderer, RenderOrder.EntityBody + sortingOrder);
+        RenderOrder.Apply(renderer, RenderOrder.EntityBody + sortingOffset);
     }
 
     private static Color ColorFromIdentity(EntityIdentity identity, float minChannel, float maxChannel, uint salt)
