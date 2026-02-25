@@ -38,6 +38,12 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < cars.Length; i++)
         {
+            var car = cars[i];
+            if (!car)
+            {
+                continue;
+            }
+
             var oldPosition = positions[i];
             positions[i].x += velocities[i].x * dt;
 
@@ -51,16 +57,17 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i].y = Mathf.MoveTowards(positions[i].y, targetY, dt * 2.5f);
             positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
 
-            cars[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            car.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             if (Mathf.Abs(velocities[i].x) > 0.0001f)
             {
-                cars[i].right = new Vector2(Mathf.Sign(velocities[i].x), 0f);
+                car.right = new Vector2(Mathf.Sign(velocities[i].x), 0f);
             }
 
-            if (activePipeline != null && pipelineRenderers[i] != null)
+            var pipelineRenderer = pipelineRenderers != null ? pipelineRenderers[i] : null;
+            if (activePipeline != null && pipelineRenderer != null)
             {
                 var velocity = (positions[i] - oldPosition) / Mathf.Max(0.0001f, dt);
-                activePipeline.ApplyVisual(pipelineRenderers[i], visualKeys[i], velocity, dt);
+                activePipeline.ApplyVisual(pipelineRenderer, visualKeys[i], velocity, dt);
             }
         }
     }

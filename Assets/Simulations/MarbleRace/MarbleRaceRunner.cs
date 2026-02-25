@@ -37,6 +37,12 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < marbles.Length; i++)
         {
+            var marble = marbles[i];
+            if (!marble)
+            {
+                continue;
+            }
+
             positions[i] += velocities[i] * dt;
 
             if (positions[i].x < -halfWidth || positions[i].x > halfWidth)
@@ -51,11 +57,12 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 velocities[i].y *= -1f;
             }
 
-            marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            marble.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
 
-            if (activePipeline != null && pipelineRenderers[i] != null)
+            var pipelineRenderer = pipelineRenderers != null ? pipelineRenderers[i] : null;
+            if (activePipeline != null && pipelineRenderer != null)
             {
-                activePipeline.ApplyVisual(pipelineRenderers[i], visualKeys[i], velocities[i], dt);
+                activePipeline.ApplyVisual(pipelineRenderer, visualKeys[i], velocities[i], dt);
             }
         }
     }

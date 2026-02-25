@@ -57,6 +57,12 @@ public class SimDriver
 
     public void Advance(float frameDeltaTime)
     {
+        if (runner is UnityEngine.Object uo && uo == null)
+        {
+            runner = null;
+            return;
+        }
+
         if (runner == null)
         {
             return;
@@ -84,6 +90,12 @@ public class SimDriver
 
     private void RunTick()
     {
+        if (runner is UnityEngine.Object uo && uo == null)
+        {
+            runner = null;
+            return;
+        }
+
         runner?.Tick(CurrentTick, tickDeltaTime);
         recordingSession?.RecordTick(CurrentTick, runner);
         CurrentTick++;
