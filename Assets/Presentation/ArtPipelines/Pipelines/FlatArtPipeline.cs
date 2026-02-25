@@ -50,7 +50,7 @@ public class FlatArtPipeline : ArtPipelineBase
         if (forceDebugPlaceholder)
         {
             ApplyPlaceholderSorting(renderer, debugOn: true);
-            SetIconRootVisibility(renderer, false);
+            SetIconRootVisibility(renderer, true);
             SetPlaceholderVisible(renderer, true);
             return;
         }

@@ -7,22 +7,22 @@ public static class RenderOrder
     // World
     public const int WorldBase = 0;
     public const int WorldTiles = WorldBase + 0;
-    public const int WorldDeco = WorldBase + 20;
-    public const int WorldAbove = WorldBase + 40;
+    public const int WorldDeco = WorldBase + 200;
+    public const int WorldAbove = WorldBase + 400;
 
     // Entities (ALL sims)
-    public const int EntitiesBase = 100;
+    public const int EntitiesBase = 1000;
     public const int EntityBody = EntitiesBase + 0;
     public const int EntityArrow = EntitiesBase + 2;
-    public const int EntityFx = EntitiesBase + 10;
+    public const int EntityFx = EntitiesBase + 100;
 
     // Selection / highlights
-    public const int SelectionBase = 200;
+    public const int SelectionBase = 2000;
     public const int SelectionRing = SelectionBase + 0;
-    public const int SelectionHalo = SelectionBase + 5;
+    public const int SelectionHalo = SelectionBase + 10;
 
     // Debug (always on top of world+entities)
-    public const int DebugBase = 500;
+    public const int DebugBase = 5000;
     public const int DebugEntity = DebugBase + 0;
     public const int DebugArrow = DebugBase + 2;
 

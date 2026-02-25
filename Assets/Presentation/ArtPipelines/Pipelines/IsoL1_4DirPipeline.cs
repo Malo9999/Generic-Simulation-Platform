@@ -71,7 +71,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         if (forceDebugPlaceholder)
         {
             ApplyPlaceholderSorting(renderer, debugOn: true);
-            SetIconRootVisibility(renderer, false);
+            SetIconRootVisibility(renderer, true);
             SetPlaceholderVisible(renderer, true);
             ApplySnappedFacing(renderer, velocity);
             return;

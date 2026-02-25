@@ -13,7 +13,6 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const float RunAnimRate = 8f;
     private const string PlaceholderSpriteName = "PlaceholderSprite";
     private const string PlaceholderArrowName = "PlaceholderArrow";
-    private const string MaskName = "Mask";
     private const string IconRootName = "IconRoot";
 
     private readonly Dictionary<string, Sprite[]> framesByBaseId = new(StringComparer.Ordinal);
@@ -81,19 +80,27 @@ public class SimpleArtPipeline : ArtPipelineBase
         if (forceDebugPlaceholder)
         {
             ApplyPlaceholderSorting(renderer, debugOn: true);
-            SetDebugVisibility(renderer, true);
+            SetPlaceholderVisibility(renderer, dotVisible: true, arrowVisible: true);
+            SetIconRootVisibility(renderer, true);
             animator.ApplyDebugFacing(velocity);
             animator.ApplyPulse(deltaTime);
             return;
         }
 
         ApplyPlaceholderSorting(renderer, debugOn: false);
-        SetDebugVisibility(renderer, false);
+
+        if (!IsAntEntity(key))
+        {
+            SetPlaceholderVisibility(renderer, dotVisible: false, arrowVisible: false);
+            SetIconRootVisibility(renderer, true);
+            return;
+        }
 
         var resolvedSource = ResolveSpriteBase(key);
         if (!resolvedSource.HasValue || !TryGetFrames(resolvedSource, out var frames))
         {
-            animator.SetRendererVisibility(false, false);
+            SetPlaceholderVisibility(renderer, dotVisible: false, arrowVisible: false);
+            SetIconRootVisibility(renderer, true);
             return;
         }
 
@@ -102,7 +109,8 @@ public class SimpleArtPipeline : ArtPipelineBase
         animator.lastSpriteBaseId = resolvedSource.BaseId;
         animator.Apply(frames, frameIndex);
         animator.ApplyContentFacing(velocity);
-        animator.SetRendererVisibility(true, false);
+        SetPlaceholderVisibility(renderer, dotVisible: true, arrowVisible: false);
+        SetIconRootVisibility(renderer, false);
     }
 
     private static void ApplyPlaceholderSorting(GameObject rendererRoot, bool debugOn)
@@ -120,80 +128,37 @@ public class SimpleArtPipeline : ArtPipelineBase
         }
     }
 
-    private static void SetDebugVisibility(GameObject rendererRoot, bool debugOn)
+    private static void SetPlaceholderVisibility(GameObject rendererRoot, bool dotVisible, bool arrowVisible)
     {
-        if (rendererRoot == null)
+        var dotRenderer = rendererRoot.transform.Find(PlaceholderSpriteName)?.GetComponent<SpriteRenderer>();
+        if (dotRenderer != null)
         {
-            return;
+            dotRenderer.enabled = dotVisible;
         }
 
-        var spriteRenderers = rendererRoot.GetComponentsInChildren<SpriteRenderer>(true);
-        foreach (var spriteRenderer in spriteRenderers)
+        var arrowRenderer = rendererRoot.transform.Find(PlaceholderArrowName)?.GetComponent<SpriteRenderer>();
+        if (arrowRenderer != null)
         {
-            if (spriteRenderer == null)
-            {
-                continue;
-            }
-
-            var objectName = spriteRenderer.gameObject.name;
-            var isPlaceholder = string.Equals(objectName, PlaceholderSpriteName, StringComparison.Ordinal) ||
-                                string.Equals(objectName, PlaceholderArrowName, StringComparison.Ordinal);
-
-            if (debugOn)
-            {
-                if (isPlaceholder)
-                {
-                    spriteRenderer.enabled = true;
-                }
-                else if (!string.Equals(objectName, MaskName, StringComparison.Ordinal))
-                {
-                    spriteRenderer.enabled = false;
-                }
-
-                continue;
-            }
-
-            if (isPlaceholder)
-            {
-                spriteRenderer.enabled = false;
-                continue;
-            }
-
-            spriteRenderer.enabled = true;
+            arrowRenderer.enabled = arrowVisible;
         }
-
-        SetChildActiveByName(rendererRoot, IconRootName, !debugOn);
     }
 
-    private static void SetChildActiveByName(GameObject rendererRoot, string childName, bool active)
+    private static bool IsAntEntity(VisualKey key)
     {
-        var transforms = rendererRoot.GetComponentsInChildren<Transform>(true);
-        foreach (var child in transforms)
-        {
-            if (!string.Equals(child.name, childName, StringComparison.Ordinal))
-            {
-                continue;
-            }
+        return string.Equals(NormalizeSegment(key.entityId, "default"), "ant", StringComparison.Ordinal);
+    }
 
-            child.gameObject.SetActive(active);
-            return;
+    private static void SetIconRootVisibility(GameObject renderer, bool visible)
+    {
+        var iconRoot = renderer.transform.Find(IconRootName);
+        if (iconRoot == null && renderer.transform.parent != null)
+        {
+            iconRoot = renderer.transform.parent.Find(IconRootName);
         }
 
-        if (rendererRoot.transform.parent == null)
+        if (iconRoot != null)
         {
-            return;
-        }
-
-        transforms = rendererRoot.transform.parent.GetComponentsInChildren<Transform>(true);
-        foreach (var child in transforms)
-        {
-            if (!string.Equals(child.name, childName, StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            child.gameObject.SetActive(active);
-            return;
+            iconRoot.gameObject.SetActive(visible);
         }
     }
 
