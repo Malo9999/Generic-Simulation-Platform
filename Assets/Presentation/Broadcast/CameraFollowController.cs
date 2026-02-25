@@ -18,7 +18,22 @@ public class CameraFollowController : MonoBehaviour
             return;
         }
 
-        var currentPosition = mainCamera.transform.position;
+        mainCamera.transform.position = GetTargetCameraPosition(mainCamera.transform.position);
+    }
+
+    public void SnapToTargetNow()
+    {
+        if (target == null || mainCamera == null)
+        {
+            return;
+        }
+
+        velocity = Vector3.zero;
+        mainCamera.transform.position = GetTargetCameraPosition(mainCamera.transform.position);
+    }
+
+    private Vector3 GetTargetCameraPosition(Vector3 currentPosition)
+    {
         var desiredPosition = new Vector3(target.position.x, target.position.y, currentPosition.z);
 
         var nextPosition = smoothTime > 0f
@@ -31,6 +46,6 @@ public class CameraFollowController : MonoBehaviour
             nextPosition.y = Mathf.Clamp(nextPosition.y, worldBounds.yMin, worldBounds.yMax);
         }
 
-        mainCamera.transform.position = nextPosition;
+        return nextPosition;
     }
 }

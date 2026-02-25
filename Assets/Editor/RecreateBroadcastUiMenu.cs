@@ -633,6 +633,7 @@ public static class RecreateBroadcastUiMenu
         var followHost = mainCamera != null ? mainCamera.gameObject : presentationRoot;
         var followController = GetOrAdd<CameraFollowController>(followHost);
         followController.mainCamera = mainCamera;
+        followController.followEnabled = true;
 
         var selectToFollow = GetOrAdd<MinimapSelectToFollow>(minimapView);
         selectToFollow.mainCamera = mainCamera;
@@ -675,6 +676,24 @@ public static class RecreateBroadcastUiMenu
 
             var selector = GetOrAdd<MinimapSelectToFollow>(minimapView);
             selector.selectionService = selectionService;
+        }
+
+        var followController = UnityEngine.Object.FindAnyObjectByType<CameraFollowController>();
+        if (followController != null)
+        {
+            var bridgeHost = GetOrCreateRoot("SelectionFollowBridge", presentationRoot.transform);
+            var followBridge = GetOrAdd<SelectionFollowBridge>(bridgeHost);
+            followBridge.selection = selectionService;
+            followBridge.follow = followController;
+            followBridge.snapOnHierarchySelect = true;
+
+            foreach (var duplicate in presentationRoot.GetComponentsInChildren<SelectionFollowBridge>(true))
+            {
+                if (duplicate != null && duplicate != followBridge)
+                {
+                    UnityEngine.Object.DestroyImmediate(duplicate);
+                }
+            }
         }
     }
 

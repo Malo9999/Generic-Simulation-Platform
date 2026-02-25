@@ -116,15 +116,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             var marble = new GameObject($"Sim_{identity.entityId:0000}");
             marble.transform.SetParent(groupRoot, false);
 
-            var visualKey = new VisualKey
-            {
-                simulationId = "MarbleRace",
-                entityId = identity.entityId.ToString(),
-                kind = string.IsNullOrWhiteSpace(identity.role) ? "marble" : identity.role,
-                state = "idle",
-                variantSeed = identity.entityId,
-                facingMode = FacingMode.Auto
-            };
+            var visualKey = VisualKeyBuilder.Create(
+                simulationId: "MarbleRace",
+                entityType: "marble",
+                instanceId: identity.entityId,
+                kind: string.IsNullOrWhiteSpace(identity.role) ? "marble" : identity.role,
+                state: "idle",
+                facingMode: FacingMode.Auto);
 
             var visualParent = marble.transform;
             if (activePipeline != null)

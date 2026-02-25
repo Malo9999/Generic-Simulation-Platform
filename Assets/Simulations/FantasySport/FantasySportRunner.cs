@@ -135,15 +135,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var athlete = new GameObject($"Sim_{identity.entityId:0000}");
             athlete.transform.SetParent(groupRoot, false);
 
-            var visualKey = new VisualKey
-            {
-                simulationId = "FantasySport",
-                entityId = identity.entityId.ToString(),
-                kind = string.IsNullOrWhiteSpace(identity.role) ? "athlete" : identity.role,
-                state = "run",
-                variantSeed = identity.entityId,
-                facingMode = FacingMode.Auto
-            };
+            var visualKey = VisualKeyBuilder.Create(
+                simulationId: "FantasySport",
+                entityType: "athlete",
+                instanceId: identity.entityId,
+                kind: string.IsNullOrWhiteSpace(identity.role) ? "athlete" : identity.role,
+                state: "run",
+                facingMode: FacingMode.Auto);
 
             var visualParent = athlete.transform;
             if (activePipeline != null)

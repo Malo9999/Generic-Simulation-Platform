@@ -123,15 +123,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             var car = new GameObject($"Sim_{identity.entityId:0000}");
             car.transform.SetParent(groupRoot, false);
 
-            var visualKey = new VisualKey
-            {
-                simulationId = "RaceCar",
-                entityId = identity.entityId.ToString(),
-                kind = string.IsNullOrWhiteSpace(identity.role) ? "car" : identity.role,
-                state = "drive",
-                variantSeed = identity.entityId,
-                facingMode = FacingMode.Auto
-            };
+            var visualKey = VisualKeyBuilder.Create(
+                simulationId: "RaceCar",
+                entityType: "car",
+                instanceId: identity.entityId,
+                kind: string.IsNullOrWhiteSpace(identity.role) ? "car" : identity.role,
+                state: "drive",
+                facingMode: FacingMode.Auto);
 
             var visualParent = car.transform;
             if (activePipeline != null)
