@@ -6,16 +6,36 @@ using UnityEngine;
 public class IsoL1_4DirPipeline : ArtPipelineBase
 {
     private const string Requirement = "iso4.agents";
+    private const string SpriteName = "Sprite";
+    private const string ArrowName = "Arrow";
+    private const string IconRootName = "IconRoot";
+    private const string MaskName = "Mask";
 
     [SerializeField] private bool forceDebugPlaceholder = true;
+    [SerializeField] private DebugPlaceholderMode defaultDebugMode = DebugPlaceholderMode.Replace;
     [SerializeField] private float placeholderScale = 0.5f;
+
+    private bool debugEnabled;
+    private DebugPlaceholderMode debugMode;
 
     public override ArtMode Mode => ArtMode.IsoL1_4Dir;
     public override string DisplayName => "Iso L1 4Dir";
 
+    private void OnEnable()
+    {
+        debugEnabled = forceDebugPlaceholder;
+        debugMode = defaultDebugMode;
+    }
+
+    public override void ConfigureDebug(bool enabled, DebugPlaceholderMode mode)
+    {
+        debugEnabled = enabled;
+        debugMode = mode;
+    }
+
     public override bool IsAvailable(ArtManifest manifest)
     {
-        if (forceDebugPlaceholder)
+        if (debugEnabled)
         {
             return true;
         }
@@ -25,7 +45,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
 
     public override List<string> MissingRequirements(ArtManifest manifest)
     {
-        if (forceDebugPlaceholder)
+        if (debugEnabled)
         {
             return new List<string>();
         }
@@ -41,7 +61,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         var fallbackRenderer = rendererObject.AddComponent<SpriteRenderer>();
         fallbackRenderer.sprite = null;
 
-        var spriteObject = new GameObject("Sprite");
+        var spriteObject = new GameObject(SpriteName);
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var spriteRenderer = spriteObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = DebugShapeSpriteFactory.GetDiamondSprite();
@@ -49,7 +69,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         RenderOrder.Apply(spriteRenderer, RenderOrder.EntityBody);
         spriteRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 
-        var arrowObject = new GameObject("Arrow");
+        var arrowObject = new GameObject(ArrowName);
         arrowObject.transform.SetParent(rendererObject.transform, false);
         arrowObject.transform.localPosition = new Vector3(0f, 0.08f, 0f);
         var arrowRenderer = arrowObject.AddComponent<SpriteRenderer>();
@@ -68,17 +88,21 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
             return;
         }
 
-        if (forceDebugPlaceholder)
+        if (debugEnabled)
         {
             ApplyPlaceholderSorting(renderer, debugOn: true);
-            SetIconRootVisibility(renderer, true);
             SetPlaceholderVisible(renderer, true);
             ApplySnappedFacing(renderer, velocity);
+            if (debugMode == DebugPlaceholderMode.Replace)
+            {
+                SetIconRootVisibility(renderer, false);
+                SetDebugReplaceVisibility(renderer);
+            }
+
             return;
         }
 
         ApplyPlaceholderSorting(renderer, debugOn: false);
-        // Keep placeholder-only in this phase, while preserving the toggle interface.
         SetIconRootVisibility(renderer, false);
         SetPlaceholderVisible(renderer, true);
         ApplySnappedFacing(renderer, velocity);
@@ -87,13 +111,13 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
 
     private static void ApplyPlaceholderSorting(GameObject renderer, bool debugOn)
     {
-        var spriteRenderer = renderer.transform.Find("Sprite")?.GetComponent<SpriteRenderer>();
+        var spriteRenderer = renderer.transform.Find(SpriteName)?.GetComponent<SpriteRenderer>();
         if (spriteRenderer != null)
         {
             RenderOrder.Apply(spriteRenderer, debugOn ? RenderOrder.DebugEntity : RenderOrder.EntityBody);
         }
 
-        var arrowRenderer = renderer.transform.Find("Arrow")?.GetComponent<SpriteRenderer>();
+        var arrowRenderer = renderer.transform.Find(ArrowName)?.GetComponent<SpriteRenderer>();
         if (arrowRenderer != null)
         {
             RenderOrder.Apply(arrowRenderer, debugOn ? RenderOrder.DebugArrow : RenderOrder.EntityArrow);
@@ -101,7 +125,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
     }
     private static void ApplySnappedFacing(GameObject renderer, Vector2 velocity)
     {
-        var arrow = renderer.transform.Find("Arrow");
+        var arrow = renderer.transform.Find(ArrowName);
         if (arrow == null)
         {
             return;
@@ -125,15 +149,32 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         arrow.localRotation = Quaternion.Euler(0f, 0f, facingDegrees);
     }
 
+    private static void SetDebugReplaceVisibility(GameObject rendererRoot)
+    {
+        var spriteRenderers = rendererRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var spriteRenderer in spriteRenderers)
+        {
+            if (spriteRenderer == null)
+            {
+                continue;
+            }
+
+            var rendererName = spriteRenderer.gameObject.name;
+            spriteRenderer.enabled = string.Equals(rendererName, SpriteName, StringComparison.Ordinal)
+                || string.Equals(rendererName, ArrowName, StringComparison.Ordinal)
+                || string.Equals(rendererName, MaskName, StringComparison.Ordinal);
+        }
+    }
+
     private static void SetPlaceholderVisible(GameObject renderer, bool visible)
     {
-        var spriteRenderer = renderer.transform.Find("Sprite")?.GetComponent<SpriteRenderer>();
+        var spriteRenderer = renderer.transform.Find(SpriteName)?.GetComponent<SpriteRenderer>();
         if (spriteRenderer != null)
         {
             spriteRenderer.enabled = visible;
         }
 
-        var arrowRenderer = renderer.transform.Find("Arrow")?.GetComponent<SpriteRenderer>();
+        var arrowRenderer = renderer.transform.Find(ArrowName)?.GetComponent<SpriteRenderer>();
         if (arrowRenderer != null)
         {
             arrowRenderer.enabled = visible;
@@ -142,10 +183,10 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
 
     private static void SetIconRootVisibility(GameObject renderer, bool fallbackVisible)
     {
-        var iconRoot = renderer.transform.Find("IconRoot");
+        var iconRoot = renderer.transform.Find(IconRootName);
         if (iconRoot == null && renderer.transform.parent != null)
         {
-            iconRoot = renderer.transform.parent.Find("IconRoot");
+            iconRoot = renderer.transform.parent.Find(IconRootName);
         }
 
         if (iconRoot != null)

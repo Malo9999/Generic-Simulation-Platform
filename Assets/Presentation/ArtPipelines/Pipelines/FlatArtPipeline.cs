@@ -5,11 +5,31 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "Presentation/Art Pipelines/Flat", fileName = "FlatArtPipeline")]
 public class FlatArtPipeline : ArtPipelineBase
 {
+    private const string SpriteName = "Sprite";
+    private const string IconRootName = "IconRoot";
+    private const string MaskName = "Mask";
+
     [SerializeField] private bool forceDebugPlaceholder = true;
+    [SerializeField] private DebugPlaceholderMode defaultDebugMode = DebugPlaceholderMode.Replace;
     [SerializeField] private float placeholderScale = 0.5f;
+
+    private bool debugEnabled;
+    private DebugPlaceholderMode debugMode;
 
     public override ArtMode Mode => ArtMode.Flat;
     public override string DisplayName => "Flat";
+
+    private void OnEnable()
+    {
+        debugEnabled = forceDebugPlaceholder;
+        debugMode = defaultDebugMode;
+    }
+
+    public override void ConfigureDebug(bool enabled, DebugPlaceholderMode mode)
+    {
+        debugEnabled = enabled;
+        debugMode = mode;
+    }
 
     public override bool IsAvailable(ArtManifest manifest)
     {
@@ -29,7 +49,7 @@ public class FlatArtPipeline : ArtPipelineBase
         var fallbackRenderer = rendererObject.AddComponent<SpriteRenderer>();
         fallbackRenderer.sprite = null;
 
-        var spriteObject = new GameObject("Sprite");
+        var spriteObject = new GameObject(SpriteName);
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var spriteRenderer = spriteObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = DebugShapeSpriteFactory.GetSquareSprite();
@@ -47,23 +67,27 @@ public class FlatArtPipeline : ArtPipelineBase
             return;
         }
 
-        if (forceDebugPlaceholder)
+        if (debugEnabled)
         {
             ApplyPlaceholderSorting(renderer, debugOn: true);
-            SetIconRootVisibility(renderer, true);
             SetPlaceholderVisible(renderer, true);
+            if (debugMode == DebugPlaceholderMode.Replace)
+            {
+                SetIconRootVisibility(renderer, false);
+                SetDebugReplaceVisibility(renderer);
+            }
+
             return;
         }
 
         ApplyPlaceholderSorting(renderer, debugOn: false);
-        // Flat keeps placeholder visuals for now even when debug forcing is disabled.
         SetIconRootVisibility(renderer, false);
         SetPlaceholderVisible(renderer, true);
     }
 
     private static void ApplyPlaceholderSorting(GameObject renderer, bool debugOn)
     {
-        var spriteRenderer = renderer.transform.Find("Sprite")?.GetComponent<SpriteRenderer>();
+        var spriteRenderer = renderer.transform.Find(SpriteName)?.GetComponent<SpriteRenderer>();
         if (spriteRenderer != null)
         {
             RenderOrder.Apply(spriteRenderer, debugOn ? RenderOrder.DebugEntity : RenderOrder.EntityBody);
@@ -72,19 +96,36 @@ public class FlatArtPipeline : ArtPipelineBase
 
     private static void SetPlaceholderVisible(GameObject renderer, bool visible)
     {
-        var spriteRenderer = renderer.transform.Find("Sprite")?.GetComponent<SpriteRenderer>();
+        var spriteRenderer = renderer.transform.Find(SpriteName)?.GetComponent<SpriteRenderer>();
         if (spriteRenderer != null)
         {
             spriteRenderer.enabled = visible;
         }
     }
 
+
+    private static void SetDebugReplaceVisibility(GameObject rendererRoot)
+    {
+        var spriteRenderers = rendererRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var spriteRenderer in spriteRenderers)
+        {
+            if (spriteRenderer == null)
+            {
+                continue;
+            }
+
+            var rendererName = spriteRenderer.gameObject.name;
+            spriteRenderer.enabled = string.Equals(rendererName, SpriteName, StringComparison.Ordinal)
+                || string.Equals(rendererName, MaskName, StringComparison.Ordinal);
+        }
+    }
+
     private static void SetIconRootVisibility(GameObject renderer, bool fallbackVisible)
     {
-        var iconRoot = renderer.transform.Find("IconRoot");
+        var iconRoot = renderer.transform.Find(IconRootName);
         if (iconRoot == null && renderer.transform.parent != null)
         {
-            iconRoot = renderer.transform.parent.Find("IconRoot");
+            iconRoot = renderer.transform.parent.Find(IconRootName);
         }
 
         if (iconRoot != null)

@@ -14,16 +14,33 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const string PlaceholderSpriteName = "PlaceholderSprite";
     private const string PlaceholderArrowName = "PlaceholderArrow";
     private const string IconRootName = "IconRoot";
+    private const string MaskName = "Mask";
 
     private readonly Dictionary<string, Sprite[]> framesByBaseId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ResolvedSpriteSource> resolvedBaseByKey = new(StringComparer.Ordinal);
     private readonly HashSet<string> missingBaseLogged = new(StringComparer.Ordinal);
 
     [SerializeField] private bool forceDebugPlaceholder = true;
+    [SerializeField] private DebugPlaceholderMode defaultDebugMode = DebugPlaceholderMode.Replace;
     [SerializeField] private float placeholderScale = 0.5f;
+
+    private bool debugEnabled;
+    private DebugPlaceholderMode debugMode;
 
     public override ArtMode Mode => ArtMode.Simple;
     public override string DisplayName => "Simple";
+
+    private void OnEnable()
+    {
+        debugEnabled = forceDebugPlaceholder;
+        debugMode = defaultDebugMode;
+    }
+
+    public override void ConfigureDebug(bool enabled, DebugPlaceholderMode mode)
+    {
+        debugEnabled = enabled;
+        debugMode = mode;
+    }
 
     public override bool IsAvailable(ArtManifest manifest)
     {
@@ -77,13 +94,19 @@ public class SimpleArtPipeline : ArtPipelineBase
             return;
         }
 
-        if (forceDebugPlaceholder)
+        if (debugEnabled)
         {
             ApplyPlaceholderSorting(renderer, debugOn: true);
             SetPlaceholderVisibility(renderer, dotVisible: true, arrowVisible: true);
-            SetIconRootVisibility(renderer, true);
             animator.ApplyDebugFacing(velocity);
             animator.ApplyPulse(deltaTime);
+
+            if (debugMode == DebugPlaceholderMode.Replace)
+            {
+                SetIconRootVisibility(renderer, false);
+                SetDebugReplaceVisibility(renderer);
+            }
+
             return;
         }
 
@@ -141,6 +164,29 @@ public class SimpleArtPipeline : ArtPipelineBase
         {
             arrowRenderer.enabled = arrowVisible;
         }
+    }
+
+
+    private static void SetDebugReplaceVisibility(GameObject rendererRoot)
+    {
+        var spriteRenderers = rendererRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var spriteRenderer in spriteRenderers)
+        {
+            if (spriteRenderer == null)
+            {
+                continue;
+            }
+
+            var name = spriteRenderer.gameObject.name;
+            spriteRenderer.enabled = ShouldKeepEnabledInDebugReplace(name);
+        }
+    }
+
+    private static bool ShouldKeepEnabledInDebugReplace(string rendererName)
+    {
+        return string.Equals(rendererName, PlaceholderSpriteName, StringComparison.Ordinal)
+            || string.Equals(rendererName, PlaceholderArrowName, StringComparison.Ordinal)
+            || string.Equals(rendererName, MaskName, StringComparison.Ordinal);
     }
 
     private static bool IsAntEntity(VisualKey key)
