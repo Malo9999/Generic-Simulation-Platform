@@ -73,3 +73,85 @@ public sealed class GenericPackPreset : IPackPreset
         return recipe;
     }
 }
+
+
+public sealed class MarbleRacePackPreset : IPackPreset
+{
+    public string PresetId => "MarbleRacePreset";
+
+    public PackRecipe CreateDefaultRecipe(string packId, int seed)
+    {
+        var recipe = ScriptableObject.CreateInstance<PackRecipe>();
+        recipe.simulationId = "MarbleRace";
+        recipe.packId = string.IsNullOrWhiteSpace(packId) ? "MarbleRacePack_Auto" : packId;
+        recipe.seed = seed;
+        recipe.environmentId = "env.ant.v1";
+        recipe.entities = new List<PackRecipe.EntityRequirement>
+        {
+            new()
+            {
+                entityId = "marble",
+                archetypeId = "archetype.beetle",
+                speciesCount = 2,
+                roles = new List<string> { "racer" },
+                lifeStages = new List<string> { "adult" },
+                states = new List<string> { "idle", "roll", "run" }
+            }
+        };
+        return recipe;
+    }
+}
+
+public sealed class FantasySportPackPreset : IPackPreset
+{
+    public string PresetId => "FantasySportPreset";
+
+    public PackRecipe CreateDefaultRecipe(string packId, int seed)
+    {
+        var recipe = ScriptableObject.CreateInstance<PackRecipe>();
+        recipe.simulationId = "FantasySport";
+        recipe.packId = string.IsNullOrWhiteSpace(packId) ? "FantasySportPack_Auto" : packId;
+        recipe.seed = seed;
+        recipe.environmentId = "env.ant.v1";
+        recipe.entities = new List<PackRecipe.EntityRequirement>
+        {
+            new()
+            {
+                entityId = "player",
+                archetypeId = "archetype.arachnid",
+                speciesCount = 2,
+                roles = new List<string> { "striker" },
+                lifeStages = new List<string> { "adult" },
+                states = new List<string> { "idle", "run", "attack" }
+            }
+        };
+        return recipe;
+    }
+}
+
+public sealed class RaceCarPackPreset : IPackPreset
+{
+    public string PresetId => "RaceCarPreset";
+
+    public PackRecipe CreateDefaultRecipe(string packId, int seed)
+    {
+        var recipe = ScriptableObject.CreateInstance<PackRecipe>();
+        recipe.simulationId = "RaceCar";
+        recipe.packId = string.IsNullOrWhiteSpace(packId) ? "RaceCarPack_Auto" : packId;
+        recipe.seed = seed;
+        recipe.environmentId = "env.ant.v1";
+        recipe.entities = new List<PackRecipe.EntityRequirement>
+        {
+            new()
+            {
+                entityId = "car",
+                archetypeId = "archetype.beetle",
+                speciesCount = 2,
+                roles = new List<string> { "driver" },
+                lifeStages = new List<string> { "adult" },
+                states = new List<string> { "idle", "drive", "turn" }
+            }
+        };
+        return recipe;
+    }
+}
