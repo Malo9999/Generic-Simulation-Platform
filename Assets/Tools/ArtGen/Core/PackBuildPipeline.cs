@@ -1043,26 +1043,38 @@ public static class PackBuildPipeline
             BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
         }
 
-        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-        texture.SetPixels32(pixels);
-        texture.Apply(false, false);
-        File.WriteAllBytes(path, texture.EncodeToPNG());
-        UnityEngine.Object.DestroyImmediate(texture);
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-        SpriteBakeUtility.EnsureTextureImportSettings(path);
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-
-        var sheet = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-        if (sheet == null)
+        var container = GetOrCreateSpriteSubAssetContainer(spritesAssetPath);
+        foreach (var subAsset in AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath))
         {
-            Debug.LogError($"[PackBuildPipeline] Failed to load imported sprite sheet at '{path}'.");
-            return new List<Sprite>();
+            if (subAsset == null || ReferenceEquals(subAsset, container))
+            {
+                continue;
+            }
+
+            if (subAsset is Sprite || subAsset is Texture2D)
+            {
+                UnityEngine.Object.DestroyImmediate(subAsset, true);
+            }
         }
 
-        Debug.Log($"[PackBuildPipeline] CompileSheet imported sheet '{sheet.name}' ({sheet.width}x{sheet.height}) for path '{path}'.");
+        var sheetTex = new Texture2D(width, height, TextureFormat.RGBA32, false)
+        {
+            name = Path.GetFileNameWithoutExtension(path) + "_sheet",
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        sheetTex.SetPixels32(pixels);
+        sheetTex.Apply(false, false);
+        AssetDatabase.AddObjectToAsset(sheetTex, container);
+
+        EditorUtility.SetDirty(container);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.ImportAsset(spritesAssetPath, ImportAssetOptions.ForceSynchronousImport);
+
+        Debug.Log($"[PackBuildPipeline] CompileSheet created sub-asset sheet '{sheetTex.name}' ({sheetTex.width}x{sheetTex.height}) in '{spritesAssetPath}'.");
 
         var sprites = SpriteBakeUtility.BakeSpritesFromGrid(
-            sheet,
+            sheetTex,
             cellSize,
             cellSize,
             columns,
@@ -1076,17 +1088,20 @@ public static class PackBuildPipeline
         if (sprites.Count > 0)
         {
             var firstSprite = sprites[0];
+            Debug.Log($"First sprite texture null? {sprites[0].texture == null} texName={sprites[0].texture?.name}");
             if (firstSprite.texture == null)
             {
                 Debug.LogError($"[PackBuildPipeline] First baked sprite '{firstSprite.name}' has null texture for sheetPath='{path}'. Failing fast.");
                 return new List<Sprite>();
             }
-
-            Debug.Log($"[PackBuildPipeline] First baked sprite '{firstSprite.name}' texture valid={firstSprite.texture != null} ({firstSprite.texture.width}x{firstSprite.texture.height}).");
         }
 
-        var container = GetOrCreateSpriteSubAssetContainer(spritesAssetPath);
         SpriteBakeUtility.AddOrReplaceSubAssets(container, sprites);
+
+        File.WriteAllBytes(path, sheetTex.EncodeToPNG());
+        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+        SpriteBakeUtility.EnsureTextureImportSettings(path);
+
         return LoadSpritesFromAssetPath(spritesAssetPath);
     }
 
