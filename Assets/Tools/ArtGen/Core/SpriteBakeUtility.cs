@@ -6,6 +6,8 @@ using UnityEngine;
 
 public static class SpriteBakeUtility
 {
+    private static readonly string[] GeneratedNamePrefixes = { "agent:", "sheet:", "placeholder:" };
+
     public static void EnsureTextureImportSettings(string texturePath)
     {
         if (AssetImporter.GetAtPath(texturePath) is not TextureImporter importer)
@@ -90,7 +92,9 @@ public static class SpriteBakeUtility
                 continue;
             }
 
-            if ((existing.hideFlags & HideFlags.HideInHierarchy) == 0)
+            var generatedByFlags = (existing.hideFlags & HideFlags.HideInHierarchy) != 0;
+            var generatedByPrefix = GeneratedNamePrefixes.Any(prefix => existing.name.StartsWith(prefix, StringComparison.Ordinal));
+            if (!generatedByFlags && !generatedByPrefix)
             {
                 continue;
             }
