@@ -74,6 +74,7 @@ public sealed class PackRecipe : ScriptableObject
     public string outputFolder = "Assets/Presentation/Packs/Simulation/Pack";
     public int tileSize = 32;
     public int agentSpriteSize = 64;
+    public string agentsBuildStyle = "BasicShapes";
     public string environmentId = "env.default";
     public List<EntityRequirement> entities = new();
     public List<PropRequirement> props = new();

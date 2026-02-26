@@ -413,6 +413,7 @@ public sealed class PackCreatorWindow : EditorWindow
         recipe.seed = seed;
         recipe.simulationId = CurrentSimId();
         recipe.outputFolder = BuildPackRoot();
+        recipe.agentsBuildStyle = MapBuildStyle(buildStyles[PackCreatorAssetGroup.Agents]);
 
         if (existing == null)
         {
@@ -557,6 +558,21 @@ public sealed class PackCreatorWindow : EditorWindow
             }
 
             return sb.ToString();
+        }
+    }
+
+    private static string MapBuildStyle(PackCreatorBuildStyle style)
+    {
+        switch (style)
+        {
+            case PackCreatorBuildStyle.JsonBlueprint:
+                return "JsonBlueprint";
+            case PackCreatorBuildStyle.SheetIso4Dir:
+                return "Sheet4Dir";
+            case PackCreatorBuildStyle.SheetIso8Dir:
+                return "Sheet8Dir";
+            default:
+                return "BasicShapes";
         }
     }
 
