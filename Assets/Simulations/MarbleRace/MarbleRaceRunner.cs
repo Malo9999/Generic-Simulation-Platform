@@ -1,5 +1,6 @@
 using System.Text;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 {
@@ -78,6 +79,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private GameObject trackDebugRoot;
     private MeshFilter trackSurfaceMeshFilter;
     private MeshRenderer trackSurfaceMeshRenderer;
+    private Transform trackSurfaceStampsRoot;
+    private SpriteRenderer[] trackSurfaceStamps;
+    private Sprite trackStampSprite;
+    private Material trackStampMaterial;
     private LineRenderer leftBoundaryRenderer;
     private LineRenderer rightBoundaryRenderer;
     private LineRenderer startLineRenderer;
@@ -296,6 +301,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         startLineRenderer = null;
         trackSurfaceMeshFilter = null;
         trackSurfaceMeshRenderer = null;
+        trackSurfaceStampsRoot = null;
+        trackSurfaceStamps = null;
+        trackStampSprite = null;
+        trackStampMaterial = null;
         trackDebugRoot = null;
 
         Debug.Log("MarbleRaceRunner Shutdown");
@@ -1272,6 +1281,18 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
+        var sampleCount = Mathf.Min(trackCenter.Length, trackNormal?.Length ?? 0, trackHalfWidth?.Length ?? 0);
+        if (sampleCount <= 0)
+        {
+            Debug.LogError("MarbleRaceRunner track build invalid: no track samples. Falling back to oval track template.");
+            BuildFallbackOvalTrack();
+            sampleCount = Mathf.Min(trackCenter.Length, trackNormal?.Length ?? 0, trackHalfWidth?.Length ?? 0);
+            if (sampleCount <= 0)
+            {
+                return;
+            }
+        }
+
         if (trackDebugRoot != null)
         {
             Destroy(trackDebugRoot);
@@ -1281,19 +1302,40 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         trackDebugRoot.transform.SetParent(sceneGraph.DebugRoot, false);
         trackDebugRoot.SetActive(showDebugTrack);
 
-        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", new Color(0.1f, 1f, 0.45f, 0.98f), 0.22f, -12);
-        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", new Color(1f, 0.55f, 0.1f, 0.98f), 0.22f, -12);
-        startLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "StartLine", Color.white, 0.2f, -8, loop: false);
+        var sortingGroup = trackDebugRoot.AddComponent<SortingGroup>();
+        sortingGroup.sortingLayerName = "Default";
+        sortingGroup.sortingOrder = -30;
 
-        var left = new Vector3[TrackSamples];
-        var right = new Vector3[TrackSamples];
-        for (var i = 0; i < TrackSamples; i++)
+        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", new Color(0.1f, 1f, 0.45f, 0.98f), 0.24f, -10);
+        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", new Color(1f, 0.55f, 0.1f, 0.98f), 0.24f, -10);
+        startLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "StartLine", Color.white, 0.22f, -8, loop: false);
+
+        var left = new Vector3[sampleCount];
+        var right = new Vector3[sampleCount];
+        var nanFound = false;
+        var widthSum = 0f;
+        for (var i = 0; i < sampleCount; i++)
         {
             var c = trackCenter[i];
             var n = trackNormal[i];
             var w = trackHalfWidth[i];
+            if (float.IsNaN(c.x) || float.IsNaN(c.y) || float.IsNaN(n.x) || float.IsNaN(n.y) || float.IsNaN(w))
+            {
+                nanFound = true;
+            }
+
+            widthSum += Mathf.Abs(w) * 2f;
             left[i] = new Vector3(c.x + n.x * w, c.y + n.y * w, 0f);
             right[i] = new Vector3(c.x - n.x * w, c.y - n.y * w, 0f);
+        }
+
+        var averageWidth = widthSum / sampleCount;
+        if (averageWidth < 0.05f || nanFound)
+        {
+            Debug.LogError($"MarbleRaceRunner track build invalid: avgWidth={averageWidth:F4} nanFound={nanFound}. Falling back to oval track template.");
+            BuildFallbackOvalTrack();
+            BuildDebugTrack();
+            return;
         }
 
         leftBoundaryRenderer.positionCount = left.Length;
@@ -1307,65 +1349,153 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         startLineRenderer.SetPosition(0, startA);
         startLineRenderer.SetPosition(1, startB);
 
-        BuildTrackSurfaceMesh(trackDebugRoot.transform, left, right);
+        BuildTrackSurfaceStamps(trackDebugRoot.transform, sampleCount);
+        DisableLegacyTrackSurfaceMesh(trackDebugRoot.transform);
+        Debug.Log($"MarbleRaceRunner track debug built: samples={sampleCount}, stamps={(trackSurfaceStamps?.Length ?? 0)}, avgWidth={averageWidth:F3}, nanFound={nanFound}");
     }
 
-    private void BuildTrackSurfaceMesh(Transform parent, Vector3[] left, Vector3[] right)
+    private void BuildTrackSurfaceStamps(Transform parent, int sampleCount)
     {
-        var go = new GameObject("TrackSurface");
-        go.transform.SetParent(parent, false);
-        trackSurfaceMeshFilter = go.AddComponent<MeshFilter>();
-        trackSurfaceMeshRenderer = go.AddComponent<MeshRenderer>();
+        trackSurfaceStampsRoot = parent.Find("TrackSurfaceStamps");
+        if (trackSurfaceStampsRoot == null)
+        {
+            var root = new GameObject("TrackSurfaceStamps");
+            root.transform.SetParent(parent, false);
+            trackSurfaceStampsRoot = root.transform;
+        }
 
-        var shader = Shader.Find("Sprites/Default");
-        var mat = new Material(shader);
-        mat.color = new Color(0.16f, 0.16f, 0.17f, 0.66f);
-        trackSurfaceMeshRenderer.material = mat;
-        trackSurfaceMeshRenderer.sortingOrder = -20;
+        EnsureTrackStampResources();
+        trackSurfaceStamps = new SpriteRenderer[sampleCount];
 
-        var vertices = new Vector3[TrackSamples * 2];
-        var uvs = new Vector2[TrackSamples * 2];
-        var triangles = new int[TrackSamples * 6];
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var stamp = new GameObject($"Stamp_{i:000}");
+            stamp.transform.SetParent(trackSurfaceStampsRoot, false);
+            var sr = stamp.AddComponent<SpriteRenderer>();
+            sr.sprite = trackStampSprite;
+            sr.material = trackStampMaterial;
+            sr.sortingLayerName = "Default";
+            sr.sortingOrder = -20;
+            trackSurfaceStamps[i] = sr;
+        }
+
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var sr = trackSurfaceStamps[i];
+            var p0 = trackCenter[i];
+            var p1 = trackCenter[(i + 1) % sampleCount];
+            var segment = p1 - p0;
+            var length = segment.magnitude;
+
+            if (length < 0.0001f)
+            {
+                sr.enabled = false;
+                continue;
+            }
+
+            sr.enabled = true;
+            var mid = (p0 + p1) * 0.5f;
+            var angle = Mathf.Atan2(segment.y, segment.x) * Mathf.Rad2Deg;
+            sr.transform.position = new Vector3(mid.x, mid.y, 0f);
+            sr.transform.rotation = Quaternion.Euler(0f, 0f, angle);
+            sr.transform.localScale = new Vector3(length, Mathf.Max(0.02f, trackHalfWidth[i] * 2f), 1f);
+        }
+    }
+
+    private void EnsureTrackStampResources()
+    {
+        if (trackStampSprite == null)
+        {
+            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            texture.SetPixel(0, 0, Color.white);
+            texture.Apply();
+            trackStampSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        }
+
+        if (trackStampMaterial == null)
+        {
+            var shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
+                ?? Shader.Find("Sprites/Default");
+            trackStampMaterial = new Material(shader);
+            var color = new Color(0.16f, 0.16f, 0.17f, 0.66f);
+            if (trackStampMaterial.HasProperty("_BaseColor"))
+            {
+                trackStampMaterial.SetColor("_BaseColor", color);
+            }
+
+            if (trackStampMaterial.HasProperty("_Color"))
+            {
+                trackStampMaterial.SetColor("_Color", color);
+            }
+        }
+    }
+
+    private void DisableLegacyTrackSurfaceMesh(Transform parent)
+    {
+        var legacy = parent.Find("TrackSurface");
+        if (legacy == null)
+        {
+            return;
+        }
+
+        trackSurfaceMeshRenderer = legacy.GetComponent<MeshRenderer>();
+        if (trackSurfaceMeshRenderer != null)
+        {
+            trackSurfaceMeshRenderer.enabled = false;
+        }
+    }
+
+    private void BuildFallbackOvalTrack()
+    {
+        trackCenter = new Vector2[TrackSamples];
+        trackTangent = new Vector2[TrackSamples];
+        trackNormal = new Vector2[TrackSamples];
+        trackHalfWidth = new float[TrackSamples];
+        trackCurvature = new float[TrackSamples];
+        trackElevation = new float[TrackSamples];
+        trackSlopeAccel = new float[TrackSamples];
+
+        var radiusX = Mathf.Max(8f, halfWidth * 0.68f);
+        var radiusY = Mathf.Max(8f, halfHeight * 0.52f);
 
         for (var i = 0; i < TrackSamples; i++)
         {
-            var baseVertex = i * 2;
-            vertices[baseVertex] = left[i];
-            vertices[baseVertex + 1] = right[i];
+            var t = (float)i / TrackSamples;
+            var angle = t * Mathf.PI * 2f;
+            var cos = Mathf.Cos(angle);
+            var sin = Mathf.Sin(angle);
+            trackCenter[i] = new Vector2(cos * radiusX, sin * radiusY);
 
-            var v = (float)i / TrackSamples;
-            uvs[baseVertex] = new Vector2(0f, v);
-            uvs[baseVertex + 1] = new Vector2(1f, v);
-
-            var next = (i + 1) % TrackSamples;
-            var nextBase = next * 2;
-            var tri = i * 6;
-            triangles[tri] = baseVertex;
-            triangles[tri + 1] = nextBase;
-            triangles[tri + 2] = baseVertex + 1;
-            triangles[tri + 3] = baseVertex + 1;
-            triangles[tri + 4] = nextBase;
-            triangles[tri + 5] = nextBase + 1;
+            var tangent = new Vector2(-sin * radiusX, cos * radiusY).normalized;
+            trackTangent[i] = tangent;
+            trackNormal[i] = new Vector2(-tangent.y, tangent.x);
+            trackHalfWidth[i] = 3f;
+            trackCurvature[i] = 0.12f;
         }
-
-        var mesh = new Mesh { name = "TrackSurfaceMesh" };
-        mesh.vertices = vertices;
-        mesh.uv = uvs;
-        mesh.triangles = triangles;
-        mesh.RecalculateBounds();
-        mesh.RecalculateNormals();
-        trackSurfaceMeshFilter.mesh = mesh;
     }
 
-    private static LineRenderer CreateBoundaryRenderer(Transform parent, string name, Color color, float width, int sortingOrder, bool loop = true)
+    private LineRenderer CreateBoundaryRenderer(Transform parent, string name, Color color, float width, int sortingOrder, bool loop = true)
     {
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         var lr = go.AddComponent<LineRenderer>();
         lr.loop = loop;
-        lr.useWorldSpace = false;
+        lr.useWorldSpace = true;
         lr.widthMultiplier = width;
-        lr.material = new Material(Shader.Find("Sprites/Default"));
+
+        var shader = Shader.Find("Universal Render Pipeline/Unlit")
+            ?? Shader.Find("Sprites/Default");
+        lr.material = new Material(shader);
+        if (lr.material.HasProperty("_BaseColor"))
+        {
+            lr.material.SetColor("_BaseColor", color);
+        }
+
+        if (lr.material.HasProperty("_Color"))
+        {
+            lr.material.SetColor("_Color", color);
+        }
+
         lr.startColor = color;
         lr.endColor = color;
         lr.textureMode = LineTextureMode.Stretch;
