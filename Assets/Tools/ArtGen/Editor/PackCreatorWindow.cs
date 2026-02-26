@@ -11,32 +11,32 @@ using UnityEngine;
 public sealed class PackCreatorWindow : EditorWindow
 {
     private static readonly string[] Tabs = { "Agents", "World", "UI" };
-    private static readonly Regex StateGuessRegex = new("idle|walk|run|fight|drive|turn|work|attack", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex StateGuessRegex = new Regex("idle|walk|run|fight|drive|turn|work|attack", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    private static readonly Dictionary<string, PackCreatorSimConfig> SimConfigs = new(StringComparer.Ordinal)
+    private static readonly Dictionary<string, PackCreatorSimConfig> SimConfigs = new Dictionary<string, PackCreatorSimConfig>(StringComparer.Ordinal)
     {
-        ["AntColonies"] = new("AntColonies", "ant", new[] { "idle", "walk", "run", "fight" }),
-        ["MarbleRace"] = new("MarbleRace", "marble", new[] { "idle", "roll", "run" }),
-        ["FantasySport"] = new("FantasySport", "player", new[] { "idle", "run", "attack" }),
-        ["RaceCar"] = new("RaceCar", "car", new[] { "idle", "drive", "turn" })
+        ["AntColonies"] = new PackCreatorSimConfig("AntColonies", "ant", new[] { "idle", "walk", "run", "fight" }),
+        ["MarbleRace"] = new PackCreatorSimConfig("MarbleRace", "marble", new[] { "idle", "roll", "run" }),
+        ["FantasySport"] = new PackCreatorSimConfig("FantasySport", "player", new[] { "idle", "run", "attack" }),
+        ["RaceCar"] = new PackCreatorSimConfig("RaceCar", "car", new[] { "idle", "drive", "turn" })
     };
 
-    private readonly Dictionary<PackCreatorAssetGroup, PackCreatorBuildStyle> buildStyles = new()
+    private readonly Dictionary<PackCreatorAssetGroup, PackCreatorBuildStyle> buildStyles = new Dictionary<PackCreatorAssetGroup, PackCreatorBuildStyle>()
     {
         [PackCreatorAssetGroup.Agents] = PackCreatorBuildStyle.BasicShapes,
         [PackCreatorAssetGroup.World] = PackCreatorBuildStyle.BasicShapes,
         [PackCreatorAssetGroup.UI] = PackCreatorBuildStyle.BasicShapes
     };
 
-    private readonly Dictionary<PackCreatorAssetGroup, string> jsonInputs = new()
+    private readonly Dictionary<PackCreatorAssetGroup, string> jsonInputs = new Dictionary<PackCreatorAssetGroup, string>()
     {
         [PackCreatorAssetGroup.Agents] = string.Empty,
         [PackCreatorAssetGroup.World] = string.Empty,
         [PackCreatorAssetGroup.UI] = string.Empty
     };
 
-    private readonly Dictionary<PackCreatorAssetGroup, Vector2> groupScroll = new();
-    private readonly List<PackCreatorSheetImportRow> stagedRows = new();
+    private readonly Dictionary<PackCreatorAssetGroup, Vector2> groupScroll = new Dictionary<PackCreatorAssetGroup, Vector2>();
+    private readonly List<PackCreatorSheetImportRow> stagedRows = new List<PackCreatorSheetImportRow>();
 
     private int selectedSimIndex;
     private string packId = "pack.v1";
@@ -49,7 +49,7 @@ public sealed class PackCreatorWindow : EditorWindow
     [MenuItem("Tools/GSP/Pack Creator")]
     public static void Open()
     {
-        var window = GetWindow<PackCreatorWindow>("Pack Creator");
+        var window = EditorWindow.GetWindow<PackCreatorWindow>("Pack Creator");
         window.minSize = new Vector2(780f, 540f);
     }
 
@@ -394,8 +394,8 @@ public sealed class PackCreatorWindow : EditorWindow
     {
         try
         {
-            var parsed = JsonUtility.FromJson<PackInputManifest>(jsonInputs[group]);
-            statusLine = parsed == null ? "JSON validation warning: JsonUtility returned null." : "JSON validation passed (syntax check via JsonUtility).";
+            JsonUtility.FromJson<PackCreatorJsonProbe>(jsonInputs[group]);
+            statusLine = "JSON validation passed (syntax check via JsonUtility).";
         }
         catch (Exception ex)
         {
@@ -543,16 +543,24 @@ public sealed class PackCreatorWindow : EditorWindow
 
     private static string ComputeSha1(string filePath)
     {
-        using var stream = File.OpenRead(filePath);
-        using var sha1 = SHA1.Create();
-        var hash = sha1.ComputeHash(stream);
-        var sb = new StringBuilder(hash.Length * 2);
-        foreach (var b in hash)
+        using (var stream = File.OpenRead(filePath))
+        using (var sha1 = SHA1.Create())
         {
-            sb.Append(b.ToString("x2"));
-        }
+            var hash = sha1.ComputeHash(stream);
+            var sb = new StringBuilder(hash.Length * 2);
+            foreach (var b in hash)
+            {
+                sb.Append(b.ToString("x2"));
+            }
 
-        return sb.ToString();
+            return sb.ToString();
+        }
+    }
+
+
+    [Serializable]
+    private sealed class PackCreatorJsonProbe
+    {
     }
 
     private PackCreatorSimConfig CurrentSimConfig() => SimConfigs[CurrentSimId()];

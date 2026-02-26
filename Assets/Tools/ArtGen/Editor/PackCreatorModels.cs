@@ -23,7 +23,7 @@ public sealed class PackCreatorSimConfig
 {
     public string simulationId;
     public string defaultEntityId;
-    public List<string> defaultStates = new();
+    public List<string> defaultStates = new List<string>();
 
     public PackCreatorSimConfig(string simulationId, string defaultEntityId, IReadOnlyList<string> defaultStates)
     {
