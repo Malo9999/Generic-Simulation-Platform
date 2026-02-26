@@ -62,18 +62,29 @@ public static class PackBuildPipeline
 
         foreach (var entity in recipe.entities)
         {
-            var module = ModuleRegistry.GetArchetype(entity.archetypeId) ?? throw new InvalidOperationException($"Missing archetype module '{entity.archetypeId}'");
-            module.EnsureLibrariesExist();
+            var isBasicShapesAgentBuild = string.Equals(recipe.agentsBuildStyle, "BasicShapes", StringComparison.OrdinalIgnoreCase);
+            var module = isBasicShapesAgentBuild
+                ? null
+                : ModuleRegistry.GetArchetype(entity.archetypeId) ?? throw new InvalidOperationException($"Missing archetype module '{entity.archetypeId}'");
+            module?.EnsureLibrariesExist();
             var assetNeeds = (recipe.referenceAssets ?? new List<PackRecipe.ReferenceAssetNeed>()).Where(a => string.Equals(a.entityId, entity.entityId, StringComparison.OrdinalIgnoreCase)).ToList();
             var useOutline = assetNeeds.Any(a => a.generationMode == PackRecipe.GenerationMode.OutlineDriven);
 
-            var speciesIds = module.PickSpeciesIds(Deterministic.DeriveSeed(recipe.seed, "species:" + entity.entityId), entity.speciesCount);
+            var speciesIds = module != null
+                ? module.PickSpeciesIds(Deterministic.DeriveSeed(recipe.seed, "species:" + entity.entityId), entity.speciesCount)
+                : new List<string>();
             var recipeSpeciesIds = BuildRecipeSpeciesIds(entity.entityId, assetNeeds, entity.speciesCount);
             var displaySpecies = recipeSpeciesIds.Count > 0 ? recipeSpeciesIds : BuildDisplaySpeciesIds(assetNeeds, entity.speciesCount);
             var resolvedSpeciesIds = recipeSpeciesIds.Count > 0 ? recipeSpeciesIds : speciesIds;
+            if (resolvedSpeciesIds.Count == 0)
+            {
+                resolvedSpeciesIds = new List<string> { "default" };
+            }
 
             speciesSelections.Add(new ContentPack.SpeciesSelection { entityId = entity.entityId, speciesIds = new List<string>(resolvedSpeciesIds) });
-            var cells = useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, resolvedSpeciesIds, module);
+            var cells = isBasicShapesAgentBuild
+                ? BuildBasicShapeAgentCells(entity, resolvedSpeciesIds, 10)
+                : (useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, resolvedSpeciesIds, module));
 
             var clipStates = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase) ? AntContractStates() : entity.states;
             foreach (var role in entity.roles)
@@ -102,7 +113,7 @@ public static class PackBuildPipeline
                     overwrite,
                     recipe.simulationId,
                     new CompileSheetOptions(recipe.generationPolicy.renderAntStripeOverlay));
-                if (generatedSprites.Count == 0)
+                if (generatedSprites.Count == 0 && !isBasicShapesAgentBuild)
                 {
                     Debug.LogWarning($"[PackBuildPipeline] Pipeline generated zero sprites for '{entity.entityId}'. Falling back to placeholder sprites.");
                     var expectedIds = BuildExpectedSpriteIds(entity, resolvedSpeciesIds);
@@ -202,6 +213,85 @@ public static class PackBuildPipeline
             var message = $"No generated sprites found for entity '{entity.entityId}' (expected prefix '{prefix}').";
             report.warnings.Add(message);
             Debug.LogError("[PackBuildPipeline] " + message);
+        }
+    }
+
+    private static List<SheetCell> BuildBasicShapeAgentCells(PackRecipe.EntityRequirement entityReq, List<string> resolvedSpeciesIds, int frameCount)
+    {
+        var cells = new List<SheetCell>();
+        var roles = entityReq.roles != null && entityReq.roles.Count > 0 ? entityReq.roles : new List<string> { "worker" };
+        var stages = entityReq.lifeStages != null && entityReq.lifeStages.Count > 0 ? entityReq.lifeStages : new List<string> { "adult" };
+        var states = entityReq.states != null && entityReq.states.Count > 0
+            ? entityReq.states
+            : new List<string> { "idle", "walk", "run", "fight" };
+        var speciesIds = resolvedSpeciesIds != null && resolvedSpeciesIds.Count > 0
+            ? resolvedSpeciesIds
+            : new List<string> { "default" };
+
+        foreach (var speciesId in speciesIds)
+        {
+            var fillColor = BasicShapeColorForSpecies(speciesId);
+            foreach (var role in roles)
+            foreach (var stage in stages)
+            foreach (var state in states)
+            for (var frame = 0; frame < Mathf.Max(1, frameCount); frame++)
+            {
+                var body = CreateBasicCircleBlueprint(32, 32, 16, 16, 10, 11);
+                cells.Add(new SheetCell
+                {
+                    id = $"agent:{entityReq.entityId}:{speciesId}:{role}:{stage}:{state}:{frame:00}",
+                    body = body,
+                    baseColor = fillColor,
+                    outlineColor = MultiplyColor(fillColor, 0.4f)
+                });
+            }
+        }
+
+        return cells;
+    }
+
+    private static PixelBlueprint2D CreateBasicCircleBlueprint(int width, int height, int centerX, int centerY, int fillRadius, int outlineRadius)
+    {
+        var blueprint = ScriptableObject.CreateInstance<PixelBlueprint2D>();
+        blueprint.width = width;
+        blueprint.height = height;
+
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        {
+            var dx = x - centerX;
+            var dy = y - centerY;
+            var distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared <= fillRadius * fillRadius)
+            {
+                blueprint.Set("body", x, y, 1);
+                continue;
+            }
+
+            if (distanceSquared <= outlineRadius * outlineRadius)
+            {
+                blueprint.Set("outline", x, y, 1);
+            }
+        }
+
+        return blueprint;
+    }
+
+    private static Color32 BasicShapeColorForSpecies(string speciesId)
+    {
+        switch ((speciesId ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "fireant": return new Color32(214, 78, 52, 255);
+            case "carpenterant": return new Color32(48, 48, 56, 255);
+            case "pharaohant": return new Color32(236, 178, 82, 255);
+            case "weaverant": return new Color32(58, 168, 98, 255);
+            case "armyant": return new Color32(124, 62, 154, 255);
+            default:
+                var hash = Mathf.Abs((speciesId ?? "default").GetHashCode());
+                var r = (byte)(80 + (hash % 120));
+                var g = (byte)(70 + ((hash / 7) % 140));
+                var b = (byte)(70 + ((hash / 17) % 140));
+                return new Color32(r, g, b, 255);
         }
     }
 
