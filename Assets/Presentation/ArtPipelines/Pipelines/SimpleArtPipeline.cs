@@ -38,6 +38,7 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     public override void ConfigureDebug(bool enabled, DebugPlaceholderMode mode)
     {
+        forceDebugPlaceholder = enabled;
         debugEnabled = enabled;
         debugMode = mode;
     }
