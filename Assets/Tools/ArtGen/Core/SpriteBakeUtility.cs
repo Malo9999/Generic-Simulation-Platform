@@ -102,7 +102,14 @@ public static class SpriteBakeUtility
         {
             foreach (var sprite in sprites.Where(s => s != null))
             {
-                AssetDatabase.AddObjectToAsset(sprite, parentAsset);
+                try
+                {
+                    AssetDatabase.AddObjectToAsset(sprite, path);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[SpriteBakeUtility] Failed to add sprite '{sprite.name}' to '{path}': {ex}");
+                }
             }
         }
 

@@ -73,7 +73,7 @@ public static class PackBuildPipeline
             var resolvedSpeciesIds = recipeSpeciesIds.Count > 0 ? recipeSpeciesIds : speciesIds;
 
             speciesSelections.Add(new ContentPack.SpeciesSelection { entityId = entity.entityId, speciesIds = new List<string>(resolvedSpeciesIds) });
-            var cells = useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, speciesIds, module);
+            var cells = useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, resolvedSpeciesIds, module);
 
             var clipStates = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase) ? AntContractStates() : entity.states;
             foreach (var role in entity.roles)
