@@ -1,8 +1,8 @@
 {
   "simulationId": "FantasySport",
   "world": {
-    "arenaWidth": 80,
-    "arenaHeight": 52,
+    "arenaWidth": 60,
+    "arenaHeight": 40,
     "walls": true,
     "obstacleDensity": 0.15
   }
