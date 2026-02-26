@@ -155,13 +155,18 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var rng = RngService.Fork("SIM:FantasySport:SPAWN");
+        var teamSize = AthleteCount / 2;
 
         for (var i = 0; i < AthleteCount; i++)
         {
+            var teamId = i < teamSize ? 0 : 1;
+            var teamIndex = i % teamSize;
+            var role = teamIndex <= 2 ? "offense" : "defense";
+
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
-                teamId: i < AthleteCount / 2 ? 0 : 1,
-                role: i < AthleteCount / 2 ? "offense" : "defense",
+                teamId: teamId,
+                role: role,
                 variantCount: 3,
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "FantasySport");
@@ -208,6 +213,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 Debug.Log($"{nameof(FantasySportRunner)} spawn[{i}] {identity}");
             }
         }
+
+        ResetAthleteFormationAndVelocities();
     }
 
     private void ResolveArtPipeline()
@@ -270,31 +277,61 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        var laneStep = (halfHeight * 1.8f) / Mathf.Max(1, (AthleteCount / 2) - 1);
-        var teamCounts = new int[2];
-
-        for (var i = 0; i < athletes.Length; i++)
-        {
-            var teamId = identities[i].teamId;
-            var teamSlot = teamCounts[teamId]++;
-            var laneY = -halfHeight * 0.9f + (laneStep * teamSlot);
-            var xBase = teamId == 0 ? -halfWidth * 0.45f : halfWidth * 0.45f;
-            var xOffset = identities[i].role == "offense" ? halfWidth * 0.12f : -halfWidth * 0.12f;
-            if (teamId == 1)
-            {
-                xOffset *= -1f;
-            }
-
-            positions[i] = new Vector2(xBase + xOffset, laneY);
-            velocities[i] = Vector2.zero;
-            stunTimers[i] = 0f;
-            tackleCooldowns[i] = 0f;
-        }
+        ResetAthleteFormationAndVelocities();
 
         ballPos = Vector2.zero;
         ballVel = Vector2.zero;
         ballOwnerIndex = -1;
         ballOwnerTeam = -1;
+    }
+
+    private void ResetAthleteFormationAndVelocities()
+    {
+        var margin = 4f;
+        var ySpacing = Mathf.Clamp(halfHeight * 0.35f, 3f, 10f);
+        var teamSize = AthleteCount / 2;
+
+        for (var i = 0; i < athletes.Length; i++)
+        {
+            var teamId = identities[i].teamId;
+            var teamIndex = i % teamSize;
+            var sign = teamId == 0 ? -1f : 1f;
+            var offenseX = sign * (halfWidth * 0.25f);
+            var defenseX = sign * (halfWidth * 0.55f);
+
+            var isOffense = teamIndex <= 2;
+            var x = isOffense ? offenseX : defenseX;
+            var y = 0f;
+
+            if (isOffense)
+            {
+                y = teamIndex switch
+                {
+                    0 => -ySpacing,
+                    1 => 0f,
+                    _ => ySpacing
+                };
+            }
+            else
+            {
+                y = teamIndex == 3 ? -ySpacing * 0.5f : ySpacing * 0.5f;
+            }
+
+            x = Mathf.Clamp(x, -halfWidth + margin, halfWidth - margin);
+            y = Mathf.Clamp(y, -halfHeight + margin, halfHeight - margin);
+
+            positions[i] = new Vector2(x, y);
+
+            var baseDirection = teamId == 0 ? Vector2.right : Vector2.left;
+            var rng = RngService.Fork($"SIM:FantasySport:SPAWNVEL:{i}");
+            var jitter = rng.Range(-0.35f, 0.35f);
+            var moveDirection = Quaternion.Euler(0f, 0f, jitter * Mathf.Rad2Deg) * new Vector3(baseDirection.x, baseDirection.y, 0f);
+            var speed = rng.Range(4f, 6f);
+            velocities[i] = new Vector2(moveDirection.x, moveDirection.y).normalized * speed;
+
+            stunTimers[i] = 0f;
+            tackleCooldowns[i] = 0f;
+        }
     }
 
     private void UpdateAthletes(float dt)
