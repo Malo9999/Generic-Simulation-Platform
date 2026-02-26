@@ -981,8 +981,14 @@ public static class PackBuildPipeline
     private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId, CompileSheetOptions options)
     {
         if (!overwrite && File.Exists(path)) return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
+        if (cells == null || cells.Count == 0)
+        {
+            Debug.LogWarning($"[PackBuildPipeline] CompileSheet called with 0 cells for path '{path}'. Returning empty list so fallback can generate placeholders.");
+            return new List<Sprite>();
+        }
+        if (cellSize <= 0) return new List<Sprite>();
         var columns = Mathf.Clamp(Mathf.CeilToInt(Mathf.Sqrt(Mathf.Max(1, cells.Count))), 1, 64);
-        var rows = Mathf.CeilToInt(cells.Count / (float)columns);
+        var rows = Mathf.Max(1, Mathf.CeilToInt(cells.Count / (float)columns));
         var width = columns * cellSize;
         var height = rows * cellSize;
         var pixels = new Color32[width * height];
