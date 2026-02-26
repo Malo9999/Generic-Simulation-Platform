@@ -32,6 +32,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private float[] steeringAccels;
     private int[] lapCount;
     private float[] progressScore;
+    private float[] stuckTimer;
     private float[] desiredLaneOffset;
     private int[] closestTrackIndex;
     private int[] previousLapLogged;
@@ -75,8 +76,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     public RacePhase CurrentPhase => raceState;
 
     private GameObject trackDebugRoot;
+    private MeshFilter trackSurfaceMeshFilter;
+    private MeshRenderer trackSurfaceMeshRenderer;
     private LineRenderer leftBoundaryRenderer;
     private LineRenderer rightBoundaryRenderer;
+    private LineRenderer startLineRenderer;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -185,6 +189,31 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
             if (raceState == RacePhase.Racing)
             {
+                var idx = closestTrackIndex[i];
+                var lateral = Vector2.Dot(positions[i] - trackCenter[idx], trackNormal[idx]);
+                var speed = velocities[i].magnitude;
+                var half = trackHalfWidth[idx];
+                if (Mathf.Abs(lateral) > half * 1.25f && speed < 0.5f)
+                {
+                    RescueMarble(i);
+                }
+                else
+                {
+                    if (speed < 0.25f)
+                    {
+                        stuckTimer[i] += dt;
+                    }
+                    else
+                    {
+                        stuckTimer[i] = 0f;
+                    }
+
+                    if (stuckTimer[i] > 1.2f)
+                    {
+                        RescueMarble(i);
+                    }
+                }
+
                 UpdateLapProgress(i);
             }
 
@@ -231,6 +260,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         steeringAccels = null;
         lapCount = null;
         progressScore = null;
+        stuckTimer = null;
         desiredLaneOffset = null;
         closestTrackIndex = null;
         previousLapLogged = null;
@@ -263,6 +293,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         winnerIndex = -1;
         leftBoundaryRenderer = null;
         rightBoundaryRenderer = null;
+        startLineRenderer = null;
+        trackSurfaceMeshFilter = null;
+        trackSurfaceMeshRenderer = null;
         trackDebugRoot = null;
 
         Debug.Log("MarbleRaceRunner Shutdown");
@@ -288,6 +321,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         steeringAccels = new float[MarbleCount];
         lapCount = new int[MarbleCount];
         progressScore = new float[MarbleCount];
+        stuckTimer = new float[MarbleCount];
         desiredLaneOffset = new float[MarbleCount];
         closestTrackIndex = new int[MarbleCount];
         previousLapLogged = new int[MarbleCount];
@@ -398,17 +432,65 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void BuildTrack(float arenaHalfWidth, float arenaHalfHeight, IRng rng)
     {
-        controlPoints = BuildGrandPrixControlPoints(arenaHalfWidth, arenaHalfHeight, rng);
-        var smooth = ApplyChaikinLoop(controlPoints, 3);
-        trackCenter = ResampleLoopedCatmull(smooth, TrackSamples);
+        var buildSucceeded = false;
+        var smoothIterations = 2;
+
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var attemptRng = RngService.Fork($"SIM:MarbleRace:TRACK:{attempt}");
+            var template = (TrackTemplate)Mathf.Min(attempt, 3);
+            float jitterScale;
+            switch (attempt)
+            {
+                case 0:
+                    jitterScale = 1f;
+                    break;
+                case 1:
+                    jitterScale = 0.35f;
+                    break;
+                default:
+                    jitterScale = 0f;
+                    break;
+            }
+
+            controlPoints = BuildGrandPrixControlPoints(arenaHalfWidth, arenaHalfHeight, attemptRng, template, jitterScale);
+            var smooth = ApplyChaikinLoop(controlPoints, smoothIterations);
+            trackCenter = ResampleLoopedCatmull(smooth, TrackSamples);
+
+            var trackInfo = BuildTrackFrameAndValidate(trackCenter);
+            if (!trackInfo.isValid)
+            {
+                continue;
+            }
+
+            EnsureSafeStartLine(2.8f, trackInfo.curvature);
+            trackInfo = BuildTrackFrameAndValidate(trackCenter);
+            if (!trackInfo.isValid)
+            {
+                continue;
+            }
+
+            trackTangent = trackInfo.tangent;
+            trackNormal = trackInfo.normal;
+            trackCurvature = trackInfo.curvature;
+
+            buildSucceeded = true;
+            break;
+        }
+
+        if (!buildSucceeded)
+        {
+            controlPoints = BuildGrandPrixControlPoints(arenaHalfWidth, arenaHalfHeight, rng, TrackTemplate.RoundedRectangle, 0f);
+            var smooth = ApplyChaikinLoop(controlPoints, smoothIterations + 1);
+            trackCenter = ResampleLoopedCatmull(smooth, TrackSamples);
+            var fallbackInfo = BuildTrackFrameAndValidate(trackCenter, skipValidity: true);
+            trackTangent = fallbackInfo.tangent;
+            trackNormal = fallbackInfo.normal;
+            trackCurvature = fallbackInfo.curvature;
+        }
 
         var baseHalfWidth = Mathf.Clamp(Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.14f, 2.2f, 5.5f);
-        EnsureSafeStartLine(baseHalfWidth * 0.8f);
-
-        trackTangent = new Vector2[TrackSamples];
-        trackNormal = new Vector2[TrackSamples];
         trackHalfWidth = new float[TrackSamples];
-        trackCurvature = new float[TrackSamples];
         trackElevation = new float[TrackSamples];
         trackSlopeAccel = new float[TrackSamples];
 
@@ -423,23 +505,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < TrackSamples; i++)
         {
-            var prev = trackCenter[(i - 1 + TrackSamples) % TrackSamples];
-            var curr = trackCenter[i];
-            var next = trackCenter[(i + 1) % TrackSamples];
-            var tangent = (next - prev).normalized;
-            if (tangent.sqrMagnitude < 0.00001f)
-            {
-                tangent = Vector2.right;
-            }
-
-            trackTangent[i] = tangent;
-            trackNormal[i] = new Vector2(-tangent.y, tangent.x);
-
-            var a = (curr - prev).normalized;
-            var b = (next - curr).normalized;
-            var corner = 1f - Mathf.Clamp01(Vector2.Dot(a, b));
-            trackCurvature[i] = corner;
-
+            var corner = trackCurvature[i];
             var straightness = 1f - corner;
             var width = baseHalfWidth * (0.9f + straightness * 0.4f);
             if (i >= overtakeAStart && i <= overtakeAEnd)
@@ -474,48 +540,241 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
-    private Vector2[] BuildGrandPrixControlPoints(float arenaHalfWidth, float arenaHalfHeight, IRng rng)
+    private enum TrackTemplate
     {
-        var maxX = Mathf.Max(6f, arenaHalfWidth - 4f);
-        var maxY = Mathf.Max(6f, arenaHalfHeight - 4f);
-
-        var points = new[]
-        {
-            new Vector2(-0.78f, -0.12f),
-            new Vector2(-0.58f, -0.08f),
-            new Vector2(-0.24f, -0.06f),
-            new Vector2(0.24f, -0.04f),
-            new Vector2(0.70f, -0.02f),
-            new Vector2(0.84f, 0.30f),   // hairpin approach
-            new Vector2(0.66f, 0.72f),
-            new Vector2(0.16f, 0.80f),
-            new Vector2(-0.18f, 0.64f),  // chicane / S entry
-            new Vector2(-0.38f, 0.82f),
-            new Vector2(-0.62f, 0.66f),
-            new Vector2(-0.80f, 0.24f),
-            new Vector2(-0.86f, -0.18f),
-            new Vector2(-0.66f, -0.54f),
-            new Vector2(-0.18f, -0.76f),
-            new Vector2(0.42f, -0.68f),
-        };
-
-        var result = new Vector2[points.Length];
-        for (var i = 0; i < points.Length; i++)
-        {
-            var p = new Vector2(points[i].x * maxX, points[i].y * maxY);
-            var jitter = new Vector2(rng.Range(-0.9f, 0.9f), rng.Range(-0.8f, 0.8f));
-            if (i % 4 == 0)
-            {
-                jitter *= 0.45f;
-            }
-
-            result[i] = p + jitter;
-        }
-
-        EnforceMinControlPointSeparation(result, 2.8f);
-        return result;
+        GrandPrix,
+        GrandPrixLowJitter,
+        RoundedRectangle,
+        OvalChicane,
     }
 
+    private Vector2[] BuildGrandPrixControlPoints(float arenaHalfWidth, float arenaHalfHeight, IRng rng, TrackTemplate template, float jitterScale)
+    {
+        var maxX = Mathf.Max(8f, arenaHalfWidth - 5f);
+        var maxY = Mathf.Max(8f, arenaHalfHeight - 5f);
+
+        Vector2[] points;
+        switch (template)
+        {
+            case TrackTemplate.RoundedRectangle:
+                points = BuildRoundedRectangleTemplate(maxX, maxY);
+                break;
+            case TrackTemplate.OvalChicane:
+                points = BuildOvalChicaneTemplate(maxX, maxY);
+                break;
+            default:
+                points = BuildGrandPrixTemplate(maxX, maxY);
+                break;
+        }
+
+        if (jitterScale > 0f)
+        {
+            var jitterX = 0.75f * jitterScale;
+            var jitterY = 0.65f * jitterScale;
+            for (var i = 0; i < points.Length; i++)
+            {
+                var jitter = new Vector2(rng.Range(-jitterX, jitterX), rng.Range(-jitterY, jitterY));
+                if (i % 5 == 0)
+                {
+                    jitter *= 0.35f;
+                }
+
+                points[i] += jitter;
+            }
+        }
+
+        EnforceMinControlPointSeparation(points, 2.8f);
+        return points;
+    }
+
+    private static Vector2[] BuildGrandPrixTemplate(float maxX, float maxY)
+    {
+        return new[]
+        {
+            new Vector2(-0.78f * maxX, -0.22f * maxY),
+            new Vector2(-0.42f * maxX, -0.22f * maxY),
+            new Vector2(0.12f * maxX, -0.20f * maxY),
+            new Vector2(0.62f * maxX, -0.18f * maxY),
+            new Vector2(0.84f * maxX, 0.05f * maxY),
+            new Vector2(0.76f * maxX, 0.42f * maxY),
+            new Vector2(0.44f * maxX, 0.72f * maxY),
+            new Vector2(0.06f * maxX, 0.80f * maxY),
+            new Vector2(-0.20f * maxX, 0.70f * maxY),
+            new Vector2(-0.36f * maxX, 0.56f * maxY),
+            new Vector2(-0.50f * maxX, 0.72f * maxY),
+            new Vector2(-0.66f * maxX, 0.58f * maxY),
+            new Vector2(-0.82f * maxX, 0.22f * maxY),
+            new Vector2(-0.86f * maxX, -0.10f * maxY),
+            new Vector2(-0.72f * maxX, -0.44f * maxY),
+            new Vector2(-0.38f * maxX, -0.70f * maxY),
+            new Vector2(0.12f * maxX, -0.74f * maxY),
+            new Vector2(0.52f * maxX, -0.66f * maxY),
+        };
+    }
+
+    private static Vector2[] BuildRoundedRectangleTemplate(float maxX, float maxY)
+    {
+        return new[]
+        {
+            new Vector2(-0.78f * maxX, -0.36f * maxY),
+            new Vector2(-0.34f * maxX, -0.42f * maxY),
+            new Vector2(0.34f * maxX, -0.42f * maxY),
+            new Vector2(0.78f * maxX, -0.30f * maxY),
+            new Vector2(0.88f * maxX, 0.00f * maxY),
+            new Vector2(0.76f * maxX, 0.34f * maxY),
+            new Vector2(0.34f * maxX, 0.46f * maxY),
+            new Vector2(-0.30f * maxX, 0.44f * maxY),
+            new Vector2(-0.74f * maxX, 0.30f * maxY),
+            new Vector2(-0.88f * maxX, 0.00f * maxY),
+        };
+    }
+
+    private static Vector2[] BuildOvalChicaneTemplate(float maxX, float maxY)
+    {
+        return new[]
+        {
+            new Vector2(-0.84f * maxX, -0.10f * maxY),
+            new Vector2(-0.48f * maxX, -0.24f * maxY),
+            new Vector2(-0.06f * maxX, -0.30f * maxY),
+            new Vector2(0.34f * maxX, -0.26f * maxY),
+            new Vector2(0.74f * maxX, -0.12f * maxY),
+            new Vector2(0.88f * maxX, 0.14f * maxY),
+            new Vector2(0.58f * maxX, 0.36f * maxY),
+            new Vector2(0.18f * maxX, 0.26f * maxY),
+            new Vector2(-0.08f * maxX, 0.44f * maxY),
+            new Vector2(-0.34f * maxX, 0.30f * maxY),
+            new Vector2(-0.62f * maxX, 0.36f * maxY),
+            new Vector2(-0.84f * maxX, 0.16f * maxY),
+        };
+    }
+
+    private (Vector2[] tangent, Vector2[] normal, float[] curvature, bool isValid) BuildTrackFrameAndValidate(Vector2[] centerLine, bool skipValidity = false)
+    {
+        var tangent = new Vector2[TrackSamples];
+        var normal = new Vector2[TrackSamples];
+        var curvature = new float[TrackSamples];
+
+        for (var i = 0; i < TrackSamples; i++)
+        {
+            var prev = centerLine[(i - 1 + TrackSamples) % TrackSamples];
+            var curr = centerLine[i];
+            var next = centerLine[(i + 1) % TrackSamples];
+            var t = (next - prev).normalized;
+            if (t.sqrMagnitude < 0.00001f)
+            {
+                t = i > 0 ? tangent[i - 1] : Vector2.right;
+            }
+
+            if (i > 0 && Vector2.Dot(t, tangent[i - 1]) < 0f)
+            {
+                t = -t;
+            }
+
+            tangent[i] = t;
+            var n = new Vector2(-t.y, t.x);
+            if (i > 0 && Vector2.Dot(n, normal[i - 1]) < 0f)
+            {
+                n = -n;
+            }
+
+            normal[i] = n;
+
+            var a = (curr - prev).normalized;
+            var b = (next - curr).normalized;
+            curvature[i] = 1f - Mathf.Clamp01(Vector2.Dot(a, b));
+        }
+
+        if (Vector2.Dot(normal[0], normal[TrackSamples - 1]) < 0f)
+        {
+            for (var i = 0; i < TrackSamples; i++)
+            {
+                normal[i] = -normal[i];
+            }
+        }
+
+        if (skipValidity)
+        {
+            return (tangent, normal, curvature, true);
+        }
+
+        var cuspValid = true;
+        for (var i = 0; i < TrackSamples; i++)
+        {
+            var prevIdx = (i - 1 + TrackSamples) % TrackSamples;
+            if (Vector2.Dot(tangent[i], tangent[prevIdx]) < 0.2f)
+            {
+                cuspValid = false;
+                break;
+            }
+        }
+
+        var selfIntersecting = HasSelfIntersection(centerLine, 4);
+        return (tangent, normal, curvature, cuspValid && !selfIntersecting);
+    }
+
+    private static bool HasSelfIntersection(Vector2[] line, int step)
+    {
+        var n = line.Length;
+        for (var i = 0; i < n; i += step)
+        {
+            var i2 = (i + step) % n;
+            var a1 = line[i];
+            var a2 = line[i2];
+
+            for (var j = i + step; j < n; j += step)
+            {
+                var j2 = (j + step) % n;
+                if (SegmentsAreNeighbors(i, i2, j, j2, n))
+                {
+                    continue;
+                }
+
+                if (SegmentsIntersect(a1, a2, line[j], line[j2]))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SegmentsAreNeighbors(int aStart, int aEnd, int bStart, int bEnd, int total)
+    {
+        if (aStart == bStart || aStart == bEnd || aEnd == bStart || aEnd == bEnd)
+        {
+            return true;
+        }
+
+        if ((aStart == 0 && bEnd == total - 1) || (bStart == 0 && aEnd == total - 1))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool SegmentsIntersect(Vector2 p1, Vector2 p2, Vector2 q1, Vector2 q2)
+    {
+        var r = p2 - p1;
+        var s = q2 - q1;
+        var den = Cross(r, s);
+        var qp = q1 - p1;
+
+        if (Mathf.Abs(den) < 0.00001f)
+        {
+            return false;
+        }
+
+        var t = Cross(qp, s) / den;
+        var u = Cross(qp, r) / den;
+        return t > 0f && t < 1f && u > 0f && u < 1f;
+    }
+
+    private static float Cross(Vector2 a, Vector2 b)
+    {
+        return a.x * b.y - a.y * b.x;
+    }
     private static void EnforceMinControlPointSeparation(Vector2[] points, float minSeparation)
     {
         var minSq = minSeparation * minSeparation;
@@ -540,7 +799,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
-    private void EnsureSafeStartLine(float threshold)
+    private void EnsureSafeStartLine(float threshold, float[] curvature)
     {
         if (trackCenter == null || trackCenter.Length < 4)
         {
@@ -548,21 +807,16 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var seamDistance = Vector2.Distance(trackCenter[0], trackCenter[TrackSamples - 1]);
-        if (seamDistance >= threshold)
-        {
-            return;
-        }
-
         var bestIndex = 0;
         var bestScore = float.MinValue;
         for (var i = 0; i < TrackSamples; i++)
         {
             var prev = trackCenter[(i - 1 + TrackSamples) % TrackSamples];
             var curr = trackCenter[i];
-            var next = trackCenter[(i + 1) % TrackSamples];
-            var corner = 1f - Mathf.Clamp01(Vector2.Dot((curr - prev).normalized, (next - curr).normalized));
-            var separation = Vector2.Distance(curr, trackCenter[(i - 1 + TrackSamples) % TrackSamples]);
-            var score = separation - corner * 3f;
+            var separation = Vector2.Distance(curr, prev);
+            var corner = curvature != null && i < curvature.Length ? curvature[i] : 0f;
+            var straightBonus = 1f - Mathf.Clamp01(corner * 2.4f);
+            var score = separation + straightBonus * 4f - corner * 3f;
             if (score > bestScore)
             {
                 bestScore = score;
@@ -570,7 +824,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        if (bestIndex == 0)
+        if (bestIndex == 0 && seamDistance >= threshold)
         {
             return;
         }
@@ -889,6 +1143,15 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         velocities[marbleIndex] = tangent * tangentialVel + normal * lateralVel;
     }
 
+    private void RescueMarble(int marbleIndex)
+    {
+        var idx = closestTrackIndex[marbleIndex];
+        var laneClamp = Mathf.Clamp(desiredLaneOffset[marbleIndex], -trackHalfWidth[idx] * 0.6f, trackHalfWidth[idx] * 0.6f);
+        positions[marbleIndex] = trackCenter[idx] + trackNormal[idx] * laneClamp;
+        velocities[marbleIndex] = trackTangent[idx] * Mathf.Max(2.5f, targetSpeeds[marbleIndex] * 0.6f);
+        stuckTimer[marbleIndex] = 0f;
+    }
+
     private void ApplySoftArenaBounds(int index, float dt)
     {
         var outX = Mathf.Abs(positions[index].x) - halfWidth;
@@ -1018,8 +1281,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         trackDebugRoot.transform.SetParent(sceneGraph.DebugRoot, false);
         trackDebugRoot.SetActive(showDebugTrack);
 
-        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", new Color(0.1f, 1f, 0.45f, 0.95f));
-        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", new Color(1f, 0.55f, 0.1f, 0.95f));
+        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", new Color(0.1f, 1f, 0.45f, 0.98f), 0.22f, -12);
+        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", new Color(1f, 0.55f, 0.1f, 0.98f), 0.22f, -12);
+        startLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "StartLine", Color.white, 0.2f, -8, loop: false);
 
         var left = new Vector3[TrackSamples];
         var right = new Vector3[TrackSamples];
@@ -1036,22 +1300,78 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         leftBoundaryRenderer.SetPositions(left);
         rightBoundaryRenderer.positionCount = right.Length;
         rightBoundaryRenderer.SetPositions(right);
+
+        var startA = left[0];
+        var startB = right[0];
+        startLineRenderer.positionCount = 2;
+        startLineRenderer.SetPosition(0, startA);
+        startLineRenderer.SetPosition(1, startB);
+
+        BuildTrackSurfaceMesh(trackDebugRoot.transform, left, right);
     }
 
-    private static LineRenderer CreateBoundaryRenderer(Transform parent, string name, Color color)
+    private void BuildTrackSurfaceMesh(Transform parent, Vector3[] left, Vector3[] right)
+    {
+        var go = new GameObject("TrackSurface");
+        go.transform.SetParent(parent, false);
+        trackSurfaceMeshFilter = go.AddComponent<MeshFilter>();
+        trackSurfaceMeshRenderer = go.AddComponent<MeshRenderer>();
+
+        var shader = Shader.Find("Sprites/Default");
+        var mat = new Material(shader);
+        mat.color = new Color(0.16f, 0.16f, 0.17f, 0.66f);
+        trackSurfaceMeshRenderer.material = mat;
+        trackSurfaceMeshRenderer.sortingOrder = -20;
+
+        var vertices = new Vector3[TrackSamples * 2];
+        var uvs = new Vector2[TrackSamples * 2];
+        var triangles = new int[TrackSamples * 6];
+
+        for (var i = 0; i < TrackSamples; i++)
+        {
+            var baseVertex = i * 2;
+            vertices[baseVertex] = left[i];
+            vertices[baseVertex + 1] = right[i];
+
+            var v = (float)i / TrackSamples;
+            uvs[baseVertex] = new Vector2(0f, v);
+            uvs[baseVertex + 1] = new Vector2(1f, v);
+
+            var next = (i + 1) % TrackSamples;
+            var nextBase = next * 2;
+            var tri = i * 6;
+            triangles[tri] = baseVertex;
+            triangles[tri + 1] = nextBase;
+            triangles[tri + 2] = baseVertex + 1;
+            triangles[tri + 3] = baseVertex + 1;
+            triangles[tri + 4] = nextBase;
+            triangles[tri + 5] = nextBase + 1;
+        }
+
+        var mesh = new Mesh { name = "TrackSurfaceMesh" };
+        mesh.vertices = vertices;
+        mesh.uv = uvs;
+        mesh.triangles = triangles;
+        mesh.RecalculateBounds();
+        mesh.RecalculateNormals();
+        trackSurfaceMeshFilter.mesh = mesh;
+    }
+
+    private static LineRenderer CreateBoundaryRenderer(Transform parent, string name, Color color, float width, int sortingOrder, bool loop = true)
     {
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         var lr = go.AddComponent<LineRenderer>();
-        lr.loop = true;
+        lr.loop = loop;
         lr.useWorldSpace = false;
-        lr.widthMultiplier = 0.12f;
+        lr.widthMultiplier = width;
         lr.material = new Material(Shader.Find("Sprites/Default"));
         lr.startColor = color;
         lr.endColor = color;
         lr.textureMode = LineTextureMode.Stretch;
         lr.numCornerVertices = 2;
         lr.numCapVertices = 2;
+        lr.sortingOrder = sortingOrder;
         return lr;
     }
 
