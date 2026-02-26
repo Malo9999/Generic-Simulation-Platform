@@ -15,6 +15,7 @@ public class ArtModeSelector : MonoBehaviour
 
     private ArtManifest runtimeManifest;
     private string resolvedSimulationId;
+    private Bootstrapper cachedBootstrapper;
 
     private void Awake()
     {
@@ -51,11 +52,26 @@ public class ArtModeSelector : MonoBehaviour
         }
 
         var effectiveSimulationId = ResolveSimulationId();
+        var effectiveMode = requestedMode;
+        var debugEnabled = forceDebugPlaceholders;
+        var effectiveDebugMode = debugMode;
+
+        if (followBootstrapper)
+        {
+            var bootstrapper = FindBootstrapper();
+            if (bootstrapper != null)
+            {
+                effectiveMode = bootstrapper.CurrentArtMode;
+                debugEnabled = bootstrapper.CurrentUsePlaceholders;
+                effectiveDebugMode = bootstrapper.CurrentDebugMode;
+            }
+        }
+
         runtimeManifest = GetManifest();
-        ActivePipeline = registry.Resolve(effectiveSimulationId, runtimeManifest, requestedMode);
+        ActivePipeline = registry.Resolve(effectiveSimulationId, runtimeManifest, effectiveMode);
         if (ActivePipeline != null)
         {
-            ActivePipeline.ConfigureDebug(forceDebugPlaceholders, debugMode);
+            ActivePipeline.ConfigureDebug(debugEnabled, effectiveDebugMode);
         }
     }
 
@@ -88,8 +104,7 @@ public class ArtModeSelector : MonoBehaviour
 
         if (manifestOverride == null && followBootstrapper)
         {
-            var bootstrapper = UnityEngine.Object.FindFirstObjectByType<Bootstrapper>()
-                ?? UnityEngine.Object.FindAnyObjectByType<Bootstrapper>();
+            var bootstrapper = FindBootstrapper();
             if (bootstrapper != null && !string.IsNullOrWhiteSpace(bootstrapper.CurrentSimulationId))
             {
                 effectiveSimulationId = bootstrapper.CurrentSimulationId;
@@ -108,5 +123,17 @@ public class ArtModeSelector : MonoBehaviour
         }
 
         return resolvedSimulationId;
+    }
+
+    private Bootstrapper FindBootstrapper()
+    {
+        if (cachedBootstrapper != null)
+        {
+            return cachedBootstrapper;
+        }
+
+        cachedBootstrapper = UnityEngine.Object.FindFirstObjectByType<Bootstrapper>()
+            ?? UnityEngine.Object.FindAnyObjectByType<Bootstrapper>();
+        return cachedBootstrapper;
     }
 }

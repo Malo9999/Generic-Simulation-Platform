@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -9,6 +10,14 @@ using UnityEditor;
 
 public class Bootstrapper : MonoBehaviour
 {
+    [Serializable]
+    public struct SimArtSettings
+    {
+        public ArtMode mode;
+        public bool usePlaceholders;
+        public DebugPlaceholderMode debugMode;
+    }
+
     [SerializeField] private BootstrapOptions options;
     [SerializeField, Min(0.0001f)] private float tickDeltaTime = 1f / 60f;
     [SerializeField] private ContentPack contentPackOverride;
@@ -26,6 +35,7 @@ public class Bootstrapper : MonoBehaviour
     private string currentRunFolder;
     private int tickCount;
     private float smoothedFps;
+    private readonly Dictionary<string, SimArtSettings> artBySim = new(StringComparer.OrdinalIgnoreCase);
 
     public string CurrentSimulationId => currentConfig?.simulationId ?? options?.simulationId ?? "MarbleRace";
     public int CurrentSeed => currentConfig?.seed ?? 0;
@@ -37,6 +47,9 @@ public class Bootstrapper : MonoBehaviour
     public int CurrentTick => IsReplayMode ? replayDriver?.CurrentTick ?? 0 : simDriver?.CurrentTick ?? 0;
     public bool IsPaused => IsReplayMode ? replayDriver?.IsPaused ?? false : simDriver?.IsPaused ?? false;
     public float TimeScale => IsReplayMode ? replayDriver?.TimeScale ?? 1f : simDriver?.TimeScale ?? 1f;
+    public ArtMode CurrentArtMode => GetArt(CurrentSimulationId).mode;
+    public bool CurrentUsePlaceholders => GetArt(CurrentSimulationId).usePlaceholders;
+    public DebugPlaceholderMode CurrentDebugMode => GetArt(CurrentSimulationId).debugMode;
 
     private bool IsReplayMode => string.Equals(currentConfig?.mode, "Replay", StringComparison.OrdinalIgnoreCase);
 
@@ -112,6 +125,32 @@ public class Bootstrapper : MonoBehaviour
 
     public void ResetSimulation() => StartSimulation(CurrentSimulationId, false);
 
+    public void SetArtModeForCurrent(ArtMode mode)
+    {
+        var s = GetArt(CurrentSimulationId);
+        s.mode = mode;
+        artBySim[CurrentSimulationId] = s;
+        ResetSimulation();
+    }
+
+    public void TogglePlaceholdersForCurrent()
+    {
+        var s = GetArt(CurrentSimulationId);
+        s.usePlaceholders = !s.usePlaceholders;
+        artBySim[CurrentSimulationId] = s;
+        ResetSimulation();
+    }
+
+    public void CycleDebugModeForCurrent()
+    {
+        var s = GetArt(CurrentSimulationId);
+        s.debugMode = s.debugMode == DebugPlaceholderMode.Overlay
+            ? DebugPlaceholderMode.Replace
+            : DebugPlaceholderMode.Overlay;
+        artBySim[CurrentSimulationId] = s;
+        ResetSimulation();
+    }
+
     public void SwitchToNextSimulation()
     {
         var simulationId = GetSimulationIdAtOffset(1);
@@ -145,6 +184,27 @@ public class Bootstrapper : MonoBehaviour
         var nextIndex = (currentIndex + direction + catalog.Simulations.Count) % catalog.Simulations.Count;
         var simulationId = catalog.Simulations[nextIndex]?.simulationId;
         return string.IsNullOrWhiteSpace(simulationId) ? CurrentSimulationId : simulationId;
+    }
+
+    private SimArtSettings GetArt(string simId)
+    {
+        if (string.IsNullOrWhiteSpace(simId))
+        {
+            simId = CurrentSimulationId;
+        }
+
+        if (!artBySim.TryGetValue(simId, out var settings))
+        {
+            settings = new SimArtSettings
+            {
+                mode = ArtMode.Simple,
+                usePlaceholders = false,
+                debugMode = DebugPlaceholderMode.Replace
+            };
+            artBySim[simId] = settings;
+        }
+
+        return settings;
     }
 
     private void StartSimulation(string simulationId, bool initialRun)

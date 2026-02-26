@@ -27,6 +27,7 @@ public class FlatArtPipeline : ArtPipelineBase
 
     public override void ConfigureDebug(bool enabled, DebugPlaceholderMode mode)
     {
+        forceDebugPlaceholder = enabled;
         debugEnabled = enabled;
         debugMode = mode;
     }
@@ -81,8 +82,8 @@ public class FlatArtPipeline : ArtPipelineBase
         }
 
         ApplyPlaceholderSorting(renderer, debugOn: false);
-        SetIconRootVisibility(renderer, false);
-        SetPlaceholderVisible(renderer, true);
+        SetPlaceholderVisible(renderer, false);
+        SetIconRootVisibility(renderer, true);
     }
 
     private static void ApplyPlaceholderSorting(GameObject renderer, bool debugOn)

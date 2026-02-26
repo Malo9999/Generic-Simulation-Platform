@@ -29,6 +29,7 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
 
     public override void ConfigureDebug(bool enabled, DebugPlaceholderMode mode)
     {
+        forceDebugPlaceholder = enabled;
         debugEnabled = enabled;
         debugMode = mode;
     }
@@ -103,9 +104,8 @@ public class IsoL1_4DirPipeline : ArtPipelineBase
         }
 
         ApplyPlaceholderSorting(renderer, debugOn: false);
-        SetIconRootVisibility(renderer, false);
-        SetPlaceholderVisible(renderer, true);
-        ApplySnappedFacing(renderer, velocity);
+        SetPlaceholderVisible(renderer, false);
+        SetIconRootVisibility(renderer, true);
     }
 
 
