@@ -980,7 +980,14 @@ public static class PackBuildPipeline
 
     private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId, CompileSheetOptions options)
     {
-        if (!overwrite && File.Exists(path)) return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
+        var spritesAssetPath = $"{Path.GetDirectoryName(path)}/{Path.GetFileNameWithoutExtension(path)}_sprites.asset".Replace("\\", "/");
+        if (!overwrite && File.Exists(spritesAssetPath))
+        {
+            return AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath)
+                .OfType<Sprite>()
+                .OrderBy(s => s.name, StringComparer.Ordinal)
+                .ToList();
+        }
         if (cells == null || cells.Count == 0)
         {
             Debug.LogWarning($"[PackBuildPipeline] CompileSheet called with 0 cells for path '{path}'. Returning empty list so fallback can generate placeholders.");
@@ -1054,8 +1061,17 @@ public static class PackBuildPipeline
             new Vector2(0.5f, 0.5f),
             cellSize,
             index => index < cells.Count ? cells[index].id : $"sheet:{index:000}");
-        SpriteBakeUtility.AddOrReplaceSubAssets(importedTexture, sprites);
-        return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(x => x.name, StringComparer.Ordinal).ToList();
+
+        var container = AssetDatabase.LoadAssetAtPath<SpriteSubAssetContainer>(spritesAssetPath);
+        if (container == null)
+        {
+            container = ScriptableObject.CreateInstance<SpriteSubAssetContainer>();
+            container.name = Path.GetFileNameWithoutExtension(spritesAssetPath);
+            AssetDatabase.CreateAsset(container, spritesAssetPath);
+        }
+
+        SpriteBakeUtility.AddOrReplaceSubAssets(container, sprites);
+        return AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath).OfType<Sprite>().OrderBy(x => x.name, StringComparer.Ordinal).ToList();
     }
 
     private static void RenderAntLayers(SheetCell cell, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 fallbackBaseColor, bool renderStripeOverlay)

@@ -104,7 +104,7 @@ public static class SpriteBakeUtility
             {
                 try
                 {
-                    AssetDatabase.AddObjectToAsset(sprite, path);
+                    AssetDatabase.AddObjectToAsset(sprite, parentAsset);
                 }
                 catch (Exception ex)
                 {
