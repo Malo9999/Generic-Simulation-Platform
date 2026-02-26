@@ -22,8 +22,8 @@ public sealed class PackInputManifest
     public int cellSize = 64;
     public int padding = 2;
     public string layout = "PerStateSheets";
-    public List<string> states = new();
-    public List<ImportedFile> importedFiles = new();
+    public List<string> states = new List<string>();
+    public List<ImportedFile> importedFiles = new List<ImportedFile>();
 
     public static PackInputManifest Load(string assetRelativePath)
     {
@@ -35,17 +35,40 @@ public sealed class PackInputManifest
 
         var json = File.ReadAllText(fullPath);
         var manifest = JsonUtility.FromJson<PackInputManifest>(json);
-        manifest ??= new PackInputManifest();
-        manifest.states ??= new List<string>();
-        manifest.importedFiles ??= new List<ImportedFile>();
+        if (manifest == null)
+        {
+            manifest = new PackInputManifest();
+        }
+
+        if (manifest.states == null)
+        {
+            manifest.states = new List<string>();
+        }
+
+        if (manifest.importedFiles == null)
+        {
+            manifest.importedFiles = new List<ImportedFile>();
+        }
+
         return manifest;
     }
 
     public static void Save(string assetRelativePath, PackInputManifest manifest)
     {
-        manifest ??= new PackInputManifest();
-        manifest.states ??= new List<string>();
-        manifest.importedFiles ??= new List<ImportedFile>();
+        if (manifest == null)
+        {
+            manifest = new PackInputManifest();
+        }
+
+        if (manifest.states == null)
+        {
+            manifest.states = new List<string>();
+        }
+
+        if (manifest.importedFiles == null)
+        {
+            manifest.importedFiles = new List<ImportedFile>();
+        }
 
         var fullPath = Path.GetFullPath(assetRelativePath);
         var folder = Path.GetDirectoryName(fullPath);
