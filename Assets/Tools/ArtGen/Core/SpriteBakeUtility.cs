@@ -6,8 +6,6 @@ using UnityEngine;
 
 public static class SpriteBakeUtility
 {
-    private static readonly string[] GeneratedNamePrefixes = { "agent:", "sheet:", "placeholder:" };
-
     public static void EnsureTextureImportSettings(string texturePath)
     {
         if (AssetImporter.GetAtPath(texturePath) is not TextureImporter importer)
@@ -64,7 +62,7 @@ public static class SpriteBakeUtility
             var rect = new Rect(x, y, frameW, frameH);
             var sprite = Sprite.Create(sheet, rect, pivot, pixelsPerUnit, 0, SpriteMeshType.FullRect);
             sprite.name = spriteNameForIndex?.Invoke(index) ?? $"sprite:{index:000}";
-            sprite.hideFlags = HideFlags.HideInHierarchy;
+            sprite.hideFlags = HideFlags.None;
             baked.Add(sprite);
         }
 
@@ -84,22 +82,12 @@ public static class SpriteBakeUtility
             return;
         }
 
-        var subAssets = AssetDatabase.LoadAllAssetsAtPath(path);
-        foreach (var subAsset in subAssets)
+        foreach (var subAsset in AssetDatabase.LoadAllAssetsAtPath(path))
         {
-            if (subAsset is not Sprite existing)
+            if (subAsset is Sprite spriteSubAsset)
             {
-                continue;
+                UnityEngine.Object.DestroyImmediate(spriteSubAsset, true);
             }
-
-            var generatedByFlags = (existing.hideFlags & HideFlags.HideInHierarchy) != 0;
-            var generatedByPrefix = GeneratedNamePrefixes.Any(prefix => existing.name.StartsWith(prefix, StringComparison.Ordinal));
-            if (!generatedByFlags && !generatedByPrefix)
-            {
-                continue;
-            }
-
-            UnityEngine.Object.DestroyImmediate(existing, true);
         }
 
         if (sprites != null)
