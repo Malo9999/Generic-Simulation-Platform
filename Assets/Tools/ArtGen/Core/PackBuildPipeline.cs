@@ -401,17 +401,18 @@ public static class PackBuildPipeline
 
     private static List<Sprite> BuildMissingPipelinePlaceholderSprites(string texturePath, List<string> spriteIds, int cellSize, bool overwrite)
     {
+        var spritesAssetPath = BuildSpritesAssetPath(texturePath);
         if (spriteIds == null || spriteIds.Count == 0)
         {
             spriteIds = new List<string> { "agent:missing:default:worker:adult:idle:00" };
         }
 
-        if (!overwrite && File.Exists(texturePath))
+        if (!overwrite)
         {
-            var existingTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
-            if (existingTexture != null)
+            var cached = LoadSpritesFromAssetPath(spritesAssetPath);
+            if (cached.Count > 0)
             {
-                return AssetDatabase.LoadAllAssetRepresentationsAtPath(texturePath).OfType<Sprite>().OrderBy(s => s.name, StringComparer.Ordinal).ToList();
+                return cached;
             }
         }
 
@@ -463,8 +464,9 @@ public static class PackBuildPipeline
             new Vector2(0.5f, 0.5f),
             cellSize,
             index => index < spriteIds.Count ? spriteIds[index] : $"placeholder:{index:000}");
-        SpriteBakeUtility.AddOrReplaceSubAssets(importedTexture, baked);
-        return AssetDatabase.LoadAllAssetRepresentationsAtPath(texturePath).OfType<Sprite>().OrderBy(s => s.name, StringComparer.Ordinal).ToList();
+        var container = GetOrCreateSpriteSubAssetContainer(spritesAssetPath);
+        SpriteBakeUtility.AddOrReplaceSubAssets(container, baked);
+        return LoadSpritesFromAssetPath(spritesAssetPath);
     }
 
     private static List<SheetCell> BuildOutlineCells(PackRecipe recipe, PackRecipe.EntityRequirement entity, List<string> displaySpecies)
@@ -980,13 +982,15 @@ public static class PackBuildPipeline
 
     private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId, CompileSheetOptions options)
     {
-        var spritesAssetPath = $"{Path.GetDirectoryName(path)}/{Path.GetFileNameWithoutExtension(path)}_sprites.asset".Replace("\\", "/");
-        if (!overwrite && File.Exists(spritesAssetPath))
+        var spritesAssetPath = BuildSpritesAssetPath(path);
+        if (!overwrite)
         {
-            return AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath)
-                .OfType<Sprite>()
-                .OrderBy(s => s.name, StringComparer.Ordinal)
-                .ToList();
+            var cached = LoadSpritesFromAssetPath(spritesAssetPath);
+            if (cached.Count > 0)
+            {
+                Debug.Log($"[PackBuildPipeline] Reusing existing sprite container at '{spritesAssetPath}' with {cached.Count} sprites.");
+                return cached;
+            }
         }
         if (cells == null || cells.Count == 0)
         {
@@ -998,6 +1002,7 @@ public static class PackBuildPipeline
         var rows = Mathf.Max(1, Mathf.CeilToInt(cells.Count / (float)columns));
         var width = columns * cellSize;
         var height = rows * cellSize;
+        Debug.Log($"[PackBuildPipeline] CompileSheet sheetPath='{path}', spritesAssetPath='{spritesAssetPath}', cellCount={cells.Count}, columns={columns}, rows={rows}, width={width}, height={height}");
         var pixels = new Color32[width * height];
 
         for (var i = 0; i < cells.Count; i++)
@@ -1061,17 +1066,38 @@ public static class PackBuildPipeline
             new Vector2(0.5f, 0.5f),
             cellSize,
             index => index < cells.Count ? cells[index].id : $"sheet:{index:000}");
+        Debug.Log($"[PackBuildPipeline] CompileSheet bakedSprites.Count={sprites.Count} for sheetPath='{path}'");
 
+        var container = GetOrCreateSpriteSubAssetContainer(spritesAssetPath);
+        SpriteBakeUtility.AddOrReplaceSubAssets(container, sprites);
+        return LoadSpritesFromAssetPath(spritesAssetPath);
+    }
+
+    private static string BuildSpritesAssetPath(string texturePath)
+    {
+        return $"{Path.GetDirectoryName(texturePath)}/{Path.GetFileNameWithoutExtension(texturePath)}_sprites.asset".Replace("\\", "/");
+    }
+
+    private static SpriteSubAssetContainer GetOrCreateSpriteSubAssetContainer(string spritesAssetPath)
+    {
         var container = AssetDatabase.LoadAssetAtPath<SpriteSubAssetContainer>(spritesAssetPath);
-        if (container == null)
+        if (container != null)
         {
-            container = ScriptableObject.CreateInstance<SpriteSubAssetContainer>();
-            container.name = Path.GetFileNameWithoutExtension(spritesAssetPath);
-            AssetDatabase.CreateAsset(container, spritesAssetPath);
+            return container;
         }
 
-        SpriteBakeUtility.AddOrReplaceSubAssets(container, sprites);
-        return AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath).OfType<Sprite>().OrderBy(x => x.name, StringComparer.Ordinal).ToList();
+        container = ScriptableObject.CreateInstance<SpriteSubAssetContainer>();
+        container.name = Path.GetFileNameWithoutExtension(spritesAssetPath);
+        AssetDatabase.CreateAsset(container, spritesAssetPath);
+        return container;
+    }
+
+    private static List<Sprite> LoadSpritesFromAssetPath(string spritesAssetPath)
+    {
+        return AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath)
+            .OfType<Sprite>()
+            .OrderBy(s => s.name, StringComparer.Ordinal)
+            .ToList();
     }
 
     private static void RenderAntLayers(SheetCell cell, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 fallbackBaseColor, bool renderStripeOverlay)
