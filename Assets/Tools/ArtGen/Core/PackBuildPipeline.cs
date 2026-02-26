@@ -586,6 +586,8 @@ public static class PackBuildPipeline
                     var id = isAntEntity
                         ? BuildAntSpriteId(species, "worker", "adult", state, contractFrame)
                         : $"agent:{entity.entityId}:{species}:worker:adult:{state}:{contractFrame:00}";
+                    AddBasicShapesStateStripe(warped, recipe.agentSpriteSize, recipe.agentSpriteSize, state, fillColor);
+                    AddBasicShapesDirectionNoseDot(warped, recipe.agentSpriteSize, recipe.agentSpriteSize, id, fillColor);
                     cells.Add(new SheetCell { id = id, pixels = warped });
                     if (!isAntEntity || recipe.generationPolicy.includeAntMaskSpritesInMainPack)
                     {
@@ -751,6 +753,123 @@ public static class PackBuildPipeline
 
         AddOutline(result, w, h, new Color32(24, 18, 12, 255));
         return result;
+    }
+
+    private static void AddBasicShapesStateStripe(Color32[] pixels, int w, int h, string state, Color32 speciesColor)
+    {
+        var thickness = ResolveStateStripeThickness(state);
+        if (thickness <= 0) return;
+        if (!TryGetOpaqueBounds(pixels, w, h, out var minX, out var maxX, out _, out var maxY)) return;
+
+        var stripeColor = MultiplyColor(speciesColor, 0.65f);
+        var startY = Mathf.Max(0, maxY - thickness + 1);
+        for (var y = startY; y <= maxY; y++)
+        for (var x = minX; x <= maxX; x++)
+        {
+            var index = y * w + x;
+            if (pixels[index].a == 0) continue;
+            pixels[index] = stripeColor;
+        }
+    }
+
+    private static void AddBasicShapesDirectionNoseDot(Color32[] pixels, int w, int h, string spriteId, Color32 speciesColor)
+    {
+        if (!TryGetOpaqueBounds(pixels, w, h, out var minX, out var maxX, out var minY, out var maxY)) return;
+
+        var noseColor = MultiplyColor(speciesColor, 1.25f);
+        var direction = ResolveDirectionToken(spriteId);
+
+        var startX = minX;
+        var startY = minY;
+
+        switch (direction)
+        {
+            case FacingDirection.South:
+                startX = Mathf.Clamp((minX + maxX) / 2, 0, w - 2);
+                startY = Mathf.Clamp(maxY - 1, 0, h - 2);
+                break;
+            case FacingDirection.East:
+                startX = Mathf.Clamp(maxX - 1, 0, w - 2);
+                startY = Mathf.Clamp((minY + maxY) / 2, 0, h - 2);
+                break;
+            case FacingDirection.West:
+                startX = Mathf.Clamp(minX, 0, w - 2);
+                startY = Mathf.Clamp((minY + maxY) / 2, 0, h - 2);
+                break;
+            default:
+                startX = Mathf.Clamp((minX + maxX) / 2, 0, w - 2);
+                startY = Mathf.Clamp(minY, 0, h - 2);
+                break;
+        }
+
+        for (var y = 0; y < 2; y++)
+        for (var x = 0; x < 2; x++)
+        {
+            var px = Mathf.Clamp(startX + x, 0, w - 1);
+            var py = Mathf.Clamp(startY + y, 0, h - 1);
+            pixels[py * w + px] = noseColor;
+        }
+    }
+
+    private static int ResolveStateStripeThickness(string state)
+    {
+        switch ((state ?? string.Empty).ToLowerInvariant())
+        {
+            case "walk": return 1;
+            case "run": return 2;
+            case "fight": return 3;
+            default: return 0;
+        }
+    }
+
+    private static FacingDirection ResolveDirectionToken(string spriteId)
+    {
+        if (string.IsNullOrWhiteSpace(spriteId)) return FacingDirection.North;
+        var tokens = spriteId.Split(':');
+        foreach (var token in tokens)
+        {
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "n":
+                case "north": return FacingDirection.North;
+                case "s":
+                case "south": return FacingDirection.South;
+                case "e":
+                case "east": return FacingDirection.East;
+                case "w":
+                case "west": return FacingDirection.West;
+            }
+        }
+
+        return FacingDirection.North;
+    }
+
+    private static bool TryGetOpaqueBounds(Color32[] pixels, int w, int h, out int minX, out int maxX, out int minY, out int maxY)
+    {
+        minX = w;
+        maxX = -1;
+        minY = h;
+        maxY = -1;
+
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            if (pixels[y * w + x].a == 0) continue;
+            minX = Mathf.Min(minX, x);
+            maxX = Mathf.Max(maxX, x);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+
+        return maxX >= minX && maxY >= minY;
+    }
+
+    private enum FacingDirection
+    {
+        North,
+        South,
+        East,
+        West
     }
 
     private static void ApplyFlatShading(bool[] mask, int w, int h, Color32 fillColor, Color32[] dst)
