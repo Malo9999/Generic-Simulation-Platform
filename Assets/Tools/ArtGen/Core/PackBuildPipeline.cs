@@ -446,8 +446,9 @@ public static class PackBuildPipeline
         File.WriteAllBytes(texturePath, texture.EncodeToPNG());
         UnityEngine.Object.DestroyImmediate(texture);
         AssetDatabase.ImportAsset(texturePath, ImportAssetOptions.ForceSynchronousImport);
-
         SpriteBakeUtility.EnsureTextureImportSettings(texturePath);
+        AssetDatabase.ImportAsset(texturePath, ImportAssetOptions.ForceSynchronousImport);
+
         var importedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
         if (importedTexture == null)
         {
@@ -1048,16 +1049,20 @@ public static class PackBuildPipeline
         File.WriteAllBytes(path, texture.EncodeToPNG());
         UnityEngine.Object.DestroyImmediate(texture);
         AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
-
         SpriteBakeUtility.EnsureTextureImportSettings(path);
-        var importedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-        if (importedTexture == null)
+        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+
+        var sheet = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (sheet == null)
         {
+            Debug.LogError($"[PackBuildPipeline] Failed to load imported sprite sheet at '{path}'.");
             return new List<Sprite>();
         }
 
+        Debug.Log($"[PackBuildPipeline] CompileSheet imported sheet '{sheet.name}' ({sheet.width}x{sheet.height}) for path '{path}'.");
+
         var sprites = SpriteBakeUtility.BakeSpritesFromGrid(
-            importedTexture,
+            sheet,
             cellSize,
             cellSize,
             columns,
@@ -1067,6 +1072,18 @@ public static class PackBuildPipeline
             cellSize,
             index => index < cells.Count ? cells[index].id : $"sheet:{index:000}");
         Debug.Log($"[PackBuildPipeline] CompileSheet bakedSprites.Count={sprites.Count} for sheetPath='{path}'");
+
+        if (sprites.Count > 0)
+        {
+            var firstSprite = sprites[0];
+            if (firstSprite.texture == null)
+            {
+                Debug.LogError($"[PackBuildPipeline] First baked sprite '{firstSprite.name}' has null texture for sheetPath='{path}'. Failing fast.");
+                return new List<Sprite>();
+            }
+
+            Debug.Log($"[PackBuildPipeline] First baked sprite '{firstSprite.name}' texture valid={firstSprite.texture != null} ({firstSprite.texture.width}x{firstSprite.texture.height}).");
+        }
 
         var container = GetOrCreateSpriteSubAssetContainer(spritesAssetPath);
         SpriteBakeUtility.AddOrReplaceSubAssets(container, sprites);

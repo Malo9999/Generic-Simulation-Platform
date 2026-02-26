@@ -14,15 +14,60 @@ public static class SpriteBakeUtility
             return;
         }
 
-        importer.textureType = TextureImporterType.Default;
-        importer.isReadable = true;
-        importer.filterMode = FilterMode.Point;
-        importer.textureCompression = TextureImporterCompression.Uncompressed;
-        importer.mipmapEnabled = false;
-        importer.alphaIsTransparency = true;
-        importer.wrapMode = TextureWrapMode.Clamp;
-        importer.npotScale = TextureImporterNPOTScale.None;
-        importer.SaveAndReimport();
+        var changed = false;
+
+        if (importer.textureType != TextureImporterType.Default)
+        {
+            importer.textureType = TextureImporterType.Default;
+            changed = true;
+        }
+
+        if (!importer.alphaIsTransparency)
+        {
+            importer.alphaIsTransparency = true;
+            changed = true;
+        }
+
+        if (importer.mipmapEnabled)
+        {
+            importer.mipmapEnabled = false;
+            changed = true;
+        }
+
+        if (importer.filterMode != FilterMode.Point)
+        {
+            importer.filterMode = FilterMode.Point;
+            changed = true;
+        }
+
+        if (importer.textureCompression != TextureImporterCompression.Uncompressed)
+        {
+            importer.textureCompression = TextureImporterCompression.Uncompressed;
+            changed = true;
+        }
+
+        if (!importer.isReadable)
+        {
+            importer.isReadable = true;
+            changed = true;
+        }
+
+        if (importer.wrapMode != TextureWrapMode.Clamp)
+        {
+            importer.wrapMode = TextureWrapMode.Clamp;
+            changed = true;
+        }
+
+        if (importer.npotScale != TextureImporterNPOTScale.None)
+        {
+            importer.npotScale = TextureImporterNPOTScale.None;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            importer.SaveAndReimport();
+        }
     }
 
     public static List<Sprite> BakeSpritesFromGrid(
