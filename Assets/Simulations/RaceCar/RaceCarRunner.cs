@@ -136,7 +136,8 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                 instanceId: identity.entityId,
                 kind: string.IsNullOrWhiteSpace(identity.role) ? "car" : identity.role,
                 state: "drive",
-                facingMode: FacingMode.Auto);
+                facingMode: FacingMode.Auto,
+                groupId: identity.teamId);
 
             var visualParent = car.transform;
             if (activePipeline != null)

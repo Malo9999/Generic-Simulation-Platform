@@ -131,7 +131,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
-                teamId: i % 2,
+                teamId: i < AthleteCount / 2 ? 0 : 1,
                 role: i < AthleteCount / 2 ? "offense" : "defense",
                 variantCount: 3,
                 scenarioSeed: config?.seed ?? 0,
@@ -148,7 +148,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 instanceId: identity.entityId,
                 kind: string.IsNullOrWhiteSpace(identity.role) ? "athlete" : identity.role,
                 state: "run",
-                facingMode: FacingMode.Auto);
+                facingMode: FacingMode.Auto,
+                groupId: identity.teamId);
 
             var visualParent = athlete.transform;
             if (activePipeline != null)

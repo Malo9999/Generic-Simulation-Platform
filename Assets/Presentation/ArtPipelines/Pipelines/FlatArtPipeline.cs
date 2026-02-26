@@ -54,7 +54,7 @@ public class FlatArtPipeline : ArtPipelineBase
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var spriteRenderer = spriteObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = DebugShapeSpriteFactory.GetSquareSprite();
-        spriteRenderer.color = BuildStableColor(key);
+        spriteRenderer.color = PlaceholderColorPalette.GetColor(key);
         RenderOrder.Apply(spriteRenderer, RenderOrder.EntityBody);
         spriteRenderer.transform.localScale = Vector3.one * Mathf.Max(0.1f, placeholderScale);
 

@@ -539,7 +539,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             instanceId: ant.id,
             kind: string.IsNullOrWhiteSpace(ant.identity.role) ? $"species-{ant.speciesId}" : ant.identity.role,
             state: "idle",
-            facingMode: FacingMode.Auto);
+            facingMode: FacingMode.Auto,
+            groupId: ant.teamId);
 
         if (activePipeline != null)
         {

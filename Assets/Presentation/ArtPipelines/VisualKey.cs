@@ -12,5 +12,7 @@ public struct VisualKey
     public string state;
     // Visual variation seed (species/skin choice). Defaults to instanceId when omitted by callers.
     public int variantSeed;
+    // Team/group id used for placeholder palette mapping; -1 when unknown.
+    public int groupId;
     public FacingMode facingMode;
 }
