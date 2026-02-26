@@ -18,6 +18,7 @@ MonoBehaviour:
   outputFolder: Assets/Presentation/Packs/AntColonies/pack.v1
   tileSize: 32
   agentSpriteSize: 64
+  agentsBuildStyle: BasicShapes
   environmentId: env.ant.v1
   entities:
   - entityId: ant
