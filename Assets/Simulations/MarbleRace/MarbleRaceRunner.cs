@@ -24,6 +24,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     [SerializeField] private float gravityStrength = 8f;
     [SerializeField] private float rollingFriction = 0.24f;
     [SerializeField] private float maxSpeed = 13f;
+    [SerializeField] private Color debugTrackSurfaceColor = new(0.15f, 0.85f, 0.20f, 0.35f);
+    [SerializeField] private Color debugTrackBorderColor = new(1f, 0.55f, 0.10f, 0.95f);
+    [SerializeField] private Color debugStartLineColor = new(1f, 1f, 1f, 0.95f);
 
     private Transform[] marbles;
     private EntityIdentity[] identities;
@@ -86,6 +89,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private LineRenderer leftBoundaryRenderer;
     private LineRenderer rightBoundaryRenderer;
     private LineRenderer startLineRenderer;
+    private SpriteRenderer sanityStampRenderer;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -1293,22 +1297,28 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        if (trackDebugRoot != null)
+        if (trackDebugRoot == null)
         {
-            Destroy(trackDebugRoot);
+            trackDebugRoot = new GameObject("TrackDebug");
+            trackDebugRoot.transform.SetParent(sceneGraph.DebugRoot, false);
         }
 
-        trackDebugRoot = new GameObject("TrackDebug");
-        trackDebugRoot.transform.SetParent(sceneGraph.DebugRoot, false);
         trackDebugRoot.SetActive(showDebugTrack);
+        var sortingGroup = trackDebugRoot.GetComponent<SortingGroup>();
+        if (sortingGroup == null)
+        {
+            sortingGroup = trackDebugRoot.AddComponent<SortingGroup>();
+        }
 
-        var sortingGroup = trackDebugRoot.AddComponent<SortingGroup>();
         sortingGroup.sortingLayerName = "Default";
-        sortingGroup.sortingOrder = -30;
+        sortingGroup.sortingOrder = 0;
 
-        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", new Color(0.1f, 1f, 0.45f, 0.98f), 0.24f, -10);
-        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", new Color(1f, 0.55f, 0.1f, 0.98f), 0.24f, -10);
-        startLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "StartLine", Color.white, 0.22f, -8, loop: false);
+        EnsureTrackStampResources();
+        EnsureSanityStamp(trackDebugRoot.transform);
+
+        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", debugTrackBorderColor, 0.30f, 220);
+        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", debugTrackBorderColor, 0.30f, 220);
+        startLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "StartLine", debugStartLineColor, 0.40f, 240, loop: false);
 
         var left = new Vector3[sampleCount];
         var right = new Vector3[sampleCount];
@@ -1365,17 +1375,38 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         EnsureTrackStampResources();
+
+        var existingCount = trackSurfaceStampsRoot.childCount;
+        for (var i = existingCount; i < sampleCount; i++)
+        {
+            var stamp = new GameObject($"Stamp_{i:000}");
+            stamp.transform.SetParent(trackSurfaceStampsRoot, false);
+        }
+
+        for (var i = sampleCount; i < trackSurfaceStampsRoot.childCount; i++)
+        {
+            trackSurfaceStampsRoot.GetChild(i).gameObject.SetActive(false);
+        }
+
         trackSurfaceStamps = new SpriteRenderer[sampleCount];
 
         for (var i = 0; i < sampleCount; i++)
         {
-            var stamp = new GameObject($"Stamp_{i:000}");
-            stamp.transform.SetParent(trackSurfaceStampsRoot, false);
-            var sr = stamp.AddComponent<SpriteRenderer>();
+            var stamp = trackSurfaceStampsRoot.GetChild(i);
+            stamp.gameObject.SetActive(true);
+            stamp.name = $"Stamp_{i:000}";
+            var sr = stamp.GetComponent<SpriteRenderer>();
+            if (sr == null)
+            {
+                sr = stamp.gameObject.AddComponent<SpriteRenderer>();
+            }
+
             sr.sprite = trackStampSprite;
-            sr.material = trackStampMaterial;
+            sr.sharedMaterial = trackStampMaterial;
+            sr.color = debugTrackSurfaceColor;
             sr.sortingLayerName = "Default";
-            sr.sortingOrder = -20;
+            sr.sortingOrder = 200;
+            sr.enabled = true;
             trackSurfaceStamps[i] = sr;
         }
 
@@ -1408,6 +1439,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         {
             var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
             texture.SetPixel(0, 0, Color.white);
+            texture.filterMode = FilterMode.Point;
+            texture.wrapMode = TextureWrapMode.Clamp;
             texture.Apply();
             trackStampSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
         }
@@ -1415,19 +1448,38 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         if (trackStampMaterial == null)
         {
             var shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
-                ?? Shader.Find("Sprites/Default");
+                ?? Shader.Find("Sprites/Default")
+                ?? Shader.Find("Universal Render Pipeline/Unlit");
             trackStampMaterial = new Material(shader);
-            var color = new Color(0.16f, 0.16f, 0.17f, 0.66f);
-            if (trackStampMaterial.HasProperty("_BaseColor"))
-            {
-                trackStampMaterial.SetColor("_BaseColor", color);
-            }
-
-            if (trackStampMaterial.HasProperty("_Color"))
-            {
-                trackStampMaterial.SetColor("_Color", color);
-            }
         }
+    }
+
+    private void EnsureSanityStamp(Transform parent)
+    {
+        var sanityTransform = parent.Find("SanityStamp");
+        if (sanityTransform == null)
+        {
+            var sanity = new GameObject("SanityStamp");
+            sanity.transform.SetParent(parent, false);
+            sanityTransform = sanity.transform;
+        }
+
+        sanityStampRenderer = sanityTransform.GetComponent<SpriteRenderer>();
+        if (sanityStampRenderer == null)
+        {
+            sanityStampRenderer = sanityTransform.gameObject.AddComponent<SpriteRenderer>();
+        }
+
+        sanityStampRenderer.sprite = trackStampSprite;
+        sanityStampRenderer.sharedMaterial = trackStampMaterial;
+        sanityStampRenderer.color = new Color(1f, 0f, 1f, 0.9f);
+        sanityStampRenderer.sortingLayerName = "Default";
+        sanityStampRenderer.sortingOrder = 500;
+        sanityStampRenderer.enabled = true;
+
+        sanityTransform.position = Vector3.zero;
+        sanityTransform.rotation = Quaternion.identity;
+        sanityTransform.localScale = new Vector3(6f, 6f, 1f);
     }
 
     private void DisableLegacyTrackSurfaceMesh(Transform parent)
@@ -1476,9 +1528,20 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
     private LineRenderer CreateBoundaryRenderer(Transform parent, string name, Color color, float width, int sortingOrder, bool loop = true)
     {
-        var go = new GameObject(name);
-        go.transform.SetParent(parent, false);
-        var lr = go.AddComponent<LineRenderer>();
+        var lineTransform = parent.Find(name);
+        if (lineTransform == null)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            lineTransform = go.transform;
+        }
+
+        var lr = lineTransform.GetComponent<LineRenderer>();
+        if (lr == null)
+        {
+            lr = lineTransform.gameObject.AddComponent<LineRenderer>();
+        }
+
         lr.loop = loop;
         lr.useWorldSpace = true;
         lr.widthMultiplier = width;
@@ -1501,6 +1564,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         lr.textureMode = LineTextureMode.Stretch;
         lr.numCornerVertices = 2;
         lr.numCapVertices = 2;
+        lr.sortingLayerName = "Default";
         lr.sortingOrder = sortingOrder;
         return lr;
     }
