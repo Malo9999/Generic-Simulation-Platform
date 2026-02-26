@@ -129,7 +129,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 instanceId: identity.entityId,
                 kind: string.IsNullOrWhiteSpace(identity.role) ? "marble" : identity.role,
                 state: "idle",
-                facingMode: FacingMode.Auto);
+                facingMode: FacingMode.Auto,
+                groupId: identity.teamId);
 
             var visualParent = marble.transform;
             if (activePipeline != null)

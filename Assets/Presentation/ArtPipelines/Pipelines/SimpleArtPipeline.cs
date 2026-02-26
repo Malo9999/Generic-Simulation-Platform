@@ -65,7 +65,7 @@ public class SimpleArtPipeline : ArtPipelineBase
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
         dotRenderer.sprite = DebugShapeSpriteFactory.GetCircleSprite();
-        dotRenderer.color = BuildStableColor(key);
+        dotRenderer.color = PlaceholderColorPalette.GetColor(key);
         RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
 
         var arrowObject = new GameObject(PlaceholderArrowName);
@@ -411,32 +411,6 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         animator.animTime += deltaTime * WalkAnimRate;
         return 2 + (Mathf.FloorToInt(animator.animTime) % 3);
-    }
-
-    private static Color BuildStableColor(VisualKey key)
-    {
-        var hashSource = $"{key.entityId}|{key.kind}|{key.variantSeed}";
-        var hash = ComputeStableHash(hashSource);
-        var hue = (hash % 360u) / 360f;
-        return Color.HSVToRGB(hue, 0.7f, 0.95f);
-    }
-
-    private static uint ComputeStableHash(string value)
-    {
-        const uint fnvPrime = 16777619u;
-        var hash = 2166136261u;
-        if (string.IsNullOrEmpty(value))
-        {
-            return hash;
-        }
-
-        for (var i = 0; i < value.Length; i++)
-        {
-            hash ^= value[i];
-            hash *= fnvPrime;
-        }
-
-        return hash;
     }
 
     private enum FrameIndexScheme

@@ -7,7 +7,8 @@ public static class VisualKeyBuilder
         string kind,
         string state,
         FacingMode facingMode = FacingMode.Auto,
-        int? variantSeed = null)
+        int? variantSeed = null,
+        int groupId = -1)
     {
         return new VisualKey
         {
@@ -17,6 +18,7 @@ public static class VisualKeyBuilder
             kind = string.IsNullOrWhiteSpace(kind) ? string.Empty : kind,
             state = string.IsNullOrWhiteSpace(state) ? "idle" : state,
             variantSeed = variantSeed ?? instanceId,
+            groupId = groupId,
             facingMode = facingMode
         };
     }
