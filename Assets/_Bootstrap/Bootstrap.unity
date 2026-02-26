@@ -119,6 +119,51 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &32040811
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 32040812}
+  - component: {fileID: 32040813}
+  m_Layer: 0
+  m_Name: WorldSelectionHighlighter
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &32040812
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 32040811}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2026746960}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &32040813
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 32040811}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a29ca4c6c5dac3449ab60d2179823f22, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorldSelectionHighlighter
+  selectionService: {fileID: 840429274}
 --- !u!1 &293624131
 GameObject:
   m_ObjectHideFlags: 0
@@ -134,6 +179,8 @@ GameObject:
   - component: {fileID: 293624135}
   - component: {fileID: 293624138}
   - component: {fileID: 293624137}
+  - component: {fileID: 293624139}
+  - component: {fileID: 293624140}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -331,6 +378,44 @@ MonoBehaviour:
   fallbackPPU: 32
   logAutoWire: 0
   logZoomChanges: 0
+--- !u!114 &293624139
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 293624131}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8af9a7bc10fad514e961af4c7892454f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CameraFollowController
+  mainCamera: {fileID: 293624133}
+  target: {fileID: 0}
+  followEnabled: 1
+  worldBounds:
+    serializedVersion: 2
+    x: -32
+    y: -32
+    width: 64
+    height: 64
+  clampToBounds: 1
+  smoothTime: 0
+--- !u!114 &293624140
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 293624131}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0e3cde908d3080f49be0a59fe4c7a327, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameClickSelector
+  worldCamera: {fileID: 293624133}
+  selectionService: {fileID: 840429274}
+  maxPickRadius: 1.5
 --- !u!1 &645269985
 GameObject:
   m_ObjectHideFlags: 0
@@ -562,7 +647,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 0, g: 0, b: 0, a: 0.35}
-  m_RaycastTarget: 1
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -596,6 +681,7 @@ GameObject:
   m_Component:
   - component: {fileID: 769536487}
   - component: {fileID: 769536488}
+  - component: {fileID: 769536489}
   m_Layer: 0
   m_Name: Bootstrapper
   m_TagString: Untagged
@@ -633,6 +719,25 @@ MonoBehaviour:
   options: {fileID: 11400000, guid: 1edf0104cd2d92649a11b87704e7190d, type: 2}
   tickDeltaTime: 0.016666668
   contentPackOverride: {fileID: 0}
+--- !u!114 &769536489
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 769536486}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 29bf921440a04b06bdb5a6356c74f446, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ArtModeSelector
+  simulationId: 
+  followBootstrapper: 1
+  requestedMode: 0
+  forceDebugPlaceholders: 0
+  debugMode: 1
+  registry: {fileID: 11400000, guid: 8d22013c1c8d4f55b7be2159e4d724ee, type: 2}
+  manifestOverride: {fileID: 0}
 --- !u!1 &808576136
 GameObject:
   m_ObjectHideFlags: 0
@@ -818,6 +923,50 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &840429273
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 840429275}
+  - component: {fileID: 840429274}
+  m_Layer: 0
+  m_Name: SelectionService
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &840429274
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 840429273}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d2a07e0d73e97074c8f63de2d034cd8e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SelectionService
+--- !u!4 &840429275
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 840429273}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2026746960}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1288904230
 GameObject:
   m_ObjectHideFlags: 0
@@ -830,6 +979,9 @@ GameObject:
   - component: {fileID: 1288904234}
   - component: {fileID: 1288904233}
   - component: {fileID: 1288904232}
+  - component: {fileID: 1288904236}
+  - component: {fileID: 1288904235}
+  - component: {fileID: 1288904237}
   m_Layer: 0
   m_Name: MinimapView
   m_TagString: Untagged
@@ -910,6 +1062,59 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1288904230}
   m_CullTransparentMesh: 1
+--- !u!114 &1288904235
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1288904230}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ff581715e504a8d4fbfbad17e9d35707, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MinimapSelectToFollow
+  worldBounds:
+    serializedVersion: 2
+    x: -32
+    y: -32
+    width: 64
+    height: 64
+  overlay: {fileID: 1288904236}
+  followController: {fileID: 293624139}
+  selectionService: {fileID: 840429274}
+  maxRadius: 6
+  mainCamera: {fileID: 293624133}
+--- !u!114 &1288904236
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1288904230}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 65de1be3f14fca340b78005ae140a823, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MinimapMarkerOverlay
+  minimapRect: {fileID: 1288904231}
+  minimapCamera: {fileID: 1962087969}
+  target: {fileID: 0}
+  markerImage: {fileID: 0}
+--- !u!114 &1288904237
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1288904230}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 85f0334b187e12848b457399403dc7b6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MinimapSelectionBridge
+  selectionService: {fileID: 840429274}
+  overlay: {fileID: 1288904236}
 --- !u!1 &1291576779
 GameObject:
   m_ObjectHideFlags: 0
@@ -1388,6 +1593,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2026746960}
   - component: {fileID: 2026746961}
+  - component: {fileID: 2026746962}
   m_Layer: 0
   m_Name: PresentationRoot
   m_TagString: Untagged
@@ -1410,6 +1616,9 @@ Transform:
   m_Children:
   - {fileID: 645269986}
   - {fileID: 1962087968}
+  - {fileID: 840429275}
+  - {fileID: 32040812}
+  - {fileID: 2145443736}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &2026746961
@@ -1426,6 +1635,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BroadcastViewportLayout
   enableRightStrip: 1
   rightStripWidth: 0.25
+--- !u!114 &2026746962
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2026746959}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: beed429e86497a044822955966e7a207, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BroadcastHotkeys
+  followController: {fileID: 293624139}
+  overlay: {fileID: 1288904236}
+  selector: {fileID: 1288904235}
 --- !u!1 &2101340584
 GameObject:
   m_ObjectHideFlags: 0
@@ -1578,6 +1802,53 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2101940064}
   m_CullTransparentMesh: 1
+--- !u!1 &2145443735
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2145443736}
+  - component: {fileID: 2145443737}
+  m_Layer: 0
+  m_Name: SelectionFollowBridge
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2145443736
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2145443735}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 2026746960}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2145443737
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2145443735}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 06c23d370a9f9d94ab830d2868f332b5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SelectionFollowBridge
+  selection: {fileID: 840429274}
+  follow: {fileID: 293624139}
+  snapOnHierarchySelect: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
