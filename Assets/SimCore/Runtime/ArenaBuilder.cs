@@ -6,13 +6,6 @@ using UnityEngine;
 public static class ArenaBuilder
 {
     private const float PixelsPerUnit = 8f;
-    private const int BackgroundSortingOrder = -100;
-    private const int GroundTileSortingOrder = -90;
-    private const int PackDecorOrderMin = -20;
-    private const int PackDecorOrderMax = -15;
-    private const int BorderSortingOrder = -10;
-    private const int ObstacleFillSortingOrder = -5;
-    private const int ObstacleOutlineSortingOrder = -4;
     private const float ObstacleOverlapPadding = 0.4f;
 
     private static Sprite whitePixelSprite;
@@ -24,7 +17,8 @@ public static class ArenaBuilder
             return;
         }
 
-        ClearExistingArenaRoots(simulationRoot);
+        var sceneGraph = SimulationSceneGraph.Ensure(simulationRoot);
+        ClearExistingArenaRoots(simulationRoot, sceneGraph.ArenaRootParent);
 
         var world = config.world ?? new WorldConfig();
         var width = Mathf.Max(4f, world.arenaWidth);
@@ -33,7 +27,7 @@ public static class ArenaBuilder
         var halfHeight = height * 0.5f;
 
         var arenaRoot = new GameObject("ArenaRoot");
-        arenaRoot.transform.SetParent(simulationRoot, false);
+        arenaRoot.transform.SetParent(sceneGraph.ArenaRootParent, false);
         arenaRoot.transform.localPosition = Vector3.zero;
 
         var obstacles = new List<ArenaLayout.ObstacleCircle>();
@@ -55,11 +49,10 @@ public static class ArenaBuilder
         var layout = arenaRoot.AddComponent<ArenaLayout>();
         layout.SetData(halfWidth, halfHeight, obstacles);
 
-        var didBuildPackDecor = pack != null && BuildPackDecorProps(arenaRoot.transform, config, pack, halfWidth, halfHeight);
+        var didBuildPackDecor = pack != null && BuildPackDecorProps(sceneGraph.DecorRoot, pack, halfWidth, halfHeight);
         if (!didBuildPackDecor)
         {
-            ArenaDecorBuilder.EnsureDecorRoot(arenaRoot.transform);
-            ArenaDecorBuilder.BuildDecor(arenaRoot.transform, config, simId);
+            ArenaDecorBuilder.BuildDecor(sceneGraph.DecorRoot, arenaRoot.transform, config, simId);
         }
     }
 
@@ -73,11 +66,25 @@ public static class ArenaBuilder
         return string.Equals(simId, "AntColonies", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void ClearExistingArenaRoots(Transform simulationRoot)
+    private static void ClearExistingArenaRoots(Transform simulationRoot, Transform arenaRootParent)
     {
-        for (var i = simulationRoot.childCount - 1; i >= 0; i--)
+        ClearExistingArenaRootsInParent(simulationRoot);
+        if (arenaRootParent != null)
         {
-            var child = simulationRoot.GetChild(i);
+            ClearExistingArenaRootsInParent(arenaRootParent);
+        }
+    }
+
+    private static void ClearExistingArenaRootsInParent(Transform parent)
+    {
+        if (parent == null)
+        {
+            return;
+        }
+
+        for (var i = parent.childCount - 1; i >= 0; i--)
+        {
+            var child = parent.GetChild(i);
             if (!string.Equals(child.name, "ArenaRoot", StringComparison.Ordinal))
             {
                 continue;
@@ -161,7 +168,7 @@ public static class ArenaBuilder
                 tile.transform.localPosition = new Vector3(startX + x, startY + y, 0f);
 
                 var renderer = tile.AddComponent<SpriteRenderer>();
-                renderer.sortingOrder = GroundTileSortingOrder;
+                RenderOrder.Apply(renderer, RenderOrder.WorldTiles);
                 renderer.sprite = sprites[rng.Range(0, sprites.Count)];
                 renderer.color = Color.white;
             }
@@ -170,7 +177,7 @@ public static class ArenaBuilder
         return true;
     }
 
-    private static bool BuildPackDecorProps(Transform arenaRoot, ScenarioConfig config, ContentPack pack, float halfWidth, float halfHeight)
+    private static bool BuildPackDecorProps(Transform decorRoot, ContentPack pack, float halfWidth, float halfHeight)
     {
         var propIds = pack.GetAllSpriteIds().Where(id => id.StartsWith("prop:", StringComparison.Ordinal)).ToList();
         if (propIds.Count == 0)
@@ -196,8 +203,8 @@ public static class ArenaBuilder
             return false;
         }
 
-        var decorRoot = ArenaDecorBuilder.EnsureDecorRoot(arenaRoot);
-        ArenaDecorBuilder.ClearChildren(decorRoot);
+        var resolvedDecorRoot = ArenaDecorBuilder.EnsureDecorRoot(decorRoot);
+        ArenaDecorBuilder.ClearChildren(resolvedDecorRoot);
 
         var minHalf = Mathf.Min(halfWidth, halfHeight);
         var margin = Mathf.Clamp(minHalf * 0.07f, 1.5f, 2.5f);
@@ -218,14 +225,14 @@ public static class ArenaBuilder
             }
 
             var prop = new GameObject($"Prop_{i:000}");
-            prop.transform.SetParent(decorRoot, false);
+            prop.transform.SetParent(resolvedDecorRoot, false);
             prop.transform.localPosition = new Vector3(position.x, position.y, 0f);
             prop.transform.localRotation = Quaternion.identity;
 
             var renderer = prop.AddComponent<SpriteRenderer>();
             renderer.sprite = sprites[rng.Range(0, sprites.Count)];
             renderer.color = new Color(1f, 1f, 1f, rng.Range(0.25f, 0.8f));
-            renderer.sortingOrder = rng.Range(PackDecorOrderMin, PackDecorOrderMax + 1);
+            RenderOrder.Apply(renderer, RenderOrder.WorldDeco);
 
             var scale = rng.Range(0.8f, 1.3f);
             prop.transform.localScale = new Vector3(scale, scale, 1f);
@@ -288,7 +295,7 @@ public static class ArenaBuilder
         background.transform.localPosition = Vector3.zero;
 
         var renderer = background.AddComponent<SpriteRenderer>();
-        renderer.sortingOrder = BackgroundSortingOrder;
+        RenderOrder.Apply(renderer, RenderOrder.WorldBase);
 
         var texWidth = Mathf.Max(8, Mathf.RoundToInt(width * PixelsPerUnit));
         var texHeight = Mathf.Max(8, Mathf.RoundToInt(height * PixelsPerUnit));
@@ -445,8 +452,8 @@ public static class ArenaBuilder
         obstacle.transform.localScale = new Vector3(baseScale * stretch, baseScale, 1f);
         obstacle.transform.localRotation = Quaternion.Euler(0f, 0f, rng.Range(0f, 360f));
 
-        fillRenderer.sortingOrder = ObstacleFillSortingOrder;
-        outlineRenderer.sortingOrder = ObstacleOutlineSortingOrder;
+        RenderOrder.Apply(fillRenderer, RenderOrder.WorldAbove);
+        RenderOrder.Apply(outlineRenderer, RenderOrder.WorldAbove + 1);
 
         var tint = new Color(
             rng.Range(0.28f, 0.44f),
@@ -469,7 +476,7 @@ public static class ArenaBuilder
         var renderer = segment.AddComponent<SpriteRenderer>();
         renderer.sprite = GetWhitePixelSprite();
         renderer.color = color;
-        renderer.sortingOrder = BorderSortingOrder;
+        RenderOrder.Apply(renderer, RenderOrder.WorldAbove);
     }
 
     private static Sprite GetWhitePixelSprite()

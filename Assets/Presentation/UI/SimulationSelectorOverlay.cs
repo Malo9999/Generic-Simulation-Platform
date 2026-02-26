@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class SimulationSelectorOverlay : MonoBehaviour
@@ -16,7 +17,7 @@ public class SimulationSelectorOverlay : MonoBehaviour
             return;
         }
 
-        GUILayout.BeginArea(new Rect(12f, 12f, 430f, 210f), GUI.skin.box);
+        GUILayout.BeginArea(new Rect(12f, 12f, 430f, 340f), GUI.skin.box);
         GUILayout.Label($"Simulation: {bootstrapper.CurrentSimulationId}");
         GUILayout.Label($"Seed: {bootstrapper.CurrentSeed}");
         GUILayout.Label($"Preset: {bootstrapper.CurrentPresetSource}");
@@ -55,6 +56,58 @@ public class SimulationSelectorOverlay : MonoBehaviour
             bootstrapper.SwitchToNextSimulation();
         }
         GUILayout.EndHorizontal();
+
+        var artSelector = GetComponent<ArtModeSelector>();
+        var modes = artSelector != null
+            ? artSelector.GetAvailableModes()
+            : new List<ArtMode> { ArtMode.Simple, ArtMode.Flat, ArtMode.IsoL1_4Dir };
+        if (modes == null || modes.Count == 0)
+        {
+            modes = new List<ArtMode> { ArtMode.Simple, ArtMode.Flat, ArtMode.IsoL1_4Dir };
+        }
+
+        GUILayout.Space(8f);
+        GUILayout.Label($"Art: {bootstrapper.CurrentArtMode}");
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("Art Prev", GUILayout.Height(24f)))
+        {
+            var selected = CycleMode(modes, bootstrapper.CurrentArtMode, -1);
+            bootstrapper.SetArtModeForCurrent(selected);
+        }
+
+        if (GUILayout.Button("Art Next", GUILayout.Height(24f)))
+        {
+            var selected = CycleMode(modes, bootstrapper.CurrentArtMode, 1);
+            bootstrapper.SetArtModeForCurrent(selected);
+        }
+        GUILayout.EndHorizontal();
+
+        if (GUILayout.Button(bootstrapper.CurrentUsePlaceholders ? "Placeholders: ON" : "Placeholders: OFF", GUILayout.Height(24f)))
+        {
+            bootstrapper.TogglePlaceholdersForCurrent();
+        }
+
+        if (GUILayout.Button($"DebugMode: {bootstrapper.CurrentDebugMode}", GUILayout.Height(24f)))
+        {
+            bootstrapper.CycleDebugModeForCurrent();
+        }
         GUILayout.EndArea();
+    }
+
+    private static ArtMode CycleMode(List<ArtMode> modes, ArtMode currentMode, int direction)
+    {
+        if (modes == null || modes.Count == 0)
+        {
+            return currentMode;
+        }
+
+        var currentIndex = modes.IndexOf(currentMode);
+        if (currentIndex < 0)
+        {
+            currentIndex = 0;
+        }
+
+        var nextIndex = (currentIndex + direction + modes.Count) % modes.Count;
+        return modes[nextIndex];
     }
 }

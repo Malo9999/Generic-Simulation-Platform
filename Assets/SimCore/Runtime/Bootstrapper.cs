@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -9,6 +10,14 @@ using UnityEditor;
 
 public class Bootstrapper : MonoBehaviour
 {
+    [Serializable]
+    public struct SimArtSettings
+    {
+        public ArtMode mode;
+        public bool usePlaceholders;
+        public DebugPlaceholderMode debugMode;
+    }
+
     [SerializeField] private BootstrapOptions options;
     [SerializeField, Min(0.0001f)] private float tickDeltaTime = 1f / 60f;
     [SerializeField] private ContentPack contentPackOverride;
@@ -26,6 +35,7 @@ public class Bootstrapper : MonoBehaviour
     private string currentRunFolder;
     private int tickCount;
     private float smoothedFps;
+    private readonly Dictionary<string, SimArtSettings> artBySim = new(StringComparer.OrdinalIgnoreCase);
 
     public string CurrentSimulationId => currentConfig?.simulationId ?? options?.simulationId ?? "MarbleRace";
     public int CurrentSeed => currentConfig?.seed ?? 0;
@@ -37,6 +47,9 @@ public class Bootstrapper : MonoBehaviour
     public int CurrentTick => IsReplayMode ? replayDriver?.CurrentTick ?? 0 : simDriver?.CurrentTick ?? 0;
     public bool IsPaused => IsReplayMode ? replayDriver?.IsPaused ?? false : simDriver?.IsPaused ?? false;
     public float TimeScale => IsReplayMode ? replayDriver?.TimeScale ?? 1f : simDriver?.TimeScale ?? 1f;
+    public ArtMode CurrentArtMode => GetArt(CurrentSimulationId).mode;
+    public bool CurrentUsePlaceholders => GetArt(CurrentSimulationId).usePlaceholders;
+    public DebugPlaceholderMode CurrentDebugMode => GetArt(CurrentSimulationId).debugMode;
 
     private bool IsReplayMode => string.Equals(currentConfig?.mode, "Replay", StringComparison.OrdinalIgnoreCase);
 
@@ -112,6 +125,32 @@ public class Bootstrapper : MonoBehaviour
 
     public void ResetSimulation() => StartSimulation(CurrentSimulationId, false);
 
+    public void SetArtModeForCurrent(ArtMode mode)
+    {
+        var s = GetArt(CurrentSimulationId);
+        s.mode = mode;
+        artBySim[CurrentSimulationId] = s;
+        ResetSimulation();
+    }
+
+    public void TogglePlaceholdersForCurrent()
+    {
+        var s = GetArt(CurrentSimulationId);
+        s.usePlaceholders = !s.usePlaceholders;
+        artBySim[CurrentSimulationId] = s;
+        ResetSimulation();
+    }
+
+    public void CycleDebugModeForCurrent()
+    {
+        var s = GetArt(CurrentSimulationId);
+        s.debugMode = s.debugMode == DebugPlaceholderMode.Overlay
+            ? DebugPlaceholderMode.Replace
+            : DebugPlaceholderMode.Overlay;
+        artBySim[CurrentSimulationId] = s;
+        ResetSimulation();
+    }
+
     public void SwitchToNextSimulation()
     {
         var simulationId = GetSimulationIdAtOffset(1);
@@ -147,6 +186,27 @@ public class Bootstrapper : MonoBehaviour
         return string.IsNullOrWhiteSpace(simulationId) ? CurrentSimulationId : simulationId;
     }
 
+    private SimArtSettings GetArt(string simId)
+    {
+        if (string.IsNullOrWhiteSpace(simId))
+        {
+            simId = CurrentSimulationId;
+        }
+
+        if (!artBySim.TryGetValue(simId, out var settings))
+        {
+            settings = new SimArtSettings
+            {
+                mode = ArtMode.Simple,
+                usePlaceholders = false,
+                debugMode = DebugPlaceholderMode.Replace
+            };
+            artBySim[simId] = settings;
+        }
+
+        return settings;
+    }
+
     private void StartSimulation(string simulationId, bool initialRun)
     {
         simulationId = string.IsNullOrWhiteSpace(simulationId) ? GetFallbackSimulationId() : simulationId;
@@ -155,75 +215,119 @@ public class Bootstrapper : MonoBehaviour
             options.simulationId = simulationId;
         }
 
-        ShutdownCurrentRunner();
+        simDriver?.SetRunner(null);
+        replayDriver?.SetRunner(null);
         EnsureSimulationRoot();
-        ClearSimulationRootChildren();
 
-        var presetText = LoadPresetJson(simulationId, out currentPresetSource);
-        var resolved = ConfigMerge.Merge(ConfigMerge.CreateBaseDefaults(), presetText);
-        resolved.simulationId = simulationId;
-        resolved.activeSimulation = simulationId;
-        ApplyBootstrapOverrides(resolved);
-        resolved.seed = ResolveSeed(resolved);
-        resolved.NormalizeAliases();
-        currentConfig = resolved;
-        tickCount = 0;
-
-        QualitySettings.vSyncCount = 0;
-        Application.targetFrameRate = Mathf.Clamp(currentConfig.rendering?.targetFps ?? 60, 30, 240);
-
-        ConfigureDeterminism(currentConfig.seed);
-        EventBusService.ResetGlobal();
-        PrimitiveSpriteLibrary.ClearCache();
-        AntAtlasLibrary.ClearCache();
-
-        var selectedContentPack = ResolveContentPack(simulationId);
-        Debug.Log($"[Bootstrapper] simId={simulationId} contentPack={DescribeContentPack(selectedContentPack)}");
-        if (selectedContentPack != null)
+        try
         {
-            ContentPackService.Set(selectedContentPack);
-        }
-        else
-        {
-            ContentPackService.Clear();
-        }
-
-        ArenaBuilder.Build(simulationRoot.transform, currentConfig);
-        SpawnRunner(currentConfig);
-
-        if (IsReplayMode)
-        {
-            currentRunFolder = currentConfig.replay?.runFolder;
-            replayDriver?.SetRunner(activeRunner);
-            var replayLoaded = replayDriver?.Load(currentConfig) ?? false;
-            if (replayLoaded && replayDriver != null && !replayDriver.ValidateRunnerForLoadedConfig(currentConfig.simulationId))
+            try
             {
-                var required = currentConfig.replay != null && currentConfig.replay.rendererOnly
-                    ? "IReplayableSimulationRunner"
-                    : "IReplayableSimulationRunner or ITickableSimulationRunner";
-                throw new InvalidOperationException(
-                    $"Bootstrapper: Replay runner contract mismatch for simulation '{currentConfig.simulationId}'. " +
-                    $"Runner '{activeRunnerObject?.name ?? "<null>"}' must implement {required} for replay mode.");
+                ShutdownCurrentRunner();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[Bootstrapper] ShutdownCurrentRunner failed: {ex}");
+                activeRunner = null;
+                activeRunnerObject = null;
             }
 
+            Debug.Log("[Bootstrapper] Clearing SimulationRoot...");
+            ClearSimulationRootChildren();
+            SimulationSceneGraph.Rebuild(simulationRoot.transform);
+            Debug.Log($"[Bootstrapper] SimulationRoot children after rebuild: {simulationRoot.transform.childCount}");
+            Debug.Log("[Bootstrapper] SceneGraph ready.");
+
+            var presetText = LoadPresetJson(simulationId, out currentPresetSource);
+            var resolved = ConfigMerge.Merge(ConfigMerge.CreateBaseDefaults(), presetText);
+            resolved.simulationId = simulationId;
+            resolved.activeSimulation = simulationId;
+            ApplyBootstrapOverrides(resolved);
+            resolved.seed = ResolveSeed(resolved);
+            resolved.NormalizeAliases();
+            currentConfig = resolved;
+            tickCount = 0;
+
+            QualitySettings.vSyncCount = 0;
+            Application.targetFrameRate = Mathf.Clamp(currentConfig.rendering?.targetFps ?? 60, 30, 240);
+
+            ConfigureDeterminism(currentConfig.seed);
+            EventBusService.ResetGlobal();
+            PrimitiveSpriteLibrary.ClearCache();
+            AntAtlasLibrary.ClearCache();
+
+            var selectedContentPack = ResolveContentPack(simulationId);
+            Debug.Log($"[Bootstrapper] simId={simulationId} contentPack={DescribeContentPack(selectedContentPack)}");
+            if (selectedContentPack != null)
+            {
+                ContentPackService.Set(selectedContentPack);
+            }
+            else
+            {
+                ContentPackService.Clear();
+            }
+
+            ArenaBuilder.Build(simulationRoot.transform, currentConfig);
+            var runnerSpawned = SpawnRunner(currentConfig);
+
+            if (IsReplayMode)
+            {
+                currentRunFolder = currentConfig.replay?.runFolder;
+                replayDriver?.SetRunner(activeRunner);
+                var replayLoaded = replayDriver?.Load(currentConfig) ?? false;
+                if (replayLoaded && replayDriver != null && !replayDriver.ValidateRunnerForLoadedConfig(currentConfig.simulationId))
+                {
+                    var required = currentConfig.replay != null && currentConfig.replay.rendererOnly
+                        ? "IReplayableSimulationRunner"
+                        : "IReplayableSimulationRunner or ITickableSimulationRunner";
+                    throw new InvalidOperationException(
+                        $"Bootstrapper: Replay runner contract mismatch for simulation '{currentConfig.simulationId}'. " +
+                        $"Runner '{activeRunnerObject?.name ?? "<null>"}' must implement {required} for replay mode.");
+                }
+
+                simDriver?.SetRunner(null);
+                simDriver?.ConfigureRecording(currentConfig, null, EventBusService.Global);
+            }
+            else
+            {
+                currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
+                simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
+
+                if (runnerSpawned)
+                {
+                    // Unified tick contract: all live simulation ticks must go through exactly one ITickableSimulationRunner.
+                    var tickableRunner = RunnerContract.RequireTickable(activeRunnerObject, currentConfig.simulationId, "bootstrap pre-tick validation");
+                    simDriver?.SetRunner(tickableRunner);
+                }
+                else
+                {
+                    simDriver?.SetRunner(null);
+                }
+
+                replayDriver?.SetRunner(null);
+            }
+
+            if (!initialRun)
+            {
+                Debug.Log($"Switched simulation to {simulationId} mode={currentConfig.mode} seed={currentConfig.seed}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Bootstrapper] StartSimulation FAILED simId={simulationId}\n{ex}");
+            EnsureSimulationRoot();
+            SimulationSceneGraph.Rebuild(simulationRoot.transform);
             simDriver?.SetRunner(null);
-            simDriver?.ConfigureRecording(currentConfig, null, EventBusService.Global);
-        }
-        else
-        {
-            currentRunFolder = WriteRunManifest(currentConfig, currentPresetSource);
-            simDriver?.ConfigureRecording(currentConfig, currentRunFolder, EventBusService.Global);
-
-            // Unified tick contract: all live simulation ticks must go through exactly one ITickableSimulationRunner.
-            var tickableRunner = RunnerContract.RequireTickable(activeRunnerObject, currentConfig.simulationId, "bootstrap pre-tick validation");
-            simDriver?.SetRunner(tickableRunner);
-
             replayDriver?.SetRunner(null);
-        }
+            activeRunner = null;
+            activeRunnerObject = null;
 
-        if (!initialRun)
-        {
-            Debug.Log($"Switched simulation to {simulationId} mode={currentConfig.mode} seed={currentConfig.seed}");
+            var runnerRoot = simulationRoot.transform.Find("RunnerRoot");
+            if (runnerRoot != null)
+            {
+                var go = new GameObject($"{simulationId}Runner_ERROR");
+                go.transform.SetParent(runnerRoot, false);
+            }
         }
     }
 
@@ -504,7 +608,7 @@ public class Bootstrapper : MonoBehaviour
         Debug.Log($"Bootstrapper: Deterministic RNG signature {RngService.BuildSignature(seed)}");
     }
 
-    private void SpawnRunner(ScenarioConfig config)
+    private bool SpawnRunner(ScenarioConfig config)
     {
         var prefab = options?.simulationCatalog?.FindById(config.simulationId)?.runnerPrefab;
         prefab ??= SimulationRegistry.LoadRunnerPrefab(config.simulationId);
@@ -522,14 +626,28 @@ public class Bootstrapper : MonoBehaviour
         }
 
         activeRunnerObject = runnerObject;
-        activeRunner = RunnerContract.RequireTickable(activeRunnerObject, config.simulationId, "runner instantiation");
-
-        activeRunner.Initialize(config);
+        try
+        {
+            activeRunner = RunnerContract.RequireTickable(activeRunnerObject, config.simulationId, "runner instantiation");
+            activeRunner.Initialize(config);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[Bootstrapper] SpawnRunner failed for simId={config.simulationId}: {ex}");
+            activeRunner = null;
+            activeRunnerObject = null;
+            var runnerError = new GameObject($"{config.simulationId}RunnerError");
+            runnerError.transform.SetParent(simulationRoot.transform, false);
+            simDriver?.SetRunner(null);
+            replayDriver?.SetRunner(null);
+            return false;
+        }
     }
 
     private void EnsureSimulationRoot()
     {
-        if (simulationRoot == null)
+        if (!simulationRoot)
         {
             var existing = GameObject.Find(SimulationRootName);
             simulationRoot = existing != null ? existing : new GameObject(SimulationRootName);
@@ -538,14 +656,46 @@ public class Bootstrapper : MonoBehaviour
 
     private void ClearSimulationRootChildren()
     {
-        if (simulationRoot == null)
+        if (!simulationRoot)
         {
             return;
         }
 
-        for (var i = simulationRoot.transform.childCount - 1; i >= 0; i--)
+        var rootTransform = simulationRoot.transform;
+        var toDestroy = new System.Collections.Generic.List<GameObject>(rootTransform.childCount);
+        for (var i = 0; i < rootTransform.childCount; i++)
         {
-            Destroy(simulationRoot.transform.GetChild(i).gameObject);
+            Transform child = null;
+            try
+            {
+                child = rootTransform.GetChild(i);
+            }
+            catch
+            {
+                continue;
+            }
+
+            if (!child)
+            {
+                continue;
+            }
+
+            var childObject = child.gameObject;
+            if (!childObject)
+            {
+                continue;
+            }
+
+            toDestroy.Add(childObject);
+        }
+
+        for (var i = 0; i < toDestroy.Count; i++)
+        {
+            var go = toDestroy[i];
+            if (go)
+            {
+                UnityEngine.Object.Destroy(go);
+            }
         }
     }
 

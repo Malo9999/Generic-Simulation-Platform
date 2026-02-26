@@ -25,6 +25,15 @@ public static class RecreateBroadcastUiMenu
     [MenuItem("GSP/Dev/Recreate Broadcast UI (Minimap + HUD)")]
     public static void RecreateBroadcastUi()
     {
+        if (Application.isPlaying)
+        {
+            EditorUtility.DisplayDialog(
+                "Recreate Broadcast UI",
+                "This tool modifies the scene and cannot run in Play Mode. Stop Play Mode and run it again.",
+                "OK");
+            return;
+        }
+
         var rt = LoadMinimapRenderTexture();
         if (rt == null)
         {
@@ -73,9 +82,13 @@ public static class RecreateBroadcastUiMenu
         EnsureEventSystem();
         AttachAndWireClickToPan(view);
         AttachAndWireMinimapSelection(view, minimapCamera, presentationRoot);
+        EnsureSelectionRuntime(presentationRoot, view, ResolveMainCamera());
         EnsureBroadcastHotkeys(presentationRoot, canvasObject, view);
 
-        EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        if (!Application.isPlaying)
+        {
+            EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
+        }
         Selection.activeGameObject = canvasObject;
         Debug.Log("Recreate Broadcast UI complete: hierarchy ensured and wired.");
     }
@@ -188,6 +201,7 @@ public static class RecreateBroadcastUiMenu
     {
         var image = frame.GetComponent<Image>() ?? frame.AddComponent<Image>();
         image.color = new Color(0f, 0f, 0f, 0.35f);
+        image.raycastTarget = false;
 
         var rect = frame.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(1f, 1f);
@@ -632,6 +646,7 @@ public static class RecreateBroadcastUiMenu
         var followHost = mainCamera != null ? mainCamera.gameObject : presentationRoot;
         var followController = GetOrAdd<CameraFollowController>(followHost);
         followController.mainCamera = mainCamera;
+        followController.followEnabled = true;
 
         var selectToFollow = GetOrAdd<MinimapSelectToFollow>(minimapView);
         selectToFollow.mainCamera = mainCamera;
@@ -642,6 +657,57 @@ public static class RecreateBroadcastUiMenu
         var bounds = clickToPan != null ? clickToPan.worldBounds : new Rect(-32f, -32f, 64f, 64f);
         selectToFollow.worldBounds = bounds;
         followController.worldBounds = bounds;
+    }
+
+    private static void EnsureSelectionRuntime(GameObject presentationRoot, GameObject minimapView, Camera mainCamera)
+    {
+        if (presentationRoot == null)
+        {
+            return;
+        }
+
+        var selectionHost = GetOrCreateRoot("SelectionService", presentationRoot.transform);
+        var selectionService = GetOrAdd<SelectionService>(selectionHost);
+
+        var highlighterHost = GetOrCreateRoot("WorldSelectionHighlighter", presentationRoot.transform);
+        var highlighter = GetOrAdd<WorldSelectionHighlighter>(highlighterHost);
+        highlighter.selectionService = selectionService;
+
+        if (mainCamera != null)
+        {
+            var clickSelector = GetOrAdd<GameClickSelector>(mainCamera.gameObject);
+            clickSelector.worldCamera = mainCamera;
+            clickSelector.selectionService = selectionService;
+        }
+
+        if (minimapView != null)
+        {
+            var overlay = GetOrAdd<MinimapMarkerOverlay>(minimapView);
+            var bridge = GetOrAdd<MinimapSelectionBridge>(minimapView);
+            bridge.selectionService = selectionService;
+            bridge.overlay = overlay;
+
+            var selector = GetOrAdd<MinimapSelectToFollow>(minimapView);
+            selector.selectionService = selectionService;
+        }
+
+        var followController = UnityEngine.Object.FindAnyObjectByType<CameraFollowController>();
+        if (followController != null)
+        {
+            var bridgeHost = GetOrCreateRoot("SelectionFollowBridge", presentationRoot.transform);
+            var followBridge = GetOrAdd<SelectionFollowBridge>(bridgeHost);
+            followBridge.selection = selectionService;
+            followBridge.follow = followController;
+            followBridge.snapOnHierarchySelect = true;
+
+            foreach (var duplicate in presentationRoot.GetComponentsInChildren<SelectionFollowBridge>(true))
+            {
+                if (duplicate != null && duplicate != followBridge)
+                {
+                    UnityEngine.Object.DestroyImmediate(duplicate);
+                }
+            }
+        }
     }
 
     private static void EnsureBroadcastHotkeys(GameObject presentationRoot, GameObject canvasObject, GameObject minimapView)

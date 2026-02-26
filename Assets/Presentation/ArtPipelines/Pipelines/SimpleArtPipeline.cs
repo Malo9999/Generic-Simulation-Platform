@@ -11,13 +11,37 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const float IdleAnimRate = 1.8f;
     private const float WalkAnimRate = 5f;
     private const float RunAnimRate = 8f;
+    private const string PlaceholderSpriteName = "PlaceholderSprite";
+    private const string PlaceholderArrowName = "PlaceholderArrow";
+    private const string IconRootName = "IconRoot";
+    private const string MaskName = "Mask";
 
     private readonly Dictionary<string, Sprite[]> framesByBaseId = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> resolvedBaseByKey = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ResolvedSpriteSource> resolvedBaseByKey = new(StringComparer.Ordinal);
     private readonly HashSet<string> missingBaseLogged = new(StringComparer.Ordinal);
+
+    [SerializeField] private bool forceDebugPlaceholder = true;
+    [SerializeField] private DebugPlaceholderMode defaultDebugMode = DebugPlaceholderMode.Replace;
+    [SerializeField] private float placeholderScale = 0.5f;
+
+    private bool debugEnabled;
+    private DebugPlaceholderMode debugMode;
 
     public override ArtMode Mode => ArtMode.Simple;
     public override string DisplayName => "Simple";
+
+    private void OnEnable()
+    {
+        debugEnabled = forceDebugPlaceholder;
+        debugMode = defaultDebugMode;
+    }
+
+    public override void ConfigureDebug(bool enabled, DebugPlaceholderMode mode)
+    {
+        forceDebugPlaceholder = enabled;
+        debugEnabled = enabled;
+        debugMode = mode;
+    }
 
     public override bool IsAvailable(ArtManifest manifest)
     {
@@ -31,26 +55,36 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     public override GameObject CreateRenderer(VisualKey key, Transform parent)
     {
-        GameObject rendererObject = new($"Renderer_{key.entityId}");
+        GameObject rendererObject = new($"Renderer_{key.entityId}_{key.instanceId}");
         rendererObject.transform.SetParent(parent, false);
 
         var fallbackRenderer = rendererObject.AddComponent<SpriteRenderer>();
         fallbackRenderer.sprite = null;
 
-        var spriteObject = new GameObject("Sprite");
+        var spriteObject = new GameObject(PlaceholderSpriteName);
         spriteObject.transform.SetParent(rendererObject.transform, false);
-        var pipelineRenderer = spriteObject.AddComponent<SpriteRenderer>();
-        pipelineRenderer.sprite = null;
+        var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
+        dotRenderer.sprite = DebugShapeSpriteFactory.GetCircleSprite();
+        dotRenderer.color = PlaceholderColorPalette.GetColor(key);
+        RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
+
+        var arrowObject = new GameObject(PlaceholderArrowName);
+        arrowObject.transform.SetParent(rendererObject.transform, false);
+        arrowObject.transform.localPosition = new Vector3(0f, 0.08f, 0f);
+        var arrowRenderer = arrowObject.AddComponent<SpriteRenderer>();
+        arrowRenderer.sprite = DebugShapeSpriteFactory.GetArrowSprite();
+        arrowRenderer.color = Color.Lerp(dotRenderer.color, Color.white, 0.2f);
+        RenderOrder.Apply(arrowRenderer, RenderOrder.EntityArrow);
 
         var animator = rendererObject.AddComponent<SimplePipelineSpriteAnimator>();
-        animator.Initialize(pipelineRenderer);
+        animator.Initialize(dotRenderer, arrowRenderer, placeholderScale);
 
         return rendererObject;
     }
 
     public override void ApplyVisual(GameObject renderer, VisualKey key, Vector2 velocity, float deltaTime)
     {
-        if (renderer == null || !IsAntColoniesAnt(key))
+        if (renderer == null)
         {
             return;
         }
@@ -61,78 +95,223 @@ public class SimpleArtPipeline : ArtPipelineBase
             return;
         }
 
-        var resolvedBase = ResolveSpriteBase(key);
-        if (string.IsNullOrEmpty(resolvedBase) || !TryGetFrames(resolvedBase, out var frames))
+        if (debugEnabled)
         {
-            SetFallbackVisibility(renderer, true);
+            ApplyPlaceholderSorting(renderer, debugOn: true);
+            SetPlaceholderVisibility(renderer, dotVisible: true, arrowVisible: true);
+            animator.ApplyDebugFacing(velocity);
+            animator.ApplyPulse(deltaTime);
+
+            if (debugMode == DebugPlaceholderMode.Replace)
+            {
+                SetIconRootVisibility(renderer, false);
+                SetDebugReplaceVisibility(renderer);
+            }
+
+            return;
+        }
+
+        ApplyPlaceholderSorting(renderer, debugOn: false);
+
+        if (!IsAntEntity(key))
+        {
+            SetPlaceholderVisibility(renderer, dotVisible: false, arrowVisible: false);
+            SetIconRootVisibility(renderer, true);
+            return;
+        }
+
+        var resolvedSource = ResolveSpriteBase(key);
+        if (!resolvedSource.HasValue || !TryGetFrames(resolvedSource, out var frames))
+        {
+            SetPlaceholderVisibility(renderer, dotVisible: false, arrowVisible: false);
+            SetIconRootVisibility(renderer, true);
             return;
         }
 
         var speed = velocity.magnitude;
         var frameIndex = SelectFrameIndex(key.state, speed, animator, deltaTime);
-        animator.lastSpriteBaseId = resolvedBase;
+        animator.lastSpriteBaseId = resolvedSource.BaseId;
         animator.Apply(frames, frameIndex);
-        animator.ApplyFacing(velocity);
-        SetFallbackVisibility(renderer, false);
+        animator.ApplyContentFacing(velocity);
+        SetPlaceholderVisibility(renderer, dotVisible: true, arrowVisible: false);
+        SetIconRootVisibility(renderer, false);
     }
 
-    private static bool IsAntColoniesAnt(VisualKey key)
+    private static void ApplyPlaceholderSorting(GameObject rendererRoot, bool debugOn)
     {
-        return string.Equals(key.simulationId, "AntColonies", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(key.entityId, "ant", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private string ResolveSpriteBase(VisualKey key)
-    {
-        var cacheKey = $"{key.entityId}|{key.kind}|{key.state}";
-        if (resolvedBaseByKey.TryGetValue(cacheKey, out var cachedBase))
+        var dotRenderer = rendererRoot.transform.Find(PlaceholderSpriteName)?.GetComponent<SpriteRenderer>();
+        if (dotRenderer != null)
         {
-            return cachedBase;
+            RenderOrder.Apply(dotRenderer, debugOn ? RenderOrder.DebugEntity : RenderOrder.EntityBody);
         }
 
-        var role = string.IsNullOrWhiteSpace(key.kind) ? "worker" : key.kind.Trim().ToLowerInvariant();
-        var state = string.IsNullOrWhiteSpace(key.state) ? "idle" : key.state.Trim().ToLowerInvariant();
-        var species = ContentPackService.GetSpeciesId("ant", key.variantSeed);
+        var arrowRenderer = rendererRoot.transform.Find(PlaceholderArrowName)?.GetComponent<SpriteRenderer>();
+        if (arrowRenderer != null)
+        {
+            RenderOrder.Apply(arrowRenderer, debugOn ? RenderOrder.DebugArrow : RenderOrder.EntityArrow);
+        }
+    }
+
+    private static void SetPlaceholderVisibility(GameObject rendererRoot, bool dotVisible, bool arrowVisible)
+    {
+        var dotRenderer = rendererRoot.transform.Find(PlaceholderSpriteName)?.GetComponent<SpriteRenderer>();
+        if (dotRenderer != null)
+        {
+            dotRenderer.enabled = dotVisible;
+        }
+
+        var arrowRenderer = rendererRoot.transform.Find(PlaceholderArrowName)?.GetComponent<SpriteRenderer>();
+        if (arrowRenderer != null)
+        {
+            arrowRenderer.enabled = arrowVisible;
+        }
+    }
+
+
+    private static void SetDebugReplaceVisibility(GameObject rendererRoot)
+    {
+        var spriteRenderers = rendererRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var spriteRenderer in spriteRenderers)
+        {
+            if (spriteRenderer == null)
+            {
+                continue;
+            }
+
+            var name = spriteRenderer.gameObject.name;
+            spriteRenderer.enabled = ShouldKeepEnabledInDebugReplace(name);
+        }
+    }
+
+    private static bool ShouldKeepEnabledInDebugReplace(string rendererName)
+    {
+        return string.Equals(rendererName, PlaceholderSpriteName, StringComparison.Ordinal)
+            || string.Equals(rendererName, PlaceholderArrowName, StringComparison.Ordinal)
+            || string.Equals(rendererName, MaskName, StringComparison.Ordinal);
+    }
+
+    private static bool IsAntEntity(VisualKey key)
+    {
+        return string.Equals(NormalizeSegment(key.entityId, "default"), "ant", StringComparison.Ordinal);
+    }
+
+    private static void SetIconRootVisibility(GameObject renderer, bool visible)
+    {
+        var iconRoot = renderer.transform.Find(IconRootName);
+        if (iconRoot == null && renderer.transform.parent != null)
+        {
+            iconRoot = renderer.transform.parent.Find(IconRootName);
+        }
+
+        if (iconRoot != null)
+        {
+            iconRoot.gameObject.SetActive(visible);
+        }
+    }
+
+    private ResolvedSpriteSource ResolveSpriteBase(VisualKey key)
+    {
+        var entityType = NormalizeSegment(key.entityId, "default");
+        var role = NormalizeSegment(key.kind, "default");
+        var state = NormalizeSegment(key.state, "idle");
+        var species = ContentPackService.GetSpeciesId(entityType, key.variantSeed);
         if (string.IsNullOrWhiteSpace(species))
         {
             species = "default";
         }
 
-        var candidates = new[]
+        var cacheKey = $"{entityType}|{role}|{state}|{species}";
+        if (resolvedBaseByKey.TryGetValue(cacheKey, out var cachedBase))
         {
-            $"ant.{species}.{role}.{state}",
-            $"ant.{role}.{state}",
-            $"ant.{key.entityId}.{state}",
-            $"ant.{state}"
-        };
+            return cachedBase;
+        }
 
-        foreach (var candidate in candidates)
+        foreach (var candidate in BuildCandidates(entityType, species, role, state))
         {
-            if (HasFrame(candidate, 1))
+            if (TryResolveSource(candidate, out var resolvedSource))
             {
-                resolvedBaseByKey[cacheKey] = candidate;
-                return candidate;
+                resolvedBaseByKey[cacheKey] = resolvedSource;
+                return resolvedSource;
             }
         }
 
-        resolvedBaseByKey[cacheKey] = string.Empty;
-        return string.Empty;
+        if (missingBaseLogged.Add(cacheKey))
+        {
+            Debug.LogWarning($"[SimpleArtPipeline] No sprite prefix found for '{cacheKey}'. Falling back to icon renderer.");
+        }
+
+        resolvedBaseByKey[cacheKey] = default;
+        return default;
     }
 
-    private bool HasFrame(string baseId, int frameNumber)
+    private static string NormalizeSegment(string raw, string fallback)
     {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return fallback;
+        }
+
+        return raw.Trim().ToLowerInvariant();
+    }
+
+    private static IEnumerable<string> BuildCandidates(string entityType, string species, string role, string state)
+    {
+        if (string.Equals(entityType, "ant", StringComparison.Ordinal))
+        {
+            foreach (var lookupState in BuildAntStateLookupOrder(state))
+            {
+                yield return $"agent:ant:{species}:{role}:adult:{lookupState}";
+                yield return $"agent:ant:{species}:{role}:{lookupState}";
+                yield return $"agent:ant:{role}:{lookupState}";
+                yield return $"agent:ant:{lookupState}";
+            }
+
+            yield break;
+        }
+
+        yield return $"agent:{entityType}:{species}:{role}:{state}";
+        yield return $"agent:{entityType}:{role}:{state}";
+        yield return $"agent:{entityType}:{state}";
+    }
+
+    private static IEnumerable<string> BuildAntStateLookupOrder(string desiredState)
+    {
+        var normalizedDesired = NormalizeSegment(desiredState, "idle");
+
+        yield return normalizedDesired;
+        if (!string.Equals(normalizedDesired, "walk", StringComparison.Ordinal))
+        {
+            yield return "walk";
+        }
+
+        if (!string.Equals(normalizedDesired, "idle", StringComparison.Ordinal))
+        {
+            yield return "idle";
+        }
+    }
+
+    private static bool TryResolveSource(string baseId, out ResolvedSpriteSource resolvedSource)
+    {
+        resolvedSource = default;
         var pack = ContentPackService.Current;
         if (pack == null)
         {
             return false;
         }
 
-        return pack.TryGetSprite(BuildFrameId(baseId, frameNumber), out _);
+        if (TryDetectScheme(pack, baseId, out var scheme))
+        {
+            resolvedSource = new ResolvedSpriteSource(baseId, scheme);
+            return true;
+        }
+
+        return false;
     }
 
-    private bool TryGetFrames(string baseId, out Sprite[] frames)
+    private bool TryGetFrames(ResolvedSpriteSource resolvedSource, out Sprite[] frames)
     {
-        if (framesByBaseId.TryGetValue(baseId, out frames))
+        var cacheId = resolvedSource.CacheId;
+        if (framesByBaseId.TryGetValue(cacheId, out frames))
         {
             return true;
         }
@@ -146,12 +325,12 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         for (var i = 0; i < TotalFrames; i++)
         {
-            var spriteId = BuildFrameId(baseId, i + 1);
+            var spriteId = BuildFrameId(resolvedSource.BaseId, resolvedSource.Scheme, i);
             if (!pack.TryGetSprite(spriteId, out frames[i]) || frames[i] == null)
             {
-                if (missingBaseLogged.Add(baseId))
+                if (missingBaseLogged.Add(cacheId))
                 {
-                    Debug.LogWarning($"[SimpleArtPipeline] Missing frame '{spriteId}' for '{baseId}'. Falling back to icon renderer.");
+                    Debug.LogWarning($"[SimpleArtPipeline] Missing frame '{spriteId}' for '{resolvedSource.BaseId}'. Falling back to icon renderer.");
                 }
 
                 return false;
@@ -163,13 +342,50 @@ public class SimpleArtPipeline : ArtPipelineBase
             }
         }
 
-        framesByBaseId[baseId] = frames;
+        framesByBaseId[cacheId] = frames;
         return true;
     }
 
-    private static string BuildFrameId(string baseId, int frameNumber)
+    private static bool TryDetectScheme(ContentPack pack, string prefix, out FrameIndexScheme scheme)
     {
-        return $"{baseId}.f{frameNumber:00}";
+        if (pack.TryGetSprite($"{prefix}:00", out _))
+        {
+            scheme = FrameIndexScheme.ZeroBasedTwoDigit;
+            return true;
+        }
+
+        if (pack.TryGetSprite($"{prefix}:0", out _))
+        {
+            scheme = FrameIndexScheme.ZeroBasedPlain;
+            return true;
+        }
+
+        if (pack.TryGetSprite($"{prefix}:01", out _))
+        {
+            scheme = FrameIndexScheme.OneBasedTwoDigit;
+            return true;
+        }
+
+        if (pack.TryGetSprite($"{prefix}:1", out _))
+        {
+            scheme = FrameIndexScheme.OneBasedPlain;
+            return true;
+        }
+
+        scheme = default;
+        return false;
+    }
+
+    private static string BuildFrameId(string baseId, FrameIndexScheme scheme, int frameIndex)
+    {
+        return scheme switch
+        {
+            FrameIndexScheme.ZeroBasedTwoDigit => $"{baseId}:{frameIndex:00}",
+            FrameIndexScheme.ZeroBasedPlain => $"{baseId}:{frameIndex}",
+            FrameIndexScheme.OneBasedTwoDigit => $"{baseId}:{frameIndex + 1:00}",
+            FrameIndexScheme.OneBasedPlain => $"{baseId}:{frameIndex + 1}",
+            _ => $"{baseId}:{frameIndex:00}"
+        };
     }
 
     private static int SelectFrameIndex(string state, float speed, SimplePipelineSpriteAnimator animator, float deltaTime)
@@ -197,56 +413,57 @@ public class SimpleArtPipeline : ArtPipelineBase
         return 2 + (Mathf.FloorToInt(animator.animTime) % 3);
     }
 
-    private static void SetFallbackVisibility(GameObject renderer, bool fallbackVisible)
+    private enum FrameIndexScheme
     {
-        var fallbackRenderer = renderer.GetComponent<SpriteRenderer>();
-        if (fallbackRenderer != null)
+        ZeroBasedTwoDigit,
+        ZeroBasedPlain,
+        OneBasedTwoDigit,
+        OneBasedPlain
+    }
+
+    private readonly struct ResolvedSpriteSource
+    {
+        public ResolvedSpriteSource(string baseId, FrameIndexScheme scheme)
         {
-            fallbackRenderer.enabled = fallbackVisible;
+            BaseId = baseId;
+            Scheme = scheme;
         }
 
-        var externalRenderers = renderer.transform.parent != null
-            ? renderer.transform.parent.GetComponentsInChildren<SpriteRenderer>(true)
-            : Array.Empty<SpriteRenderer>();
-
-        for (var i = 0; i < externalRenderers.Length; i++)
-        {
-            var sr = externalRenderers[i];
-            if (sr == null || sr.transform.IsChildOf(renderer.transform))
-            {
-                continue;
-            }
-
-            if (string.Equals(sr.gameObject.name, "Base", StringComparison.Ordinal)
-                || string.Equals(sr.gameObject.name, "Mask", StringComparison.Ordinal)
-                || string.Equals(sr.gameObject.name, "IconRoot", StringComparison.Ordinal))
-            {
-                sr.enabled = fallbackVisible;
-            }
-        }
-
-        var pipelineRenderer = renderer.GetComponent<SimplePipelineSpriteAnimator>()?.SpriteRenderer;
-        if (pipelineRenderer != null)
-        {
-            pipelineRenderer.enabled = !fallbackVisible;
-        }
+        public string BaseId { get; }
+        public FrameIndexScheme Scheme { get; }
+        public bool HasValue => !string.IsNullOrEmpty(BaseId);
+        public string CacheId => $"{BaseId}|{Scheme}";
     }
 
     private sealed class SimplePipelineSpriteAnimator : MonoBehaviour
     {
-        public SpriteRenderer SpriteRenderer { get; private set; }
+        public SpriteRenderer DotRenderer { get; private set; }
+        public SpriteRenderer ArrowRenderer { get; private set; }
         public string lastSpriteBaseId;
         public float animTime;
         public int lastFrame = -1;
         public bool initialized;
+        private float debugScale = 0.5f;
 
         private float lastFacingDegrees;
         private bool hasFacing;
 
-        public void Initialize(SpriteRenderer spriteRenderer)
+        public void Initialize(SpriteRenderer dotRenderer, SpriteRenderer arrowRenderer, float scale)
         {
-            SpriteRenderer = spriteRenderer;
-            initialized = SpriteRenderer != null;
+            DotRenderer = dotRenderer;
+            ArrowRenderer = arrowRenderer;
+            debugScale = Mathf.Max(0.1f, scale);
+            if (DotRenderer != null)
+            {
+                DotRenderer.transform.localScale = Vector3.one * debugScale;
+            }
+
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.transform.localScale = Vector3.one * debugScale;
+            }
+
+            initialized = DotRenderer != null;
         }
 
         public void Apply(Sprite[] frames, int frameIndex)
@@ -257,19 +474,19 @@ public class SimpleArtPipeline : ArtPipelineBase
             }
 
             var clamped = Mathf.Clamp(frameIndex, 0, frames.Length - 1);
-            if (clamped == lastFrame && SpriteRenderer.sprite == frames[clamped])
+            if (clamped == lastFrame && DotRenderer.sprite == frames[clamped])
             {
                 return;
             }
 
-            SpriteRenderer.sprite = frames[clamped];
-            SpriteRenderer.drawMode = SpriteDrawMode.Simple;
-            SpriteRenderer.transform.localPosition = Vector3.zero;
-            SpriteRenderer.transform.localScale = Vector3.one;
+            DotRenderer.sprite = frames[clamped];
+            DotRenderer.drawMode = SpriteDrawMode.Simple;
+            DotRenderer.transform.localPosition = Vector3.zero;
+            DotRenderer.transform.localScale = Vector3.one;
             lastFrame = clamped;
         }
 
-        public void ApplyFacing(Vector2 velocity)
+        public void ApplyContentFacing(Vector2 velocity)
         {
             if (!initialized)
             {
@@ -287,7 +504,62 @@ public class SimpleArtPipeline : ArtPipelineBase
                 return;
             }
 
-            SpriteRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, lastFacingDegrees);
+            DotRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, lastFacingDegrees);
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.transform.localRotation = Quaternion.identity;
+            }
+        }
+
+        public void ApplyDebugFacing(Vector2 velocity)
+        {
+            if (ArrowRenderer == null)
+            {
+                return;
+            }
+
+            if (velocity.sqrMagnitude > 0.0001f)
+            {
+                lastFacingDegrees = Mathf.Atan2(velocity.y, velocity.x) * Mathf.Rad2Deg;
+                hasFacing = true;
+            }
+
+            if (!hasFacing)
+            {
+                return;
+            }
+
+            DotRenderer.transform.localRotation = Quaternion.identity;
+            ArrowRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, lastFacingDegrees);
+        }
+
+        public void ApplyPulse(float deltaTime)
+        {
+            if (DotRenderer == null)
+            {
+                return;
+            }
+
+            animTime += deltaTime;
+            var pulse = 1f + (0.08f * Mathf.Sin(animTime * Mathf.PI * 2f));
+            DotRenderer.transform.localScale = Vector3.one * (debugScale * pulse);
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.transform.localScale = Vector3.one * debugScale;
+            }
+        }
+
+        public void SetRendererVisibility(bool dotVisible, bool arrowVisible)
+        {
+            if (DotRenderer != null)
+            {
+                DotRenderer.enabled = dotVisible;
+            }
+
+            if (ArrowRenderer != null)
+            {
+                ArrowRenderer.enabled = arrowVisible;
+            }
         }
     }
 }

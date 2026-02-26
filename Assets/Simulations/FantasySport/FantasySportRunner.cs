@@ -18,10 +18,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private VisualKey[] visualKeys;
     private float halfWidth = 32f;
     private float halfHeight = 32f;
+    private SimulationSceneGraph sceneGraph;
     private int nextEntityId;
 
     public void Initialize(ScenarioConfig config)
     {
+        sceneGraph = SceneGraphUtil.PrepareRunner(transform, "FantasySport");
         EnsureMainCamera();
         BuildAthletes(config);
         Debug.Log($"{nameof(FantasySportRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
@@ -36,6 +38,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < athletes.Length; i++)
         {
+            var athlete = athletes[i];
+            if (!athlete)
+            {
+                continue;
+            }
+
             if (tickIndex % 60 == 0)
             {
                 var turn = turnRngs[i].Range(-0.45f, 0.45f);
@@ -60,12 +68,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 velocities[i].y *= -1f;
             }
 
-            athletes[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            FaceVelocity(athletes[i], velocities[i]);
+            athlete.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            FaceVelocity(athlete, velocities[i]);
 
-            if (activePipeline != null && pipelineRenderers[i] != null)
+            var pipelineRenderer = pipelineRenderers != null ? pipelineRenderers[i] : null;
+            if (activePipeline != null && pipelineRenderer != null)
             {
-                activePipeline.ApplyVisual(pipelineRenderers[i], visualKeys[i], velocities[i], dt);
+                activePipeline.ApplyVisual(pipelineRenderer, visualKeys[i], velocities[i], dt);
             }
         }
     }
@@ -120,26 +129,27 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < AthleteCount; i++)
         {
-            var athlete = new GameObject($"Athlete_{i}");
-            athlete.transform.SetParent(transform, false);
-
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
-                teamId: i % 2,
+                teamId: i < AthleteCount / 2 ? 0 : 1,
                 role: i < AthleteCount / 2 ? "offense" : "defense",
                 variantCount: 3,
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "FantasySport");
 
-            var visualKey = new VisualKey
-            {
-                simulationId = "FantasySport",
-                entityId = identity.entityId.ToString(),
-                kind = string.IsNullOrWhiteSpace(identity.role) ? "athlete" : identity.role,
-                state = "run",
-                variantSeed = identity.entityId,
-                facingMode = FacingMode.Auto
-            };
+            var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, identity.teamId);
+
+            var athlete = new GameObject($"Sim_{identity.entityId:0000}");
+            athlete.transform.SetParent(groupRoot, false);
+
+            var visualKey = VisualKeyBuilder.Create(
+                simulationId: "FantasySport",
+                entityType: "athlete",
+                instanceId: identity.entityId,
+                kind: string.IsNullOrWhiteSpace(identity.role) ? "athlete" : identity.role,
+                state: "run",
+                facingMode: FacingMode.Auto,
+                groupId: identity.teamId);
 
             var visualParent = athlete.transform;
             if (activePipeline != null)

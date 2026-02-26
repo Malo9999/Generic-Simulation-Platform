@@ -5,7 +5,6 @@ using UnityEngine;
 public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 {
     private const int SpawnDebugCount = 5;
-    private const int AntSortingOrder = 10;
 
     [SerializeField] private bool logSpawnIdentity = true;
 
@@ -23,6 +22,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private bool showHealthBars;
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
+    private SimulationSceneGraph sceneGraph;
+    private Transform antWorldViewRoot;
 
     private static Sprite fallbackAntSprite;
     private static Sprite squareSprite;
@@ -30,6 +31,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     public void Initialize(ScenarioConfig config)
     {
         Shutdown();
+        sceneGraph = SceneGraphUtil.PrepareRunner(transform, "AntColonies");
         EnsureMainCamera();
 
         recipe = config?.antColonies?.worldRecipe ?? new AntWorldRecipe();
@@ -40,7 +42,8 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
         worldState = AntWorldGenerator.Generate(config);
-        AntWorldViewBuilder.BuildOrRefresh(transform, config, worldState);
+        AntWorldViewBuilder.BuildOrRefresh(sceneGraph.WorldObjectsRoot, config, worldState);
+        antWorldViewRoot = sceneGraph.WorldObjectsRoot.Find("AntWorldView");
         CacheWorldRenderers();
         ResolveArtPipeline();
 
@@ -152,10 +155,10 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        var worldView = transform.Find("AntWorldView");
-        if (worldView != null)
+        if (antWorldViewRoot != null)
         {
-            Destroy(worldView.gameObject);
+            Destroy(antWorldViewRoot.gameObject);
+            antWorldViewRoot = null;
         }
 
         ants.Clear();
@@ -523,21 +526,21 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
     private AntAgentView CreateAntView(AntAgentState ant)
     {
-        var root = new GameObject($"Ant_{ant.id}");
-        root.transform.SetParent(transform, false);
+        var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, ant.teamId);
+        var root = new GameObject($"Sim_{ant.id:0000}");
+        root.transform.SetParent(groupRoot, false);
 
         GameObject pipelineRenderer = null;
         SpriteRenderer baseRenderer = null;
 
-        var visualKey = new VisualKey
-        {
-            simulationId = "AntColonies",
-            entityId = "ant",
-            kind = string.IsNullOrWhiteSpace(ant.identity.role) ? $"species-{ant.speciesId}" : ant.identity.role,
-            state = "idle",
-            variantSeed = ant.id,
-            facingMode = FacingMode.Auto
-        };
+        var visualKey = VisualKeyBuilder.Create(
+            simulationId: "AntColonies",
+            entityType: "ant",
+            instanceId: ant.id,
+            kind: string.IsNullOrWhiteSpace(ant.identity.role) ? $"species-{ant.speciesId}" : ant.identity.role,
+            state: "idle",
+            facingMode: FacingMode.Auto,
+            groupId: ant.teamId);
 
         if (activePipeline != null)
         {
@@ -547,7 +550,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
                 baseRenderer = pipelineRenderer.GetComponent<SpriteRenderer>() ?? pipelineRenderer.GetComponentInChildren<SpriteRenderer>();
                 if (baseRenderer != null)
                 {
-                    baseRenderer.sortingOrder = AntSortingOrder;
+                    RenderOrder.Apply(baseRenderer, RenderOrder.EntityBody);
                 }
             }
         }
@@ -557,13 +560,13 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             var baseObj = new GameObject("Base");
             baseObj.transform.SetParent(root.transform, false);
             baseRenderer = baseObj.AddComponent<SpriteRenderer>();
-            baseRenderer.sortingOrder = AntSortingOrder;
+            RenderOrder.Apply(baseRenderer, RenderOrder.EntityBody);
         }
 
         var maskObj = new GameObject("Mask");
         maskObj.transform.SetParent(root.transform, false);
         var maskRenderer = maskObj.AddComponent<SpriteRenderer>();
-        maskRenderer.sortingOrder = AntSortingOrder + 1;
+        RenderOrder.Apply(maskRenderer, RenderOrder.EntityBody + 1);
 
         SpriteRenderer hpBgRenderer = null;
         SpriteRenderer hpFillRenderer = null;
@@ -576,7 +579,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             hpBgRenderer = hpBgObj.AddComponent<SpriteRenderer>();
             hpBgRenderer.sprite = GetSquareSprite();
             hpBgRenderer.color = new Color(0f, 0f, 0f, 0.8f);
-            hpBgRenderer.sortingOrder = AntSortingOrder + 2;
+            RenderOrder.Apply(hpBgRenderer, RenderOrder.EntityFx);
 
             var hpFillObj = new GameObject("HpFill");
             hpFillObj.transform.SetParent(root.transform, false);
@@ -585,7 +588,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             hpFillRenderer = hpFillObj.AddComponent<SpriteRenderer>();
             hpFillRenderer.sprite = GetSquareSprite();
             hpFillRenderer.color = new Color(0.2f, 0.95f, 0.2f, 1f);
-            hpFillRenderer.sortingOrder = AntSortingOrder + 3;
+            RenderOrder.Apply(hpFillRenderer, RenderOrder.EntityFx + 1);
         }
 
         return new AntAgentView
@@ -695,7 +698,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private void CacheWorldRenderers()
     {
         foodRenderers.Clear();
-        var foodRoot = transform.Find("AntWorldView/Food");
+        var foodRoot = antWorldViewRoot != null ? antWorldViewRoot.Find("Food") : null;
         if (foodRoot == null)
         {
             return;
