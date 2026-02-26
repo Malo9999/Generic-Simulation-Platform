@@ -6,6 +6,8 @@ public class ArtModeSelector : MonoBehaviour
     [SerializeField] private string simulationId;
     [SerializeField] private bool followBootstrapper = true;
     [SerializeField] private ArtMode requestedMode = ArtMode.Simple;
+    [SerializeField] private bool forceDebugPlaceholders = false;
+    [SerializeField] private DebugPlaceholderMode debugMode = DebugPlaceholderMode.Replace;
     [SerializeField] private ArtPipelineRegistry registry;
     [SerializeField] private ArtManifest manifestOverride;
 
@@ -51,6 +53,10 @@ public class ArtModeSelector : MonoBehaviour
         var effectiveSimulationId = ResolveSimulationId();
         runtimeManifest = GetManifest();
         ActivePipeline = registry.Resolve(effectiveSimulationId, runtimeManifest, requestedMode);
+        if (ActivePipeline != null)
+        {
+            ActivePipeline.ConfigureDebug(forceDebugPlaceholders, debugMode);
+        }
     }
 
     private void EnsureRegistry()
