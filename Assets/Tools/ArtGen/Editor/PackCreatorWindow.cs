@@ -447,7 +447,10 @@ public sealed class PackCreatorWindow : EditorWindow
         }
 
         var report = PackBuildPipeline.Build(recipe, overwriteBuild);
-        statusLine = $"Build done. Sprites={report.spriteCount}, Textures={report.textureCount}, Warnings={report.warnings.Count}";
+        var contentPackPath = $"{BuildPackRoot()}/ContentPack.asset";
+        var contentPack = AssetDatabase.LoadAssetAtPath<ContentPack>(contentPackPath);
+        var textureCount = contentPack != null && contentPack.Textures != null ? contentPack.Textures.Count : 0;
+        statusLine = $"Build done. Sprites={report.spriteCount}, Textures={textureCount}, Warnings={report.warnings.Count}";
         if (report.warnings.Count > 0)
         {
             Debug.LogWarning("[PackCreator] Build warnings:\n" + string.Join("\n", report.warnings));
