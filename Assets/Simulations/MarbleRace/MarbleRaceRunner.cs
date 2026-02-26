@@ -1,10 +1,11 @@
+using System.Text;
 using UnityEngine;
-using UnityEngine.UI;
 
 public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private enum RaceState
+    public enum RacePhase
     {
+        Ready,
         Racing,
         Finished,
         Cooldown,
@@ -23,7 +24,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private const int TrackSamples = 256;
 
     [SerializeField] private bool logSpawnIdentity = true;
-    [SerializeField] private bool logLeaderboardToConsole = false;
     [SerializeField] private bool logLapEvents = false;
     [SerializeField] private bool showDebugTrack = true;
 
@@ -64,12 +64,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private SimulationSceneGraph sceneGraph;
 
     private int lapsToWin;
-    private RaceState raceState;
+    private RacePhase raceState;
     private float finishTime;
     private int winnerIndex;
-    private bool winnerAnnouncedToConsole;
-    private int lastHudOrLogSecond = -1;
-    private Text hudText;
+    private readonly int[] rankingBuffer = new int[MarbleCount];
+    private readonly StringBuilder winnerLineBuilder = new(64);
+
+    public RacePhase CurrentPhase => raceState;
 
     private GameObject trackDebugRoot;
     private LineRenderer leftBoundaryRenderer;
@@ -81,6 +82,71 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         EnsureMainCamera();
         BuildMarbles(config);
         Debug.Log($"{nameof(MarbleRaceRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
+    }
+
+
+    public void StartRace()
+    {
+        if (raceState != RacePhase.Ready)
+        {
+            return;
+        }
+
+        raceState = RacePhase.Racing;
+    }
+
+    public void FillLeaderboard(StringBuilder sb, int maxEntries, bool final)
+    {
+        if (sb == null)
+        {
+            return;
+        }
+
+        sb.Clear();
+        if (marbles == null || identities == null || marbles.Length == 0)
+        {
+            sb.Append("No marbles.");
+            return;
+        }
+
+        var count = FillOrderedIndicesByProgress(rankingBuffer);
+        var top = Mathf.Clamp(maxEntries <= 0 ? count : maxEntries, 1, count);
+
+        for (var rank = 0; rank < top; rank++)
+        {
+            var idx = rankingBuffer[rank];
+            if (rank > 0)
+            {
+                sb.Append('\n');
+            }
+
+            sb.Append('#').Append(rank + 1)
+                .Append(" M").Append(identities[idx].entityId)
+                .Append(" L").Append(lapCount[idx]);
+
+            if (!final)
+            {
+                sb.Append(" T").Append(closestTrackIndex[idx]);
+            }
+        }
+    }
+
+    public string GetWinnerLine()
+    {
+        if (winnerIndex < 0 || identities == null || winnerIndex >= identities.Length)
+        {
+            return string.Empty;
+        }
+
+        winnerLineBuilder.Clear();
+        winnerLineBuilder.Append("WINNER: M")
+            .Append(identities[winnerIndex].entityId)
+            .Append(" time=")
+            .Append(finishTime.ToString("F2"))
+            .Append("s laps=")
+            .Append(lapCount[winnerIndex]);
+
+        return winnerLineBuilder.ToString();
     }
 
     public void Tick(int tickIndex, float dt)
@@ -100,7 +166,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
             UpdateClosestTrackIndex(i, 10);
 
-            if (raceState == RaceState.Racing)
+            if (raceState == RacePhase.Racing)
             {
                 UpdateDrivingBehavior(i, dt);
             }
@@ -114,7 +180,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             ApplySoftArenaBounds(i, dt);
             UpdateClosestTrackIndex(i, 12);
 
-            if (raceState == RaceState.Racing)
+            if (raceState == RacePhase.Racing)
             {
                 UpdateLapProgress(i, tickIndex, dt);
             }
@@ -130,11 +196,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        UpdateHudOrLogs(tickIndex, dt);
-
-        if (raceState == RaceState.Finished && tickIndex * dt >= finishTime + 3f)
+        if (raceState == RacePhase.Finished && tickIndex * dt >= finishTime + 3f)
         {
-            raceState = RaceState.Cooldown;
+            raceState = RacePhase.Cooldown;
         }
     }
 
@@ -186,12 +250,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         pipelineRenderers = null;
         visualKeys = null;
 
-        raceState = RaceState.Racing;
+        raceState = RacePhase.Ready;
         finishTime = 0f;
         winnerIndex = -1;
-        winnerAnnouncedToConsole = false;
-        lastHudOrLogSecond = -1;
-        hudText = null;
         leftBoundaryRenderer = null;
         rightBoundaryRenderer = null;
         trackDebugRoot = null;
@@ -207,7 +268,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64f) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64f) * 0.5f);
         lapsToWin = 3;
-        raceState = RaceState.Racing;
+        raceState = RacePhase.Ready;
         winnerIndex = -1;
 
         marbles = new Transform[MarbleCount];
@@ -234,8 +295,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         visualKeys = new VisualKey[MarbleCount];
 
         ResolveArtPipeline();
-        ResolveHud();
-
         var rng = RngService.Fork("SIM:MarbleRace:SPAWN");
         BuildTrack(halfWidth, halfHeight, rng);
         BuildDebugTrack();
@@ -295,9 +354,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             startPosition.x = Mathf.Clamp(startPosition.x, -halfWidth + 0.5f, halfWidth - 0.5f);
             startPosition.y = Mathf.Clamp(startPosition.y, -halfHeight + 0.5f, halfHeight - 0.5f);
 
-            var initialSpeed = rng.Range(4f, 5.5f);
-            var initialVelocity = startDirection * initialSpeed;
-
             baseSpeedTrait[i] = rng.Range(6.5f, 9.5f);
             aggressionTrait[i] = rng.Range(0f, 1f);
             laneBiasTrait[i] = rng.Range(-1f, 1f);
@@ -306,7 +362,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             corneringTrait[i] = rng.Range(0f, 1f);
 
             positions[i] = startPosition;
-            velocities[i] = initialVelocity;
+            velocities[i] = Vector2.zero;
             targetSpeeds[i] = baseSpeedTrait[i];
             steeringAccels[i] = rng.Range(10f, 15f);
             nextCheckpointIndex[i] = 0;
@@ -731,7 +787,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
             if (lapCount[index] >= lapsToWin)
             {
-                raceState = RaceState.Finished;
+                raceState = RacePhase.Finished;
                 winnerIndex = index;
                 finishTime = tickIndex * dt;
             }
@@ -746,15 +802,20 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         progressScore[index] = lapCount[index] * TrackSamples + idx - lateralPenalty;
     }
 
-    private int[] GetOrderedIndicesByProgress()
+    private int FillOrderedIndicesByProgress(int[] ordering)
     {
-        var ordering = new int[marbles.Length];
-        for (var i = 0; i < ordering.Length; i++)
+        if (ordering == null || marbles == null)
+        {
+            return 0;
+        }
+
+        var count = marbles.Length;
+        for (var i = 0; i < count; i++)
         {
             ordering[i] = i;
         }
 
-        for (var i = 1; i < ordering.Length; i++)
+        for (var i = 1; i < count; i++)
         {
             var current = ordering[i];
             var currentScore = progressScore[current];
@@ -781,59 +842,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             ordering[j + 1] = current;
         }
 
-        return ordering;
-    }
-
-    private void UpdateHudOrLogs(int tickIndex, float dt)
-    {
-        var elapsedSeconds = Mathf.FloorToInt(tickIndex * dt);
-        if (elapsedSeconds == lastHudOrLogSecond)
-        {
-            return;
-        }
-
-        lastHudOrLogSecond = elapsedSeconds;
-
-        if (raceState == RaceState.Racing)
-        {
-            var ranking = GetOrderedIndicesByProgress();
-            var topCount = Mathf.Min(3, ranking.Length);
-            var status = string.Empty;
-
-            for (var rank = 0; rank < topCount; rank++)
-            {
-                var idx = ranking[rank];
-                var entry = $"#{rank + 1} M{identities[idx].entityId} L{lapCount[idx]} T{closestTrackIndex[idx]}";
-                status += rank == 0 ? entry : $" | {entry}";
-            }
-
-            if (hudText != null)
-            {
-                hudText.text = status;
-            }
-            else if (logLeaderboardToConsole)
-            {
-                Debug.Log($"{nameof(MarbleRaceRunner)} leaderboard {status}");
-            }
-
-            return;
-        }
-
-        if (winnerIndex < 0)
-        {
-            return;
-        }
-
-        var winnerMessage = $"WINNER: M{identities[winnerIndex].entityId} time={finishTime:F2}s laps={lapCount[winnerIndex]}";
-        if (hudText != null)
-        {
-            hudText.text = winnerMessage;
-        }
-        else if (!winnerAnnouncedToConsole)
-        {
-            Debug.Log($"{nameof(MarbleRaceRunner)} {winnerMessage}");
-            winnerAnnouncedToConsole = true;
-        }
+        return count;
     }
 
     private void BuildDebugTrack()
@@ -902,18 +911,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         Debug.Log($"{nameof(MarbleRaceRunner)} no {nameof(ArtModeSelector)} / active pipeline found; using default marble renderers.");
-    }
-
-    private void ResolveHud()
-    {
-        var hudObject = GameObject.Find("HUDText");
-        if (hudObject == null)
-        {
-            hudText = null;
-            return;
-        }
-
-        hudText = hudObject.GetComponent<Text>();
     }
 
     private void EnsureMainCamera()

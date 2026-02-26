@@ -67,6 +67,9 @@ public static class RecreateBroadcastUiMenu
         var hudPanel = GetOrCreateUiObject(HudPanelName, rightStrip.transform, typeof(Image));
         ConfigureHudPanel(hudPanel);
 
+        var simPanelHost = GetOrCreateUiObject("SimPanelHost", rightStrip.transform);
+        ConfigureSimPanelHost(simPanelHost);
+
         // Ensure minimap is both positioned below the HUD and drawn above it.
         frame.transform.SetAsLastSibling();
 
@@ -248,6 +251,41 @@ public static class RecreateBroadcastUiMenu
         rect.anchoredPosition = Vector2.zero;
         rect.offsetMin = new Vector2(10f, -(10f + HudPanelHeight));
         rect.offsetMax = new Vector2(-10f, -10f);
+    }
+
+    private static void ConfigureSimPanelHost(GameObject simPanelHost)
+    {
+        var rect = GetOrAdd<RectTransform>(simPanelHost);
+        rect.anchorMin = new Vector2(0f, 0f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.offsetMin = new Vector2(10f, 10f);
+        rect.offsetMax = new Vector2(-10f, -(HudPanelHeight + MinimapSize + 30f));
+
+        var layout = GetOrAdd<VerticalLayoutGroup>(simPanelHost);
+        layout.padding = new RectOffset(0, 0, 0, 0);
+        layout.spacing = 8f;
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlHeight = true;
+        layout.childControlWidth = true;
+        layout.childForceExpandHeight = false;
+        layout.childForceExpandWidth = true;
+
+        var fitter = GetOrAdd<ContentSizeFitter>(simPanelHost);
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        var image = simPanelHost.GetComponent<Image>();
+        if (image != null)
+        {
+            image.enabled = false;
+            image.raycastTarget = false;
+        }
+
+        if (simPanelHost.GetComponent<SimPanelHost>() == null)
+        {
+            simPanelHost.AddComponent<SimPanelHost>();
+        }
     }
 
     private static void CleanupLegacyMinimapBorder(Transform frameTransform)
