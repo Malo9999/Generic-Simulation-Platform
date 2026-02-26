@@ -5,7 +5,6 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
-using UnityEditor.U2D.Sprites;
 using UnityEngine;
 
 public static class PackBuildPipeline
@@ -103,6 +102,16 @@ public static class PackBuildPipeline
                     overwrite,
                     recipe.simulationId,
                     new CompileSheetOptions(recipe.generationPolicy.renderAntStripeOverlay));
+                if (generatedSprites.Count == 0)
+                {
+                    Debug.LogWarning($"[PackBuildPipeline] Pipeline generated zero sprites for '{entity.entityId}'. Falling back to placeholder sprites.");
+                    var expectedIds = BuildExpectedSpriteIds(entity, resolvedSpeciesIds);
+                    generatedSprites = BuildMissingPipelinePlaceholderSprites(
+                        texPath,
+                        expectedIds,
+                        recipe.agentSpriteSize,
+                        overwrite);
+                }
                 textureEntries.Add(new ContentPack.TextureEntry { id = "sheet:" + sheetName, texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath) });
                 foreach (var sp in generatedSprites) spriteEntries.Add(new ContentPack.SpriteEntry { id = sp.name, category = "agent", sprite = sp });
                 report.spriteCount += generatedSprites.Count;
@@ -161,6 +170,8 @@ public static class PackBuildPipeline
         EditorUtility.SetDirty(pack);
         report.contentPackVersion = pack.Version;
 
+        ValidateBuildOutputs(recipe, pack, report);
+
         if (recipe.generationPolicy.exportCompatibilityAntContentPack) ExportAntCompatibility(recipe, spriteEntries, textureEntries, antsCompatTextureForExport, antsCompatForExport);
 
         if (antSpeciesLogged.Count > 0)
@@ -172,6 +183,26 @@ public static class PackBuildPipeline
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         return report;
+    }
+
+    private static void ValidateBuildOutputs(PackRecipe recipe, ContentPack pack, BuildReport report)
+    {
+        var ids = pack.GetAllSpriteIds().OrderBy(id => id, StringComparer.Ordinal).ToList();
+        Debug.Log($"[PackBuildPipeline] Generated sprite ids: {ids.Count}");
+        Debug.Log($"[PackBuildPipeline] Sprite id samples: {string.Join(", ", ids.Take(10))}");
+
+        foreach (var entity in recipe.entities)
+        {
+            var prefix = $"agent:{entity.entityId}:";
+            if (ids.Any(id => id.StartsWith(prefix, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            var message = $"No generated sprites found for entity '{entity.entityId}' (expected prefix '{prefix}').";
+            report.warnings.Add(message);
+            Debug.LogError("[PackBuildPipeline] " + message);
+        }
     }
 
     private static List<SheetCell> BuildProceduralCells(PackRecipe recipe, BuildReport report, PackRecipe.EntityRequirement entity, List<string> speciesIds, IArchetypeModule module)
@@ -341,6 +372,99 @@ public static class PackBuildPipeline
         foreach (var frame in Enumerable.Range(2, 3)) yield return BuildAntSpriteId(speciesId, "worker", "adult", "walk", frame);
         foreach (var frame in Enumerable.Range(5, 4)) yield return BuildAntSpriteId(speciesId, "worker", "adult", "run", frame);
         yield return BuildAntSpriteId(speciesId, "worker", "adult", "fight", 9);
+    }
+
+    private static List<string> BuildExpectedSpriteIds(PackRecipe.EntityRequirement entity, List<string> speciesIds)
+    {
+        var ids = new List<string>();
+        var isAntEntity = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase);
+        var states = isAntEntity ? AntContractStates() : entity.states;
+
+        foreach (var speciesId in speciesIds)
+        foreach (var role in entity.roles)
+        foreach (var stage in entity.lifeStages)
+        foreach (var state in states)
+        {
+            var localFrames = isAntEntity ? AntContractLocalFrameCount(state) : Mathf.Max(1, entity.animationPolicy.FramesForState(state));
+            for (var frame = 0; frame < localFrames; frame++)
+            {
+                var contractFrame = isAntEntity ? ContractFrameIndex(state, frame) : frame;
+                var id = isAntEntity
+                    ? BuildAntSpriteId(speciesId, role, stage, state, contractFrame)
+                    : $"agent:{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{contractFrame:00}";
+                ids.Add(id);
+            }
+        }
+
+        return ids;
+    }
+
+    private static List<Sprite> BuildMissingPipelinePlaceholderSprites(string texturePath, List<string> spriteIds, int cellSize, bool overwrite)
+    {
+        if (spriteIds == null || spriteIds.Count == 0)
+        {
+            spriteIds = new List<string> { "agent:missing:default:worker:adult:idle:00" };
+        }
+
+        if (!overwrite && File.Exists(texturePath))
+        {
+            var existingTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            if (existingTexture != null)
+            {
+                return AssetDatabase.LoadAllAssetRepresentationsAtPath(texturePath).OfType<Sprite>().OrderBy(s => s.name, StringComparer.Ordinal).ToList();
+            }
+        }
+
+        const int pad = 2;
+        const int columns = 5;
+        var rows = Mathf.CeilToInt(spriteIds.Count / (float)columns);
+        var width = pad + columns * (cellSize + pad);
+        var height = pad + rows * (cellSize + pad);
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        var fill = Enumerable.Repeat(new Color32(255, 0, 255, 255), width * height).ToArray();
+        texture.SetPixels32(fill);
+
+        for (var i = 0; i < spriteIds.Count; i++)
+        {
+            var col = i % columns;
+            var row = i / columns;
+            var startX = pad + col * (cellSize + pad);
+            var startY = pad + row * (cellSize + pad);
+            for (var y = 0; y < cellSize; y++)
+            for (var x = 0; x < cellSize; x++)
+            {
+                var isChecker = ((x / 4) + (y / 4)) % 2 == 0;
+                var px = startX + x;
+                var py = startY + y;
+                fill[py * width + px] = isChecker ? new Color32(255, 0, 255, 255) : new Color32(60, 0, 60, 255);
+            }
+        }
+
+        texture.SetPixels32(fill);
+        texture.Apply(false, false);
+        File.WriteAllBytes(texturePath, texture.EncodeToPNG());
+        UnityEngine.Object.DestroyImmediate(texture);
+        AssetDatabase.ImportAsset(texturePath, ImportAssetOptions.ForceSynchronousImport);
+
+        SpriteBakeUtility.EnsureTextureImportSettings(texturePath);
+        var importedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+        if (importedTexture == null)
+        {
+            return new List<Sprite>();
+        }
+
+        var baked = SpriteBakeUtility.BakeSpritesFromGrid(
+            importedTexture,
+            cellSize,
+            cellSize,
+            columns,
+            rows,
+            pad,
+            new Vector2(0.5f, 0.5f),
+            cellSize,
+            index => index < spriteIds.Count ? spriteIds[index] : $"placeholder:{index:000}");
+        SpriteBakeUtility.AddOrReplaceSubAssets(importedTexture, baked);
+        return AssetDatabase.LoadAllAssetRepresentationsAtPath(texturePath).OfType<Sprite>().OrderBy(s => s.name, StringComparer.Ordinal).ToList();
     }
 
     private static List<SheetCell> BuildOutlineCells(PackRecipe recipe, PackRecipe.EntityRequirement entity, List<string> displaySpecies)
@@ -907,9 +1031,25 @@ public static class PackBuildPipeline
         UnityEngine.Object.DestroyImmediate(texture);
         AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
 
-        var rects = new List<SpriteRect>(cells.Count);
-        for (var i = 0; i < cells.Count; i++) rects.Add(new SpriteRect { name = cells[i].id, rect = SheetLayout.CellRect(i, columns, cellSize, cells.Count), alignment = SpriteAlignment.Center, pivot = new Vector2(0.5f, 0.5f), spriteID = GUID.Generate() });
-        return ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, cellSize, rects);
+        SpriteBakeUtility.EnsureTextureImportSettings(path);
+        var importedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+        if (importedTexture == null)
+        {
+            return new List<Sprite>();
+        }
+
+        var sprites = SpriteBakeUtility.BakeSpritesFromGrid(
+            importedTexture,
+            cellSize,
+            cellSize,
+            columns,
+            rows,
+            0,
+            new Vector2(0.5f, 0.5f),
+            cellSize,
+            index => index < cells.Count ? cells[index].id : $"sheet:{index:000}");
+        SpriteBakeUtility.AddOrReplaceSubAssets(importedTexture, sprites);
+        return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(x => x.name, StringComparer.Ordinal).ToList();
     }
 
     private static void RenderAntLayers(SheetCell cell, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 fallbackBaseColor, bool renderStripeOverlay)
