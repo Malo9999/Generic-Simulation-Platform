@@ -11,21 +11,18 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         Cooldown,
     }
 
-    private enum TrackTemplate
-    {
-        Oval,
-        RoundedRectangle,
-        Kidney,
-        Chicane,
-    }
-
     private const int MarbleCount = 12;
     private const int SpawnDebugCount = 5;
-    private const int TrackSamples = 256;
+    private const int TrackSamples = 512;
+    private const int LapCrossWindow = 12;
+    private const int LapArmDistance = 32;
 
     [SerializeField] private bool logSpawnIdentity = true;
     [SerializeField] private bool logLapEvents = false;
     [SerializeField] private bool showDebugTrack = true;
+    [SerializeField] private float gravityStrength = 8f;
+    [SerializeField] private float rollingFriction = 0.24f;
+    [SerializeField] private float maxSpeed = 13f;
 
     private Transform[] marbles;
     private EntityIdentity[] identities;
@@ -33,12 +30,14 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private Vector2[] velocities;
     private float[] targetSpeeds;
     private float[] steeringAccels;
-    private int[] nextCheckpointIndex;
     private int[] lapCount;
     private float[] progressScore;
     private float[] desiredLaneOffset;
     private int[] closestTrackIndex;
     private int[] previousLapLogged;
+    private int[] lastClosestIndex;
+    private bool[] lapArmed;
+    private int[] startIndex;
 
     private float[] baseSpeedTrait;
     private float[] aggressionTrait;
@@ -53,6 +52,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private Vector2[] trackNormal;
     private float[] trackHalfWidth;
     private float[] trackCurvature;
+    private float[] trackElevation;
+    private float[] trackSlopeAccel;
 
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
@@ -66,6 +67,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private int lapsToWin;
     private RacePhase raceState;
     private float finishTime;
+    private float elapsedTime;
     private int winnerIndex;
     private readonly int[] rankingBuffer = new int[MarbleCount];
     private readonly StringBuilder winnerLineBuilder = new(64);
@@ -83,7 +85,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         BuildMarbles(config);
         Debug.Log($"{nameof(MarbleRaceRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
     }
-
 
     public void StartRace()
     {
@@ -156,6 +157,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
+        elapsedTime += dt;
+
         for (var i = 0; i < marbles.Length; i++)
         {
             var marble = marbles[i];
@@ -164,7 +167,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 continue;
             }
 
-            UpdateClosestTrackIndex(i, 10);
+            UpdateClosestTrackIndex(i, 14);
 
             if (raceState == RacePhase.Racing)
             {
@@ -178,15 +181,15 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i] += velocities[i] * dt;
             ApplyCorridorBounds(i);
             ApplySoftArenaBounds(i, dt);
-            UpdateClosestTrackIndex(i, 12);
+            UpdateClosestTrackIndex(i, 16);
 
             if (raceState == RacePhase.Racing)
             {
-                UpdateLapProgress(i, tickIndex, dt);
+                UpdateLapProgress(i);
             }
 
             UpdateProgress(i);
-
+            lastClosestIndex[i] = closestTrackIndex[i];
             marble.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
 
             var pipelineRenderer = pipelineRenderers != null ? pipelineRenderers[i] : null;
@@ -196,7 +199,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        if (raceState == RacePhase.Finished && tickIndex * dt >= finishTime + 3f)
+        if (raceState == RacePhase.Finished && elapsedTime >= finishTime + 3f)
         {
             raceState = RacePhase.Cooldown;
         }
@@ -226,12 +229,14 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         velocities = null;
         targetSpeeds = null;
         steeringAccels = null;
-        nextCheckpointIndex = null;
         lapCount = null;
         progressScore = null;
         desiredLaneOffset = null;
         closestTrackIndex = null;
         previousLapLogged = null;
+        lastClosestIndex = null;
+        lapArmed = null;
+        startIndex = null;
 
         baseSpeedTrait = null;
         aggressionTrait = null;
@@ -246,12 +251,15 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         trackNormal = null;
         trackHalfWidth = null;
         trackCurvature = null;
+        trackElevation = null;
+        trackSlopeAccel = null;
 
         pipelineRenderers = null;
         visualKeys = null;
 
         raceState = RacePhase.Ready;
         finishTime = 0f;
+        elapsedTime = 0f;
         winnerIndex = -1;
         leftBoundaryRenderer = null;
         rightBoundaryRenderer = null;
@@ -270,6 +278,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         lapsToWin = 3;
         raceState = RacePhase.Ready;
         winnerIndex = -1;
+        elapsedTime = 0f;
 
         marbles = new Transform[MarbleCount];
         identities = new EntityIdentity[MarbleCount];
@@ -277,12 +286,14 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         velocities = new Vector2[MarbleCount];
         targetSpeeds = new float[MarbleCount];
         steeringAccels = new float[MarbleCount];
-        nextCheckpointIndex = new int[MarbleCount];
         lapCount = new int[MarbleCount];
         progressScore = new float[MarbleCount];
         desiredLaneOffset = new float[MarbleCount];
         closestTrackIndex = new int[MarbleCount];
         previousLapLogged = new int[MarbleCount];
+        lastClosestIndex = new int[MarbleCount];
+        lapArmed = new bool[MarbleCount];
+        startIndex = new int[MarbleCount];
 
         baseSpeedTrait = new float[MarbleCount];
         aggressionTrait = new float[MarbleCount];
@@ -365,8 +376,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             velocities[i] = Vector2.zero;
             targetSpeeds[i] = baseSpeedTrait[i];
             steeringAccels[i] = rng.Range(10f, 15f);
-            nextCheckpointIndex[i] = 0;
-            closestTrackIndex[i] = 0;
+            closestTrackIndex[i] = FindClosestTrackIndex(startPosition);
+            lastClosestIndex[i] = closestTrackIndex[i];
+            startIndex[i] = closestTrackIndex[i];
+            lapArmed[i] = false;
             lapCount[i] = 0;
             desiredLaneOffset[i] = lateralOffset;
 
@@ -385,69 +398,28 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void BuildTrack(float arenaHalfWidth, float arenaHalfHeight, IRng rng)
     {
-        var controlCount = rng.Range(8, 17);
-        var margin = 3f;
-        var maxX = Mathf.Max(2f, arenaHalfWidth - margin);
-        var maxY = Mathf.Max(2f, arenaHalfHeight - margin);
+        controlPoints = BuildGrandPrixControlPoints(arenaHalfWidth, arenaHalfHeight, rng);
+        var smooth = ApplyChaikinLoop(controlPoints, 3);
+        trackCenter = ResampleLoopedCatmull(smooth, TrackSamples);
 
-        var template = (TrackTemplate)rng.Range(0, 4);
-        controlPoints = new Vector2[controlCount];
+        var baseHalfWidth = Mathf.Clamp(Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.14f, 2.2f, 5.5f);
+        EnsureSafeStartLine(baseHalfWidth * 0.8f);
 
-        for (var i = 0; i < controlCount; i++)
-        {
-            var t = (float)i / controlCount;
-            var angle = t * Mathf.PI * 2f;
-            Vector2 p;
-
-            switch (template)
-            {
-                case TrackTemplate.RoundedRectangle:
-                {
-                    var sx = Mathf.Cos(angle);
-                    var sy = Mathf.Sin(angle);
-                    var rr = 0.78f;
-                    p = new Vector2(Mathf.Sign(sx) * Mathf.Pow(Mathf.Abs(sx), rr), Mathf.Sign(sy) * Mathf.Pow(Mathf.Abs(sy), rr));
-                    p.x *= maxX * 0.82f;
-                    p.y *= maxY * 0.62f;
-                    break;
-                }
-                case TrackTemplate.Kidney:
-                {
-                    var x = Mathf.Cos(angle) + 0.36f * Mathf.Cos(2f * angle) - 0.15f;
-                    var y = 1.05f * Mathf.Sin(angle);
-                    p = new Vector2(x * maxX * 0.67f, y * maxY * 0.72f);
-                    break;
-                }
-                case TrackTemplate.Chicane:
-                {
-                    var x = Mathf.Cos(angle);
-                    var y = Mathf.Sin(angle) + 0.24f * Mathf.Sin(2f * angle + 0.45f);
-                    p = new Vector2(x * maxX * 0.74f, y * maxY * 0.74f);
-                    break;
-                }
-                default:
-                {
-                    var x = Mathf.Cos(angle) * maxX * 0.75f;
-                    var y = Mathf.Sin(angle) * maxY * 0.7f;
-                    p = new Vector2(x, y);
-                    break;
-                }
-            }
-
-            p.x += rng.Range(-maxX * 0.035f, maxX * 0.035f);
-            p.y += rng.Range(-maxY * 0.035f, maxY * 0.035f);
-            p.x = Mathf.Clamp(p.x, -maxX, maxX);
-            p.y = Mathf.Clamp(p.y, -maxY, maxY);
-            controlPoints[i] = p;
-        }
-
-        trackCenter = ResampleLoopedCatmull(controlPoints, TrackSamples);
         trackTangent = new Vector2[TrackSamples];
         trackNormal = new Vector2[TrackSamples];
         trackHalfWidth = new float[TrackSamples];
         trackCurvature = new float[TrackSamples];
+        trackElevation = new float[TrackSamples];
+        trackSlopeAccel = new float[TrackSamples];
 
-        var baseHalfWidth = Mathf.Clamp(Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.12f, 1.8f, 4.5f);
+        var overtakeAStart = Mathf.RoundToInt(TrackSamples * 0.10f);
+        var overtakeAEnd = Mathf.RoundToInt(TrackSamples * 0.20f);
+        var overtakeBStart = Mathf.RoundToInt(TrackSamples * 0.58f);
+        var overtakeBEnd = Mathf.RoundToInt(TrackSamples * 0.73f);
+
+        var p1 = rng.Range(0f, Mathf.PI * 2f);
+        var p2 = rng.Range(0f, Mathf.PI * 2f);
+        var p3 = rng.Range(0f, Mathf.PI * 2f);
 
         for (var i = 0; i < TrackSamples; i++)
         {
@@ -469,20 +441,167 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             trackCurvature[i] = corner;
 
             var straightness = 1f - corner;
-            var width = baseHalfWidth * (0.82f + straightness * 0.35f);
-
-            var zone = Mathf.Sin((float)i / TrackSamples * Mathf.PI * 2f + 0.6f);
-            if (zone > 0.7f)
+            var width = baseHalfWidth * (0.9f + straightness * 0.4f);
+            if (i >= overtakeAStart && i <= overtakeAEnd)
             {
-                width *= 1.35f;
-            }
-            else if (corner > 0.35f)
-            {
-                width *= 0.8f;
+                width *= 1.5f;
             }
 
-            trackHalfWidth[i] = Mathf.Clamp(width, 1.4f, baseHalfWidth * 1.6f);
+            if (i >= overtakeBStart && i <= overtakeBEnd)
+            {
+                width *= 1.42f;
+            }
+
+            if (corner > 0.42f)
+            {
+                width *= 0.9f;
+            }
+
+            trackHalfWidth[i] = Mathf.Clamp(width, baseHalfWidth * 0.75f, baseHalfWidth * 1.65f);
+
+            var t = (float)i / TrackSamples;
+            trackElevation[i] = Mathf.Sin(t * Mathf.PI * 2f * 1.1f + p1) * 0.42f
+                              + Mathf.Sin(t * Mathf.PI * 2f * 2.3f + p2) * 0.26f
+                              + Mathf.Sin(t * Mathf.PI * 2f * 3.7f + p3) * 0.18f;
         }
+
+        for (var i = 0; i < TrackSamples; i++)
+        {
+            var prev = trackElevation[(i - 1 + TrackSamples) % TrackSamples];
+            var next = trackElevation[(i + 1) % TrackSamples];
+            var slope = (next - prev) * 0.5f;
+            trackSlopeAccel[i] = -slope * gravityStrength;
+        }
+    }
+
+    private Vector2[] BuildGrandPrixControlPoints(float arenaHalfWidth, float arenaHalfHeight, IRng rng)
+    {
+        var maxX = Mathf.Max(6f, arenaHalfWidth - 4f);
+        var maxY = Mathf.Max(6f, arenaHalfHeight - 4f);
+
+        var points = new[]
+        {
+            new Vector2(-0.78f, -0.12f),
+            new Vector2(-0.58f, -0.08f),
+            new Vector2(-0.24f, -0.06f),
+            new Vector2(0.24f, -0.04f),
+            new Vector2(0.70f, -0.02f),
+            new Vector2(0.84f, 0.30f),   // hairpin approach
+            new Vector2(0.66f, 0.72f),
+            new Vector2(0.16f, 0.80f),
+            new Vector2(-0.18f, 0.64f),  // chicane / S entry
+            new Vector2(-0.38f, 0.82f),
+            new Vector2(-0.62f, 0.66f),
+            new Vector2(-0.80f, 0.24f),
+            new Vector2(-0.86f, -0.18f),
+            new Vector2(-0.66f, -0.54f),
+            new Vector2(-0.18f, -0.76f),
+            new Vector2(0.42f, -0.68f),
+        };
+
+        var result = new Vector2[points.Length];
+        for (var i = 0; i < points.Length; i++)
+        {
+            var p = new Vector2(points[i].x * maxX, points[i].y * maxY);
+            var jitter = new Vector2(rng.Range(-0.9f, 0.9f), rng.Range(-0.8f, 0.8f));
+            if (i % 4 == 0)
+            {
+                jitter *= 0.45f;
+            }
+
+            result[i] = p + jitter;
+        }
+
+        EnforceMinControlPointSeparation(result, 2.8f);
+        return result;
+    }
+
+    private static void EnforceMinControlPointSeparation(Vector2[] points, float minSeparation)
+    {
+        var minSq = minSeparation * minSeparation;
+        for (var iter = 0; iter < 3; iter++)
+        {
+            for (var i = 0; i < points.Length; i++)
+            {
+                var j = (i + 1) % points.Length;
+                var delta = points[j] - points[i];
+                var sq = delta.sqrMagnitude;
+                if (sq < 0.0001f || sq >= minSq)
+                {
+                    continue;
+                }
+
+                var dist = Mathf.Sqrt(sq);
+                var push = (minSeparation - dist) * 0.5f;
+                var dir = delta / dist;
+                points[i] -= dir * push;
+                points[j] += dir * push;
+            }
+        }
+    }
+
+    private void EnsureSafeStartLine(float threshold)
+    {
+        if (trackCenter == null || trackCenter.Length < 4)
+        {
+            return;
+        }
+
+        var seamDistance = Vector2.Distance(trackCenter[0], trackCenter[TrackSamples - 1]);
+        if (seamDistance >= threshold)
+        {
+            return;
+        }
+
+        var bestIndex = 0;
+        var bestScore = float.MinValue;
+        for (var i = 0; i < TrackSamples; i++)
+        {
+            var prev = trackCenter[(i - 1 + TrackSamples) % TrackSamples];
+            var curr = trackCenter[i];
+            var next = trackCenter[(i + 1) % TrackSamples];
+            var corner = 1f - Mathf.Clamp01(Vector2.Dot((curr - prev).normalized, (next - curr).normalized));
+            var separation = Vector2.Distance(curr, trackCenter[(i - 1 + TrackSamples) % TrackSamples]);
+            var score = separation - corner * 3f;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+
+        if (bestIndex == 0)
+        {
+            return;
+        }
+
+        var rotated = new Vector2[TrackSamples];
+        for (var i = 0; i < TrackSamples; i++)
+        {
+            rotated[i] = trackCenter[(bestIndex + i) % TrackSamples];
+        }
+
+        trackCenter = rotated;
+    }
+
+    private static Vector2[] ApplyChaikinLoop(Vector2[] input, int iterations)
+    {
+        var current = input;
+        for (var iter = 0; iter < iterations; iter++)
+        {
+            var next = new Vector2[current.Length * 2];
+            for (var i = 0; i < current.Length; i++)
+            {
+                var a = current[i];
+                var b = current[(i + 1) % current.Length];
+                next[i * 2] = a * 0.75f + b * 0.25f;
+                next[i * 2 + 1] = a * 0.25f + b * 0.75f;
+            }
+
+            current = next;
+        }
+
+        return current;
     }
 
     private static Vector2[] ResampleLoopedCatmull(Vector2[] controls, int sampleCount)
@@ -514,6 +633,23 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         return 0.5f * ((2f * p1) + (-p0 + p2) * t + (2f * p0 - 5f * p1 + 4f * p2 - p3) * t2 + (-p0 + 3f * p1 - 3f * p2 + p3) * t3);
     }
 
+    private int FindClosestTrackIndex(Vector2 position)
+    {
+        var bestIndex = 0;
+        var bestDistSq = float.MaxValue;
+        for (var i = 0; i < TrackSamples; i++)
+        {
+            var distSq = (position - trackCenter[i]).sqrMagnitude;
+            if (distSq < bestDistSq)
+            {
+                bestDistSq = distSq;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
+    }
+
     private void UpdateClosestTrackIndex(int marbleIndex, int window)
     {
         var current = closestTrackIndex[marbleIndex];
@@ -531,7 +667,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        nextCheckpointIndex[marbleIndex] = closestTrackIndex[marbleIndex];
         closestTrackIndex[marbleIndex] = bestIndex;
     }
 
@@ -543,7 +678,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         var desiredLane = laneBiasTrait[i] * trackHalfWidth[targetIdx] * 0.35f;
 
-        var ahead = FindNearestAhead(i, 30);
+        var ahead = FindNearestAhead(i, 34);
         if (ahead >= 0)
         {
             var aheadDelta = ForwardDelta(idx, closestTrackIndex[ahead]);
@@ -567,9 +702,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var desiredDir = (targetPoint - positions[i]).normalized;
 
         var draftBonus = ComputeDraftBonus(i);
-        var cornerPenalty = trackCurvature[targetIdx] * Mathf.Lerp(0.55f, 0.2f, corneringTrait[i]);
+        var cornerPenalty = trackCurvature[targetIdx] * Mathf.Lerp(0.66f, 0.28f, corneringTrait[i]);
         var desiredSpeed = baseSpeedTrait[i] * (1f - cornerPenalty) + draftBonus + aggressionTrait[i] * 0.15f;
-        desiredSpeed = Mathf.Clamp(desiredSpeed, 4f, 11f);
+        desiredSpeed = Mathf.Clamp(desiredSpeed, 4f, 11.4f);
 
         targetSpeeds[i] = desiredSpeed;
         var desiredVel = desiredDir * desiredSpeed;
@@ -577,6 +712,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         desiredVel += repel;
 
         velocities[i] = Vector2.MoveTowards(velocities[i], desiredVel, steeringAccels[i] * dt);
+        velocities[i] += trackTangent[idx] * trackSlopeAccel[idx] * dt;
+        velocities[i] *= Mathf.Clamp01(1f - rollingFriction * dt);
+        velocities[i] = Vector2.ClampMagnitude(velocities[i], maxSpeed);
     }
 
     private int FindNearestAhead(int marbleIndex, int forwardWindow)
@@ -771,14 +909,33 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
-    private void UpdateLapProgress(int index, int tickIndex, float dt)
+    private void UpdateLapProgress(int index)
     {
-        var prev = nextCheckpointIndex[index];
+        var prev = lastClosestIndex[index];
         var curr = closestTrackIndex[index];
+        var speed = velocities[index].magnitude;
 
-        if (prev > TrackSamples - 12 && curr < 12)
+        if (!lapArmed[index])
+        {
+            if (speed > 0.4f && ForwardDelta(startIndex[index], curr) > LapArmDistance)
+            {
+                lapArmed[index] = true;
+            }
+
+            return;
+        }
+
+        var velocityDir = speed > 0.001f ? velocities[index] / speed : Vector2.zero;
+        var forwardDot = Vector2.Dot(velocityDir, trackTangent[curr]);
+
+        if (prev > TrackSamples - LapCrossWindow
+            && curr < LapCrossWindow
+            && forwardDot > 0.25f
+            && speed > 0.5f)
         {
             lapCount[index]++;
+            lapArmed[index] = false;
+
             if (logLapEvents && previousLapLogged[index] != lapCount[index])
             {
                 previousLapLogged[index] = lapCount[index];
@@ -789,7 +946,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             {
                 raceState = RacePhase.Finished;
                 winnerIndex = index;
-                finishTime = tickIndex * dt;
+                finishTime = elapsedTime;
             }
         }
     }
