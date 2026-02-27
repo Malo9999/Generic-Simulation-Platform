@@ -26,10 +26,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float BumperBallRestitution = 1.06f;
     private const float BumperAthleteRestitution = 0.3f;
     private const int BumperCount = 6;
-    private const int PadsPerHalf = 2;
     private static readonly Vector2 PadSize = new Vector2(4.2f, 2.7f);
-    private const float PadSpeedMultiplier = 1.35f;
-    private const float PadDurationSeconds = 0.6f;
     private static readonly Color Team0Color = new Color(0.2f, 0.78f, 1f, 1f);
     private static readonly Color Team1Color = new Color(1f, 0.45f, 0.25f, 1f);
 
@@ -47,7 +44,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private float[] stunTimers;
     private float[] tackleCooldowns;
     private float[] passCooldowns;
-    private float[] boostUntilTime;
     private float[] laneByPlayer;
     private IRng[] athleteRngs;
     private AthleteState[] athleteStates;
@@ -83,7 +79,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private float receiverLockUntilTime = -999f;
 
     private Text hudText;
+    private Text scoreboardText;
     private int lastHudSecond = -1;
+    private int lastScoreboardSecond = -1;
+    private int lastScoreboardTeam0 = int.MinValue;
+    private int lastScoreboardTeam1 = int.MinValue;
     private int previousPossessionTeam = int.MinValue;
     private int nextEntityId;
 
@@ -95,9 +95,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         EnsureBall();
         BuildHazards();
         FindHudText();
+        FindScoreboardText();
         ResetMatchState();
         ResetKickoff();
         UpdateHud(force: true);
+        UpdateScoreboardUI(force: true);
     }
 
     public void Tick(int tickIndex, float dt)
@@ -134,6 +136,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         ResolveGoal(tickIndex);
         ApplyTransforms(dt);
         UpdateHud(force: false);
+        UpdateScoreboardUI(force: false);
     }
 
     public void Shutdown()
@@ -176,7 +179,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         stunTimers = new float[TotalAthletes];
         tackleCooldowns = new float[TotalAthletes];
         passCooldowns = new float[TotalAthletes];
-        boostUntilTime = new float[TotalAthletes];
         laneByPlayer = new float[TotalAthletes];
         athleteRngs = new IRng[TotalAthletes];
         athleteStates = new AthleteState[TotalAthletes];
@@ -253,7 +255,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var rng = RngService.Fork("SIM:FantasySport:HAZARDS");
         var goalHeight = GetGoalHeight();
         bumpers = FantasySportHazards.GenerateBumpers(rng, BumperCount, halfWidth, halfHeight, BumperRadius, BumperMinDistance, rules.goalDepth, goalHeight);
-        speedPads = FantasySportHazards.GenerateSpeedPads(rng, PadsPerHalf, halfWidth, halfHeight, PadSize, rules.goalDepth, goalHeight, bumpers, 1.2f, PadSpeedMultiplier, PadDurationSeconds);
+        speedPads = FantasySportHazards.GenerateSymmetricPads(halfWidth, halfHeight, PadSize, rules.goalDepth, bumpers);
 
         var oldRoot = sceneGraph.WorldObjectsRoot.Find("FantasySportHazards");
         if (oldRoot != null)
@@ -272,14 +274,15 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             go.transform.localScale = new Vector3(speedPads[i].area.width, speedPads[i].area.height, 1f);
             var fill = go.AddComponent<SpriteRenderer>();
             fill.sprite = PrimitiveSpriteLibrary.RoundedRectFill();
-            fill.color = new Color(0.46f, 1f, 0.55f, 0.24f);
-            RenderOrder.Apply(fill, RenderOrder.WorldDeco + 2);
+            var isSpeedPad = speedPads[i].speedMultiplier >= 1f;
+            fill.color = isSpeedPad ? new Color(0.46f, 1f, 0.55f, 0.26f) : new Color(0.56f, 0.33f, 0.86f, 0.28f);
+            RenderOrder.Apply(fill, RenderOrder.WorldDeco);
 
             var outline = new GameObject("Outline").AddComponent<SpriteRenderer>();
             outline.transform.SetParent(go.transform, false);
             outline.sprite = PrimitiveSpriteLibrary.RoundedRectOutline();
-            outline.color = new Color(0.08f, 0.18f, 0.08f, 0.65f);
-            RenderOrder.Apply(outline, RenderOrder.WorldDeco + 3);
+            outline.color = isSpeedPad ? new Color(0.08f, 0.2f, 0.08f, 0.68f) : new Color(0.2f, 0.08f, 0.3f, 0.72f);
+            RenderOrder.Apply(outline, RenderOrder.WorldAbove);
         }
 
         for (var i = 0; i < bumpers.Length; i++)
@@ -315,6 +318,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         intendedReceiverIndex = -1;
         receiverLockUntilTime = -999f;
         previousPossessionTeam = int.MinValue;
+        lastScoreboardSecond = -1;
+        lastScoreboardTeam0 = int.MinValue;
+        lastScoreboardTeam1 = int.MinValue;
     }
 
     private void ResetKickoff()
@@ -356,7 +362,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             stunTimers[i] = 0f;
             tackleCooldowns[i] = 0f;
             passCooldowns[i] = 0f;
-            boostUntilTime[i] = 0f;
         }
     }
 
@@ -464,7 +469,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i] += velocities[i] * dt;
             ClampAthlete(i);
             ResolveAthleteBumperCollision(i);
-            ApplySpeedPad(i);
         }
     }
 
@@ -473,10 +477,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var identity = identities[i];
         var keeper = IsGoalkeeper(i);
         var maxSpeed = keeper ? rules.athleteSpeedDefense * 0.85f : (identity.role == "offense" ? rules.athleteSpeedOffense : rules.athleteSpeedDefense);
-        if (elapsedMatchTime <= boostUntilTime[i])
-        {
-            maxSpeed *= PadSpeedMultiplier;
-        }
+        maxSpeed *= GetPadSpeedMultiplierAtPosition(positions[i]);
 
         var target = ComputeHomePosition(i);
         switch (athleteStates[i])
@@ -626,7 +627,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             if (speedPads[i].area.Contains(ballPos))
             {
-                ballVel *= 1f + (0.22f * dt);
+                if (speedPads[i].speedMultiplier >= 1f)
+                {
+                    ballVel *= 1f + (0.22f * dt);
+                }
+                else
+                {
+                    ballVel *= 1f - (0.28f * dt);
+                }
             }
         }
 
@@ -726,6 +734,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             Debug.Log($"[FantasySport] THROW GOAL team=1 score={scoreTeam0}-{scoreTeam1} tick={tickIndex}");
             ResetKickoff();
             UpdateHud(force: true);
+            UpdateScoreboardUI(force: true);
         }
         else if (IsInRightGoal(ballPos) && lastThrowTeam == 0)
         {
@@ -733,6 +742,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             Debug.Log($"[FantasySport] THROW GOAL team=0 score={scoreTeam0}-{scoreTeam1} tick={tickIndex}");
             ResetKickoff();
             UpdateHud(force: true);
+            UpdateScoreboardUI(force: true);
         }
     }
 
@@ -786,6 +796,32 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var seconds = remainingWhole % 60;
         var possession = ballOwnerTeam >= 0 ? $"Team{ballOwnerTeam}" : "Free";
         hudText.text = $"FantasySport  Team0 {scoreTeam0} : {scoreTeam1} Team1   Time: {minutes:00}:{seconds:00}   Possession: {possession}";
+    }
+
+
+    private void UpdateScoreboardUI(bool force)
+    {
+        if (scoreboardText == null)
+        {
+            FindScoreboardText();
+            if (scoreboardText == null)
+            {
+                return;
+            }
+        }
+
+        var remainingWhole = Mathf.CeilToInt(Mathf.Max(0f, rules.matchSeconds - elapsedMatchTime));
+        if (!force && remainingWhole == lastScoreboardSecond && scoreTeam0 == lastScoreboardTeam0 && scoreTeam1 == lastScoreboardTeam1)
+        {
+            return;
+        }
+
+        lastScoreboardSecond = remainingWhole;
+        lastScoreboardTeam0 = scoreTeam0;
+        lastScoreboardTeam1 = scoreTeam1;
+        var minutes = remainingWhole / 60;
+        var seconds = remainingWhole % 60;
+        scoreboardText.text = $"BLUE {scoreTeam0}  —  {scoreTeam1} ORANGE   {minutes:00}:{seconds:00}";
     }
 
     private void ResolveArtPipeline()
@@ -884,18 +920,17 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
-    private void ApplySpeedPad(int athleteIndex)
+    private float GetPadSpeedMultiplierAtPosition(Vector2 worldPos)
     {
         for (var i = 0; i < speedPads.Length; i++)
         {
-            if (!speedPads[i].area.Contains(positions[athleteIndex]))
+            if (speedPads[i].area.Contains(worldPos))
             {
-                continue;
+                return speedPads[i].speedMultiplier;
             }
-
-            boostUntilTime[athleteIndex] = Mathf.Max(boostUntilTime[athleteIndex], elapsedMatchTime + speedPads[i].durationSeconds);
-            return;
         }
+
+        return 1f;
     }
 
     private int FindClosestPlayerToPoint(int teamId, Vector2 point, bool includeGoalkeeper)
@@ -1078,6 +1113,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         var hudObject = GameObject.Find("HUDText");
         hudText = hudObject != null ? hudObject.GetComponent<Text>() : null;
+    }
+
+    private void FindScoreboardText()
+    {
+        var scoreboardObject = GameObject.Find("ScoreboardText");
+        scoreboardText = scoreboardObject != null ? scoreboardObject.GetComponent<Text>() : null;
     }
 
     private void EnsureMainCamera()

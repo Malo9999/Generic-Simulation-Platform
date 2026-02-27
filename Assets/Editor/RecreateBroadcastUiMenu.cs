@@ -18,6 +18,7 @@ public static class RecreateBroadcastUiMenu
     private const string MinimapBorderRootName = "MinimapBorderRoot";
     private const string HudPanelName = "HUDPanel";
     private const string HudTextName = "HUDText";
+    private const string ScoreboardTextName = "ScoreboardText";
     private const string MinimapCameraName = "MinimapCamera";
     private const float HudPanelHeight = 110f;
     private const float MinimapSize = 240f;
@@ -78,6 +79,10 @@ public static class RecreateBroadcastUiMenu
         EnsureHudBinder(hudText);
         DisableDuplicateNamedObjects(canvasObject.transform, HudTextName, hudText);
         DisableLegacyHudOverlays(canvasObject.transform, hudText);
+
+        var scoreboardText = GetOrCreateUiObject(ScoreboardTextName, canvasObject.transform);
+        ConfigureScoreboardText(scoreboardText);
+        DisableDuplicateNamedObjects(canvasObject.transform, ScoreboardTextName, scoreboardText);
 
         var minimapCamera = GetOrCreateRoot(MinimapCameraName, presentationRoot.transform);
         ConfigureMinimapCamera(minimapCamera, rt);
@@ -392,6 +397,34 @@ public static class RecreateBroadcastUiMenu
         if (text.font == null)
         {
             text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+    }
+
+
+    private static void ConfigureScoreboardText(GameObject scoreboardText)
+    {
+        var rect = scoreboardText.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 1f);
+        rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(0f, -18f);
+        rect.sizeDelta = new Vector2(760f, 58f);
+
+        var text = scoreboardText.GetComponent<Text>() ?? scoreboardText.AddComponent<Text>();
+        text.text = string.Empty;
+        text.fontSize = 30;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = Color.white;
+        text.raycastTarget = false;
+        if (text.font == null)
+        {
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        }
+
+        var tmpType = Type.GetType("TMPro.TextMeshProUGUI, Unity.TextMeshPro");
+        if (tmpType != null)
+        {
+            RemoveComponentIfPresent(scoreboardText, tmpType);
         }
     }
 
