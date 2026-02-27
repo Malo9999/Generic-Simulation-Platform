@@ -10,6 +10,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private const float TeamSeparationRadius = 2.8f;
     private const float BoundaryAvoidanceDistance = 3f;
+    private const float VerticalWallSoftMargin = 4.5f;
+    private const float CenterYBias = 0.22f;
     private const float PressureRadius = 2.2f;
     private const float OpenThreshold = 2.6f;
     private const float PassLeadTime = 0.3f;
@@ -32,6 +34,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float AthleteUnstickBoost = 2.4f;
     private const float BallMinSlideSpeed = 0.15f;
     private const int BumperCount = 6;
+    private const float GoalCooldownSeconds = 0.25f;
     private const float StaminaDrainRun = 0.95f;
     private const float StaminaRecoverIdle = 0.8f;
     private const float StaminaRecoverShape = 0.48f;
@@ -125,6 +128,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private bool kickoffSanityLogPending;
     private int simulationSeed;
     private bool scoreboardMissingLogged;
+    private float goalCooldownUntilTime = -999f;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -321,10 +325,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void BuildHazards()
     {
         var rng = RngService.Fork("SIM:FantasySport:HAZARDS");
-        var goalHeight = GetGoalHeight();
+        var endzoneDepth = GetEndzoneDepth();
+        var endzoneHalfHeight = GetEndzoneHalfHeight();
         speedPads = FantasySportHazards.GenerateSymmetricPads(halfWidth, halfHeight, PadSize, rules.goalDepth);
         var keepouts = FantasySportHazards.GetPadKeepouts(speedPads, 1.2f);
-        bumpers = FantasySportHazards.GenerateBumpers(rng, BumperCount, halfWidth, halfHeight, BumperRadius, BumperMinDistance, rules.goalDepth, goalHeight, keepouts);
+        bumpers = FantasySportHazards.GenerateBumpers(rng, BumperCount, halfWidth, halfHeight, BumperRadius, BumperMinDistance, endzoneDepth, endzoneHalfHeight, keepouts);
 
         var oldRoot = sceneGraph.WorldObjectsRoot.Find("FantasySportHazards");
         if (oldRoot != null)
@@ -334,6 +339,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         var root = new GameObject("FantasySportHazards").transform;
         root.SetParent(sceneGraph.WorldObjectsRoot, false);
+
+        BuildEndzoneVisual(root, 0, endzoneDepth, endzoneHalfHeight);
+        BuildEndzoneVisual(root, 1, endzoneDepth, endzoneHalfHeight);
 
         for (var i = 0; i < speedPads.Length; i++)
         {
@@ -392,6 +400,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastScoreboardTeam1 = int.MinValue;
         previousBallPos = Vector2.zero;
         scoreboardMissingLogged = false;
+        goalCooldownUntilTime = -999f;
     }
 
     private void ResetKickoff()
@@ -661,9 +670,20 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private Vector2 ComputeGoalkeeperTarget(int i)
     {
         var keeperBox = GetKeeperBox(identities[i].teamId);
-        var x = identities[i].teamId == 0 ? keeperBox.xMin + 1.5f : keeperBox.xMax - 1.5f;
-        var y = Mathf.Clamp(ballPos.y, keeperBox.yMin + 0.5f, keeperBox.yMax - 0.5f);
-        return new Vector2(x, y);
+        var isBallInsideKeeperBox = keeperBox.Contains(ballPos);
+        if (isBallInsideKeeperBox)
+        {
+            return new Vector2(
+                Mathf.Clamp(ballPos.x, keeperBox.xMin + 0.5f, keeperBox.xMax - 0.5f),
+                Mathf.Clamp(ballPos.y, keeperBox.yMin + 0.4f, keeperBox.yMax - 0.4f));
+        }
+
+        var depth = keeperBox.width;
+        var homeX = identities[i].teamId == 0
+            ? (-halfWidth + (depth * 0.55f))
+            : (halfWidth - (depth * 0.55f));
+        var homeY = Mathf.Clamp(ballPos.y, keeperBox.yMin + 0.4f, keeperBox.yMax - 0.4f);
+        return new Vector2(homeX, homeY);
     }
 
     private Vector2 BuildSteeringVelocity(int athleteIndex, Vector2 objectiveTarget, Vector2 homeTarget, float maxSpeed)
@@ -692,18 +712,34 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var boundary = Vector2.zero;
         if (athletePos.x < -halfWidth + BoundaryAvoidanceDistance) boundary.x += 1f;
         if (athletePos.x > halfWidth - BoundaryAvoidanceDistance) boundary.x -= 1f;
-        if (athletePos.y < -halfHeight + BoundaryAvoidanceDistance) boundary.y += 1f;
-        if (athletePos.y > halfHeight - BoundaryAvoidanceDistance) boundary.y -= 1f;
+        var yLimit = halfHeight - VerticalWallSoftMargin;
+        if (athletePos.y < -yLimit)
+        {
+            boundary.y += Mathf.Clamp01((-yLimit - athletePos.y) / Mathf.Max(0.01f, VerticalWallSoftMargin));
+        }
+        else if (athletePos.y > yLimit)
+        {
+            boundary.y -= Mathf.Clamp01((athletePos.y - yLimit) / Mathf.Max(0.01f, VerticalWallSoftMargin));
+        }
+
+        var centerBias = IsGoalkeeper(athleteIndex) ? Vector2.zero : (Vector2.up * (-athletePos.y) * CenterYBias);
+        var isEngagedRole = athleteStates[athleteIndex] == AthleteState.BallCarrier
+            || athleteStates[athleteIndex] == AthleteState.ChaseFreeBall
+            || athleteStates[athleteIndex] == AthleteState.PressCarrier;
 
         var engagedWeight = BaseHomePullWeight * GetRoleShapeWeight(roleByIndex[athleteIndex]) * GetOpportunityTetherScale(athleteIndex);
+        if (!isEngagedRole && !IsGoalkeeper(athleteIndex))
+        {
+            engagedWeight *= 1.6f;
+        }
         engagedWeight *= Mathf.Lerp(0.85f, 1.2f, 1f - profiles[athleteIndex].aggression);
 
         var roamDistance = toHome.magnitude;
         var roamRadius = GetRoleRoamRadius(roleByIndex[athleteIndex]);
         var roamOver = Mathf.Max(0f, roamDistance - roamRadius);
-        var roamPullWeight = roamOver > 0f ? (roamOver * roamOver) * 0.08f : 0f;
+        var roamPullWeight = roamOver > 0f ? (roamOver * roamOver) * (isEngagedRole ? 0.08f : 0.14f) : 0f;
 
-        var steering = (objective * 1.45f) + (homePull * (engagedWeight + roamPullWeight)) + (separation * 1.95f) + (boundary * 1.2f);
+        var steering = (objective * 1.45f) + (homePull * (engagedWeight + roamPullWeight)) + (separation * 1.95f) + (boundary * 1.45f) + centerBias;
         return steering.sqrMagnitude < 0.001f ? Vector2.zero : steering.normalized * maxSpeed;
     }
 
@@ -950,25 +986,41 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        var goalLineLeftX = -halfWidth;
-        var goalLineRightX = halfWidth;
-        var goalMouthHalfH = GetGoalMouthHalfHeight();
-        var crossedLeft = previousBallPos.x > goalLineLeftX && ballPos.x <= goalLineLeftX && Mathf.Abs(ballPos.y) <= goalMouthHalfH;
-        var crossedRight = previousBallPos.x < goalLineRightX && ballPos.x >= goalLineRightX && Mathf.Abs(ballPos.y) <= goalMouthHalfH;
+        if (elapsedMatchTime < goalCooldownUntilTime)
+        {
+            return;
+        }
 
-        if (crossedLeft)
+        var endzoneHalfHeight = GetEndzoneHalfHeight();
+        var leftEndzone = GetEndzoneRect(0);
+        var rightEndzone = GetEndzoneRect(1);
+
+        var enteredLeftEndzone = !leftEndzone.Contains(previousBallPos) && leftEndzone.Contains(ballPos);
+        var enteredRightEndzone = !rightEndzone.Contains(previousBallPos) && rightEndzone.Contains(ballPos);
+
+        var crossedLeftBackline = previousBallPos.x > -halfWidth && ballPos.x <= -halfWidth && Mathf.Abs(ballPos.y) <= endzoneHalfHeight;
+        var crossedRightBackline = previousBallPos.x < halfWidth && ballPos.x >= halfWidth && Mathf.Abs(ballPos.y) <= endzoneHalfHeight;
+
+        var scoredLeft = enteredLeftEndzone || crossedLeftBackline;
+        var scoredRight = enteredRightEndzone || crossedRightBackline;
+
+        if (scoredLeft)
         {
             scoreTeam1++;
-            Debug.Log($"[FantasySport] GOAL team=1 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} crossing=left");
+            Debug.Log($"[FantasySport] GOAL team=1 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} mode=endzone-left");
             ResetKickoff();
+            goalCooldownUntilTime = elapsedMatchTime + GoalCooldownSeconds;
+            previousBallPos = Vector2.zero;
             UpdateHud(force: true);
             UpdateScoreboardUI(force: true);
         }
-        else if (crossedRight)
+        else if (scoredRight)
         {
             scoreTeam0++;
-            Debug.Log($"[FantasySport] GOAL team=0 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} crossing=right");
+            Debug.Log($"[FantasySport] GOAL team=0 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} mode=endzone-right");
             ResetKickoff();
+            goalCooldownUntilTime = elapsedMatchTime + GoalCooldownSeconds;
+            previousBallPos = Vector2.zero;
             UpdateHud(force: true);
             UpdateScoreboardUI(force: true);
         }
@@ -1505,15 +1557,26 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private Rect GetKeeperBox(int teamId)
     {
-        var depth = Mathf.Max(5.2f, rules.goalDepth + 3.6f);
-        var height = GetGoalHeight() * 0.55f;
+        var depth = Mathf.Max(6f, GetEndzoneDepth() * 0.8f);
+        var height = GetEndzoneHalfHeight() * 2f * 0.7f;
         return teamId == 0
             ? new Rect(-halfWidth, -height * 0.5f, depth, height)
             : new Rect(halfWidth - depth, -height * 0.5f, depth, height);
     }
 
-    private float GetGoalMouthHalfHeight() => Mathf.Clamp(halfHeight * 0.45f, 6f, halfHeight - 3f);
+    private float GetGoalMouthHalfHeight() => Mathf.Clamp(rules.goalHeight * 0.5f, 2.5f, halfHeight - 3f);
     private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
+    private float GetEndzoneDepth() => Mathf.Max(6f, rules.goalDepth * 1.5f);
+    private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * 3f, 6f, halfHeight - 2f);
+
+    private Rect GetEndzoneRect(int teamId)
+    {
+        var depth = GetEndzoneDepth();
+        var halfY = GetEndzoneHalfHeight();
+        return teamId == 0
+            ? Rect.MinMaxRect(-halfWidth, -halfY, -halfWidth + depth, halfY)
+            : Rect.MinMaxRect(halfWidth - depth, -halfY, halfWidth, halfY);
+    }
 
     private Vector2 GetOwnGoalCenter(int teamId) => teamId == 0 ? new Vector2(-halfWidth, 0f) : new Vector2(halfWidth, 0f);
     private Vector2 GetOpponentGoalCenter(int teamId) => teamId == 0 ? new Vector2(halfWidth, 0f) : new Vector2(-halfWidth, 0f);
@@ -1521,6 +1584,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void ClampAthlete(int athleteIndex)
     {
         var p = positions[athleteIndex];
+        if (IsGoalkeeper(athleteIndex))
+        {
+            var box = GetKeeperBox(identities[athleteIndex].teamId);
+            p.x = Mathf.Clamp(p.x, box.xMin, box.xMax);
+            p.y = Mathf.Clamp(p.y, box.yMin, box.yMax);
+        }
+
         if (p.x < -halfWidth || p.x > halfWidth)
         {
             p.x = Mathf.Clamp(p.x, -halfWidth, halfWidth);
@@ -1572,6 +1642,25 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         var scoreboardObject = GameObject.Find("ScoreboardText");
         scoreboardText = scoreboardObject != null ? scoreboardObject.GetComponent<Text>() : null;
+    }
+
+    private void BuildEndzoneVisual(Transform parent, int teamId, float depth, float halfY)
+    {
+        var rect = teamId == 0
+            ? Rect.MinMaxRect(-halfWidth, -halfY, -halfWidth + depth, halfY)
+            : Rect.MinMaxRect(halfWidth - depth, -halfY, halfWidth, halfY);
+
+        var zone = new GameObject(teamId == 0 ? "Endzone_Left" : "Endzone_Right");
+        zone.transform.SetParent(parent, false);
+        zone.transform.localPosition = rect.center;
+        zone.transform.localScale = new Vector3(rect.width, rect.height, 1f);
+
+        var fill = zone.AddComponent<SpriteRenderer>();
+        fill.sprite = PrimitiveSpriteLibrary.RoundedRectFill();
+        fill.color = teamId == 0
+            ? new Color(0.36f, 0.42f, 0.95f, 0.20f)
+            : new Color(0.58f, 0.33f, 0.92f, 0.20f);
+        RenderOrder.Apply(fill, RenderOrder.WorldDeco - 1);
     }
 
     private void EnsureMainCamera()
