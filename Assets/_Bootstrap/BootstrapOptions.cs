@@ -10,6 +10,10 @@ public class BootstrapOptions : ScriptableObject
     public MarbleRaceSimSettings marbleRaceSettings;
     public FantasySportSimSettings fantasySportSettings;
     public RaceCarSimSettings raceCarSettings;
+    public SimVisualSettings antColoniesVisual;
+    public SimVisualSettings marbleRaceVisual;
+    public SimVisualSettings fantasySportVisual;
+    public SimVisualSettings raceCarVisual;
     public SeedPolicy seedPolicy = SeedPolicy.RandomEveryRun;
     public int fixedSeed = 12345;
     public bool allowHotkeySwitch = true;
