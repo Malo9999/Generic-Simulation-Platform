@@ -20,6 +20,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
     private AntWorldState worldState;
     private AntWorldRecipe recipe;
     private bool showHealthBars;
+    private AntColoniesConfig antConfig;
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
     private SimulationSceneGraph sceneGraph;
@@ -34,7 +35,10 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "AntColonies");
         EnsureMainCamera();
 
-        recipe = config?.antColonies?.worldRecipe ?? new AntWorldRecipe();
+        antConfig = config?.antColonies ?? new AntColoniesConfig();
+        antConfig.Normalize();
+
+        recipe = antConfig.worldRecipe ?? new AntWorldRecipe();
         recipe.Normalize();
         showHealthBars = config?.presentation?.showHealthBars ?? false;
 
@@ -49,6 +53,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
         nextAntId = 0;
         RebuildAntIndex();
+        SpawnInitialAnts();
 
         Debug.Log($"{nameof(AntColoniesRunner)} Initialize seed={config?.seed ?? 0}, scenario={config?.scenarioName}");
     }
@@ -169,6 +174,34 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         recipe = null;
         artSelector = null;
         activePipeline = null;
+        antConfig = null;
+    }
+
+
+    private void SpawnInitialAnts()
+    {
+        if (worldState == null || worldState.nests == null || worldState.nests.Count == 0)
+        {
+            return;
+        }
+
+        var nestCount = Mathf.Clamp(antConfig?.nestCount ?? worldState.nests.Count, 1, worldState.nests.Count);
+        var antsPerNest = Mathf.Max(0, antConfig?.antsPerNest ?? 12);
+        var maxAntsTotal = Mathf.Max(1, antConfig?.maxAntsTotal ?? 50);
+        var remainingBudget = maxAntsTotal - ants.Count;
+
+        for (var nestIndex = 0; nestIndex < nestCount && remainingBudget > 0; nestIndex++)
+        {
+            var spawnCount = Mathf.Min(antsPerNest, remainingBudget);
+            for (var i = 0; i < spawnCount; i++)
+            {
+                SpawnAntAtNest(nestIndex);
+            }
+
+            remainingBudget -= spawnCount;
+        }
+
+        RebuildAntIndex();
     }
 
     private void SpawnAnts(int tickIndex)
@@ -178,7 +211,9 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        if (ants.Count >= recipe.maxAntsGlobal)
+        var maxAntsTotal = Mathf.Max(1, antConfig?.maxAntsTotal ?? recipe.maxAntsGlobal);
+
+        if (ants.Count >= maxAntsTotal)
         {
             return;
         }
@@ -194,7 +229,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var nestIndex = 0; nestIndex < worldState.nests.Count; nestIndex++)
         {
-            if (ants.Count >= recipe.maxAntsGlobal || antsPerNest[nestIndex] >= recipe.maxAntsPerNest)
+            if (ants.Count >= maxAntsTotal || antsPerNest[nestIndex] >= recipe.maxAntsPerNest)
             {
                 continue;
             }
