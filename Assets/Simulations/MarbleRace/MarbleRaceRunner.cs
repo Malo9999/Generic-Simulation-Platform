@@ -130,7 +130,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (track == null || track.SampleCount <= 0)
         {
-            track = trackGenerator.BuildFallbackRoundedRectangle(arenaHalfWidth, arenaHalfHeight);
+            track = trackGenerator.BuildFallbackRoundedRectangle(arenaHalfWidth, arenaHalfHeight, trackVariant);
             fallbackUsed = true;
         }
 
@@ -283,6 +283,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         trackVariant++;
+        Debug.Log($"[MarbleRace] ForceNewTrack trackVariant={trackVariant}");
         RebuildTrackAndResetToReady();
     }
 
@@ -907,7 +908,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         fallbackUsed = true;
-        var fallback = trackGenerator.BuildFallbackRoundedRectangle(halfW, halfH);
+        var fallback = trackGenerator.BuildFallbackRoundedRectangle(halfW, halfH, variant);
         return PostProcessTrack(fallback, arenaWidth, arenaHeight, 0.8f);
     }
 
@@ -928,7 +929,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         track = BuildTrack(simulationSeed, width, height, trackVariant, out _);
         if (track == null || track.SampleCount <= 0)
         {
-            track = trackGenerator.BuildFallbackRoundedRectangle(width * 0.5f, height * 0.5f);
+            track = trackGenerator.BuildFallbackRoundedRectangle(width * 0.5f, height * 0.5f, trackVariant);
         }
 
         trackRenderer.Apply(sceneGraph.DecorRoot, track);

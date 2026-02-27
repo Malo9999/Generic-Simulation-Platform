@@ -205,6 +205,7 @@ public class MarbleRacePanelBinder : MonoBehaviour
 
         newTrackButton = CreateButton(panel.transform, "New Track", () =>
         {
+            Debug.Log("[UI] New Track clicked");
             if (runner != null)
             {
                 runner.ForceNewTrack();

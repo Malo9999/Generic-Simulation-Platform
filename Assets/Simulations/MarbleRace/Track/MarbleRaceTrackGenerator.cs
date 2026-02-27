@@ -99,13 +99,14 @@ public sealed class MarbleRaceTrackGenerator
             {
                 bestScore = score;
                 bestTrack = candidate;
+                bestTemplateId = templateId;
             }
         }
 
         if (bestTrack == null)
         {
             fallbackUsed = true;
-            bestTrack = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH);
+            bestTrack = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH, variant);
             bestScore = ScoreTrack(bestTrack, safeHalfW, safeHalfH, out _);
         }
 
@@ -114,7 +115,7 @@ public sealed class MarbleRaceTrackGenerator
         return bestTrack;
     }
 
-    public MarbleRaceTrack BuildFallbackRoundedRectangle(float arenaHalfWidth, float arenaHalfHeight)
+    public MarbleRaceTrack BuildFallbackRoundedRectangle(float arenaHalfWidth, float arenaHalfHeight, int variant)
     {
         var safeHalfW = Mathf.Max(12f, arenaHalfWidth);
         var safeHalfH = Mathf.Max(12f, arenaHalfHeight);
@@ -122,7 +123,13 @@ public sealed class MarbleRaceTrackGenerator
         var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
         var requiredMargin = baseHalfWidth * 1.45f + (minDim * 0.08f);
 
-        var points = BuildStadium(minDim);
+        var s = 0.06f * Mathf.Sin(variant * 1.7f);
+        var t = 0.06f * Mathf.Cos(variant * 1.3f);
+        var w = safeHalfW * (0.68f + s);
+        var h = safeHalfH * (0.58f + t);
+        var r = Mathf.Min(w, h) * (0.22f + 0.03f * Mathf.Sin(variant));
+
+        var points = BuildRoundedRectangle(w, h, r);
         ChaikinClosed(points, 2);
         var center = ResampleArcLengthClosed(points, TargetSamples);
         FitToBounds(center, safeHalfW, safeHalfH, requiredMargin);
@@ -333,21 +340,40 @@ public sealed class MarbleRaceTrackGenerator
         }
     }
 
-    private static List<Vector2> BuildStadium(float minDim)
+    private static List<Vector2> BuildRoundedRectangle(float halfW, float halfH, float radius)
     {
         var step = 0.8f;
-        var straight = Mathf.Clamp(minDim * 0.75f, 12f, 48f);
-        var radius = Mathf.Clamp(minDim * 0.2f, 4f, 18f);
+        var clampedW = Mathf.Max(4f, halfW);
+        var clampedH = Mathf.Max(4f, halfH);
+        var clampedR = Mathf.Clamp(radius, 1.5f, Mathf.Min(clampedW, clampedH) - 0.5f);
 
-        var segments = new List<Segment>(4)
+        var points = new List<Vector2>(96);
+        var corners = new[]
         {
-            new Segment(SegmentType.Straight, straight, 0f, 0f, 0f, true),
-            new Segment(SegmentType.Arc, radius, 180f, 0f, 0f, true),
-            new Segment(SegmentType.Straight, straight, 0f, 0f, 0f, true),
-            new Segment(SegmentType.Arc, radius, 180f, 0f, 0f, true)
+            new Vector2(clampedW - clampedR, clampedH - clampedR),
+            new Vector2(-(clampedW - clampedR), clampedH - clampedR),
+            new Vector2(-(clampedW - clampedR), -(clampedH - clampedR)),
+            new Vector2(clampedW - clampedR, -(clampedH - clampedR))
         };
 
-        return BuildPolyline(segments, step);
+        var arcSteps = Mathf.Max(8, Mathf.CeilToInt((Mathf.PI * 0.5f * clampedR) / step));
+        var startAngles = new[] { 0f, 90f, 180f, 270f };
+
+        for (var c = 0; c < 4; c++)
+        {
+            var startAngle = startAngles[c] * Mathf.Deg2Rad;
+            var endAngle = (startAngles[c] + 90f) * Mathf.Deg2Rad;
+            for (var i = 0; i < arcSteps; i++)
+            {
+                var t = i / (float)arcSteps;
+                var a = Mathf.Lerp(startAngle, endAngle, t);
+                var p = corners[c] + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * clampedR;
+                points.Add(p);
+            }
+        }
+
+        CloseLoopByDrift(points);
+        return points;
     }
 
     private static List<Vector2> BuildPolyline(List<Segment> segments, float step)
