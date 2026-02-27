@@ -2,7 +2,6 @@ using UnityEngine;
 
 public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int CarCount = 10;
     private const int SpawnDebugCount = 5;
 
     [SerializeField] private bool logSpawnIdentity = true;
@@ -103,19 +102,21 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
-        cars = new Transform[CarCount];
-        identities = new EntityIdentity[CarCount];
-        positions = new Vector2[CarCount];
-        velocities = new Vector2[CarCount];
-        laneTargets = new float[CarCount];
-        pipelineRenderers = new GameObject[CarCount];
-        visualKeys = new VisualKey[CarCount];
+        var carCount = Mathf.Max(2, config?.raceCar?.carCount ?? 10);
+
+        cars = new Transform[carCount];
+        identities = new EntityIdentity[carCount];
+        positions = new Vector2[carCount];
+        velocities = new Vector2[carCount];
+        laneTargets = new float[carCount];
+        pipelineRenderers = new GameObject[carCount];
+        visualKeys = new VisualKey[carCount];
 
         ResolveArtPipeline();
 
         var rng = RngService.Fork("SIM:RaceCar:SPAWN");
 
-        for (var i = 0; i < CarCount; i++)
+        for (var i = 0; i < carCount; i++)
         {
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
@@ -154,7 +155,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             EntityIconFactory.BuildCar(iconRoot.transform, identity);
 
             var startX = rng.Range(-halfWidth, halfWidth);
-            var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / CarCount);
+            var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / carCount);
             var jitterY = rng.Range(-0.35f, 0.35f);
             var speed = rng.Range(10f, 17f);
             if (rng.Value() < 0.5f)

@@ -67,6 +67,11 @@ public class Bootstrapper : MonoBehaviour
             options.simulationCatalog = EnsureSimulationCatalogAsset();
             EditorUtility.SetDirty(options);
         }
+
+        if (options != null)
+        {
+            EnsureSimSettingsAssets(options);
+        }
     }
 #endif
 
@@ -208,6 +213,48 @@ public class Bootstrapper : MonoBehaviour
         return settings;
     }
 
+
+    private static SimSettingsBase FindSimSettingsFor(string simulationId, BootstrapOptions bootstrapOptions)
+    {
+        if (bootstrapOptions == null || string.IsNullOrWhiteSpace(simulationId))
+        {
+            return null;
+        }
+
+        if (string.Equals(simulationId, "AntColonies", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.antColoniesSettings;
+        }
+
+        if (string.Equals(simulationId, "MarbleRace", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.marbleRaceSettings;
+        }
+
+        if (string.Equals(simulationId, "FantasySport", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.fantasySportSettings;
+        }
+
+        if (string.Equals(simulationId, "RaceCar", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.raceCarSettings;
+        }
+
+        return null;
+    }
+
+    private void ApplyArtDefaults(string simulationId, SimSettingsBase settings)
+    {
+        var forceBasic = settings.artPolicy.packSelectionMode == SimSettingsBase.PackSelectionMode.ForceBasic;
+        artBySim[simulationId] = new SimArtSettings
+        {
+            mode = forceBasic ? ArtMode.Simple : ArtMode.Flat,
+            usePlaceholders = false,
+            debugMode = forceBasic ? DebugPlaceholderMode.Replace : DebugPlaceholderMode.Overlay
+        };
+    }
+
     private void StartSimulation(string simulationId, bool initialRun)
     {
         simulationId = string.IsNullOrWhiteSpace(simulationId) ? GetFallbackSimulationId() : simulationId;
@@ -244,10 +291,24 @@ public class Bootstrapper : MonoBehaviour
             resolved.simulationId = simulationId;
             resolved.activeSimulation = simulationId;
             ApplyBootstrapOverrides(resolved);
-            resolved.seed = ResolveSeed(resolved);
+
+            var simSettings = FindSimSettingsFor(simulationId, options);
+            if (simSettings != null)
+            {
+                simSettings.ApplyTo(resolved);
+                ApplyArtDefaults(simulationId, simSettings);
+            }
+
+            resolved.seed = ResolveSeed(resolved, simSettings);
             resolved.NormalizeAliases();
             currentConfig = resolved;
             tickCount = 0;
+
+            var resolvedTickDeltaTime = simSettings != null && simSettings.tickDeltaTime > 0f
+                ? simSettings.tickDeltaTime
+                : tickDeltaTime;
+            simDriver?.SetTickDeltaTime(resolvedTickDeltaTime);
+            replayDriver?.SetTickDeltaTime(resolvedTickDeltaTime);
 
             PresentationBoundsSync.ApplyFromConfig(currentConfig);
 
@@ -350,7 +411,17 @@ public class Bootstrapper : MonoBehaviour
             basePack = catalog.GlobalDefaultContentPack;
         }
 
-        if (contentPackOverride == null)
+        var settings = FindSimSettingsFor(simulationId, options);
+        var policyOverridePack = ResolvePolicyContentPack(settings);
+        var forceBasic = settings != null && settings.artPolicy.packSelectionMode == SimSettingsBase.PackSelectionMode.ForceBasic;
+
+        var selectedOverride = contentPackOverride != null ? contentPackOverride : policyOverridePack;
+        if (forceBasic)
+        {
+            selectedOverride = null;
+        }
+
+        if (selectedOverride == null)
         {
             DestroyRuntimeMergedPack();
             return basePack;
@@ -359,10 +430,43 @@ public class Bootstrapper : MonoBehaviour
         if (basePack == null)
         {
             DestroyRuntimeMergedPack();
-            return contentPackOverride;
+            return selectedOverride;
         }
 
-        return MergeContentPacks(basePack, contentPackOverride);
+        return MergeContentPacks(basePack, selectedOverride);
+    }
+
+    private static ContentPack ResolvePolicyContentPack(SimSettingsBase settings)
+    {
+        if (settings == null)
+        {
+            return null;
+        }
+
+        return settings.artPolicy.packSelectionMode switch
+        {
+            SimSettingsBase.PackSelectionMode.ForcePack => settings.artPolicy.forcedPack,
+            SimSettingsBase.PackSelectionMode.AutoBest => FindFirstPack(settings.artPolicy.preferredPacks),
+            _ => null
+        };
+    }
+
+    private static ContentPack FindFirstPack(List<ContentPack> preferredPacks)
+    {
+        if (preferredPacks == null)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < preferredPacks.Count; i++)
+        {
+            if (preferredPacks[i] != null)
+            {
+                return preferredPacks[i];
+            }
+        }
+
+        return null;
     }
 
     private ContentPack MergeContentPacks(ContentPack basePack, ContentPack overridePack)
@@ -519,6 +623,59 @@ public class Bootstrapper : MonoBehaviour
     }
 
 #if UNITY_EDITOR
+    private static void EnsureSimSettingsAssets(BootstrapOptions bootstrapOptions)
+    {
+        if (bootstrapOptions == null)
+        {
+            return;
+        }
+
+        const string rootFolder = "Assets/_Bootstrap/SimSettings";
+        if (!AssetDatabase.IsValidFolder("Assets/_Bootstrap"))
+        {
+            AssetDatabase.CreateFolder("Assets", "_Bootstrap");
+        }
+
+        if (!AssetDatabase.IsValidFolder(rootFolder))
+        {
+            AssetDatabase.CreateFolder("Assets/_Bootstrap", "SimSettings");
+        }
+
+        bootstrapOptions.antColoniesSettings = EnsureSimSettingsAsset<AntColoniesSimSettings>(
+            $"{rootFolder}/AntColoniesSimSettings.asset",
+            bootstrapOptions.antColoniesSettings);
+        bootstrapOptions.marbleRaceSettings = EnsureSimSettingsAsset<MarbleRaceSimSettings>(
+            $"{rootFolder}/MarbleRaceSimSettings.asset",
+            bootstrapOptions.marbleRaceSettings);
+        bootstrapOptions.fantasySportSettings = EnsureSimSettingsAsset<FantasySportSimSettings>(
+            $"{rootFolder}/FantasySportSimSettings.asset",
+            bootstrapOptions.fantasySportSettings);
+        bootstrapOptions.raceCarSettings = EnsureSimSettingsAsset<RaceCarSimSettings>(
+            $"{rootFolder}/RaceCarSimSettings.asset",
+            bootstrapOptions.raceCarSettings);
+
+        EditorUtility.SetDirty(bootstrapOptions);
+        AssetDatabase.SaveAssets();
+    }
+
+    private static T EnsureSimSettingsAsset<T>(string assetPath, T current) where T : SimSettingsBase
+    {
+        if (current != null)
+        {
+            return current;
+        }
+
+        var existing = AssetDatabase.LoadAssetAtPath<T>(assetPath);
+        if (existing != null)
+        {
+            return existing;
+        }
+
+        var created = ScriptableObject.CreateInstance<T>();
+        AssetDatabase.CreateAsset(created, assetPath);
+        return created;
+    }
+
     private static BootstrapOptions EnsureBootstrapOptionsAsset()
     {
         const string assetPath = "Assets/_Bootstrap/BootstrapOptions.asset";
@@ -548,6 +705,7 @@ public class Bootstrapper : MonoBehaviour
         resolvedOptions = ScriptableObject.CreateInstance<BootstrapOptions>();
         resolvedOptions.simulationCatalog = EnsureSimulationCatalogAsset();
         AssetDatabase.CreateAsset(resolvedOptions, assetPath);
+        EnsureSimSettingsAssets(resolvedOptions);
         AssetDatabase.SaveAssets();
         Debug.Log($"Bootstrapper: Created BootstrapOptions asset at {assetPath}");
         return resolvedOptions;
@@ -679,21 +837,19 @@ public class Bootstrapper : MonoBehaviour
         config.activeSimulation = options.simulationId;
     }
 
-    private int ResolveSeed(ScenarioConfig config)
+    private int ResolveSeed(ScenarioConfig config, SimSettingsBase settings)
     {
         if (string.Equals(config?.mode, "Replay", StringComparison.OrdinalIgnoreCase))
         {
             return config.seed;
         }
 
-        if (options == null)
-        {
-            return Environment.TickCount;
-        }
+        var selectedPolicy = settings != null ? settings.seedPolicy : options != null ? options.seedPolicy : SeedPolicy.FromSystemTime;
+        var selectedFixedSeed = settings != null ? settings.fixedSeed : options != null ? options.fixedSeed : Environment.TickCount;
 
-        return options.seedPolicy switch
+        return selectedPolicy switch
         {
-            SeedPolicy.Fixed => options.fixedSeed,
+            SeedPolicy.Fixed => selectedFixedSeed,
             SeedPolicy.FromSystemTime => Environment.TickCount,
             _ => Environment.TickCount
         };

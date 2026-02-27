@@ -13,7 +13,7 @@ public interface IReplayableSimulationRunner : ISimulationRunner
 
 public sealed class ReplayDriver
 {
-    private readonly float tickDeltaTime;
+    private float tickDeltaTime;
     private readonly Dictionary<int, object> snapshotsByTick = new();
     private readonly Dictionary<int, List<ReplayEvent>> eventsByTick = new();
 
@@ -117,6 +117,11 @@ public sealed class ReplayDriver
     public void SetTimeScale(float newTimeScale)
     {
         TimeScale = Mathf.Max(0f, newTimeScale);
+    }
+
+    public void SetTickDeltaTime(float newTickDeltaTime)
+    {
+        tickDeltaTime = Mathf.Max(0.0001f, newTickDeltaTime);
     }
 
     public void Advance(float frameDeltaTime)

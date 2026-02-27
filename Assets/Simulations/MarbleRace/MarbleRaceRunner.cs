@@ -11,8 +11,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         Cooldown
     }
 
-    private const int MarbleCount = 12;
-    private const int LapsToWin = 3;
     private const int TrackBuildAttempts = 6;
 
     [SerializeField] private float maxSpeed = 12.5f;
@@ -45,7 +43,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private float finishTime;
     private int nextEntityId;
 
-    private readonly int[] rankingBuffer = new int[MarbleCount];
+    private int marbleCount = 12;
+    private int lapsToWin = 3;
+    private int trackTemplate = -1;
+    private int[] rankingBuffer = System.Array.Empty<int>();
 
     public RacePhase CurrentPhase => raceState;
     public bool IsReady => raceState == RacePhase.Ready;
@@ -93,6 +94,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         trackRenderer ??= new MarbleRaceTrackRenderer();
 
         var seed = config != null ? config.seed : 0;
+        marbleCount = Mathf.Max(2, config?.marbleRace?.marbleCount ?? 12);
+        lapsToWin = Mathf.Max(1, config?.marbleRace?.laps ?? 3);
+        trackTemplate = ResolveTrackTemplate(config?.marbleRace?.trackPreset);
         var fallbackUsed = false;
         track = BuildTrack(seed, arenaWidth, arenaHeight, out fallbackUsed);
 
@@ -130,7 +134,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (raceState == RacePhase.Ready)
         {
-            for (var i = 0; i < MarbleCount; i++)
+            for (var i = 0; i < marbleCount; i++)
             {
                 positions[i] = readyPositions[i];
                 velocities[i] = Vector2.zero;
@@ -153,7 +157,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 raceState = RacePhase.Cooldown;
             }
 
-            for (var i = 0; i < MarbleCount; i++)
+            for (var i = 0; i < marbleCount; i++)
             {
                 velocities[i] = Vector2.MoveTowards(velocities[i], Vector2.zero, dt * 4f);
                 positions[i] += velocities[i] * dt;
@@ -165,7 +169,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (raceState == RacePhase.Cooldown)
         {
-            for (var i = 0; i < MarbleCount; i++)
+            for (var i = 0; i < marbleCount; i++)
             {
                 marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             }
@@ -173,7 +177,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        for (var i = 0; i < MarbleCount; i++)
+        for (var i = 0; i < marbleCount; i++)
         {
             UpdateClosestIndex(i, 20);
             SimulateMarble(i, dt);
@@ -230,10 +234,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         raceState = RacePhase.Racing;
-        for (var i = 0; i < MarbleCount; i++)
+        for (var i = 0; i < marbleCount; i++)
         {
             var forward = track.Tangent[0];
-            var push = Mathf.Lerp(3.1f, 4.3f, i / (float)(MarbleCount - 1));
+            var push = Mathf.Lerp(3.1f, 4.3f, i / (float)(marbleCount - 1));
             velocities[i] = forward * push;
         }
     }
@@ -288,21 +292,21 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     {
         var rng = new SeededRng(seed ^ 0x5162AB);
 
-        marbles = new Transform[MarbleCount];
-        identities = new EntityIdentity[MarbleCount];
-        positions = new Vector2[MarbleCount];
-        readyPositions = new Vector2[MarbleCount];
-        velocities = new Vector2[MarbleCount];
-        progress = new float[MarbleCount];
-        lapCount = new int[MarbleCount];
-        closestTrackIndex = new int[MarbleCount];
-        laneOffset = new float[MarbleCount];
-        desiredTopSpeed = new float[MarbleCount];
-        stuckTimer = new float[MarbleCount];
-        lastClosestIndex = new int[MarbleCount];
+        marbles = new Transform[marbleCount];
+        identities = new EntityIdentity[marbleCount];
+        positions = new Vector2[marbleCount];
+        readyPositions = new Vector2[marbleCount];
+        velocities = new Vector2[marbleCount];
+        progress = new float[marbleCount];
+        lapCount = new int[marbleCount];
+        closestTrackIndex = new int[marbleCount];
+        laneOffset = new float[marbleCount];
+        desiredTopSpeed = new float[marbleCount];
+        stuckTimer = new float[marbleCount];
+        lastClosestIndex = new int[marbleCount];
 
         var entitiesRoot = sceneGraph != null ? sceneGraph.EntitiesRoot : transform;
-        for (var i = 0; i < MarbleCount; i++)
+        for (var i = 0; i < marbleCount; i++)
         {
             var identity = IdentityService.Create(nextEntityId++, i % 3, "marble", 6, seed, "MarbleRace");
             var groupRoot = SceneGraphUtil.EnsureEntityGroup(entitiesRoot, identity.teamId);
@@ -346,7 +350,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         {
             for (var c = 0; c < cols; c++)
             {
-                if (index >= MarbleCount)
+                if (index >= marbleCount)
                 {
                     break;
                 }
@@ -401,7 +405,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     {
         var nearestAhead = -1;
         var nearestDelta = int.MaxValue;
-        for (var j = 0; j < MarbleCount; j++)
+        for (var j = 0; j < marbleCount; j++)
         {
             if (j == i)
             {
@@ -435,7 +439,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private float ComputeDraftBoost(int i)
     {
         var idx = closestTrackIndex[i];
-        for (var j = 0; j < MarbleCount; j++)
+        for (var j = 0; j < marbleCount; j++)
         {
             if (j == i)
             {
@@ -531,7 +535,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         if (prev > track.SampleCount - 8 && idx < 8)
         {
             lapCount[i]++;
-            if (winnerIndex < 0 && lapCount[i] >= LapsToWin)
+            if (winnerIndex < 0 && lapCount[i] >= lapsToWin)
             {
                 winnerIndex = i;
                 finishTime = elapsedTime;
@@ -565,13 +569,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
     private int FillRankingBuffer(int[] indices)
     {
-        for (var i = 0; i < MarbleCount; i++)
+        for (var i = 0; i < marbleCount; i++)
         {
             indices[i] = i;
         }
 
         System.Array.Sort(indices, (a, b) => progress[b].CompareTo(progress[a]));
-        return MarbleCount;
+        return marbleCount;
     }
 
     private void CleanupLegacyTrackObjects()
@@ -611,12 +615,12 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var halfH = arenaHeight * 0.5f;
         var bounds = new Rect(-halfW, -halfH, arenaWidth, arenaHeight);
 
-        var templateStart = Mathf.Abs(seed) % 3;
+        var templateStart = trackTemplate >= 0 ? trackTemplate : Mathf.Abs(seed) % 3;
         for (var attempt = 0; attempt < TrackBuildAttempts; attempt++)
         {
             var attemptSeed = unchecked(seed ^ (int)0x9E3779B9 ^ (attempt * 7919));
             var rng = new SeededRng(attemptSeed);
-            var template = (templateStart + attempt + rng.NextInt(0, 3)) % 3;
+            var template = trackTemplate >= 0 ? trackTemplate : (templateStart + attempt + rng.NextInt(0, 3)) % 3;
             var built = trackGenerator.Build(halfW, halfH, rng, template);
             if (built == null || built.SampleCount <= 0)
             {
@@ -634,6 +638,29 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         fallbackUsed = true;
         var fallback = trackGenerator.BuildFallbackRoundedRectangle(halfW, halfH);
         return PostProcessTrack(fallback, arenaWidth, arenaHeight, 0.8f);
+    }
+
+    private static int ResolveTrackTemplate(string preset)
+    {
+        if (string.IsNullOrWhiteSpace(preset))
+        {
+            return -1;
+        }
+
+        switch (preset.Trim().ToLowerInvariant())
+        {
+            case "template0":
+            case "oval":
+                return 0;
+            case "template1":
+            case "s":
+                return 1;
+            case "template2":
+            case "twist":
+                return 2;
+            default:
+                return -1;
+        }
     }
 
     private static MarbleRaceTrack PostProcessTrack(MarbleRaceTrack source, float arenaWidth, float arenaHeight, float widthJitterScale)
