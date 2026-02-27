@@ -99,7 +99,17 @@ public class MarbleRacePanelBinder : MonoBehaviour
         statusText.text = $"Status: {runner.CurrentPhase}";
 
         var final = runner.CurrentPhase == MarbleRaceRunner.RacePhase.Finished || runner.CurrentPhase == MarbleRaceRunner.RacePhase.Cooldown;
-        runner.FillLeaderboard(leaderboardBuilder, 12, final);
+        var max = runner != null ? Mathf.Min(12, runner.LiveMarbleCount) : 0;
+        if (max == 0)
+        {
+            leaderboardText.text = "No marbles.";
+            winnerText.text = final ? runner.GetWinnerLine() : string.Empty;
+            startButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
+            restartButton.gameObject.SetActive(final);
+            return;
+        }
+
+        runner.FillLeaderboard(leaderboardBuilder, max, final);
         leaderboardText.text = leaderboardBuilder.ToString();
         winnerText.text = final ? runner.GetWinnerLine() : string.Empty;
 
