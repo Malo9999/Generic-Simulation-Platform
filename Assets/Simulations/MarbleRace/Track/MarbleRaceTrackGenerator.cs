@@ -5,7 +5,7 @@ public sealed class MarbleRaceTrackGenerator
 {
     private const int TargetSamples = 512;
     private const int TemplateCount = 9;
-    private const int MaxAttempts = 12;
+    private const int MaxAttempts = 16;
 
     private enum SegmentKind
     {
@@ -44,7 +44,9 @@ public sealed class MarbleRaceTrackGenerator
     public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int variant)
     {
         var result = BuildInternal(arenaHalfWidth, arenaHalfHeight, rng, variant);
-        Debug.Log($"[MarbleRaceTrackGenerator] bestTemplate={result.TemplateId} score={result.Score:F1} attempts={result.Attempts} fallback={(result.UsedFallback ? "yes" : "no")}");
+        var hasCrossing = result.Track != null && TryFindBestCrossing(result.Track.Center, out _);
+        var bridgeLen = hasCrossing && result.Track != null ? CountLayerSamples(result.Track.Layer, 1) : 0;
+        Debug.Log($"[TrackGen] seed={variant} bestTemplate={result.TemplateId} score={result.Score:F1} hasCrossing={(hasCrossing ? "yes" : "no")} bridgeLen={bridgeLen}");
         return result.Track;
     }
 
@@ -438,7 +440,11 @@ public sealed class MarbleRaceTrackGenerator
 
         var baseHalfWidth = Mathf.Clamp(Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.035f, 0.9f, 2.2f);
         var widths = BuildWidths(curvature, baseHalfWidth);
-        var startIndex = FindBestStraightStart(curvature);
+        var layers = BuildLayers(center, curvature);
+        var crossingIndex = FindCrossingSampleIndex(layers);
+        SmoothWidthsAroundCrossing(widths, crossingIndex, baseHalfWidth);
+
+        var startIndex = FindBestStraightStart(curvature, crossingIndex);
         if (startIndex > 0)
         {
             RotateArray(center, startIndex);
@@ -446,9 +452,10 @@ public sealed class MarbleRaceTrackGenerator
             RotateArray(normal, startIndex);
             RotateArray(curvature, startIndex);
             RotateArray(widths, startIndex);
+            RotateArray(layers, startIndex);
         }
 
-        return new MarbleRaceTrack(center, tangent, normal, widths, curvature);
+        return new MarbleRaceTrack(center, tangent, normal, widths, curvature, layers);
     }
 
     private static void PopulateFrames(Vector2[] center, Vector2[] tangent, Vector2[] normal, float[] curvature)
@@ -501,42 +508,128 @@ public sealed class MarbleRaceTrackGenerator
         return widths;
     }
 
-    private static int FindBestStraightStart(float[] curvature)
+    private static sbyte[] BuildLayers(Vector2[] center, float[] curvature)
+    {
+        var n = center.Length;
+        var layers = new sbyte[n];
+        if (!TryFindBestCrossing(center, out var crossing))
+        {
+            return layers;
+        }
+
+        var window = 40;
+        var arcA = BuildBridgeArcCandidate(crossing.AStart, crossing.AEnd, curvature, window);
+        var arcB = BuildBridgeArcCandidate(crossing.BStart, crossing.BEnd, curvature, window);
+        var chooseA = arcA.Score <= arcB.Score;
+        var bridgeStart = chooseA ? crossing.AStart : crossing.BStart;
+        var bridgeEnd = chooseA ? crossing.AEnd : crossing.BEnd;
+        MarkWrappedRange(layers, bridgeStart, bridgeEnd, 1);
+        return layers;
+    }
+
+    private static int FindCrossingSampleIndex(sbyte[] layers)
+    {
+        if (layers == null || layers.Length == 0)
+        {
+            return -1;
+        }
+
+        for (var i = 0; i < layers.Length; i++)
+        {
+            if (layers[i] == 1)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static void SmoothWidthsAroundCrossing(float[] widths, int crossingIndex, float baseHalfWidth)
+    {
+        if (widths == null || widths.Length == 0 || crossingIndex < 0)
+        {
+            return;
+        }
+
+        var n = widths.Length;
+        var window = 22;
+        var target = Mathf.Clamp(baseHalfWidth * 1.08f, baseHalfWidth * 0.9f, baseHalfWidth * 1.45f);
+        for (var o = -window; o <= window; o++)
+        {
+            var idx = (crossingIndex + o + n) % n;
+            var blend = 1f - Mathf.InverseLerp(window + 1f, 0f, Mathf.Abs(o));
+            widths[idx] = Mathf.Lerp(widths[idx], target, blend * 0.65f);
+        }
+    }
+
+    private struct BridgeArcCandidate
+    {
+        public float Score;
+    }
+
+    private static BridgeArcCandidate BuildBridgeArcCandidate(int start, int end, float[] curvature, int context)
     {
         var n = curvature.Length;
-        var bestStart = -1;
-        var bestLength = 0;
-        var runStart = -1;
-
-        for (var i = 0; i < n * 2; i++)
+        var len = WrappedDistance(start, end, n) + 1;
+        var curvatureSum = 0f;
+        var straightRun = 0;
+        var longestStraightRun = 0;
+        for (var o = -context; o <= len + context; o++)
         {
-            var idx = i % n;
-            if (curvature[idx] < 0.04f)
+            var idx = (start + o + n) % n;
+            var c = Mathf.Abs(curvature[idx]);
+            curvatureSum += c;
+            if (c < 0.04f)
             {
-                if (runStart < 0)
-                {
-                    runStart = i;
-                }
-
-                var runLength = i - runStart + 1;
-                if (runLength > bestLength)
-                {
-                    bestLength = runLength;
-                    bestStart = runStart;
-                }
+                straightRun++;
+                longestStraightRun = Mathf.Max(longestStraightRun, straightRun);
             }
             else
             {
-                runStart = -1;
+                straightRun = 0;
             }
         }
 
-        if (bestLength < 24 || bestStart < 0)
+        var samples = (len + (context * 2) + 1);
+        var avgCurv = samples > 0 ? curvatureSum / samples : 0f;
+        return new BridgeArcCandidate { Score = (avgCurv * 100f) - (longestStraightRun * 0.35f) };
+    }
+
+
+    private static int FindBestStraightStart(float[] curvature, int crossingIndex)
+    {
+        var n = curvature.Length;
+        var bestIndex = 0;
+        var bestScore = float.MinValue;
+        var window = 18;
+
+        for (var i = 0; i < n; i++)
         {
-            return 0;
+            var score = 0f;
+            for (var j = -window; j <= window; j++)
+            {
+                var idx = (i + j + n) % n;
+                score += 0.065f - curvature[idx];
+            }
+
+            if (crossingIndex >= 0)
+            {
+                var crossingDelta = Mathf.Min(Mathf.Abs(i - crossingIndex), n - Mathf.Abs(i - crossingIndex));
+                if (crossingDelta < 52)
+                {
+                    score -= (52 - crossingDelta) * 0.35f;
+                }
+            }
+
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestIndex = i;
+            }
         }
 
-        return (bestStart + (bestLength / 2)) % n;
+        return bestIndex;
     }
 
     private static bool ValidateStrict(MarbleRaceTrack track, float halfW, float halfH)
@@ -578,9 +671,15 @@ public sealed class MarbleRaceTrackGenerator
             return false;
         }
 
-        if (HasSelfIntersection(track.Center, 8))
+        var hasCrossing = TryFindBestCrossing(track.Center, out _);
+
+        for (var i = 0; i < n; i++)
         {
-            return false;
+            var segmentLen = Vector2.Distance(track.Center[i], track.Center[(i + 1) % n]);
+            if (segmentLen < 0.12f)
+            {
+                return false;
+            }
         }
 
         var left = new Vector2[n];
@@ -596,7 +695,7 @@ public sealed class MarbleRaceTrackGenerator
             return false;
         }
 
-        if (HasIntersectionsBetween(left, right, 10, n))
+        if (HasIntersectionsBetween(left, right, 10, n) && !hasCrossing)
         {
             return false;
         }
@@ -713,21 +812,12 @@ public sealed class MarbleRaceTrackGenerator
             straightRunsOverMin++;
         }
 
+        var hasChicane = signAlternations > 0;
+
         score += straightCount * 0.05f;
-        if (straightRunsOverMin >= 2)
-        {
-            score += 20f;
-        }
-
-        if (foundHairpin)
-        {
-            score += 14f;
-        }
-
-        if (signAlternations > 0)
-        {
-            score += 12f;
-        }
+        score += straightRunsOverMin >= 2 ? 20f : -42f;
+        score += foundHairpin ? 14f : -34f;
+        score += hasChicane ? 12f : -26f;
 
         if (foundOvertakeZone)
         {
@@ -797,7 +887,150 @@ public sealed class MarbleRaceTrackGenerator
             score -= (nearEdgeTarget - minClearance) * 22f;
         }
 
+        var minSegment = float.MaxValue;
+        var maxSegment = 0f;
+        for (var i = 0; i < n; i++)
+        {
+            var seg = Vector2.Distance(center[i], center[(i + 1) % n]);
+            minSegment = Mathf.Min(minSegment, seg);
+            maxSegment = Mathf.Max(maxSegment, seg);
+        }
+
+        if (minSegment < maxSegment * 0.33f)
+        {
+            score -= (maxSegment * 0.33f - minSegment) * 80f;
+        }
+
+        var minX = float.MaxValue;
+        var maxX = float.MinValue;
+        var minY = float.MaxValue;
+        var maxY = float.MinValue;
+        for (var i = 0; i < n; i++)
+        {
+            minX = Mathf.Min(minX, center[i].x);
+            maxX = Mathf.Max(maxX, center[i].x);
+            minY = Mathf.Min(minY, center[i].y);
+            maxY = Mathf.Max(maxY, center[i].y);
+        }
+
+        var spanX = Mathf.Max(0.01f, maxX - minX);
+        var spanY = Mathf.Max(0.01f, maxY - minY);
+        var aspect = spanX > spanY ? spanX / spanY : spanY / spanX;
+        if (aspect > 2.1f)
+        {
+            score -= (aspect - 2.1f) * 38f;
+        }
+
         return score;
+    }
+
+    private struct CrossingInfo
+    {
+        public int AStart;
+        public int AEnd;
+        public int BStart;
+        public int BEnd;
+    }
+
+    private static bool TryFindBestCrossing(Vector2[] center, out CrossingInfo crossing)
+    {
+        crossing = default;
+        if (center == null || center.Length < 16)
+        {
+            return false;
+        }
+
+        var n = center.Length;
+        var bestDist = float.MaxValue;
+        var found = false;
+        for (var i = 0; i < n; i += 2)
+        {
+            var a1 = center[i];
+            var a2 = center[(i + 1) % n];
+            for (var j = i + 10; j < n; j += 2)
+            {
+                var cyclic = Mathf.Abs(i - j);
+                if (cyclic < 10 || cyclic > n - 10)
+                {
+                    continue;
+                }
+
+                var b1 = center[j];
+                var b2 = center[(j + 1) % n];
+                if (!SegmentsIntersect(a1, a2, b1, b2))
+                {
+                    continue;
+                }
+
+                var pairDist = (a1 - b1).sqrMagnitude;
+                if (pairDist < bestDist)
+                {
+                    bestDist = pairDist;
+                    crossing = new CrossingInfo
+                    {
+                        AStart = (i - 18 + n) % n,
+                        AEnd = (i + 18) % n,
+                        BStart = (j - 18 + n) % n,
+                        BEnd = (j + 18) % n
+                    };
+                    found = true;
+                }
+            }
+        }
+
+        return found;
+    }
+
+    private static int WrappedDistance(int start, int end, int count)
+    {
+        var dist = end - start;
+        if (dist < 0)
+        {
+            dist += count;
+        }
+
+        return dist;
+    }
+
+    private static void MarkWrappedRange(sbyte[] values, int start, int end, sbyte mark)
+    {
+        if (values == null || values.Length == 0)
+        {
+            return;
+        }
+
+        var n = values.Length;
+        var i = ((start % n) + n) % n;
+        var e = ((end % n) + n) % n;
+        while (true)
+        {
+            values[i] = mark;
+            if (i == e)
+            {
+                break;
+            }
+
+            i = (i + 1) % n;
+        }
+    }
+
+    private static int CountLayerSamples(sbyte[] layer, sbyte value)
+    {
+        if (layer == null)
+        {
+            return 0;
+        }
+
+        var count = 0;
+        for (var i = 0; i < layer.Length; i++)
+        {
+            if (layer[i] == value)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private static bool HasMinimumSpacing(Vector2[] center, float minDistance, int neighborGap)

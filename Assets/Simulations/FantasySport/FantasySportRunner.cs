@@ -34,7 +34,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float AthleteUnstickBoost = 2.4f;
     private const float BallMinSlideSpeed = 0.15f;
     private const int BumperCount = 6;
-    private const float GoalCooldownSeconds = 0.25f;
+    private const int GoalCooldownTicks = 18;
     private const float StaminaDrainRun = 0.95f;
     private const float StaminaRecoverIdle = 0.8f;
     private const float StaminaRecoverShape = 0.48f;
@@ -128,12 +128,17 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private bool kickoffSanityLogPending;
     private int simulationSeed;
     private bool scoreboardMissingLogged;
-    private float goalCooldownUntilTime = -999f;
+    private int goalCooldownUntilTick = -999;
+    private int currentTickIndex;
+    private readonly int[] primaryChaserByTeam = { -1, -1 };
+    private readonly int[] secondaryChaserByTeam = { -1, -1 };
+    private static Sprite cachedWhitePixelSprite;
 
     public void Initialize(ScenarioConfig config)
     {
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "FantasySport");
         EnsureMainCamera();
+        SetScoreboardVisible(true);
         ApplySimulationConfig(config);
         BuildAthletes(config);
         EnsureBall();
@@ -153,6 +158,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
+        currentTickIndex = tickIndex;
         LogKickoffTeamSideSanity();
 
         if (!matchFinished)
@@ -187,6 +193,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     public void Shutdown()
     {
+        SetScoreboardVisible(false);
         if (athletes != null)
         {
             for (var i = 0; i < athletes.Length; i++)
@@ -400,7 +407,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastScoreboardTeam1 = int.MinValue;
         previousBallPos = Vector2.zero;
         scoreboardMissingLogged = false;
-        goalCooldownUntilTime = -999f;
+        goalCooldownUntilTick = -999;
+        currentTickIndex = 0;
+        primaryChaserByTeam[0] = -1;
+        primaryChaserByTeam[1] = -1;
+        secondaryChaserByTeam[0] = -1;
+        secondaryChaserByTeam[1] = -1;
     }
 
     private void ResetKickoff()
@@ -472,10 +484,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void RefreshAssignments()
     {
         previousPossessionTeam = ballOwnerTeam;
-        var freePrimaryChaser0 = FindClosestPlayerToPoint(0, ballPos, includeGoalkeeper: false);
-        var freePrimaryChaser1 = FindClosestPlayerToPoint(1, ballPos, includeGoalkeeper: false);
-        var freeSecondaryChaser0 = FindSecondClosestPlayerToPoint(0, ballPos, freePrimaryChaser0);
-        var freeSecondaryChaser1 = FindSecondClosestPlayerToPoint(1, ballPos, freePrimaryChaser1);
+        AssignActiveChasers(0);
+        AssignActiveChasers(1);
 
         for (var i = 0; i < TotalAthletes; i++)
         {
@@ -496,8 +506,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             if (ballOwnerIndex < 0)
             {
-                var primary = teamId == 0 ? freePrimaryChaser0 : freePrimaryChaser1;
-                var secondary = teamId == 0 ? freeSecondaryChaser0 : freeSecondaryChaser1;
+                var primary = primaryChaserByTeam[teamId];
+                var secondary = secondaryChaserByTeam[teamId];
                 athleteStates[i] = (i == primary || i == secondary) ? AthleteState.ChaseFreeBall : AthleteState.SupportAttack;
                 continue;
             }
@@ -508,10 +518,35 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 continue;
             }
 
-            var press = FindClosestPlayerToPoint(teamId, positions[ballOwnerIndex], includeGoalkeeper: false);
-            var supportPress = FindSecondClosestPlayerToPoint(teamId, positions[ballOwnerIndex], press);
+            var press = primaryChaserByTeam[teamId];
+            var supportPress = secondaryChaserByTeam[teamId];
             athleteStates[i] = (i == press || i == supportPress) ? AthleteState.PressCarrier : AthleteState.MarkLane;
         }
+    }
+
+    private void AssignActiveChasers(int teamId)
+    {
+        var target = ballPos;
+        if (ballOwnerIndex >= 0 && identities[ballOwnerIndex].teamId != teamId)
+        {
+            target = positions[ballOwnerIndex];
+        }
+
+        var primary = FindClosestPlayerToPoint(teamId, target, includeGoalkeeper: false);
+        var secondary = FindSecondClosestPlayerToPoint(teamId, target, primary);
+
+        if (primary == ballOwnerIndex)
+        {
+            primary = FindSecondClosestPlayerToPoint(teamId, target, primary);
+        }
+
+        if (secondary == ballOwnerIndex)
+        {
+            secondary = FindSecondClosestPlayerToPoint(teamId, target, primary);
+        }
+
+        primaryChaserByTeam[teamId] = primary;
+        secondaryChaserByTeam[teamId] = secondary;
     }
 
     private void ResolveBallCarrierDecision()
@@ -590,7 +625,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         for (var i = 0; i < TotalAthletes; i++)
         {
             var desired = stunTimers[i] > 0f || matchFinished ? Vector2.zero : ComputeDesiredVelocity(i);
-            var effectiveAccel = Mathf.Lerp(6f, 14f, profiles[i].accel) * Mathf.Lerp(0.65f, 1f, GetFatigue01(i));
+            var fatigue = GetFatigue01(i);
+            var effectiveAccel = Mathf.Lerp(6f, 14f, profiles[i].accel) * (0.55f + (0.45f * fatigue));
             velocities[i] = Vector2.MoveTowards(velocities[i], desired, effectiveAccel * dt);
             positions[i] += velocities[i] * dt;
             ClampAthlete(i);
@@ -604,7 +640,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var keeper = IsGoalkeeper(i);
         var baseMaxSpeed = keeper ? Mathf.Lerp(4.5f, 7.5f, profiles[i].speed) * 0.9f : Mathf.Lerp(4.5f, 7.5f, profiles[i].speed);
         var fatigue = GetFatigue01(i);
-        var maxSpeed = baseMaxSpeed * Mathf.Lerp(0.55f, 1f, fatigue);
+        var maxSpeed = baseMaxSpeed * (0.45f + (0.55f * fatigue));
         maxSpeed *= GetPadSpeedMultiplierAtPosition(positions[i]);
 
         var objective = ComputeHomePosition(i);
@@ -635,8 +671,33 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 break;
         }
 
+        if (IsActiveChaser(i))
+        {
+            objective = GetActiveChaseTarget(i);
+        }
+
+        if (ShouldApplyPatrolJitter(i))
+        {
+            objective = ComputeHomePosition(i) + ComputePatrolJitter(i);
+        }
+
         var home = ComputeHomePosition(i);
-        return BuildSteeringVelocity(i, objective, home, maxSpeed);
+        var desired = BuildSteeringVelocity(i, objective, home, maxSpeed);
+        if (desired.magnitude < 0.25f && stunTimers[i] <= 0f)
+        {
+            var towardTarget = objective - positions[i];
+            if (towardTarget.sqrMagnitude < 0.0001f)
+            {
+                towardTarget = home - positions[i];
+            }
+
+            if (towardTarget.sqrMagnitude > 0.0001f)
+            {
+                desired = towardTarget.normalized * 1f;
+            }
+        }
+
+        return desired;
     }
 
     private Vector2 ComputeHomePosition(int athleteIndex)
@@ -780,6 +841,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (athleteIndex == primaryChaser)
         {
             tetherScale = Mathf.Min(tetherScale, 0.25f);
+        }
+
+        if (athleteIndex == primaryChaserByTeam[teamId] || athleteIndex == secondaryChaserByTeam[teamId])
+        {
+            tetherScale = Mathf.Min(tetherScale, 0.22f);
         }
 
         if (ballOwnerIndex >= 0 && identities[ballOwnerIndex].teamId != teamId)
@@ -986,40 +1052,33 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        if (elapsedMatchTime < goalCooldownUntilTime)
+        if (tickIndex < goalCooldownUntilTick)
         {
             return;
         }
 
-        var endzoneHalfHeight = GetEndzoneHalfHeight();
         var leftEndzone = GetEndzoneRect(0);
         var rightEndzone = GetEndzoneRect(1);
 
         var enteredLeftEndzone = !leftEndzone.Contains(previousBallPos) && leftEndzone.Contains(ballPos);
         var enteredRightEndzone = !rightEndzone.Contains(previousBallPos) && rightEndzone.Contains(ballPos);
 
-        var crossedLeftBackline = previousBallPos.x > -halfWidth && ballPos.x <= -halfWidth && Mathf.Abs(ballPos.y) <= endzoneHalfHeight;
-        var crossedRightBackline = previousBallPos.x < halfWidth && ballPos.x >= halfWidth && Mathf.Abs(ballPos.y) <= endzoneHalfHeight;
-
-        var scoredLeft = enteredLeftEndzone || crossedLeftBackline;
-        var scoredRight = enteredRightEndzone || crossedRightBackline;
-
-        if (scoredLeft)
+        if (enteredLeftEndzone)
         {
             scoreTeam1++;
             Debug.Log($"[FantasySport] GOAL team=1 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} mode=endzone-left");
             ResetKickoff();
-            goalCooldownUntilTime = elapsedMatchTime + GoalCooldownSeconds;
+            goalCooldownUntilTick = tickIndex + GoalCooldownTicks;
             previousBallPos = Vector2.zero;
             UpdateHud(force: true);
             UpdateScoreboardUI(force: true);
         }
-        else if (scoredRight)
+        else if (enteredRightEndzone)
         {
             scoreTeam0++;
             Debug.Log($"[FantasySport] GOAL team=0 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} mode=endzone-right");
             ResetKickoff();
-            goalCooldownUntilTime = elapsedMatchTime + GoalCooldownSeconds;
+            goalCooldownUntilTick = tickIndex + GoalCooldownTicks;
             previousBallPos = Vector2.zero;
             UpdateHud(force: true);
             UpdateScoreboardUI(force: true);
@@ -1566,8 +1625,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private float GetGoalMouthHalfHeight() => Mathf.Clamp(rules.goalHeight * 0.5f, 2.5f, halfHeight - 3f);
     private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
-    private float GetEndzoneDepth() => Mathf.Max(6f, rules.goalDepth * 1.5f);
-    private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * 3f, 6f, halfHeight - 2f);
+    private float GetEndzoneDepth() => Mathf.Clamp(rules.goalDepth * 1.5f, 5f, 10f);
+    private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * 2f, 4f, halfHeight - 2f);
 
     private Rect GetEndzoneRect(int teamId)
     {
@@ -1656,11 +1715,106 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         zone.transform.localScale = new Vector3(rect.width, rect.height, 1f);
 
         var fill = zone.AddComponent<SpriteRenderer>();
-        fill.sprite = PrimitiveSpriteLibrary.RoundedRectFill();
+        fill.sprite = GetWhitePixelSprite();
         fill.color = teamId == 0
-            ? new Color(0.36f, 0.42f, 0.95f, 0.20f)
-            : new Color(0.58f, 0.33f, 0.92f, 0.20f);
+            ? new Color(0.36f, 0.42f, 0.95f, 0.14f)
+            : new Color(0.58f, 0.33f, 0.92f, 0.14f);
         RenderOrder.Apply(fill, RenderOrder.WorldDeco - 1);
+    }
+
+    private bool IsActiveChaser(int athleteIndex)
+    {
+        var teamId = identities[athleteIndex].teamId;
+        return athleteIndex == primaryChaserByTeam[teamId] || athleteIndex == secondaryChaserByTeam[teamId];
+    }
+
+    private Vector2 GetActiveChaseTarget(int athleteIndex)
+    {
+        var teamId = identities[athleteIndex].teamId;
+        if (ballOwnerIndex >= 0 && ballOwnerTeam != teamId)
+        {
+            return positions[ballOwnerIndex];
+        }
+
+        var towardGoal = (GetOpponentGoalCenter(teamId) - ballPos).normalized;
+        var laneOffset = new Vector2(0f, LaneToFloat(laneByIndex[athleteIndex]) * 1.8f);
+        return ballPos + (towardGoal * 1.8f) + laneOffset;
+    }
+
+    private bool ShouldApplyPatrolJitter(int athleteIndex)
+    {
+        if (IsGoalkeeper(athleteIndex) || athleteIndex == ballOwnerIndex || IsActiveChaser(athleteIndex))
+        {
+            return false;
+        }
+
+        if (athleteStates[athleteIndex] == AthleteState.PressCarrier || athleteStates[athleteIndex] == AthleteState.ChaseFreeBall)
+        {
+            return false;
+        }
+
+        return !IsImmediateTackler(athleteIndex) && !IsImmediateInterceptor(athleteIndex) && !IsGoalkeeperEngaged(athleteIndex);
+    }
+
+    private Vector2 ComputePatrolJitter(int athleteIndex)
+    {
+        var angle = (currentTickIndex * 0.02f) + (athleteIndex * 1.7f);
+        var jitterRadius = Mathf.Lerp(0.6f, 1.2f, (athleteIndex % 5) / 4f);
+        return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * jitterRadius;
+    }
+
+    private bool IsImmediateTackler(int athleteIndex)
+    {
+        if (ballOwnerIndex < 0 || identities[athleteIndex].teamId == ballOwnerTeam)
+        {
+            return false;
+        }
+
+        return Vector2.Distance(positions[athleteIndex], positions[ballOwnerIndex]) <= (rules.tackleRadius * 1.35f);
+    }
+
+    private bool IsImmediateInterceptor(int athleteIndex)
+    {
+        return DistanceToBallPath(positions[athleteIndex]) <= 4f;
+    }
+
+    private bool IsGoalkeeperEngaged(int athleteIndex)
+    {
+        if (!IsGoalkeeper(athleteIndex))
+        {
+            return false;
+        }
+
+        return GetKeeperBox(identities[athleteIndex].teamId).Contains(ballPos);
+    }
+
+    private static Sprite GetWhitePixelSprite()
+    {
+        if (cachedWhitePixelSprite != null)
+        {
+            return cachedWhitePixelSprite;
+        }
+
+        var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false)
+        {
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear,
+            name = "FantasySport_WhitePixel"
+        };
+        tex.SetPixel(0, 0, Color.white);
+        tex.Apply(false, true);
+        cachedWhitePixelSprite = Sprite.Create(tex, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        cachedWhitePixelSprite.name = "FantasySport_WhitePixelSprite";
+        return cachedWhitePixelSprite;
+    }
+
+    private static void SetScoreboardVisible(bool visible)
+    {
+        var scoreboardObject = GameObject.Find("ScoreboardText");
+        if (scoreboardObject != null && scoreboardObject.activeSelf != visible)
+        {
+            scoreboardObject.SetActive(visible);
+        }
     }
 
     private void EnsureMainCamera()
