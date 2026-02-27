@@ -13,9 +13,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     }
 
     private const int TrackBuildAttempts = 6;
-    private static readonly string[] LegacyTrackObjectNames =
+    private static readonly string[] LegacyDecorTrackObjectNames =
     {
-        "TrackRoot",
+        "StartFinishTile",
         "TrackLane",
         "TrackInnerBorder",
         "TrackOuterBorder",
@@ -691,7 +691,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     {
         if (sceneGraph != null)
         {
-            DestroyChildrenByNames(sceneGraph.DecorRoot, LegacyTrackObjectNames);
+            CleanupDecorRootTrackObjects(sceneGraph.DecorRoot);
 
             var arenaRoot = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot.Find("ArenaRoot") : null;
             DestroyChildrenByNames(arenaRoot, new[] { "TrackRoot" });
@@ -704,6 +704,40 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         DestroyByNameRecursive(transform.root, "TrackSurfaceStamps");
         DestroyByNameRecursive(transform.root, "SanityStamp");
+    }
+
+    private static void CleanupDecorRootTrackObjects(Transform decorRoot)
+    {
+        if (decorRoot == null)
+        {
+            return;
+        }
+
+        for (var i = decorRoot.childCount - 1; i >= 0; i--)
+        {
+            var child = decorRoot.GetChild(i);
+            var childName = child.name;
+
+            if (childName == "StartFinishTile")
+            {
+                Destroy(child.gameObject);
+                continue;
+            }
+
+            if (childName == "TrackRoot")
+            {
+                continue;
+            }
+
+            for (var n = 0; n < LegacyDecorTrackObjectNames.Length; n++)
+            {
+                if (childName == LegacyDecorTrackObjectNames[n])
+                {
+                    Destroy(child.gameObject);
+                    break;
+                }
+            }
+        }
     }
 
     private static void DestroyChildrenByNames(Transform parent, string[] names)
