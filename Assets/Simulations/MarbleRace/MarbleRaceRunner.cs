@@ -13,6 +13,14 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     }
 
     private const int TrackBuildAttempts = 6;
+    private static readonly string[] LegacyTrackObjectNames =
+    {
+        "TrackRoot",
+        "TrackLane",
+        "TrackInnerBorder",
+        "TrackOuterBorder",
+        "StartFinishLine"
+    };
 
     [SerializeField] private float maxSpeed = 12.5f;
     [SerializeField] private float steeringAcceleration = 13f;
@@ -84,7 +92,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         {
             var arenaRootGo = new GameObject("ArenaRoot");
             arenaRootGo.transform.SetParent(sceneGraph.WorldRoot, false);
-            arenaRoot = arenaRootGo.transform;
         }
 
         var arenaWidth = Mathf.Max(1f, config != null && config.world != null ? config.world.arenaWidth : 64f);
@@ -118,7 +125,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         Debug.Log($"[MarbleRace] Track built: samples={track.SampleCount} minHalfWidth={minHalfWidth:F2} maxHalfWidth={maxHalfWidth:F2} fallback={fallbackUsed}");
 
-        trackRenderer.Apply(arenaRoot, track);
+        trackRenderer.Apply(sceneGraph.DecorRoot, track);
         BuildMarbles(seed);
         EnsureRankingBuffer(GetSafeCount());
 
@@ -208,6 +215,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         trackRenderer?.Clear();
+        CleanupLegacyTrackObjects();
 
         marbles = null;
         identities = null;
@@ -681,19 +689,42 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void CleanupLegacyTrackObjects()
     {
-        if (sceneGraph != null && sceneGraph.DebugRoot != null)
+        if (sceneGraph != null)
         {
-            DestroyIfFound(sceneGraph.DebugRoot, "TrackDebug");
-        }
+            DestroyChildrenByNames(sceneGraph.DecorRoot, LegacyTrackObjectNames);
 
-        var arenaRoot = sceneGraph != null && sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot.Find("ArenaRoot") : null;
-        if (arenaRoot != null)
-        {
-            DestroyIfFound(arenaRoot, "TrackDebug");
+            var arenaRoot = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot.Find("ArenaRoot") : null;
+            DestroyChildrenByNames(arenaRoot, new[] { "TrackRoot" });
+
+            if (sceneGraph.DebugRoot != null)
+            {
+                DestroyChildrenByNames(sceneGraph.DebugRoot, new[] { "TrackDebug" });
+            }
         }
 
         DestroyByNameRecursive(transform.root, "TrackSurfaceStamps");
         DestroyByNameRecursive(transform.root, "SanityStamp");
+    }
+
+    private static void DestroyChildrenByNames(Transform parent, string[] names)
+    {
+        if (parent == null || names == null || names.Length == 0)
+        {
+            return;
+        }
+
+        for (var i = parent.childCount - 1; i >= 0; i--)
+        {
+            var child = parent.GetChild(i);
+            for (var n = 0; n < names.Length; n++)
+            {
+                if (child.name == names[n])
+                {
+                    Destroy(child.gameObject);
+                    break;
+                }
+            }
+        }
     }
 
     private void CleanupLegacyGraphChildren()
@@ -716,12 +747,12 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var halfH = arenaHeight * 0.5f;
         var bounds = new Rect(-halfW, -halfH, arenaWidth, arenaHeight);
 
-        var templateStart = trackTemplate >= 0 ? trackTemplate : Mathf.Abs(seed) % 3;
+        var templateStart = trackTemplate >= 0 ? trackTemplate : Mathf.Abs(seed) % 9;
         for (var attempt = 0; attempt < TrackBuildAttempts; attempt++)
         {
             var attemptSeed = unchecked(seed ^ (int)0x9E3779B9 ^ (attempt * 7919));
             var rng = new SeededRng(attemptSeed);
-            var template = trackTemplate >= 0 ? trackTemplate : (templateStart + attempt + rng.NextInt(0, 3)) % 3;
+            var template = trackTemplate >= 0 ? trackTemplate : (templateStart + attempt + rng.NextInt(0, 9)) % 9;
             var built = trackGenerator.Build(halfW, halfH, rng, template);
             if (built == null || built.SampleCount <= 0)
             {
@@ -759,6 +790,18 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             case "template2":
             case "twist":
                 return 2;
+            case "template3":
+                return 3;
+            case "template4":
+                return 4;
+            case "template5":
+                return 5;
+            case "template6":
+                return 6;
+            case "template7":
+                return 7;
+            case "template8":
+                return 8;
             default:
                 return -1;
         }
