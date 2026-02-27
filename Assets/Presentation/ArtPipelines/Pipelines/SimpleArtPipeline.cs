@@ -134,7 +134,7 @@ public class SimpleArtPipeline : ArtPipelineBase
 
         if (ResolveAndApplyBodySprite(renderer, animator, key, velocity, deltaTime, BuildAgentSpriteId(key)))
         {
-            SetPlaceholderVisibility(renderer, dotVisible: true, outlineVisible: animator.IsOutlineVisible, arrowVisible: debugOverlay);
+            SetPlaceholderVisibility(renderer, dotVisible: true, outlineVisible: animator.IsOutlineVisible, arrowVisible: false);
             if (debugOverlay)
             {
                 animator.ApplyDebugFacing(velocity);
@@ -190,16 +190,37 @@ public class SimpleArtPipeline : ArtPipelineBase
             return false;
         }
 
-        if (!AgentSpriteResolver.TryResolve(spriteId, out var primitiveFill, out var primitiveOutline) || primitiveFill == null)
-        {
-            return false;
-        }
+        var sizePx = visualSettings != null ? visualSettings.agentSizePx : 64;
+        var useOutline = visualSettings == null || visualSettings.agentOutline;
+        var primitiveFill = PrimitiveSpriteLibrary.CircleFill(sizePx);
+        var primitiveOutline = useOutline ? PrimitiveSpriteLibrary.CircleOutline(sizePx) : null;
 
         animator.ApplySingle(primitiveFill, primitiveOutline);
         animator.SetOutline(primitiveOutline, enabled: primitiveOutline != null);
         animator.ApplyContentFacing(velocity);
         DisableAnyExtraBodyRenderers(renderer, animator.DotRenderer, animator.OutlineRenderer);
+        DisableBaselineOverlays(renderer);
         return true;
+    }
+
+    private static void DisableBaselineOverlays(GameObject rendererRoot)
+    {
+        if (rendererRoot == null)
+        {
+            return;
+        }
+
+        var arrowRenderer = rendererRoot.transform.Find(PlaceholderArrowName)?.GetComponent<SpriteRenderer>();
+        if (arrowRenderer != null)
+        {
+            arrowRenderer.enabled = false;
+        }
+
+        var halo = rendererRoot.transform.Find("SelectionHalo");
+        if (halo != null)
+        {
+            halo.gameObject.SetActive(false);
+        }
     }
 
     private static void DisableAnyExtraBodyRenderers(GameObject rendererRoot, SpriteRenderer bodyFill, SpriteRenderer bodyOutline)

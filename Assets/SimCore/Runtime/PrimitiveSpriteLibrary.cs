@@ -88,7 +88,7 @@ public static class PrimitiveSpriteLibrary
         texture.SetPixels32(pixels);
         texture.Apply(false, false);
 
-        sprite = Sprite.Create(texture, new Rect(0f, 0f, sizePx, sizePx), new Vector2(0.5f, 0.5f), sizePx * 0.5f);
+        sprite = Sprite.Create(texture, new Rect(0f, 0f, sizePx, sizePx), new Vector2(0.5f, 0.5f), sizePx);
         SpriteCache[key] = sprite;
         return sprite;
     }
