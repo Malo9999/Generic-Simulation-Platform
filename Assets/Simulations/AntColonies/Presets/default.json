@@ -22,6 +22,9 @@
       "antDpsPerTick": 2.5,
       "nestDpsPerTick": 1.0,
       "ageDrainPerTick": 0.003
-    }
+    },
+    "nestCount": 2,
+    "antsPerNest": 12,
+    "maxAntsTotal": 50
   }
 }
