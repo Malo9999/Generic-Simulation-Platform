@@ -4,7 +4,7 @@ using UnityEngine;
 public sealed class MarbleRaceTrackGenerator
 {
     private const int TargetSamples = 512;
-    private const int TemplateCount = 9;
+    private const int TemplateCount = 8;
     private const int CandidateCount = 18;
     private const bool AllowCrossings = false;
     private const int StraightRunMinSamples = 24;
@@ -56,13 +56,15 @@ public sealed class MarbleRaceTrackGenerator
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
         var trackSeed = rng != null ? rng.Seed : unchecked(seed ^ (variant * 31));
 
+        var selectedTemplate = fixedTemplateId >= 0 ? Mathf.Clamp(fixedTemplateId, 0, TemplateCount - 1) : Mathf.Abs(variant) % TemplateCount;
+
         MarbleRaceTrack bestTrack = null;
         var bestScore = float.MinValue;
-        var bestTemplateId = -1;
+        var bestTemplateId = selectedTemplate;
 
         for (var k = 0; k < CandidateCount; k++)
         {
-            var templateId = fixedTemplateId >= 0 ? Mathf.Clamp(fixedTemplateId, 0, TemplateCount - 1) : PositiveMod(trackSeed + k, TemplateCount);
+            var templateId = selectedTemplate;
             var candidateRng = ForkRng(trackSeed, variant, k, templateId);
             var raw = ComposeCircuit(minDim, candidateRng, templateId);
             if (raw == null || raw.Count < 16)
@@ -97,7 +99,6 @@ public sealed class MarbleRaceTrackGenerator
             {
                 bestScore = score;
                 bestTrack = candidate;
-                bestTemplateId = templateId;
             }
         }
 
@@ -106,12 +107,10 @@ public sealed class MarbleRaceTrackGenerator
             fallbackUsed = true;
             bestTrack = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH);
             bestScore = ScoreTrack(bestTrack, safeHalfW, safeHalfH, out _);
-            bestTemplateId = -1;
-            Debug.LogWarning($"[TrackGen] FALLBACK used. No candidates passed. seed={seed} variant={variant}");
         }
 
         RotateToBestStraight(bestTrack);
-        Debug.Log($"[TrackGen] seed={seed} variant={variant} bestTemplate={bestTemplateId} score={bestScore:F2} candidates={CandidateCount} fallback={(fallbackUsed ? 1 : 0)}");
+        Debug.Log($"[TrackGen] variant={variant} template={bestTemplateId} fallback={(fallbackUsed ? 1 : 0)}");
         return bestTrack;
     }
 
@@ -196,8 +195,34 @@ public sealed class MarbleRaceTrackGenerator
             return points;
         }
 
-        AppendSmoothClosure(points, Mathf.Clamp(minDim * 0.18f, 2.4f, 8f), step);
+        CloseLoopByDrift(points);
         return points;
+    }
+
+    private static void CloseLoopByDrift(List<Vector2> pts)
+    {
+        if (pts == null || pts.Count < 3)
+        {
+            return;
+        }
+
+        var start = pts[0];
+        var end = pts[pts.Count - 1];
+        var delta = end - start;
+        if (delta.sqrMagnitude < 0.0001f)
+        {
+            pts[pts.Count - 1] = start;
+            return;
+        }
+
+        var last = pts.Count - 1;
+        for (var i = 0; i <= last; i++)
+        {
+            var t = i / (float)last;
+            pts[i] = pts[i] - (delta * t);
+        }
+
+        pts[last] = start;
     }
 
     private static void ApplyTemplateShape(ref float mainStraight, ref float backStraight, ref float shortStraight, ref float finalStraight, ref float sweeperDeg, ref float hairpinDeg, int templateId, float jitter)
@@ -236,11 +261,6 @@ public sealed class MarbleRaceTrackGenerator
                 shortStraight *= 1.28f * jitter;
                 hairpinDeg = Mathf.Max(180f, hairpinDeg * 1.18f);
                 break;
-            case 8:
-                mainStraight *= 1.1f * jitter;
-                finalStraight *= 1.1f;
-                sweeperDeg *= 0.92f;
-                break;
             default:
                 break;
         }
@@ -266,7 +286,6 @@ public sealed class MarbleRaceTrackGenerator
                 break;
             case 2:
             case 5:
-            case 8:
                 segments.Add(new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true));
                 segments.Add(new Segment(SegmentType.Chicane, chicaneR1, chicaneR2, chicaneDegA, chicaneDegB, chicaneLeftFirst));
                 segments.Add(new Segment(SegmentType.Straight, backStraight, 0f, 0f, 0f, true));
@@ -276,7 +295,6 @@ public sealed class MarbleRaceTrackGenerator
                 segments.Add(new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true));
                 break;
             case 3:
-            case 6:
                 segments.Add(new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true));
                 segments.Add(new Segment(SegmentType.Arc, sweeperRadius, sweeperDeg, 0f, 0f, invertedSweeper));
                 segments.Add(new Segment(SegmentType.Straight, backStraight, 0f, 0f, 0f, true));
@@ -284,6 +302,24 @@ public sealed class MarbleRaceTrackGenerator
                 segments.Add(new Segment(SegmentType.Straight, shortStraight, 0f, 0f, 0f, true));
                 segments.Add(new Segment(SegmentType.Arc, hairpinRadius, hairpinDeg, 0f, 0f, invertedHairpin));
                 segments.Add(new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true));
+                break;
+            case 6:
+                segments.Add(new Segment(SegmentType.Straight, mainStraight * 0.7f, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius * 0.78f, 180f, 0f, 0f, sweeperLeft));
+                segments.Add(new Segment(SegmentType.Straight, backStraight * 0.72f, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius * 0.78f, 180f, 0f, 0f, sweeperLeft));
+                break;
+            case 7:
+                segments.Add(new Segment(SegmentType.Straight, mainStraight * 0.84f, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius * 0.72f, 92f, 0f, 0f, sweeperLeft));
+                segments.Add(new Segment(SegmentType.Straight, backStraight * 0.62f, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Chicane, chicaneR1 * 0.82f, chicaneR2 * 0.86f, 42f, 40f, !chicaneLeftFirst));
+                segments.Add(new Segment(SegmentType.Straight, shortStraight * 0.7f, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius * 0.72f, 88f, 0f, 0f, !sweeperLeft));
+                segments.Add(new Segment(SegmentType.Straight, finalStraight * 0.76f, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius * 0.72f, 90f, 0f, 0f, !sweeperLeft));
+                segments.Add(new Segment(SegmentType.Straight, shortStraight * 0.62f, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius * 0.72f, 90f, 0f, 0f, sweeperLeft));
                 break;
             default:
                 segments.Add(new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true));
@@ -295,12 +331,6 @@ public sealed class MarbleRaceTrackGenerator
                 segments.Add(new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true));
                 break;
         }
-    }
-
-    private static int PositiveMod(int value, int modulo)
-    {
-        var r = value % modulo;
-        return r < 0 ? r + modulo : r;
     }
 
     private static List<Vector2> BuildStadium(float minDim)
@@ -379,39 +409,6 @@ public sealed class MarbleRaceTrackGenerator
             points.Add(pos);
         }
     }
-
-    private static void AppendSmoothClosure(List<Vector2> points, float tangentScale, float step)
-    {
-        var n = points.Count;
-        if (n < 4)
-        {
-            return;
-        }
-
-        var p0 = points[n - 1];
-        var p1 = points[0];
-        var d0 = (points[n - 1] - points[n - 2]).normalized;
-        var d1 = (points[1] - points[0]).normalized;
-
-        var dist = Vector2.Distance(p0, p1);
-        var samples = Mathf.Max(6, Mathf.CeilToInt(dist / Mathf.Max(0.1f, step)));
-        var m0 = d0 * tangentScale;
-        var m1 = d1 * tangentScale;
-
-        for (var i = 1; i <= samples; i++)
-        {
-            var t = i / (float)samples;
-            var tt = t * t;
-            var ttt = tt * t;
-            var h00 = (2f * ttt) - (3f * tt) + 1f;
-            var h10 = ttt - (2f * tt) + t;
-            var h01 = (-2f * ttt) + (3f * tt);
-            var h11 = ttt - tt;
-            var p = (h00 * p0) + (h10 * m0) + (h01 * p1) + (h11 * m1);
-            points.Add(p);
-        }
-    }
-
     private static void ChaikinClosed(List<Vector2> points, int passes)
     {
         for (var pass = 0; pass < passes; pass++)
