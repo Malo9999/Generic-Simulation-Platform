@@ -8,6 +8,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     [SerializeField] private bool logSpawnIdentity = true;
     [SerializeField] private FantasySportRules rules = new FantasySportRules();
+    [SerializeField] private float athleteIconScaleMultiplier = 1.3f;
 
     private Transform[] athletes;
     private EntityIdentity[] identities;
@@ -22,6 +23,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private ArtPipelineBase activePipeline;
     private GameObject[] pipelineRenderers;
     private VisualKey[] visualKeys;
+    private SpriteRenderer[] possessionRings;
 
     private float halfWidth = 32f;
     private float halfHeight = 32f;
@@ -122,6 +124,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         athleteRngs = null;
         pipelineRenderers = null;
         visualKeys = null;
+        possessionRings = null;
         hudText = null;
         lastHudSecond = -1;
         Debug.Log("FantasySportRunner Shutdown");
@@ -145,6 +148,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         athleteRngs = new IRng[AthleteCount];
         pipelineRenderers = new GameObject[AthleteCount];
         visualKeys = new VisualKey[AthleteCount];
+        possessionRings = new SpriteRenderer[AthleteCount];
 
         ResolveArtPipeline();
 
@@ -198,6 +202,21 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var iconRoot = new GameObject("IconRoot");
             iconRoot.transform.SetParent(visualParent, false);
             EntityIconFactory.BuildAthlete(iconRoot.transform, identity);
+            iconRoot.transform.localScale *= Mathf.Max(0.1f, athleteIconScaleMultiplier);
+
+            var possessionRing = new GameObject("PossessionRing");
+            possessionRing.transform.SetParent(athlete.transform, false);
+            possessionRing.transform.localPosition = Vector3.zero;
+            possessionRing.transform.localScale = Vector3.one * 1.05f;
+
+            var possessionRenderer = possessionRing.AddComponent<SpriteRenderer>();
+            possessionRenderer.sprite = PrimitiveSpriteLibrary.CircleOutline();
+            possessionRenderer.color = identity.teamId == 0
+                ? new Color(0.25f, 0.86f, 1f, 0.95f)
+                : new Color(1f, 0.74f, 0.22f, 0.95f);
+            possessionRenderer.enabled = false;
+            RenderOrder.Apply(possessionRenderer, RenderOrder.SelectionRing);
+            possessionRings[i] = possessionRenderer;
 
             positions[i] = Vector2.zero;
             velocities[i] = Vector2.zero;
@@ -239,16 +258,32 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             Destroy(ballTransform.gameObject);
         }
 
-        var ballObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        ballObject.name = "FantasySportBall";
+        var ballObject = new GameObject("Ball");
         ballObject.transform.SetParent(sceneGraph.EntitiesRoot, false);
-        ballObject.transform.localScale = Vector3.one * 0.65f;
+        ballObject.transform.localScale = Vector3.one * 0.68f;
 
-        var collider = ballObject.GetComponent<Collider>();
-        if (collider != null)
-        {
-            Destroy(collider);
-        }
+        var ballFillRenderer = ballObject.AddComponent<SpriteRenderer>();
+        ballFillRenderer.sprite = PrimitiveSpriteLibrary.CircleFill();
+        ballFillRenderer.color = new Color(0.97f, 0.97f, 0.94f, 1f);
+        RenderOrder.Apply(ballFillRenderer, RenderOrder.EntityBody + 1);
+
+        var outline = new GameObject("Outline");
+        outline.transform.SetParent(ballObject.transform, false);
+        outline.transform.localPosition = Vector3.zero;
+        outline.transform.localScale = Vector3.one;
+        var ballOutlineRenderer = outline.AddComponent<SpriteRenderer>();
+        ballOutlineRenderer.sprite = PrimitiveSpriteLibrary.CircleOutline();
+        ballOutlineRenderer.color = new Color(0.08f, 0.08f, 0.1f, 0.98f);
+        RenderOrder.Apply(ballOutlineRenderer, RenderOrder.EntityBody + 2);
+
+        var highlight = new GameObject("Highlight");
+        highlight.transform.SetParent(ballObject.transform, false);
+        highlight.transform.localPosition = new Vector3(-0.16f, 0.17f, 0f);
+        highlight.transform.localScale = Vector3.one * 0.28f;
+        var ballHighlightRenderer = highlight.AddComponent<SpriteRenderer>();
+        ballHighlightRenderer.sprite = PrimitiveSpriteLibrary.CircleFill();
+        ballHighlightRenderer.color = new Color(1f, 1f, 1f, 0.35f);
+        RenderOrder.Apply(ballHighlightRenderer, RenderOrder.EntityBody + 3);
 
         ballTransform = ballObject.transform;
     }
@@ -568,6 +603,18 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (ballTransform != null)
         {
             ballTransform.localPosition = new Vector3(ballPos.x, ballPos.y, 0f);
+        }
+
+        var hasOwner = ballOwnerIndex >= 0;
+        for (var i = 0; i < possessionRings.Length; i++)
+        {
+            var ring = possessionRings[i];
+            if (ring == null)
+            {
+                continue;
+            }
+
+            ring.enabled = hasOwner && i == ballOwnerIndex;
         }
     }
 
