@@ -1004,8 +1004,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private void LogTrackValidation()
     {
         var validation = MarbleRaceTrackValidator.Validate(track, marbleCount, trackRenderer != null ? trackRenderer.TrackRoot : null);
-        var status = validation.Passed ? "PASS" : "FAIL";
-        Debug.Log($"[MarbleRace] TrackValidator={status} reasons={string.Join(" | ", validation.Reasons)}");
+        var status = validation.ValidityPassed ? "VALID" : "INVALID";
+        Debug.Log($"[MarbleRace] TrackValidator validity={status} quality={validation.QualityScore} overall={(validation.Passed ? "PASS" : "FAIL")} reasons={string.Join(" | ", validation.Reasons)}");
     }
 
     private static MarbleRaceTrack PostProcessTrack(MarbleRaceTrack source, float arenaWidth, float arenaHeight, float widthJitterScale)
