@@ -203,11 +203,12 @@ public class Bootstrapper : MonoBehaviour
 
         if (!artBySim.TryGetValue(simId, out var settings))
         {
+            var visualSettings = FindVisualSettingsFor(simId, options);
             settings = new SimArtSettings
             {
                 mode = ArtMode.Simple,
-                usePlaceholders = false,
-                debugMode = DebugPlaceholderMode.Overlay
+                usePlaceholders = visualSettings != null && visualSettings.usePrimitiveBaseline,
+                debugMode = visualSettings != null ? visualSettings.defaultDebugMode : DebugPlaceholderMode.Overlay
             };
             artBySim[simId] = settings;
         }
@@ -292,18 +293,11 @@ public class Bootstrapper : MonoBehaviour
         return null;
     }
 
-    private void ApplyArtDefaults(string simulationId, SimVisualSettings visualSettings)
+    private void ApplyVisualDefaults(string simulationId, SimVisualSettings visualSettings)
     {
         var preferredPack = visualSettings != null ? visualSettings.preferredAgentPack : null;
         preferredAgentPackBySim[simulationId] = preferredPack;
         SimVisualSettingsService.SetForSimulation(simulationId, visualSettings);
-
-        artBySim[simulationId] = new SimArtSettings
-        {
-            mode = ArtMode.Simple,
-            usePlaceholders = visualSettings != null && visualSettings.usePrimitiveBaseline,
-            debugMode = visualSettings != null ? visualSettings.defaultDebugMode : DebugPlaceholderMode.Overlay
-        };
     }
 
     private void StartSimulation(string simulationId, bool initialRun)
@@ -351,7 +345,8 @@ public class Bootstrapper : MonoBehaviour
             }
 
             var visualSettings = FindVisualSettingsFor(simulationId, options);
-            ApplyArtDefaults(simulationId, visualSettings);
+            ApplyVisualDefaults(simulationId, visualSettings);
+            _ = GetArt(simulationId);
 
             resolved.seed = ResolveSeed(resolved, simSettings);
             resolved.NormalizeAliases();
