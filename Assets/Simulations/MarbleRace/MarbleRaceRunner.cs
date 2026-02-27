@@ -8,203 +8,151 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         Ready,
         Racing,
         Finished,
-        Cooldown,
+        Cooldown
     }
 
     private const int MarbleCount = 12;
-    private const int SpawnDebugCount = 5;
-    private const int LapCrossWindow = 12;
-    private const int LapArmDistance = 32;
+    private const int LapsToWin = 3;
 
-    [SerializeField] private bool logSpawnIdentity = true;
-    [SerializeField] private bool logLapEvents = false;
-    [SerializeField] private float gravityStrength = 8f;
-    [SerializeField] private float rollingFriction = 0.24f;
-    [SerializeField] private float maxSpeed = 13f;
+    [SerializeField] private float maxSpeed = 12.5f;
+    [SerializeField] private float steeringAcceleration = 13f;
+    [SerializeField] private float friction = 0.22f;
 
     private Transform[] marbles;
     private EntityIdentity[] identities;
     private Vector2[] positions;
+    private Vector2[] readyPositions;
     private Vector2[] velocities;
-    private float[] targetSpeeds;
-    private float[] steeringAccels;
+    private float[] progress;
     private int[] lapCount;
-    private float[] progressScore;
-    private float[] stuckTimer;
-    private float[] desiredLaneOffset;
     private int[] closestTrackIndex;
-    private int[] previousLapLogged;
+    private float[] laneOffset;
+    private float[] desiredTopSpeed;
+    private float[] stuckTimer;
     private int[] lastClosestIndex;
-    private bool[] lapArmed;
 
-    private float[] baseSpeedTrait;
-    private float[] aggressionTrait;
-    private float[] laneBiasTrait;
-    private float[] avoidanceTrait;
-    private float[] draftingTrait;
-    private float[] corneringTrait;
-
-    private ArtModeSelector artSelector;
-    private ArtPipelineBase activePipeline;
-    private GameObject[] pipelineRenderers;
-    private VisualKey[] visualKeys;
-    private int nextEntityId;
-    private float halfWidth = 32f;
-    private float halfHeight = 32f;
     private SimulationSceneGraph sceneGraph;
-
-    private MarbleRaceTrack currentTrack;
-    private MarbleRaceTrackRenderer trackRenderer;
+    private MarbleRaceTrack track;
     private MarbleRaceTrackGenerator trackGenerator;
+    private MarbleRaceTrackRenderer trackRenderer;
 
-    private int lapsToWin;
+    private float arenaHalfWidth;
+    private float arenaHalfHeight;
     private RacePhase raceState;
-    private float finishTime;
-    private float elapsedTime;
     private int winnerIndex;
+    private float elapsedTime;
+    private float finishTime;
+    private int nextEntityId;
+
     private readonly int[] rankingBuffer = new int[MarbleCount];
-    private readonly StringBuilder winnerLineBuilder = new(64);
 
     public RacePhase CurrentPhase => raceState;
+    public bool IsReady => raceState == RacePhase.Ready;
+    public bool IsRacing => raceState == RacePhase.Racing;
+    public bool IsFinished => raceState == RacePhase.Finished || raceState == RacePhase.Cooldown;
+    public int WinnerEntityId => winnerIndex >= 0 && identities != null && winnerIndex < identities.Length ? identities[winnerIndex].entityId : -1;
+    public float WinnerFinishTime => finishTime;
 
     public void Initialize(ScenarioConfig config)
     {
-        sceneGraph = SceneGraphUtil.PrepareRunner(transform, "MarbleRace");
+        Shutdown();
+
+        sceneGraph = SimulationSceneGraph.Ensure(transform);
         CleanupLegacyTrackObjects();
-        EnsureMainCamera();
-        BuildRace(config);
-        Debug.Log($"{nameof(MarbleRaceRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
-    }
 
-    public void StartRace()
-    {
-        if (raceState == RacePhase.Ready)
+        var arenaRoot = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot.Find("ArenaRoot") : null;
+        if (arenaRoot == null)
         {
-            raceState = RacePhase.Racing;
-        }
-    }
-
-    public void FillLeaderboard(StringBuilder sb, int maxEntries, bool final)
-    {
-        if (sb == null)
-        {
-            return;
+            arenaRoot = sceneGraph.WorldRoot;
         }
 
-        sb.Clear();
-        if (marbles == null || identities == null || marbles.Length == 0)
+        arenaHalfWidth = Mathf.Max(12f, (config != null && config.world != null ? config.world.arenaWidth : 64) * 0.5f);
+        arenaHalfHeight = Mathf.Max(12f, (config != null && config.world != null ? config.world.arenaHeight : 64) * 0.5f);
+
+        trackGenerator ??= new MarbleRaceTrackGenerator();
+        trackRenderer ??= new MarbleRaceTrackRenderer();
+
+        var seed = config != null ? config.seed : 0;
+        var rng = new SeededRng(seed);
+        var variant = Mathf.Abs(seed) % 3;
+        track = trackGenerator.Build(arenaHalfWidth, arenaHalfHeight, rng, variant);
+        if (track == null || track.SampleCount <= 0)
         {
-            sb.Append("No marbles.");
-            return;
+            track = trackGenerator.BuildFallbackRoundedRectangle(arenaHalfWidth, arenaHalfHeight);
         }
 
-        var count = FillOrderedIndicesByProgress(rankingBuffer);
-        var top = Mathf.Clamp(maxEntries <= 0 ? count : maxEntries, 1, count);
+        trackRenderer.Apply(arenaRoot, track);
+        BuildMarbles(seed);
 
-        for (var rank = 0; rank < top; rank++)
-        {
-            var idx = rankingBuffer[rank];
-            if (rank > 0)
-            {
-                sb.Append('\n');
-            }
-
-            sb.Append('#').Append(rank + 1)
-                .Append(" M").Append(identities[idx].entityId)
-                .Append(" L").Append(lapCount[idx]);
-
-            if (!final)
-            {
-                sb.Append(" T").Append(closestTrackIndex[idx]);
-            }
-        }
-    }
-
-    public string GetWinnerLine()
-    {
-        if (winnerIndex < 0 || identities == null || winnerIndex >= identities.Length)
-        {
-            return string.Empty;
-        }
-
-        winnerLineBuilder.Clear();
-        winnerLineBuilder.Append("WINNER: M")
-            .Append(identities[winnerIndex].entityId)
-            .Append(" time=")
-            .Append(finishTime.ToString("F2"))
-            .Append("s laps=")
-            .Append(lapCount[winnerIndex]);
-        return winnerLineBuilder.ToString();
+        raceState = RacePhase.Ready;
+        winnerIndex = -1;
+        elapsedTime = 0f;
+        finishTime = 0f;
     }
 
     public void Tick(int tickIndex, float dt)
     {
-        if (marbles == null || currentTrack == null || currentTrack.SampleCount == 0)
+        if (marbles == null || track == null || track.SampleCount <= 0)
         {
+            return;
+        }
+
+        if (raceState == RacePhase.Ready)
+        {
+            for (var i = 0; i < MarbleCount; i++)
+            {
+                positions[i] = readyPositions[i];
+                velocities[i] = Vector2.zero;
+                lapCount[i] = 0;
+                closestTrackIndex[i] = 0;
+                lastClosestIndex[i] = 0;
+                progress[i] = i * -0.001f;
+                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            }
+
             return;
         }
 
         elapsedTime += dt;
 
-        for (var i = 0; i < marbles.Length; i++)
+        if (raceState == RacePhase.Finished)
         {
-            var marble = marbles[i];
-            if (!marble)
+            if (elapsedTime >= finishTime + 2.5f)
             {
-                continue;
+                raceState = RacePhase.Cooldown;
             }
 
-            UpdateClosestTrackIndex(i, 14);
-            if (raceState == RacePhase.Racing)
+            for (var i = 0; i < MarbleCount; i++)
             {
-                UpdateDrivingBehavior(i, dt);
-            }
-            else
-            {
-                velocities[i] = Vector2.MoveTowards(velocities[i], Vector2.zero, steeringAccels[i] * dt * 1.5f);
+                velocities[i] = Vector2.MoveTowards(velocities[i], Vector2.zero, dt * 4f);
+                positions[i] += velocities[i] * dt;
+                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             }
 
-            positions[i] += velocities[i] * dt;
-            ApplyCorridorBounds(i);
-            ApplySoftArenaBounds(i, dt);
-            UpdateClosestTrackIndex(i, 16);
-
-            if (raceState == RacePhase.Racing)
-            {
-                var idx = closestTrackIndex[i];
-                var lateral = Vector2.Dot(positions[i] - currentTrack.Center[idx], currentTrack.Normal[idx]);
-                var speed = velocities[i].magnitude;
-                var half = currentTrack.HalfWidth[idx];
-                if (Mathf.Abs(lateral) > half * 1.25f && speed < 0.5f)
-                {
-                    RescueMarble(i);
-                }
-                else
-                {
-                    stuckTimer[i] = speed < 0.25f ? stuckTimer[i] + dt : 0f;
-                    if (stuckTimer[i] > 1.2f)
-                    {
-                        RescueMarble(i);
-                    }
-                }
-
-                UpdateLapProgress(i);
-            }
-
-            UpdateProgress(i);
-            lastClosestIndex[i] = closestTrackIndex[i];
-            marble.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-
-            var pipelineRenderer = pipelineRenderers != null ? pipelineRenderers[i] : null;
-            if (activePipeline != null && pipelineRenderer != null)
-            {
-                activePipeline.ApplyVisual(pipelineRenderer, visualKeys[i], velocities[i], dt);
-            }
+            return;
         }
 
-        if (raceState == RacePhase.Finished && elapsedTime >= finishTime + 3f)
+        if (raceState == RacePhase.Cooldown)
         {
-            raceState = RacePhase.Cooldown;
+            for (var i = 0; i < MarbleCount; i++)
+            {
+                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            }
+
+            return;
+        }
+
+        for (var i = 0; i < MarbleCount; i++)
+        {
+            UpdateClosestIndex(i, 20);
+            SimulateMarble(i, dt);
+            ApplyCorridor(i);
+            ClampArena(i);
+            UpdateClosestIndex(i, 22);
+            CheckRescue(i, dt);
+            UpdateLapAndProgress(i);
+            lastClosestIndex[i] = closestTrackIndex[i];
+            marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
         }
     }
 
@@ -226,176 +174,407 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         marbles = null;
         identities = null;
         positions = null;
+        readyPositions = null;
         velocities = null;
-        targetSpeeds = null;
-        steeringAccels = null;
+        progress = null;
         lapCount = null;
-        progressScore = null;
-        stuckTimer = null;
-        desiredLaneOffset = null;
         closestTrackIndex = null;
-        previousLapLogged = null;
+        laneOffset = null;
+        desiredTopSpeed = null;
+        stuckTimer = null;
         lastClosestIndex = null;
-        lapArmed = null;
-        baseSpeedTrait = null;
-        aggressionTrait = null;
-        laneBiasTrait = null;
-        avoidanceTrait = null;
-        draftingTrait = null;
-        corneringTrait = null;
-        pipelineRenderers = null;
-        visualKeys = null;
-        currentTrack = null;
 
+        track = null;
         raceState = RacePhase.Ready;
-        finishTime = 0f;
-        elapsedTime = 0f;
         winnerIndex = -1;
+        elapsedTime = 0f;
+        finishTime = 0f;
     }
 
-    private void BuildRace(ScenarioConfig config)
+    public void StartRace()
     {
-        Shutdown();
-        nextEntityId = 0;
-
-        halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
-        halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
-        lapsToWin = 3;
-
-        trackGenerator ??= new MarbleRaceTrackGenerator();
-        trackRenderer ??= new MarbleRaceTrackRenderer();
-
-        var rng = new SeededRng(config?.seed ?? 0);
-        var variant = Mathf.Abs(config?.seed ?? 0) % 3;
-
-        currentTrack = trackGenerator.Build(halfWidth, halfHeight, rng, variant);
-        if (currentTrack == null || currentTrack.SampleCount == 0)
+        if (raceState != RacePhase.Ready || track == null)
         {
-            currentTrack = trackGenerator.BuildFallbackRoundedRectangle(halfWidth, halfHeight);
+            return;
         }
 
-        trackRenderer.Apply(sceneGraph, currentTrack);
+        raceState = RacePhase.Racing;
+        for (var i = 0; i < MarbleCount; i++)
+        {
+            var forward = track.Tangent[0];
+            var push = Mathf.Lerp(3.1f, 4.3f, i / (float)(MarbleCount - 1));
+            velocities[i] = forward * push;
+        }
+    }
+
+    public void FillLeaderboard(StringBuilder sb, int maxEntries, bool final)
+    {
+        if (sb == null)
+        {
+            return;
+        }
+
+        sb.Clear();
+        if (marbles == null)
+        {
+            sb.Append("No marbles.");
+            return;
+        }
+
+        var count = FillRankingBuffer(rankingBuffer);
+        var top = Mathf.Clamp(maxEntries <= 0 ? count : maxEntries, 1, count);
+
+        for (var rank = 0; rank < top; rank++)
+        {
+            var i = rankingBuffer[rank];
+            if (rank > 0)
+            {
+                sb.Append('\n');
+            }
+
+            sb.Append('#').Append(rank + 1)
+                .Append(" M").Append(identities[i].entityId)
+                .Append(" L").Append(lapCount[i]);
+
+            if (!final)
+            {
+                sb.Append(" T").Append(closestTrackIndex[i]);
+            }
+        }
+    }
+
+    public string GetWinnerLine()
+    {
+        if (winnerIndex < 0 || identities == null)
+        {
+            return string.Empty;
+        }
+
+        return $"WINNER: M{identities[winnerIndex].entityId} time={finishTime:F2}s laps={lapCount[winnerIndex]}";
+    }
+
+    private void BuildMarbles(int seed)
+    {
+        var rng = new SeededRng(seed ^ 0x5162AB);
 
         marbles = new Transform[MarbleCount];
         identities = new EntityIdentity[MarbleCount];
         positions = new Vector2[MarbleCount];
+        readyPositions = new Vector2[MarbleCount];
         velocities = new Vector2[MarbleCount];
-        targetSpeeds = new float[MarbleCount];
-        steeringAccels = new float[MarbleCount];
+        progress = new float[MarbleCount];
         lapCount = new int[MarbleCount];
-        progressScore = new float[MarbleCount];
-        stuckTimer = new float[MarbleCount];
-        desiredLaneOffset = new float[MarbleCount];
         closestTrackIndex = new int[MarbleCount];
-        previousLapLogged = new int[MarbleCount];
+        laneOffset = new float[MarbleCount];
+        desiredTopSpeed = new float[MarbleCount];
+        stuckTimer = new float[MarbleCount];
         lastClosestIndex = new int[MarbleCount];
-        lapArmed = new bool[MarbleCount];
 
-        baseSpeedTrait = new float[MarbleCount];
-        aggressionTrait = new float[MarbleCount];
-        laneBiasTrait = new float[MarbleCount];
-        avoidanceTrait = new float[MarbleCount];
-        draftingTrait = new float[MarbleCount];
-        corneringTrait = new float[MarbleCount];
-
-        pipelineRenderers = new GameObject[MarbleCount];
-        visualKeys = new VisualKey[MarbleCount];
-        ResolveArtPipeline();
-
+        var entitiesRoot = sceneGraph != null ? sceneGraph.EntitiesRoot : transform;
         for (var i = 0; i < MarbleCount; i++)
         {
-            var identity = IdentityService.Create(nextEntityId++, i % 3, "marble", 6, config?.seed ?? 0, "MarbleRace");
-            var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, identity.teamId);
+            var identity = IdentityService.Create(nextEntityId++, i % 3, "marble", 6, seed, "MarbleRace");
+            var groupRoot = SceneGraphUtil.EnsureEntityGroup(entitiesRoot, identity.teamId);
 
             var marble = new GameObject($"Sim_{identity.entityId:0000}");
             marble.transform.SetParent(groupRoot, false);
 
-            var visualKey = VisualKeyBuilder.Create("MarbleRace", "marble", identity.entityId, "marble", "roll", FacingMode.Auto, identity.teamId);
-            var visualParent = marble.transform;
-            if (activePipeline != null)
-            {
-                pipelineRenderers[i] = activePipeline.CreateRenderer(visualKey, marble.transform);
-                if (pipelineRenderers[i] != null)
-                {
-                    visualParent = pipelineRenderers[i].transform;
-                }
-            }
-
             var iconRoot = new GameObject("IconRoot");
-            iconRoot.transform.SetParent(visualParent, false);
+            iconRoot.transform.SetParent(marble.transform, false);
             EntityIconFactory.BuildMarble(iconRoot.transform, identity);
 
-            var sr = marble.GetComponentInChildren<SpriteRenderer>();
-            if (sr != null)
+            var spriteRenderer = marble.GetComponentInChildren<SpriteRenderer>();
+            if (spriteRenderer != null)
             {
-                sr.sortingOrder = 24;
+                spriteRenderer.sortingOrder = 24;
             }
 
-            var idx = currentTrack.Wrap(i * (currentTrack.SampleCount / MarbleCount));
-            var laneJitter = rng.Range(-0.55f, 0.55f);
-            positions[i] = currentTrack.Center[idx] + currentTrack.Normal[idx] * (currentTrack.HalfWidth[idx] * laneJitter);
-            velocities[i] = currentTrack.Tangent[idx] * rng.Range(2f, 4f);
+            desiredTopSpeed[i] = rng.Range(7.6f, 10.5f);
+            laneOffset[i] = rng.Range(-0.35f, 0.35f);
 
-            baseSpeedTrait[i] = rng.Range(7.2f, 10.5f);
-            aggressionTrait[i] = rng.Range(0f, 1f);
-            laneBiasTrait[i] = rng.Range(-1f, 1f);
-            avoidanceTrait[i] = rng.Range(0.2f, 1f);
-            draftingTrait[i] = rng.Range(0.1f, 1f);
-            corneringTrait[i] = rng.Range(0.2f, 1f);
-            targetSpeeds[i] = baseSpeedTrait[i];
-            steeringAccels[i] = rng.Range(9f, 14f);
-
-            closestTrackIndex[i] = idx;
-            lastClosestIndex[i] = idx;
-            previousLapLogged[i] = -1;
-            lapArmed[i] = true;
-            marble.transform.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-
-            marbles[i] = marble.transform;
             identities[i] = identity;
-            visualKeys[i] = visualKey;
+            marbles[i] = marble.transform;
+        }
 
-            if (logSpawnIdentity && i < SpawnDebugCount)
+        PlaceStartGrid();
+    }
+
+    private void PlaceStartGrid()
+    {
+        var startPos = track.Center[0];
+        var forward = track.Tangent[0];
+        var side = track.Normal[0];
+
+        const int cols = 4;
+        const int rows = 3;
+        var laneSpacing = Mathf.Min(track.HalfWidth[0] * 0.55f, 1.35f);
+        var rowSpacing = Mathf.Max(0.9f, track.HalfWidth[0] * 0.7f);
+
+        var index = 0;
+        for (var r = 0; r < rows; r++)
+        {
+            for (var c = 0; c < cols; c++)
             {
-                Debug.Log($"{nameof(MarbleRaceRunner)} spawn[{i}] {identity}");
+                if (index >= MarbleCount)
+                {
+                    break;
+                }
+
+                var lane = (c - (cols - 1) * 0.5f) * laneSpacing;
+                var behind = (r + 1) * rowSpacing;
+                var spawn = startPos + (side * lane) - (forward * behind);
+
+                positions[index] = spawn;
+                readyPositions[index] = spawn;
+                velocities[index] = Vector2.zero;
+                lapCount[index] = 0;
+                closestTrackIndex[index] = 0;
+                progress[index] = index * -0.001f;
+                lastClosestIndex[index] = 0;
+                marbles[index].localPosition = new Vector3(spawn.x, spawn.y, 0f);
+                index++;
+            }
+        }
+    }
+
+    private void SimulateMarble(int i, float dt)
+    {
+        var idx = closestTrackIndex[i];
+        var lookAhead = 8 + Mathf.RoundToInt(Mathf.Clamp(desiredTopSpeed[i] - 8f, 0f, 3f) * 2f);
+        var targetIdx = track.Wrap(idx + lookAhead);
+
+        var passBias = ComputeOvertakeBias(i, idx, targetIdx);
+        var maxLane = track.HalfWidth[targetIdx] * 0.88f;
+        var desiredLane = Mathf.Clamp((laneOffset[i] + passBias) * track.HalfWidth[targetIdx] * 0.55f, -maxLane, maxLane);
+        var currentLane = Vector2.Dot(positions[i] - track.Center[targetIdx], track.Normal[targetIdx]);
+        var laneError = desiredLane - currentLane;
+
+        var targetPoint = track.Center[targetIdx] + (track.Normal[targetIdx] * desiredLane);
+        var desiredDirection = (targetPoint - positions[i]).normalized;
+
+        var cornerPenalty = Mathf.Clamp01(track.Curvature[targetIdx] * 3f);
+        var desiredSpeed = desiredTopSpeed[i] * Mathf.Lerp(1f, 0.72f, cornerPenalty);
+        desiredSpeed = Mathf.Clamp(desiredSpeed + ComputeDraftBoost(i), 4.5f, maxSpeed);
+
+        var desiredVelocity = desiredDirection * desiredSpeed;
+        desiredVelocity += track.Normal[targetIdx] * (laneError * 1.4f);
+
+        velocities[i] = Vector2.MoveTowards(velocities[i], desiredVelocity, steeringAcceleration * dt);
+        velocities[i] *= 1f - Mathf.Clamp01(friction * dt);
+        velocities[i] = Vector2.ClampMagnitude(velocities[i], maxSpeed);
+
+        positions[i] += velocities[i] * dt;
+    }
+
+    private float ComputeOvertakeBias(int i, int idx, int targetIdx)
+    {
+        var nearestAhead = -1;
+        var nearestDelta = int.MaxValue;
+        for (var j = 0; j < MarbleCount; j++)
+        {
+            if (j == i)
+            {
+                continue;
+            }
+
+            var delta = track.ForwardDelta(idx, closestTrackIndex[j]);
+            if (delta > 0 && delta < 26 && delta < nearestDelta)
+            {
+                nearestAhead = j;
+                nearestDelta = delta;
             }
         }
 
-        raceState = RacePhase.Ready;
-        winnerIndex = -1;
-        finishTime = 0f;
-        elapsedTime = 0f;
+        if (nearestAhead < 0)
+        {
+            return 0f;
+        }
+
+        var meOffset = Vector2.Dot(positions[i] - track.Center[targetIdx], track.Normal[targetIdx]);
+        var aheadOffset = Vector2.Dot(positions[nearestAhead] - track.Center[targetIdx], track.Normal[targetIdx]);
+
+        if (Mathf.Abs(aheadOffset) < track.HalfWidth[targetIdx] * 0.25f)
+        {
+            return meOffset >= 0f ? -0.9f : 0.9f;
+        }
+
+        return aheadOffset > 0f ? -0.8f : 0.8f;
+    }
+
+    private float ComputeDraftBoost(int i)
+    {
+        var idx = closestTrackIndex[i];
+        for (var j = 0; j < MarbleCount; j++)
+        {
+            if (j == i)
+            {
+                continue;
+            }
+
+            var delta = track.ForwardDelta(idx, closestTrackIndex[j]);
+            if (delta <= 0 || delta > 16)
+            {
+                continue;
+            }
+
+            var distance = Vector2.Distance(positions[i], positions[j]);
+            if (distance < 0.001f || distance > 5f)
+            {
+                continue;
+            }
+
+            return Mathf.Lerp(0.1f, 1f, 1f - Mathf.InverseLerp(0.8f, 5f, distance));
+        }
+
+        return 0f;
+    }
+
+    private void ApplyCorridor(int i)
+    {
+        var idx = closestTrackIndex[i];
+        var center = track.Center[idx];
+        var normal = track.Normal[idx];
+        var halfWidth = track.HalfWidth[idx];
+
+        var lateral = Vector2.Dot(positions[i] - center, normal);
+        if (Mathf.Abs(lateral) <= halfWidth)
+        {
+            return;
+        }
+
+        var clamped = Mathf.Clamp(lateral, -halfWidth, halfWidth);
+        var push = clamped - lateral;
+        positions[i] += normal * push;
+
+        var lateralVelocity = Vector2.Dot(velocities[i], normal);
+        velocities[i] -= normal * lateralVelocity * 1.8f;
+    }
+
+    private void ClampArena(int i)
+    {
+        var pos = positions[i];
+        var vel = velocities[i];
+
+        if (Mathf.Abs(pos.x) > arenaHalfWidth)
+        {
+            pos.x = Mathf.Clamp(pos.x, -arenaHalfWidth, arenaHalfWidth);
+            vel.x *= -0.3f;
+        }
+
+        if (Mathf.Abs(pos.y) > arenaHalfHeight)
+        {
+            pos.y = Mathf.Clamp(pos.y, -arenaHalfHeight, arenaHalfHeight);
+            vel.y *= -0.3f;
+        }
+
+        positions[i] = pos;
+        velocities[i] = vel;
+    }
+
+    private void CheckRescue(int i, float dt)
+    {
+        if (velocities[i].magnitude > 0.45f)
+        {
+            stuckTimer[i] = 0f;
+            return;
+        }
+
+        stuckTimer[i] += dt;
+        if (stuckTimer[i] < 1f)
+        {
+            return;
+        }
+
+        var idx = closestTrackIndex[i];
+        var snap = track.Center[idx] + (track.Normal[idx] * Mathf.Clamp(laneOffset[i], -0.6f, 0.6f) * track.HalfWidth[idx] * 0.55f);
+        positions[i] = snap;
+        velocities[i] = track.Tangent[idx] * 2.8f;
+        stuckTimer[i] = 0f;
+    }
+
+    private void UpdateLapAndProgress(int i)
+    {
+        var idx = closestTrackIndex[i];
+        var prev = lastClosestIndex[i];
+
+        if (prev > track.SampleCount - 8 && idx < 8)
+        {
+            lapCount[i]++;
+            if (winnerIndex < 0 && lapCount[i] >= LapsToWin)
+            {
+                winnerIndex = i;
+                finishTime = elapsedTime;
+                raceState = RacePhase.Finished;
+            }
+        }
+
+        var lateral = Mathf.Abs(Vector2.Dot(positions[i] - track.Center[idx], track.Normal[idx]));
+        progress[i] = (lapCount[i] * track.SampleCount) + idx - (lateral * 0.05f);
+    }
+
+    private void UpdateClosestIndex(int i, int window)
+    {
+        var start = closestTrackIndex[i];
+        var bestIndex = start;
+        var bestSq = float.MaxValue;
+
+        for (var offset = -window; offset <= window; offset++)
+        {
+            var idx = track.Wrap(start + offset);
+            var sq = (positions[i] - track.Center[idx]).sqrMagnitude;
+            if (sq < bestSq)
+            {
+                bestSq = sq;
+                bestIndex = idx;
+            }
+        }
+
+        closestTrackIndex[i] = bestIndex;
+    }
+
+    private int FillRankingBuffer(int[] indices)
+    {
+        for (var i = 0; i < MarbleCount; i++)
+        {
+            indices[i] = i;
+        }
+
+        System.Array.Sort(indices, (a, b) => progress[b].CompareTo(progress[a]));
+        return MarbleCount;
     }
 
     private void CleanupLegacyTrackObjects()
     {
-        if (sceneGraph?.DebugRoot != null)
+        if (sceneGraph != null && sceneGraph.DebugRoot != null)
         {
             DestroyIfFound(sceneGraph.DebugRoot, "TrackDebug");
-            var debugChildCount = sceneGraph.DebugRoot.childCount;
-            for (var i = debugChildCount - 1; i >= 0; i--)
-            {
-                var child = sceneGraph.DebugRoot.GetChild(i);
-                if (child.name.Contains("Boundary"))
-                {
-                    Destroy(child.gameObject);
-                }
-            }
         }
 
-        DestroyAllByName(transform.root, "TrackSurfaceStamps");
-    }
-
-    private static void DestroyIfFound(Transform parent, string name)
-    {
-        var found = parent.Find(name);
-        if (found != null)
+        var arenaRoot = sceneGraph != null && sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot.Find("ArenaRoot") : null;
+        if (arenaRoot != null)
         {
-            Destroy(found.gameObject);
+            DestroyIfFound(arenaRoot, "TrackDebug");
+        }
+
+        DestroyByNameRecursive(transform.root, "TrackSurfaceStamps");
+        DestroyByNameRecursive(transform.root, "SanityStamp");
+    }
+
+    private static void DestroyIfFound(Transform parent, string childName)
+    {
+        if (parent == null)
+        {
+            return;
+        }
+
+        var child = parent.Find(childName);
+        if (child != null)
+        {
+            Object.Destroy(child.gameObject);
         }
     }
 
-    private static void DestroyAllByName(Transform root, string name)
+    private static void DestroyByNameRecursive(Transform root, string name)
     {
         if (root == null)
         {
@@ -407,282 +586,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             var child = root.GetChild(i);
             if (child.name == name)
             {
-                Destroy(child.gameObject);
-            }
-            else
-            {
-                DestroyAllByName(child, name);
-            }
-        }
-    }
-
-    private int FindClosestTrackIndex(Vector2 position)
-    {
-        var best = 0;
-        var bestDist = float.MaxValue;
-        for (var i = 0; i < currentTrack.SampleCount; i++)
-        {
-            var d = (position - currentTrack.Center[i]).sqrMagnitude;
-            if (d < bestDist)
-            {
-                bestDist = d;
-                best = i;
-            }
-        }
-
-        return best;
-    }
-
-    private void UpdateClosestTrackIndex(int marbleIndex, int window)
-    {
-        var current = closestTrackIndex[marbleIndex];
-        var bestIndex = current;
-        var bestDistSq = (positions[marbleIndex] - currentTrack.Center[current]).sqrMagnitude;
-        for (var o = -window; o <= window; o++)
-        {
-            var idx = currentTrack.Wrap(current + o);
-            var distSq = (positions[marbleIndex] - currentTrack.Center[idx]).sqrMagnitude;
-            if (distSq < bestDistSq)
-            {
-                bestDistSq = distSq;
-                bestIndex = idx;
-            }
-        }
-
-        closestTrackIndex[marbleIndex] = bestIndex;
-    }
-
-    private void UpdateDrivingBehavior(int i, float dt)
-    {
-        var idx = closestTrackIndex[i];
-        var lookAhead = 7 + Mathf.RoundToInt(Mathf.Clamp(baseSpeedTrait[i] - 6f, 0f, 4f) * 2f);
-        var targetIdx = currentTrack.Wrap(idx + lookAhead);
-
-        var desiredLane = laneBiasTrait[i] * currentTrack.HalfWidth[targetIdx] * 0.33f;
-        var ahead = FindNearestAhead(i, 34);
-        if (ahead >= 0)
-        {
-            var aheadDelta = currentTrack.ForwardDelta(idx, closestTrackIndex[ahead]);
-            if (aheadDelta > 0 && aheadDelta < 22)
-            {
-                var side = ChoosePassSide(i, ahead, targetIdx);
-                desiredLane += side * currentTrack.HalfWidth[targetIdx] * Mathf.Lerp(0.30f, 0.92f, aggressionTrait[i]);
-            }
-        }
-
-        desiredLane = Mathf.Clamp(desiredLane, -currentTrack.HalfWidth[targetIdx] * 0.95f, currentTrack.HalfWidth[targetIdx] * 0.95f);
-        desiredLaneOffset[i] = Mathf.MoveTowards(desiredLaneOffset[i], desiredLane, dt * 3f);
-
-        var targetPoint = currentTrack.Center[targetIdx] + currentTrack.Normal[targetIdx] * desiredLaneOffset[i];
-        var desiredDir = (targetPoint - positions[i]).normalized;
-        var cornerPenalty = currentTrack.Curvature[targetIdx] * Mathf.Lerp(0.65f, 0.28f, corneringTrait[i]);
-        var desiredSpeed = baseSpeedTrait[i] * (1f - cornerPenalty) + ComputeDraftBonus(i) + aggressionTrait[i] * 0.18f;
-        targetSpeeds[i] = Mathf.Clamp(desiredSpeed, 4f, 11.4f);
-
-        var desiredVel = desiredDir * targetSpeeds[i] + ComputeAvoidanceRepulsion(i);
-        if (gravityStrength > 0f)
-        {
-            desiredVel += currentTrack.Tangent[targetIdx] * (gravityStrength * 0.03f);
-        }
-
-        velocities[i] = Vector2.MoveTowards(velocities[i], desiredVel, steeringAccels[i] * dt);
-        velocities[i] *= 1f - Mathf.Clamp01(rollingFriction * dt);
-        velocities[i] = Vector2.ClampMagnitude(velocities[i], maxSpeed);
-    }
-
-    private int FindNearestAhead(int i, int maxDelta)
-    {
-        var idx = closestTrackIndex[i];
-        var best = -1;
-        var bestDelta = int.MaxValue;
-        for (var j = 0; j < marbles.Length; j++)
-        {
-            if (j == i || marbles[j] == null)
-            {
+                Object.Destroy(child.gameObject);
                 continue;
             }
 
-            var delta = currentTrack.ForwardDelta(idx, closestTrackIndex[j]);
-            if (delta > 0 && delta < maxDelta && delta < bestDelta)
-            {
-                bestDelta = delta;
-                best = j;
-            }
+            DestroyByNameRecursive(child, name);
         }
-
-        return best;
-    }
-
-    private float ChoosePassSide(int me, int ahead, int targetIdx)
-    {
-        var myOffset = Vector2.Dot(positions[me] - currentTrack.Center[targetIdx], currentTrack.Normal[targetIdx]);
-        var aheadOffset = Vector2.Dot(positions[ahead] - currentTrack.Center[targetIdx], currentTrack.Normal[targetIdx]);
-        if (Mathf.Abs(aheadOffset) < currentTrack.HalfWidth[targetIdx] * 0.3f)
-        {
-            return myOffset >= 0f ? -1f : 1f;
-        }
-
-        return aheadOffset > 0f ? -1f : 1f;
-    }
-
-    private float ComputeDraftBonus(int i)
-    {
-        var ahead = FindNearestAhead(i, 18);
-        if (ahead < 0)
-        {
-            return 0f;
-        }
-
-        var dist = Vector2.Distance(positions[i], positions[ahead]);
-        var t = Mathf.InverseLerp(12f, 2.5f, dist);
-        return t * 1.2f * draftingTrait[i];
-    }
-
-    private Vector2 ComputeAvoidanceRepulsion(int i)
-    {
-        var repel = Vector2.zero;
-        for (var j = 0; j < marbles.Length; j++)
-        {
-            if (j == i || marbles[j] == null)
-            {
-                continue;
-            }
-
-            var delta = positions[i] - positions[j];
-            var sq = delta.sqrMagnitude;
-            if (sq < 0.0001f || sq > 7f)
-            {
-                continue;
-            }
-
-            repel += delta.normalized * ((7f - sq) / 7f);
-        }
-
-        return repel * avoidanceTrait[i] * 1.8f;
-    }
-
-    private void ApplyCorridorBounds(int marbleIndex)
-    {
-        var idx = closestTrackIndex[marbleIndex];
-        var center = currentTrack.Center[idx];
-        var normal = currentTrack.Normal[idx];
-        var half = currentTrack.HalfWidth[idx];
-        var lateral = Vector2.Dot(positions[marbleIndex] - center, normal);
-
-        if (Mathf.Abs(lateral) <= half)
-        {
-            return;
-        }
-
-        var clamped = Mathf.Clamp(lateral, -half, half);
-        var correction = (clamped - lateral);
-        positions[marbleIndex] += normal * correction;
-
-        var nVel = Vector2.Dot(velocities[marbleIndex], normal);
-        velocities[marbleIndex] -= normal * nVel * 1.75f;
-    }
-
-    private void ApplySoftArenaBounds(int marbleIndex, float dt)
-    {
-        var pos = positions[marbleIndex];
-        var vel = velocities[marbleIndex];
-
-        if (Mathf.Abs(pos.x) > halfWidth)
-        {
-            pos.x = Mathf.Clamp(pos.x, -halfWidth, halfWidth);
-            vel.x *= -0.45f;
-        }
-
-        if (Mathf.Abs(pos.y) > halfHeight)
-        {
-            pos.y = Mathf.Clamp(pos.y, -halfHeight, halfHeight);
-            vel.y *= -0.45f;
-        }
-
-        vel *= 1f - Mathf.Clamp01(dt * 0.1f);
-        positions[marbleIndex] = pos;
-        velocities[marbleIndex] = vel;
-    }
-
-    private void RescueMarble(int marbleIndex)
-    {
-        var idx = closestTrackIndex[marbleIndex];
-        var laneClamp = Mathf.Clamp(desiredLaneOffset[marbleIndex], -currentTrack.HalfWidth[idx] * 0.8f, currentTrack.HalfWidth[idx] * 0.8f);
-        positions[marbleIndex] = currentTrack.Center[idx] + currentTrack.Normal[idx] * laneClamp;
-        velocities[marbleIndex] = currentTrack.Tangent[idx] * Mathf.Max(2f, targetSpeeds[marbleIndex] * 0.4f);
-        stuckTimer[marbleIndex] = 0f;
-    }
-
-    private void UpdateLapProgress(int index)
-    {
-        var prev = lastClosestIndex[index];
-        var curr = closestTrackIndex[index];
-        if (!lapArmed[index] && curr > LapArmDistance)
-        {
-            lapArmed[index] = true;
-        }
-
-        if (!lapArmed[index])
-        {
-            return;
-        }
-
-        if (prev > currentTrack.SampleCount - LapCrossWindow && curr < LapCrossWindow)
-        {
-            lapCount[index]++;
-            lapArmed[index] = false;
-            if (logLapEvents && lapCount[index] != previousLapLogged[index])
-            {
-                previousLapLogged[index] = lapCount[index];
-                Debug.Log($"{nameof(MarbleRaceRunner)} lap marble={identities[index].entityId} lap={lapCount[index]}");
-            }
-
-            if (winnerIndex < 0 && lapCount[index] >= lapsToWin)
-            {
-                winnerIndex = index;
-                finishTime = elapsedTime;
-                raceState = RacePhase.Finished;
-            }
-        }
-    }
-
-    private void UpdateProgress(int index)
-    {
-        var idx = closestTrackIndex[index];
-        var lateral = Vector2.Dot(positions[index] - currentTrack.Center[idx], currentTrack.Normal[idx]);
-        var lateralPenalty = Mathf.Abs(lateral) * 0.05f;
-        progressScore[index] = lapCount[index] * currentTrack.SampleCount + idx - lateralPenalty;
-    }
-
-    private int FillOrderedIndicesByProgress(int[] indices)
-    {
-        for (var i = 0; i < marbles.Length; i++)
-        {
-            indices[i] = i;
-        }
-
-        System.Array.Sort(indices, (a, b) => progressScore[b].CompareTo(progressScore[a]));
-        return marbles.Length;
-    }
-
-    private void ResolveArtPipeline()
-    {
-        artSelector = Object.FindFirstObjectByType<ArtModeSelector>() ?? Object.FindAnyObjectByType<ArtModeSelector>();
-        activePipeline = artSelector != null ? artSelector.GetPipeline() : null;
-    }
-
-    private void EnsureMainCamera()
-    {
-        if (Camera.main != null)
-        {
-            return;
-        }
-
-        var cameraObject = new GameObject("Main Camera");
-        cameraObject.tag = "MainCamera";
-        var cameraComponent = cameraObject.AddComponent<Camera>();
-        cameraComponent.orthographic = true;
-        cameraComponent.orthographicSize = Mathf.Max(halfHeight + 2f, 10f);
-        cameraObject.transform.position = new Vector3(0f, 0f, -10f);
     }
 }
