@@ -16,6 +16,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private const int TrackBuildAttempts = 6;
     private const float Z_UNDER = 0f;
     private const float Z_OVER = 0.02f;
+    private const float MarbleRadius = 0.55f;
+    private const float WallRestitution = 0.35f;
+    private const float WallFriction = 0.20f;
     private static readonly string[] LegacyDecorTrackObjectNames =
     {
         "StartFinishTile",
@@ -60,6 +63,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private int marbleCount = 12;
     private int lapsToWin = 3;
     private int trackTemplate = -1;
+    private int trackVariant = 0;
+    private int simulationSeed;
+    private float simulationArenaWidth;
+    private float simulationArenaHeight;
     private int[] rankingBuffer;
 
     public RacePhase CurrentPhase => raceState;
@@ -108,11 +115,15 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         trackRenderer ??= new MarbleRaceTrackRenderer();
 
         var seed = config != null ? config.seed : 0;
+        simulationSeed = seed;
         marbleCount = Mathf.Max(2, config?.marbleRace?.marbleCount ?? 12);
         lapsToWin = Mathf.Max(1, config?.marbleRace?.laps ?? 3);
         trackTemplate = ResolveTrackTemplate(config?.marbleRace?.trackPreset);
+        trackVariant = 0;
+        simulationArenaWidth = arenaWidth;
+        simulationArenaHeight = arenaHeight;
         var fallbackUsed = false;
-        track = BuildTrack(seed, arenaWidth, arenaHeight, out fallbackUsed);
+        track = BuildTrack(seed, arenaWidth, arenaHeight, trackVariant, out fallbackUsed);
 
         if (track == null || track.SampleCount <= 0)
         {
@@ -259,6 +270,17 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             var push = Mathf.Lerp(3.1f, 4.3f, i / (float)(marbleCount - 1));
             velocities[i] = forward * push;
         }
+    }
+
+    public void ForceNewTrack()
+    {
+        if (sceneGraph == null)
+        {
+            return;
+        }
+
+        trackVariant++;
+        RebuildTrackAndResetToReady();
     }
 
     public void FillLeaderboard(StringBuilder sb, int maxEntries, bool final)
@@ -452,10 +474,22 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var forward = track.Tangent[0];
         var side = track.Normal[0];
 
-        const int cols = 4;
-        const int rows = 3;
-        var laneSpacing = Mathf.Min(track.HalfWidth[0] * 0.55f, 1.35f);
-        var rowSpacing = Mathf.Max(0.9f, track.HalfWidth[0] * 0.7f);
+        var maxLane = Mathf.Max(0f, track.HalfWidth[0] - MarbleRadius - 0.25f);
+        var cols = Mathf.Min(4, marbleCount);
+        var minLaneSpacing = MarbleRadius * 2.1f;
+        while (cols > 1)
+        {
+            var laneSpacing = (2f * maxLane) / (cols - 1);
+            if (laneSpacing >= minLaneSpacing)
+            {
+                break;
+            }
+
+            cols--;
+        }
+
+        var rows = Mathf.CeilToInt(marbleCount / (float)Mathf.Max(1, cols));
+        var backSpacing = MarbleRadius * 2.2f;
 
         var index = 0;
         for (var r = 0; r < rows; r++)
@@ -467,8 +501,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                     break;
                 }
 
-                var lane = (c - (cols - 1) * 0.5f) * laneSpacing;
-                var behind = (r + 1) * rowSpacing;
+                var lane = cols == 1 ? 0f : Mathf.Lerp(-maxLane, maxLane, (c + 0.5f) / cols);
+                var behind = (r * backSpacing) + (MarbleRadius * 1.5f);
                 var spawn = startPos + (side * lane) - (forward * behind);
 
                 positions[index] = spawn;
@@ -627,20 +661,35 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var idx = closestTrackIndex[i];
         var center = track.Center[idx];
         var normal = track.Normal[idx];
+        var tangent = track.Tangent[idx];
         var halfWidth = track.HalfWidth[idx];
 
         var lateral = Vector2.Dot(positions[i] - center, normal);
-        if (Mathf.Abs(lateral) <= halfWidth)
+        if (Mathf.Abs(lateral) > halfWidth * 2f)
+        {
+            var tangentSpeed = Mathf.Abs(Vector2.Dot(velocities[i], tangent));
+            positions[i] = center;
+            velocities[i] = tangent * Mathf.Max(2.6f, tangentSpeed);
+            return;
+        }
+
+        var limit = Mathf.Max(0.25f, halfWidth - MarbleRadius);
+        if (Mathf.Abs(lateral) <= limit)
         {
             return;
         }
 
-        var clamped = Mathf.Clamp(lateral, -halfWidth, halfWidth);
-        var push = clamped - lateral;
-        positions[i] += normal * push;
+        var contactNormal = lateral > limit ? normal : -normal;
+        var penetration = Mathf.Abs(lateral) - limit;
+        positions[i] -= contactNormal * penetration;
 
-        var lateralVelocity = Vector2.Dot(velocities[i], normal);
-        velocities[i] -= normal * lateralVelocity * 1.8f;
+        var velocity = velocities[i];
+        var vn = Vector2.Dot(velocity, contactNormal);
+        var vt = Vector2.Dot(velocity, tangent);
+
+        vn = -vn * WallRestitution;
+        vt *= 1f - WallFriction;
+        velocities[i] = (contactNormal * vn) + (tangent * vt);
     }
 
     private void ClampArena(int i)
@@ -835,20 +884,21 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
-    private MarbleRaceTrack BuildTrack(int seed, float arenaWidth, float arenaHeight, out bool fallbackUsed)
+    private MarbleRaceTrack BuildTrack(int seed, float arenaWidth, float arenaHeight, int variant, out bool fallbackUsed)
     {
         fallbackUsed = false;
         var halfW = arenaWidth * 0.5f;
         var halfH = arenaHeight * 0.5f;
         var bounds = new Rect(-halfW, -halfH, arenaWidth, arenaHeight);
 
-        var templateStart = trackTemplate >= 0 ? trackTemplate : Mathf.Abs(seed) % 9;
+        var templateStart = trackTemplate >= 0 ? trackTemplate : Mathf.Abs(seed + (variant * 37)) % 9;
         for (var attempt = 0; attempt < TrackBuildAttempts; attempt++)
         {
-            var attemptSeed = unchecked(seed ^ (int)0x9E3779B9 ^ (attempt * 7919));
+            var attemptSeed = unchecked(seed ^ (variant * 48619) ^ (int)0x9E3779B9 ^ (attempt * 7919));
             var rng = new SeededRng(attemptSeed);
             var template = trackTemplate >= 0 ? trackTemplate : (templateStart + attempt + rng.NextInt(0, 9)) % 9;
-            var built = trackGenerator.Build(halfW, halfH, rng, template);
+            var generatorVariant = template + (variant * 101);
+            var built = trackGenerator.Build(halfW, halfH, rng, generatorVariant);
             if (built == null || built.SampleCount <= 0)
             {
                 continue;
@@ -865,6 +915,43 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         fallbackUsed = true;
         var fallback = trackGenerator.BuildFallbackRoundedRectangle(halfW, halfH);
         return PostProcessTrack(fallback, arenaWidth, arenaHeight, 0.8f);
+    }
+
+    private void RebuildTrackAndResetToReady()
+    {
+        if (trackGenerator == null)
+        {
+            trackGenerator = new MarbleRaceTrackGenerator();
+        }
+
+        if (trackRenderer == null)
+        {
+            trackRenderer = new MarbleRaceTrackRenderer();
+        }
+
+        var width = Mathf.Max(1f, simulationArenaWidth);
+        var height = Mathf.Max(1f, simulationArenaHeight);
+        track = BuildTrack(simulationSeed, width, height, trackVariant, out _);
+        if (track == null || track.SampleCount <= 0)
+        {
+            track = trackGenerator.BuildFallbackRoundedRectangle(width * 0.5f, height * 0.5f);
+        }
+
+        trackRenderer.Apply(sceneGraph.DecorRoot, track);
+
+        if (marbles == null || marbles.Length != marbleCount)
+        {
+            BuildMarbles(simulationSeed);
+        }
+        else
+        {
+            PlaceStartGrid();
+        }
+
+        raceState = RacePhase.Ready;
+        winnerIndex = -1;
+        elapsedTime = 0f;
+        finishTime = 0f;
     }
 
     private static int ResolveTrackTemplate(string preset)
