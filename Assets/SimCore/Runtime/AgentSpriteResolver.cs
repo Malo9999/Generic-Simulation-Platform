@@ -8,15 +8,13 @@ public static class AgentSpriteResolver
         fill = null;
         outline = null;
 
-        if (string.IsNullOrWhiteSpace(spriteId) || !spriteId.StartsWith("agent:", StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(spriteId) || !spriteId.StartsWith("agent:", StringComparison.OrdinalIgnoreCase))
         {
             return false;
         }
 
-        var bootstrapper = UnityEngine.Object.FindFirstObjectByType<Bootstrapper>()
-            ?? UnityEngine.Object.FindAnyObjectByType<Bootstrapper>();
-        var visual = bootstrapper != null ? bootstrapper.GetCurrentVisualSettings() : null;
-        var preferredPack = bootstrapper != null ? bootstrapper.CurrentPreferredAgentPack : null;
+        var visual = SimVisualSettingsService.CurrentForActiveSim();
+        var preferredPack = visual != null ? visual.preferredAgentPack : null;
 
         if (preferredPack != null && preferredPack.TryGetSprite(spriteId, out var packSprite) && packSprite != null)
         {
@@ -24,11 +22,7 @@ public static class AgentSpriteResolver
             return true;
         }
 
-        var shouldUsePrimitive = bootstrapper == null
-            || bootstrapper.CurrentArtMode == ArtMode.Simple
-            || bootstrapper.CurrentUsePlaceholders
-            || visual == null
-            || visual.usePrimitiveBaseline;
+        var shouldUsePrimitive = visual == null || visual.usePrimitiveBaseline;
 
         if (!shouldUsePrimitive)
         {
