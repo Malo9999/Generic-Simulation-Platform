@@ -5,7 +5,7 @@ public sealed class MarbleRaceTrackGenerator
 {
     private const int TargetSamples = 512;
     private const int TemplateCount = 9;
-    private const int MaxAttempts = 16;
+    private const int MaxAttempts = 12;
 
     private enum SegmentKind
     {
