@@ -4,8 +4,13 @@ using UnityEngine;
 public sealed class MarbleRaceTrackGenerator
 {
     private const int TargetSamples = 512;
-    private const int AttemptCount = 24;
+    private const int TemplateCount = 9;
+    private const int CandidateCount = 18;
     private const bool AllowCrossings = false;
+    private const int StraightRunMinSamples = 24;
+    private const float StraightCurvatureThreshold = 0.035f;
+    private const float HairpinSignedCurvatureThreshold = 0.06f;
+    private const int HairpinMinRunSamples = 7;
 
     private struct Segment
     {
@@ -43,20 +48,23 @@ public sealed class MarbleRaceTrackGenerator
         public float MinClearance;
     }
 
-    public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int variant)
+    public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int seed, int variant, int fixedTemplateId, out bool fallbackUsed)
     {
+        fallbackUsed = false;
         var safeHalfW = Mathf.Max(12f, arenaHalfWidth);
         var safeHalfH = Mathf.Max(12f, arenaHalfHeight);
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
+        var trackSeed = rng != null ? rng.Seed : unchecked(seed ^ (variant * 31));
 
         MarbleRaceTrack bestTrack = null;
         var bestScore = float.MinValue;
-        var bestStats = new CandidateStats();
+        var bestTemplateId = -1;
 
-        for (var attempt = 0; attempt < AttemptCount; attempt++)
+        for (var k = 0; k < CandidateCount; k++)
         {
-            var attemptRng = ForkRng(rng, variant, attempt);
-            var raw = ComposeCircuit(minDim, attemptRng);
+            var templateId = fixedTemplateId >= 0 ? Mathf.Clamp(fixedTemplateId, 0, TemplateCount - 1) : PositiveMod(trackSeed + k, TemplateCount);
+            var candidateRng = ForkRng(trackSeed, variant, k, templateId);
+            var raw = ComposeCircuit(minDim, candidateRng, templateId);
             if (raw == null || raw.Count < 16)
             {
                 continue;
@@ -79,22 +87,31 @@ public sealed class MarbleRaceTrackGenerator
             }
 
             var score = ScoreTrack(candidate, safeHalfW, safeHalfH, out var stats);
+            if (!PassesHardAcceptRules(candidate, ref stats))
+            {
+                continue;
+            }
+
+            score += 0.001f * templateId;
             if (score > bestScore)
             {
                 bestScore = score;
                 bestTrack = candidate;
-                bestStats = stats;
+                bestTemplateId = templateId;
             }
         }
 
         if (bestTrack == null)
         {
+            fallbackUsed = true;
             bestTrack = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH);
-            bestScore = ScoreTrack(bestTrack, safeHalfW, safeHalfH, out bestStats);
+            bestScore = ScoreTrack(bestTrack, safeHalfW, safeHalfH, out _);
+            bestTemplateId = -1;
+            Debug.LogWarning($"[TrackGen] FALLBACK used. No candidates passed. seed={seed} variant={variant}");
         }
 
         RotateToBestStraight(bestTrack);
-        Debug.Log($"[TrackGen] seed={variant} bestScore={bestScore:F1} attempts={AttemptCount} length={bestStats.Length:F1} straights={bestStats.LongStraightRuns} hairpin={(bestStats.HasHairpin ? "yes" : "no")} chicane={(bestStats.HasChicane ? "yes" : "no")}");
+        Debug.Log($"[TrackGen] seed={seed} variant={variant} bestTemplate={bestTemplateId} score={bestScore:F2} candidates={CandidateCount} fallback={(fallbackUsed ? 1 : 0)}");
         return bestTrack;
     }
 
@@ -115,21 +132,22 @@ public sealed class MarbleRaceTrackGenerator
         return fallback;
     }
 
-    private static IRng ForkRng(IRng rng, int variant, int attempt)
+    private static IRng ForkRng(int trackSeed, int variant, int candidateIndex, int templateId)
     {
-        var seed = rng != null ? rng.Seed : 1;
         unchecked
         {
-            var mixed = seed;
+            var mixed = trackSeed;
             mixed = (mixed * 397) ^ variant;
-            mixed = (mixed * 397) ^ (attempt * 7919);
+            mixed = (mixed * 397) ^ (candidateIndex * 7919);
+            mixed = (mixed * 397) ^ (templateId * 3571);
             return new SeededRng(mixed);
         }
     }
 
-    private static List<Vector2> ComposeCircuit(float minDim, IRng rng)
+    private static List<Vector2> ComposeCircuit(float minDim, IRng rng, int templateId)
     {
         var step = Mathf.Lerp(0.6f, 1.2f, rng.NextFloat01());
+        var jitter = Mathf.Lerp(0.88f, 1.12f, rng.NextFloat01());
 
         var mainStraight = rng.Range(0.62f * minDim, 0.85f * minDim);
         var sweeperRadius = rng.Range(0.30f * minDim, 0.55f * minDim);
@@ -150,16 +168,27 @@ public sealed class MarbleRaceTrackGenerator
         var sweeperLeft = rng.Sign() > 0;
         var hairpinLeft = sweeperLeft;
 
-        var segments = new List<Segment>(8)
-        {
-            new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true),
-            new Segment(SegmentType.Arc, sweeperRadius, sweeperDeg, 0f, 0f, sweeperLeft),
-            new Segment(SegmentType.Straight, backStraight, 0f, 0f, 0f, true),
-            new Segment(SegmentType.Chicane, chicaneR1, chicaneR2, chicaneDegA, chicaneDegB, chicaneLeftFirst),
-            new Segment(SegmentType.Straight, shortStraight, 0f, 0f, 0f, true),
-            new Segment(SegmentType.Arc, hairpinRadius, hairpinDeg, 0f, 0f, hairpinLeft),
-            new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true)
-        };
+        ApplyTemplateShape(ref mainStraight, ref backStraight, ref shortStraight, ref finalStraight, ref sweeperDeg, ref hairpinDeg, templateId, jitter);
+
+        var segments = new List<Segment>(10);
+        BuildTemplateSegments(
+            segments,
+            templateId,
+            mainStraight,
+            sweeperRadius,
+            sweeperDeg,
+            backStraight,
+            chicaneR1,
+            chicaneR2,
+            chicaneDegA,
+            chicaneDegB,
+            chicaneLeftFirst,
+            shortStraight,
+            hairpinRadius,
+            hairpinDeg,
+            finalStraight,
+            sweeperLeft,
+            hairpinLeft);
 
         var points = BuildPolyline(segments, step);
         if (points.Count < 4)
@@ -169,6 +198,109 @@ public sealed class MarbleRaceTrackGenerator
 
         AppendSmoothClosure(points, Mathf.Clamp(minDim * 0.18f, 2.4f, 8f), step);
         return points;
+    }
+
+    private static void ApplyTemplateShape(ref float mainStraight, ref float backStraight, ref float shortStraight, ref float finalStraight, ref float sweeperDeg, ref float hairpinDeg, int templateId, float jitter)
+    {
+        switch (templateId)
+        {
+            case 1:
+                mainStraight *= 1.15f * jitter;
+                backStraight *= 0.9f;
+                sweeperDeg *= 1.1f;
+                break;
+            case 2:
+                backStraight *= 1.2f * jitter;
+                shortStraight *= 0.85f;
+                hairpinDeg = Mathf.Max(170f, hairpinDeg * 1.08f);
+                break;
+            case 3:
+                mainStraight *= 0.92f;
+                shortStraight *= 1.25f * jitter;
+                sweeperDeg *= 0.85f;
+                break;
+            case 4:
+                finalStraight *= 1.22f * jitter;
+                hairpinDeg = Mathf.Max(175f, hairpinDeg * 1.12f);
+                break;
+            case 5:
+                mainStraight *= 1.05f;
+                backStraight *= 1.05f;
+                shortStraight *= 1.1f * jitter;
+                break;
+            case 6:
+                finalStraight *= 0.85f;
+                sweeperDeg *= 1.25f;
+                break;
+            case 7:
+                shortStraight *= 1.28f * jitter;
+                hairpinDeg = Mathf.Max(180f, hairpinDeg * 1.18f);
+                break;
+            case 8:
+                mainStraight *= 1.1f * jitter;
+                finalStraight *= 1.1f;
+                sweeperDeg *= 0.92f;
+                break;
+            default:
+                break;
+        }
+    }
+
+    private static void BuildTemplateSegments(List<Segment> segments, int templateId, float mainStraight, float sweeperRadius, float sweeperDeg, float backStraight, float chicaneR1, float chicaneR2, float chicaneDegA, float chicaneDegB, bool chicaneLeftFirst, float shortStraight, float hairpinRadius, float hairpinDeg, float finalStraight, bool sweeperLeft, bool hairpinLeft)
+    {
+        segments.Clear();
+        var invertedSweeper = !sweeperLeft;
+        var invertedHairpin = !hairpinLeft;
+
+        switch (templateId)
+        {
+            case 1:
+                segments.Add(new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius, sweeperDeg, 0f, 0f, sweeperLeft));
+                segments.Add(new Segment(SegmentType.Straight, backStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, hairpinRadius * 0.7f, 60f, 0f, 0f, invertedHairpin));
+                segments.Add(new Segment(SegmentType.Chicane, chicaneR1, chicaneR2, chicaneDegA, chicaneDegB, chicaneLeftFirst));
+                segments.Add(new Segment(SegmentType.Straight, shortStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, hairpinRadius, hairpinDeg, 0f, 0f, hairpinLeft));
+                segments.Add(new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true));
+                break;
+            case 2:
+            case 5:
+            case 8:
+                segments.Add(new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Chicane, chicaneR1, chicaneR2, chicaneDegA, chicaneDegB, chicaneLeftFirst));
+                segments.Add(new Segment(SegmentType.Straight, backStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius, sweeperDeg, 0f, 0f, sweeperLeft));
+                segments.Add(new Segment(SegmentType.Straight, shortStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, hairpinRadius, hairpinDeg, 0f, 0f, hairpinLeft));
+                segments.Add(new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true));
+                break;
+            case 3:
+            case 6:
+                segments.Add(new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius, sweeperDeg, 0f, 0f, invertedSweeper));
+                segments.Add(new Segment(SegmentType.Straight, backStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Chicane, chicaneR1, chicaneR2, chicaneDegA, chicaneDegB, !chicaneLeftFirst));
+                segments.Add(new Segment(SegmentType.Straight, shortStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, hairpinRadius, hairpinDeg, 0f, 0f, invertedHairpin));
+                segments.Add(new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true));
+                break;
+            default:
+                segments.Add(new Segment(SegmentType.Straight, mainStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, sweeperRadius, sweeperDeg, 0f, 0f, sweeperLeft));
+                segments.Add(new Segment(SegmentType.Straight, backStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Chicane, chicaneR1, chicaneR2, chicaneDegA, chicaneDegB, chicaneLeftFirst));
+                segments.Add(new Segment(SegmentType.Straight, shortStraight, 0f, 0f, 0f, true));
+                segments.Add(new Segment(SegmentType.Arc, hairpinRadius, hairpinDeg, 0f, 0f, hairpinLeft));
+                segments.Add(new Segment(SegmentType.Straight, finalStraight, 0f, 0f, 0f, true));
+                break;
+        }
+    }
+
+    private static int PositiveMod(int value, int modulo)
+    {
+        var r = value % modulo;
+        return r < 0 ? r + modulo : r;
     }
 
     private static List<Vector2> BuildStadium(float minDim)
@@ -593,14 +725,14 @@ public sealed class MarbleRaceTrackGenerator
             length += Vector2.Distance(track.Center[i], track.Center[next]);
             curvatureMean += track.Curvature[i];
 
-            if (track.Curvature[i] < 0.035f)
+            if (track.Curvature[i] < StraightCurvatureThreshold)
             {
                 straightRun++;
                 longestStraight = Mathf.Max(longestStraight, straightRun);
             }
             else
             {
-                if (straightRun >= 24)
+                if (straightRun >= StraightRunMinSamples)
                 {
                     longStraightRuns++;
                 }
@@ -609,7 +741,7 @@ public sealed class MarbleRaceTrackGenerator
             }
         }
 
-        if (straightRun >= 24)
+        if (straightRun >= StraightRunMinSamples)
         {
             longStraightRuns++;
         }
@@ -673,6 +805,72 @@ public sealed class MarbleRaceTrackGenerator
         };
 
         return score;
+    }
+
+    private static bool PassesHardAcceptRules(MarbleRaceTrack track, ref CandidateStats stats)
+    {
+        var n = track.SampleCount;
+        var straightRun = 0;
+        var straightCount = 0;
+        var hairpinRun = 0;
+        var hasHairpin = false;
+        var hasChicane = false;
+        var previousTurnSign = 0;
+
+        for (var i = 0; i < n; i++)
+        {
+            var next = (i + 1) % n;
+            var signedTurn = Cross(track.Tangent[i], track.Tangent[next]);
+            var absSignedTurn = Mathf.Abs(signedTurn);
+
+            if (track.Curvature[i] < StraightCurvatureThreshold)
+            {
+                straightRun++;
+            }
+            else
+            {
+                if (straightRun >= StraightRunMinSamples)
+                {
+                    straightCount++;
+                }
+
+                straightRun = 0;
+            }
+
+            if (absSignedTurn > HairpinSignedCurvatureThreshold)
+            {
+                hairpinRun++;
+                if (hairpinRun >= HairpinMinRunSamples)
+                {
+                    hasHairpin = true;
+                }
+            }
+            else
+            {
+                hairpinRun = 0;
+            }
+
+            var turnSign = absSignedTurn > 0.01f ? (signedTurn > 0f ? 1 : -1) : 0;
+            if (turnSign != 0)
+            {
+                if (previousTurnSign != 0 && previousTurnSign != turnSign)
+                {
+                    hasChicane = true;
+                }
+
+                previousTurnSign = turnSign;
+            }
+        }
+
+        if (straightRun >= StraightRunMinSamples)
+        {
+            straightCount++;
+        }
+
+        stats.LongStraightRuns = straightCount;
+        stats.HasHairpin = hasHairpin;
+        stats.HasChicane = hasChicane;
+        return hasChicane && hasHairpin && straightCount >= 2;
     }
 
     private static void RotateToBestStraight(MarbleRaceTrack track)
