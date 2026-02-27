@@ -48,6 +48,47 @@ public static class PresentationBoundsSync
         }
 
         EnsureMinimapCamera(bounds);
+        EnsureMainCameraFraming(bounds);
+    }
+
+    private static void EnsureMainCameraFraming(Rect bounds)
+    {
+        var mainCamera = Camera.main;
+        if (mainCamera == null)
+        {
+            return;
+        }
+
+        var cameraBehaviours = mainCamera.GetComponents<MonoBehaviour>();
+        foreach (var behaviour in cameraBehaviours)
+        {
+            if (behaviour == null || !behaviour.enabled)
+            {
+                continue;
+            }
+
+            var typeName = behaviour.GetType().Name;
+            if (typeName.IndexOf("follow", StringComparison.OrdinalIgnoreCase) >= 0
+                || typeName.IndexOf("cinemachine", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return;
+            }
+        }
+
+        mainCamera.orthographic = true;
+
+        var position = mainCamera.transform.position;
+        position.x = bounds.center.x;
+        position.y = bounds.center.y;
+        mainCamera.transform.position = position;
+
+        var halfH = bounds.height * 0.5f;
+        var halfW = bounds.width * 0.5f;
+        var aspect = Screen.height > 0 ? (Screen.width / (float)Screen.height) : 1.777f;
+        var sizeToFitWidth = halfW / Mathf.Max(0.01f, aspect);
+        var baseSize = Mathf.Max(halfH, sizeToFitWidth);
+        var pad = Mathf.Clamp(baseSize * 0.08f, 1.5f, 6f);
+        mainCamera.orthographicSize = baseSize + pad;
     }
 
     private static bool SetWorldBoundsFieldOrProperty(MonoBehaviour behaviour, Type type, Rect bounds)
