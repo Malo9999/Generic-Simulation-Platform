@@ -8,12 +8,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private int TotalAthletes => playersPerTeam * teamCount;
     private int GoalkeeperIndexPerTeam => playersPerTeam - 1;
 
-    private const float TeamSeparationRadius = 2.4f;
+    private const float TeamSeparationRadius = 2.8f;
     private const float BoundaryAvoidanceDistance = 3f;
     private const float PressureRadius = 2.2f;
     private const float OpenThreshold = 2.6f;
     private const float PassLeadTime = 0.3f;
-    private const float PassSpeed = 15f;
+    private const float BaseHomePullWeight = 0.42f;
     private const float ShootSpeed = 23f;
     private const float ShootRange = 16f;
     private const float PassCooldownSeconds = 0.65f;
@@ -27,11 +27,33 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float BumperBallRestitution = 1.06f;
     private const float BumperAthleteRestitution = 0.3f;
     private const int BumperCount = 6;
+    private const float StaminaDrainRun = 0.95f;
+    private const float StaminaRecoverIdle = 0.8f;
+    private const float StaminaRecoverShape = 0.48f;
+    private const float TackleStaminaCost = 0.85f;
+    private const float ThrowStaminaCost = 0.55f;
+    private const float BoostPadExtraDrain = 0.75f;
+    private const float StaminaBarWidth = 0.72f;
     private static readonly Vector2 PadSize = new Vector2(4.2f, 2.7f);
     private static readonly Color Team0Color = new Color(0.2f, 0.78f, 1f, 1f);
     private static readonly Color Team1Color = new Color(1f, 0.45f, 0.25f, 1f);
 
     private enum AthleteState { BallCarrier, ChaseFreeBall, SupportAttack, PressCarrier, MarkLane, GoalkeeperHome }
+    private enum Role { Goalkeeper, Defender, Midfielder, Attacker }
+    private enum Lane { Left, Center, Right }
+
+    private struct PlayerProfile
+    {
+        public float speed;
+        public float accel;
+        public float staminaMax;
+        public float throwPower;
+        public float throwAccuracy;
+        public float tacklePower;
+        public float tackleCooldown;
+        public float awareness;
+        public float aggression;
+    }
 
     [SerializeField] private FantasySportRules rules = new FantasySportRules();
     [SerializeField] private float athleteIconScaleMultiplier = 1.3f;
@@ -45,7 +67,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private float[] stunTimers;
     private float[] tackleCooldowns;
     private float[] passCooldowns;
-    private float[] laneByPlayer;
+    private Lane[] laneByIndex;
+    private Role[] roleByIndex;
+    private PlayerProfile[] profiles;
+    private float[] stamina;
+    private float[] staminaMaxByIndex;
+    private SpriteRenderer[] staminaBarFills;
     private IRng[] athleteRngs;
     private AthleteState[] athleteStates;
     private int[] assignedTargetIndex;
@@ -88,6 +115,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private int previousPossessionTeam = int.MinValue;
     private int nextEntityId;
     private bool kickoffSanityLogPending;
+    private int simulationSeed;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -174,6 +202,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         teamCount = 2;
         playersPerTeam = Mathf.Max(2, config?.fantasySport?.playersPerTeam ?? 8);
+        simulationSeed = config?.seed ?? 0;
 
         if (rules != null)
         {
@@ -195,7 +224,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         stunTimers = new float[TotalAthletes];
         tackleCooldowns = new float[TotalAthletes];
         passCooldowns = new float[TotalAthletes];
-        laneByPlayer = new float[TotalAthletes];
+        laneByIndex = new Lane[TotalAthletes];
+        roleByIndex = new Role[TotalAthletes];
+        profiles = new PlayerProfile[TotalAthletes];
+        stamina = new float[TotalAthletes];
+        staminaMaxByIndex = new float[TotalAthletes];
+        staminaBarFills = new SpriteRenderer[TotalAthletes];
         athleteRngs = new IRng[TotalAthletes];
         athleteStates = new AthleteState[TotalAthletes];
         assignedTargetIndex = new int[TotalAthletes];
@@ -209,11 +243,15 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var spawnRng = RngService.Fork("SIM:FantasySport:SPAWN");
         for (var i = 0; i < TotalAthletes; i++)
         {
-            athleteRngs[i] = RngService.Fork($"SIM:FantasySport:ATHLETE:{i}");
-            laneByPlayer[i] = ResolveLaneForTeamIndex(i % playersPerTeam);
+            athleteRngs[i] = RngService.Fork($"SIM:FantasySport:ATHLETE:{simulationSeed}:{i}");
             var teamId = i < playersPerTeam ? 0 : 1;
             var teamLocalIndex = i % playersPerTeam;
-            var role = teamLocalIndex == GoalkeeperIndexPerTeam ? "goalkeeper" : (teamLocalIndex <= 2 ? "offense" : "defense");
+            roleByIndex[i] = ResolveRoleForTeamIndex(teamLocalIndex);
+            laneByIndex[i] = ResolveLaneForTeamIndex(teamLocalIndex);
+            profiles[i] = GenerateProfile(teamId, teamLocalIndex);
+            staminaMaxByIndex[i] = Mathf.Lerp(6f, 12f, profiles[i].staminaMax);
+            stamina[i] = staminaMaxByIndex[i];
+            var role = roleByIndex[i] == Role.Goalkeeper ? "goalkeeper" : (roleByIndex[i] == Role.Attacker ? "offense" : "defense");
 
             var identity = IdentityService.Create(nextEntityId++, teamId, role, 3, config?.seed ?? 0, "FantasySport");
             var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, teamId);
@@ -236,6 +274,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             EntityIconFactory.BuildAthlete(iconRoot.transform, identity);
             iconRoot.transform.localScale *= Mathf.Max(0.1f, athleteIconScaleMultiplier);
             TintAthlete(iconRoot.transform, teamId, role == "goalkeeper");
+            BuildStaminaBar(i, iconRoot.transform);
 
             var ring = new GameObject("PossessionRing").AddComponent<SpriteRenderer>();
             ring.transform.SetParent(athlete.transform, false);
@@ -356,33 +395,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void ResetAthleteFormationAndVelocities()
     {
-        var yBand = halfHeight * 0.62f;
-        const float xMargin = 1.5f;
         for (var i = 0; i < TotalAthletes; i++)
         {
-            var teamId = identities[i].teamId;
-            var teamLocalIndex = i % playersPerTeam;
-            var ownGoalX = GetOwnGoalX(teamId);
-            var centerSign = TowardCenterSign(teamId);
-            var offenseX = Mathf.Clamp(ownGoalX + (centerSign * (rules.goalDepth + 10f)), -halfWidth + xMargin, halfWidth - xMargin);
-            var defenseX = Mathf.Clamp(ownGoalX + (centerSign * (rules.goalDepth + 6f)), -halfWidth + xMargin, halfWidth - xMargin);
-
-            if (teamLocalIndex == GoalkeeperIndexPerTeam)
-            {
-                positions[i] = new Vector2(Mathf.Clamp(ownGoalX + (centerSign * 2f), -halfWidth + xMargin, halfWidth - xMargin), 0f);
-            }
-            else
-            {
-                var laneY = laneByPlayer[i] * yBand;
-                var isOffense = teamLocalIndex <= 2;
-                var x = isOffense ? offenseX : defenseX;
-                positions[i] = new Vector2(x, laneY);
-            }
-
+            positions[i] = ComputeHomePosition(i);
             velocities[i] = Vector2.zero;
             stunTimers[i] = 0f;
             tackleCooldowns[i] = 0f;
             passCooldowns[i] = 0f;
+            stamina[i] = staminaMaxByIndex[i];
         }
     }
 
@@ -425,8 +445,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void RefreshAssignments()
     {
         previousPossessionTeam = ballOwnerTeam;
-        var chaser0 = FindClosestPlayerToPoint(0, ballPos, includeGoalkeeper: false);
-        var chaser1 = FindClosestPlayerToPoint(1, ballPos, includeGoalkeeper: false);
+        var freePrimaryChaser0 = FindClosestPlayerToPoint(0, ballPos, includeGoalkeeper: false);
+        var freePrimaryChaser1 = FindClosestPlayerToPoint(1, ballPos, includeGoalkeeper: false);
+        var freeSecondaryChaser0 = FindSecondClosestPlayerToPoint(0, ballPos, freePrimaryChaser0);
+        var freeSecondaryChaser1 = FindSecondClosestPlayerToPoint(1, ballPos, freePrimaryChaser1);
 
         for (var i = 0; i < TotalAthletes; i++)
         {
@@ -447,7 +469,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             if (ballOwnerIndex < 0)
             {
-                athleteStates[i] = i == (teamId == 0 ? chaser0 : chaser1) ? AthleteState.ChaseFreeBall : AthleteState.SupportAttack;
+                var primary = teamId == 0 ? freePrimaryChaser0 : freePrimaryChaser1;
+                var secondary = teamId == 0 ? freeSecondaryChaser0 : freeSecondaryChaser1;
+                athleteStates[i] = (i == primary || i == secondary) ? AthleteState.ChaseFreeBall : AthleteState.SupportAttack;
                 continue;
             }
 
@@ -458,7 +482,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             var press = FindClosestPlayerToPoint(teamId, positions[ballOwnerIndex], includeGoalkeeper: false);
-            athleteStates[i] = i == press ? AthleteState.PressCarrier : AthleteState.MarkLane;
+            var supportPress = FindSecondClosestPlayerToPoint(teamId, positions[ballOwnerIndex], press);
+            athleteStates[i] = (i == press || i == supportPress) ? AthleteState.PressCarrier : AthleteState.MarkLane;
         }
     }
 
@@ -480,8 +505,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var openTeammate = FindBestOpenTeammate(carrier);
             if (pressured && openTeammate >= 0)
             {
-                var target = positions[openTeammate] + (velocities[openTeammate] * PassLeadTime);
-                ThrowBall(carrier, target, PassSpeed, openTeammate);
+                var leadTime = Mathf.Lerp(0.18f, 0.38f, profiles[carrier].awareness);
+                var target = positions[openTeammate] + (velocities[openTeammate] * leadTime);
+                ThrowBall(carrier, target, openTeammate, false);
                 passCooldowns[carrier] = PassCooldownSeconds;
                 return;
             }
@@ -492,11 +518,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             var yJitter = athleteRngs[carrier].Range(-GetGoalHeight() * 0.22f, GetGoalHeight() * 0.22f);
             var target = GetOpponentGoalCenter(teamId) + new Vector2(0f, yJitter);
-            ThrowBall(carrier, target, ShootSpeed, -1);
+            ThrowBall(carrier, target, -1, true);
         }
     }
 
-    private void ThrowBall(int carrierIndex, Vector2 target, float speed, int receiverIndex)
+    private void ThrowBall(int carrierIndex, Vector2 target, int receiverIndex, bool isShot)
     {
         var start = positions[carrierIndex];
         var dir = target - start;
@@ -506,15 +532,30 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         dir.Normalize();
+        var stats = profiles[carrierIndex];
+        var fatigue = GetFatigue01(carrierIndex);
+        var throwSpeed = isShot ? ShootSpeed : Mathf.Lerp(9f, 15f, stats.throwPower);
+        var errDeg = Mathf.Lerp(18f, 4f, stats.throwAccuracy) * Mathf.Lerp(1.35f, 0.9f, fatigue);
+        var err = athleteRngs[carrierIndex].Range(-errDeg, errDeg);
+        var finalDir = Rotate(dir, err);
+
         ballOwnerIndex = -1;
         ballOwnerTeam = -1;
         ballPos = start;
-        ballVel = (dir * speed) + (velocities[carrierIndex] * 0.15f);
+        ballVel = (finalDir * throwSpeed) + (velocities[carrierIndex] * 0.15f);
 
         lastThrowTeam = identities[carrierIndex].teamId;
         lastThrowTime = elapsedMatchTime;
         intendedReceiverIndex = receiverIndex;
         receiverLockUntilTime = elapsedMatchTime + ReceiverLockSeconds;
+        stamina[carrierIndex] = Mathf.Max(0f, stamina[carrierIndex] - ThrowStaminaCost);
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (!isShot && receiverIndex >= 0 && showMechanicDebug)
+        {
+            Debug.Log($"[FantasySport] PASS team={lastThrowTeam} from={carrierIndex} to={receiverIndex}");
+        }
+#endif
     }
 
     private void UpdateAthletes(float dt)
@@ -522,49 +563,53 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         for (var i = 0; i < TotalAthletes; i++)
         {
             var desired = stunTimers[i] > 0f || matchFinished ? Vector2.zero : ComputeDesiredVelocity(i);
-            velocities[i] = Vector2.MoveTowards(velocities[i], desired, rules.accel * dt);
+            var effectiveAccel = Mathf.Lerp(6f, 14f, profiles[i].accel) * Mathf.Lerp(0.65f, 1f, GetFatigue01(i));
+            velocities[i] = Vector2.MoveTowards(velocities[i], desired, effectiveAccel * dt);
             positions[i] += velocities[i] * dt;
             ClampAthlete(i);
             ResolveAthleteBumperCollision(i);
+            UpdateStamina(i, desired, dt);
         }
     }
 
     private Vector2 ComputeDesiredVelocity(int i)
     {
-        var identity = identities[i];
         var keeper = IsGoalkeeper(i);
-        var maxSpeed = keeper ? rules.athleteSpeedDefense * 0.85f : (identity.role == "offense" ? rules.athleteSpeedOffense : rules.athleteSpeedDefense);
+        var baseMaxSpeed = keeper ? Mathf.Lerp(4.5f, 7.5f, profiles[i].speed) * 0.9f : Mathf.Lerp(4.5f, 7.5f, profiles[i].speed);
+        var fatigue = GetFatigue01(i);
+        var maxSpeed = baseMaxSpeed * Mathf.Lerp(0.55f, 1f, fatigue);
         maxSpeed *= GetPadSpeedMultiplierAtPosition(positions[i]);
 
-        var target = ComputeHomePosition(i);
+        var objective = ComputeHomePosition(i);
         switch (athleteStates[i])
         {
             case AthleteState.BallCarrier:
                 if (keeper)
                 {
                     var open = FindBestOpenTeammate(i);
-                    target = open >= 0 ? positions[open] : ComputeHomePosition(i);
+                    objective = open >= 0 ? positions[open] : ComputeHomePosition(i);
                 }
                 else
                 {
-                    target = GetOpponentGoalCenter(identity.teamId);
+                    objective = GetOpponentGoalCenter(identities[i].teamId);
                 }
                 break;
             case AthleteState.ChaseFreeBall:
-                target = ballPos;
+                objective = ballPos;
                 break;
             case AthleteState.PressCarrier:
-                target = ballOwnerIndex >= 0 ? positions[ballOwnerIndex] : ballPos;
+                objective = ballOwnerIndex >= 0 ? positions[ballOwnerIndex] : ballPos;
                 break;
             case AthleteState.MarkLane:
-                target = Vector2.Lerp(GetOwnGoalCenter(identity.teamId), ballPos, 0.4f) + new Vector2(0f, laneByPlayer[i] * 4f);
+                objective = Vector2.Lerp(GetOwnGoalCenter(identities[i].teamId), ballPos, 0.4f) + new Vector2(0f, LaneToFloat(laneByIndex[i]) * 3.4f);
                 break;
             case AthleteState.GoalkeeperHome:
-                target = ComputeGoalkeeperTarget(i);
+                objective = ComputeGoalkeeperTarget(i);
                 break;
         }
 
-        return BuildSteeringVelocity(i, target, maxSpeed);
+        var home = ComputeHomePosition(i);
+        return BuildSteeringVelocity(i, objective, home, maxSpeed);
     }
 
     private Vector2 ComputeHomePosition(int athleteIndex)
@@ -576,17 +621,22 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var attack = teamId == 0 ? 1f : -1f;
-        var laneY = laneByPlayer[athleteIndex] * halfHeight * 0.65f;
-        var baseX = attack * (halfWidth * 0.2f);
-        if (ballOwnerTeam == teamId)
+        var laneY = LaneToFloat(laneByIndex[athleteIndex]) * halfHeight * 0.58f;
+        float phaseOffset;
+        switch (roleByIndex[athleteIndex])
         {
-            baseX = attack * (halfWidth * 0.28f);
-        }
-        else if (ballOwnerTeam >= 0)
-        {
-            baseX = attack * (halfWidth * 0.08f);
+            case Role.Defender:
+                phaseOffset = ballOwnerTeam == teamId ? 0.15f : 0.06f;
+                break;
+            case Role.Midfielder:
+                phaseOffset = ballOwnerTeam == teamId ? 0.3f : 0.16f;
+                break;
+            default:
+                phaseOffset = ballOwnerTeam == teamId ? 0.45f : 0.24f;
+                break;
         }
 
+        var baseX = attack * (halfWidth * phaseOffset);
         return new Vector2(baseX, Mathf.Clamp(laneY, -halfHeight + 2f, halfHeight - 2f));
     }
 
@@ -598,10 +648,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         return new Vector2(x, y);
     }
 
-    private Vector2 BuildSteeringVelocity(int athleteIndex, Vector2 target, float maxSpeed)
+    private Vector2 BuildSteeringVelocity(int athleteIndex, Vector2 objectiveTarget, Vector2 homeTarget, float maxSpeed)
     {
         var athletePos = positions[athleteIndex];
-        var seek = (target - athletePos).normalized;
+        var objective = (objectiveTarget - athletePos).normalized;
+        var homePull = (homeTarget - athletePos).normalized;
+
         var separation = Vector2.zero;
         for (var i = 0; i < TotalAthletes; i++)
         {
@@ -624,7 +676,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (athletePos.y < -halfHeight + BoundaryAvoidanceDistance) boundary.y += 1f;
         if (athletePos.y > halfHeight - BoundaryAvoidanceDistance) boundary.y -= 1f;
 
-        var steering = seek + (separation * 1.4f) + boundary;
+        var engagedWeight = (athleteStates[athleteIndex] == AthleteState.ChaseFreeBall || athleteStates[athleteIndex] == AthleteState.PressCarrier || athleteStates[athleteIndex] == AthleteState.BallCarrier) ? 0.18f : BaseHomePullWeight;
+        engagedWeight *= Mathf.Lerp(0.85f, 1.2f, 1f - profiles[athleteIndex].aggression);
+        var steering = (objective * 1.45f) + (homePull * engagedWeight) + (separation * 1.95f) + (boundary * 1.2f);
         return steering.sqrMagnitude < 0.001f ? Vector2.zero : steering.normalized * maxSpeed;
     }
 
@@ -651,11 +705,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             var impulse = (positions[victim] - positions[i]).normalized;
             stunTimers[victim] = rules.stunSeconds;
-            tackleCooldowns[i] = rules.tackleCooldownSeconds;
+            tackleCooldowns[i] = Mathf.Lerp(1.3f, 0.6f, profiles[i].tackleCooldown);
             ballOwnerIndex = -1;
             ballOwnerTeam = -1;
             ballPos = positions[victim];
-            ballVel = (impulse * rules.tackleImpulse) + (velocities[victim] * 0.2f);
+            ballVel = (impulse * Mathf.Lerp(7f, 12f, profiles[i].tacklePower)) + (velocities[victim] * 0.2f);
+            stamina[i] = Mathf.Max(0f, stamina[i] - TackleStaminaCost);
             intendedReceiverIndex = -1;
             receiverLockUntilTime = -999f;
             return;
@@ -821,12 +876,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 if (showDebugPlayerState)
                 {
                     var dbg = showMechanicDebug ? $" LT:{lastThrowTeam}@{lastThrowTime:0.0} IR:{intendedReceiverIndex}" : string.Empty;
-                    debugStateLabels[i].text = $"T{identities[i].teamId} {identities[i].role[0]} {athleteStates[i]}{dbg}";
+                    debugStateLabels[i].text = $"T{identities[i].teamId} {roleByIndex[i]} {athleteStates[i]} S:{stamina[i] / Mathf.Max(0.001f, staminaMaxByIndex[i]):0.00}{dbg}";
                 }
             }
 
             possessionRings[i].enabled = ballOwnerIndex == i;
         }
+
+        UpdateStaminaBars();
 
         if (ballTransform != null)
         {
@@ -1066,13 +1123,15 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 nearestOpponent = Mathf.Min(nearestOpponent, Vector2.Distance(positions[i], positions[j]));
             }
 
-            if (nearestOpponent < OpenThreshold)
+            var progress = (positions[i].x - carrierPos.x) * attack;
+            var laneBonus = laneByIndex[i] == laneByIndex[carrierIndex] ? -0.8f : 0.55f;
+            var awarenessBonus = profiles[carrierIndex].awareness * 0.8f;
+            var score = (progress * 1.25f) + (nearestOpponent * 0.9f) + laneBonus + awarenessBonus - (passDist * 0.25f);
+            if (nearestOpponent < OpenThreshold * 0.75f)
             {
-                continue;
+                score -= 2f;
             }
 
-            var progress = (positions[i].x - carrierPos.x) * attack;
-            var score = (progress * 1.1f) + (nearestOpponent * 0.8f) - (passDist * 0.25f);
             if (score > bestScore)
             {
                 bestScore = score;
@@ -1083,23 +1142,166 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         return best;
     }
 
-    private float ResolveLaneForTeamIndex(int teamIndex)
+    private Role ResolveRoleForTeamIndex(int teamIndex)
     {
         if (teamIndex == GoalkeeperIndexPerTeam)
         {
-            return 0f;
+            return Role.Goalkeeper;
+        }
+
+        if (teamIndex <= 1)
+        {
+            return Role.Defender;
+        }
+
+        if (teamIndex <= 3)
+        {
+            return Role.Midfielder;
+        }
+
+        return Role.Attacker;
+    }
+
+    private Lane ResolveLaneForTeamIndex(int teamIndex)
+    {
+        if (teamIndex == GoalkeeperIndexPerTeam)
+        {
+            return Lane.Center;
         }
 
         return teamIndex switch
         {
-            0 => -1f,
-            1 => 0f,
-            2 => 1f,
-            3 => -0.66f,
-            4 => 0.66f,
-            5 => -0.33f,
-            _ => 0.33f
+            0 => Lane.Left,
+            1 => Lane.Right,
+            2 => Lane.Left,
+            3 => Lane.Right,
+            4 => Lane.Left,
+            5 => Lane.Right,
+            _ => Lane.Center
         };
+    }
+
+    private static float LaneToFloat(Lane lane)
+    {
+        return lane switch
+        {
+            Lane.Left => -1f,
+            Lane.Right => 1f,
+            _ => 0f
+        };
+    }
+
+    private int FindSecondClosestPlayerToPoint(int teamId, Vector2 point, int excludeIndex)
+    {
+        var best = -1;
+        var bestDist = float.MaxValue;
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if (i == excludeIndex || identities[i].teamId != teamId || stunTimers[i] > 0f || IsGoalkeeper(i))
+            {
+                continue;
+            }
+
+            var dist = (positions[i] - point).sqrMagnitude;
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private PlayerProfile GenerateProfile(int teamId, int teamLocalIndex)
+    {
+        var rng = RngService.Fork($"FS:PLAYER:{teamId}:{teamLocalIndex}:{simulationSeed}");
+        return new PlayerProfile
+        {
+            speed = rng.Range(0f, 1f),
+            accel = rng.Range(0f, 1f),
+            staminaMax = rng.Range(0f, 1f),
+            throwPower = rng.Range(0f, 1f),
+            throwAccuracy = rng.Range(0f, 1f),
+            tacklePower = rng.Range(0f, 1f),
+            tackleCooldown = rng.Range(0f, 1f),
+            awareness = rng.Range(0f, 1f),
+            aggression = rng.Range(0f, 1f)
+        };
+    }
+
+    private void BuildStaminaBar(int athleteIndex, Transform iconRoot)
+    {
+        var bar = new GameObject("StaminaBar").transform;
+        bar.SetParent(iconRoot, false);
+        bar.localPosition = new Vector3(0f, 0.72f, 0f);
+
+        var bg = new GameObject("Background").AddComponent<SpriteRenderer>();
+        bg.transform.SetParent(bar, false);
+        bg.sprite = PrimitiveSpriteLibrary.RoundedRectFill();
+        bg.transform.localScale = new Vector3(StaminaBarWidth, 0.13f, 1f);
+        bg.color = new Color(0.05f, 0.05f, 0.07f, 0.62f);
+        RenderOrder.Apply(bg, RenderOrder.EntityBody + 12);
+
+        var fill = new GameObject("Fill").AddComponent<SpriteRenderer>();
+        fill.transform.SetParent(bar, false);
+        fill.sprite = PrimitiveSpriteLibrary.RoundedRectFill();
+        fill.transform.localPosition = new Vector3(-StaminaBarWidth * 0.5f, 0f, 0f);
+        fill.transform.localScale = new Vector3(StaminaBarWidth, 0.1f, 1f);
+        fill.color = Color.green;
+        RenderOrder.Apply(fill, RenderOrder.EntityBody + 13);
+        staminaBarFills[athleteIndex] = fill;
+    }
+
+    private void UpdateStamina(int athleteIndex, Vector2 desiredVelocity, float dt)
+    {
+        var maxStamina = Mathf.Max(0.01f, staminaMaxByIndex[athleteIndex]);
+        var speedFrac = desiredVelocity.magnitude / Mathf.Max(0.01f, Mathf.Lerp(4.5f, 7.5f, profiles[athleteIndex].speed));
+        var drain = speedFrac > 0.7f ? StaminaDrainRun * dt : 0f;
+        if (GetPadSpeedMultiplierAtPosition(positions[athleteIndex]) > 1f)
+        {
+            drain += BoostPadExtraDrain * dt;
+        }
+
+        var recovering = athleteStates[athleteIndex] == AthleteState.MarkLane || athleteStates[athleteIndex] == AthleteState.SupportAttack || desiredVelocity.magnitude < 1.15f;
+        var recovery = recovering ? StaminaRecoverShape * dt : 0f;
+        if (desiredVelocity.magnitude < 0.65f)
+        {
+            recovery += StaminaRecoverIdle * dt;
+        }
+
+        stamina[athleteIndex] = Mathf.Clamp(stamina[athleteIndex] - drain + recovery, 0f, maxStamina);
+    }
+
+    private float GetFatigue01(int athleteIndex)
+    {
+        var stamina01 = stamina[athleteIndex] / Mathf.Max(0.01f, staminaMaxByIndex[athleteIndex]);
+        return Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.2f, 1f, stamina01));
+    }
+
+    private void UpdateStaminaBars()
+    {
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if (staminaBarFills[i] == null)
+            {
+                continue;
+            }
+
+            var ratio = Mathf.Clamp01(stamina[i] / Mathf.Max(0.01f, staminaMaxByIndex[i]));
+            var scale = staminaBarFills[i].transform.localScale;
+            scale.x = StaminaBarWidth * ratio;
+            staminaBarFills[i].transform.localScale = scale;
+            staminaBarFills[i].color = Color.Lerp(new Color(0.96f, 0.24f, 0.2f, 0.95f), new Color(0.2f, 0.92f, 0.28f, 0.95f), ratio);
+        }
+    }
+
+    private static Vector2 Rotate(Vector2 vector, float degrees)
+    {
+        var radians = degrees * Mathf.Deg2Rad;
+        var cos = Mathf.Cos(radians);
+        var sin = Mathf.Sin(radians);
+        return new Vector2((vector.x * cos) - (vector.y * sin), (vector.x * sin) + (vector.y * cos));
     }
 
     private bool IsGoalkeeper(int athleteIndex) => (athleteIndex % playersPerTeam) == GoalkeeperIndexPerTeam;
