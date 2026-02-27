@@ -273,13 +273,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var fill = go.AddComponent<SpriteRenderer>();
             fill.sprite = PrimitiveSpriteLibrary.RoundedRectFill();
             fill.color = new Color(0.46f, 1f, 0.55f, 0.24f);
-            RenderOrder.Apply(fill, RenderOrder.GroundDecor + 2);
+            RenderOrder.Apply(fill, RenderOrder.WorldDeco + 2);
 
             var outline = new GameObject("Outline").AddComponent<SpriteRenderer>();
             outline.transform.SetParent(go.transform, false);
             outline.sprite = PrimitiveSpriteLibrary.RoundedRectOutline();
             outline.color = new Color(0.08f, 0.18f, 0.08f, 0.65f);
-            RenderOrder.Apply(outline, RenderOrder.GroundDecor + 3);
+            RenderOrder.Apply(outline, RenderOrder.WorldDeco + 3);
         }
 
         for (var i = 0; i < bumpers.Length; i++)
@@ -291,13 +291,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var fill = go.AddComponent<SpriteRenderer>();
             fill.sprite = PrimitiveSpriteLibrary.CircleFill();
             fill.color = new Color(0.8f, 0.82f, 0.88f, 1f);
-            RenderOrder.Apply(fill, RenderOrder.GroundDecor + 4);
+            RenderOrder.Apply(fill, RenderOrder.WorldDeco + 4);
 
             var outline = new GameObject("Outline").AddComponent<SpriteRenderer>();
             outline.transform.SetParent(go.transform, false);
             outline.sprite = PrimitiveSpriteLibrary.CircleOutline();
             outline.color = new Color(0.08f, 0.08f, 0.12f, 1f);
-            RenderOrder.Apply(outline, RenderOrder.GroundDecor + 5);
+            RenderOrder.Apply(outline, RenderOrder.WorldDeco + 5);
         }
     }
 
