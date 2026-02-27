@@ -13,7 +13,6 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         Cooldown
     }
 
-    private const int TrackBuildAttempts = 6;
     private const float Z_UNDER = 0f;
     private const float Z_OVER = 0.02f;
     private const float MarbleRadius = 0.55f;
@@ -115,11 +114,15 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         trackRenderer ??= new MarbleRaceTrackRenderer();
 
         var seed = config != null ? config.seed : 0;
+        var seedChanged = seed != simulationSeed;
         simulationSeed = seed;
         marbleCount = Mathf.Max(2, config?.marbleRace?.marbleCount ?? 12);
         lapsToWin = Mathf.Max(1, config?.marbleRace?.laps ?? 3);
         trackTemplate = ResolveTrackTemplate(config?.marbleRace?.trackPreset);
-        trackVariant = 0;
+        if (seedChanged)
+        {
+            trackVariant = 0;
+        }
         simulationArenaWidth = arenaWidth;
         simulationArenaHeight = arenaHeight;
         var fallbackUsed = false;
@@ -890,26 +893,17 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var halfW = arenaWidth * 0.5f;
         var halfH = arenaHeight * 0.5f;
         var bounds = new Rect(-halfW, -halfH, arenaWidth, arenaHeight);
+        var trackSeed = unchecked(seed ^ (variant * (int)0x9E3779B9) ^ 0x7F4A7C15);
+        Debug.Log($"[MarbleRace] BuildTrack seed={seed} variant={variant} trackSeed={trackSeed}");
 
-        var templateStart = trackTemplate >= 0 ? trackTemplate : Mathf.Abs(seed + (variant * 37)) % 9;
-        for (var attempt = 0; attempt < TrackBuildAttempts; attempt++)
+        var rng = new SeededRng(trackSeed);
+        var built = trackGenerator.Build(halfW, halfH, rng, seed, variant, trackTemplate, out var generatorFallbackUsed);
+        var widthJitterScale = generatorFallbackUsed ? 0.8f : 1f;
+        var processed = PostProcessTrack(built, arenaWidth, arenaHeight, widthJitterScale);
+        if (processed != null && processed.SampleCount > 0 && ValidateTrack(processed, bounds))
         {
-            var attemptSeed = unchecked(seed ^ (variant * 48619) ^ (int)0x9E3779B9 ^ (attempt * 7919));
-            var rng = new SeededRng(attemptSeed);
-            var template = trackTemplate >= 0 ? trackTemplate : (templateStart + attempt + rng.NextInt(0, 9)) % 9;
-            var generatorVariant = template + (variant * 101);
-            var built = trackGenerator.Build(halfW, halfH, rng, generatorVariant);
-            if (built == null || built.SampleCount <= 0)
-            {
-                continue;
-            }
-
-            var widthJitterScale = Mathf.Lerp(1f, 0.75f, attempt / (float)Mathf.Max(1, TrackBuildAttempts - 1));
-            var processed = PostProcessTrack(built, arenaWidth, arenaHeight, widthJitterScale);
-            if (ValidateTrack(processed, bounds))
-            {
-                return processed;
-            }
+            fallbackUsed = generatorFallbackUsed;
+            return processed;
         }
 
         fallbackUsed = true;
