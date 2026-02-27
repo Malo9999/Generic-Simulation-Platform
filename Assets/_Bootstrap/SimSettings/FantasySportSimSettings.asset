@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::FantasySportSimSettings
   simulationId: FantasySport
   seedPolicy: 0
-  fixedSeed: 12345
+  fixedSeed: 123654
   tickDeltaTime: 0.016666668
   groups: []
   artPolicy:
