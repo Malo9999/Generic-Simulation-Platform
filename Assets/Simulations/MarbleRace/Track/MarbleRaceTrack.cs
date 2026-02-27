@@ -8,23 +8,20 @@ public sealed class MarbleRaceTrack
     public readonly float[] HalfWidth;
     public readonly float[] Curvature;
     public readonly int SampleCount;
-    public readonly (int start, int end)[] OvertakeZones;
 
     public MarbleRaceTrack(
         Vector2[] center,
         Vector2[] tangent,
         Vector2[] normal,
         float[] halfWidth,
-        float[] curvature,
-        (int start, int end)[] overtakeZones)
+        float[] curvature)
     {
         Center = center;
         Tangent = tangent;
         Normal = normal;
         HalfWidth = halfWidth;
         Curvature = curvature;
-        OvertakeZones = overtakeZones ?? System.Array.Empty<(int start, int end)>();
-        SampleCount = center?.Length ?? 0;
+        SampleCount = center != null ? center.Length : 0;
     }
 
     public int Wrap(int i)
@@ -52,10 +49,5 @@ public sealed class MarbleRaceTrack
         }
 
         return delta;
-    }
-
-    public float GetWidth(int idx)
-    {
-        return HalfWidth == null || HalfWidth.Length == 0 ? 0f : HalfWidth[Wrap(idx)] * 2f;
     }
 }
