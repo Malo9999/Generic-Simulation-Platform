@@ -24,7 +24,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     [SerializeField] private float gravityStrength = 8f;
     [SerializeField] private float rollingFriction = 0.24f;
     [SerializeField] private float maxSpeed = 13f;
-    [SerializeField] private Color debugTrackSurfaceColor = new(0.15f, 0.85f, 0.20f, 0.35f);
+    [SerializeField] private Color debugTrackSurfaceColor = new(0.10f, 0.10f, 0.12f, 0.85f);
     [SerializeField] private Color debugTrackBorderColor = new(1f, 0.55f, 0.10f, 0.95f);
     [SerializeField] private Color debugStartLineColor = new(1f, 1f, 1f, 0.95f);
 
@@ -82,14 +82,14 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private GameObject trackDebugRoot;
     private MeshFilter trackSurfaceMeshFilter;
     private MeshRenderer trackSurfaceMeshRenderer;
-    private Transform trackSurfaceStampsRoot;
-    private SpriteRenderer[] trackSurfaceStamps;
-    private Sprite trackStampSprite;
-    private Material trackStampMaterial;
+    private LineRenderer trackSurfaceRenderer;
     private LineRenderer leftBoundaryRenderer;
     private LineRenderer rightBoundaryRenderer;
     private LineRenderer startLineRenderer;
-    private SpriteRenderer sanityStampRenderer;
+    private LineRenderer centerLineRenderer;
+    private Material sharedSurfaceLineMaterial;
+    private Material sharedBorderLineMaterial;
+    private Material sharedStartLineMaterial;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -303,12 +303,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         leftBoundaryRenderer = null;
         rightBoundaryRenderer = null;
         startLineRenderer = null;
+        centerLineRenderer = null;
+        trackSurfaceRenderer = null;
         trackSurfaceMeshFilter = null;
         trackSurfaceMeshRenderer = null;
-        trackSurfaceStampsRoot = null;
-        trackSurfaceStamps = null;
-        trackStampSprite = null;
-        trackStampMaterial = null;
+        sharedSurfaceLineMaterial = null;
+        sharedBorderLineMaterial = null;
+        sharedStartLineMaterial = null;
         trackDebugRoot = null;
 
         Debug.Log("MarbleRaceRunner Shutdown");
@@ -1313,13 +1314,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         sortingGroup.sortingLayerName = "Default";
         sortingGroup.sortingOrder = 0;
 
-        EnsureTrackStampResources();
-        EnsureSanityStamp(trackDebugRoot.transform);
+        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", debugTrackBorderColor, 0.30f, 220, TrackLineMaterialType.Border);
+        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", debugTrackBorderColor, 0.30f, 220, TrackLineMaterialType.Border);
+        startLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "StartLine", debugStartLineColor, 0.40f, 240, TrackLineMaterialType.StartLine, loop: false);
+        trackSurfaceRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "TrackSurface", debugTrackSurfaceColor, 1f, 150, TrackLineMaterialType.Surface);
+        centerLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "CenterLine", new Color(1f, 1f, 1f, 0.70f), 0.12f, 230, TrackLineMaterialType.StartLine);
 
-        leftBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "LeftBoundary", debugTrackBorderColor, 0.30f, 220);
-        rightBoundaryRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "RightBoundary", debugTrackBorderColor, 0.30f, 220);
-        startLineRenderer = CreateBoundaryRenderer(trackDebugRoot.transform, "StartLine", debugStartLineColor, 0.40f, 240, loop: false);
-
+        var center = new Vector3[sampleCount];
         var left = new Vector3[sampleCount];
         var right = new Vector3[sampleCount];
         var nanFound = false;
@@ -1335,6 +1336,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             widthSum += Mathf.Abs(w) * 2f;
+            center[i] = new Vector3(c.x, c.y, 0f);
             left[i] = new Vector3(c.x + n.x * w, c.y + n.y * w, 0f);
             right[i] = new Vector3(c.x - n.x * w, c.y - n.y * w, 0f);
         }
@@ -1353,138 +1355,35 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         rightBoundaryRenderer.positionCount = right.Length;
         rightBoundaryRenderer.SetPositions(right);
 
+        trackSurfaceRenderer.positionCount = center.Length;
+        trackSurfaceRenderer.SetPositions(center);
+        trackSurfaceRenderer.widthMultiplier = averageWidth;
+        trackSurfaceRenderer.numCornerVertices = 8;
+        trackSurfaceRenderer.numCapVertices = 8;
+        trackSurfaceRenderer.sortingOrder = 150;
+
+        centerLineRenderer.positionCount = center.Length;
+        centerLineRenderer.SetPositions(center);
+
         var startA = left[0];
         var startB = right[0];
         startLineRenderer.positionCount = 2;
         startLineRenderer.SetPosition(0, startA);
         startLineRenderer.SetPosition(1, startB);
 
-        BuildTrackSurfaceStamps(trackDebugRoot.transform, sampleCount);
         DisableLegacyTrackSurfaceMesh(trackDebugRoot.transform);
-        Debug.Log($"MarbleRaceRunner track debug built: samples={sampleCount}, stamps={(trackSurfaceStamps?.Length ?? 0)}, avgWidth={averageWidth:F3}, nanFound={nanFound}");
-    }
-
-    private void BuildTrackSurfaceStamps(Transform parent, int sampleCount)
-    {
-        trackSurfaceStampsRoot = parent.Find("TrackSurfaceStamps");
-        if (trackSurfaceStampsRoot == null)
-        {
-            var root = new GameObject("TrackSurfaceStamps");
-            root.transform.SetParent(parent, false);
-            trackSurfaceStampsRoot = root.transform;
-        }
-
-        EnsureTrackStampResources();
-
-        var existingCount = trackSurfaceStampsRoot.childCount;
-        for (var i = existingCount; i < sampleCount; i++)
-        {
-            var stamp = new GameObject($"Stamp_{i:000}");
-            stamp.transform.SetParent(trackSurfaceStampsRoot, false);
-        }
-
-        for (var i = sampleCount; i < trackSurfaceStampsRoot.childCount; i++)
-        {
-            trackSurfaceStampsRoot.GetChild(i).gameObject.SetActive(false);
-        }
-
-        trackSurfaceStamps = new SpriteRenderer[sampleCount];
-
-        for (var i = 0; i < sampleCount; i++)
-        {
-            var stamp = trackSurfaceStampsRoot.GetChild(i);
-            stamp.gameObject.SetActive(true);
-            stamp.name = $"Stamp_{i:000}";
-            var sr = stamp.GetComponent<SpriteRenderer>();
-            if (sr == null)
-            {
-                sr = stamp.gameObject.AddComponent<SpriteRenderer>();
-            }
-
-            sr.sprite = trackStampSprite;
-            sr.sharedMaterial = trackStampMaterial;
-            sr.color = debugTrackSurfaceColor;
-            sr.sortingLayerName = "Default";
-            sr.sortingOrder = 200;
-            sr.enabled = true;
-            trackSurfaceStamps[i] = sr;
-        }
-
-        for (var i = 0; i < sampleCount; i++)
-        {
-            var sr = trackSurfaceStamps[i];
-            var p0 = trackCenter[i];
-            var p1 = trackCenter[(i + 1) % sampleCount];
-            var segment = p1 - p0;
-            var length = segment.magnitude;
-
-            if (length < 0.0001f)
-            {
-                sr.enabled = false;
-                continue;
-            }
-
-            sr.enabled = true;
-            var mid = (p0 + p1) * 0.5f;
-            var angle = Mathf.Atan2(segment.y, segment.x) * Mathf.Rad2Deg;
-            sr.transform.position = new Vector3(mid.x, mid.y, 0f);
-            sr.transform.rotation = Quaternion.Euler(0f, 0f, angle);
-            sr.transform.localScale = new Vector3(length, Mathf.Max(0.02f, trackHalfWidth[i] * 2f), 1f);
-        }
-    }
-
-    private void EnsureTrackStampResources()
-    {
-        if (trackStampSprite == null)
-        {
-            var texture = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            texture.SetPixel(0, 0, Color.white);
-            texture.filterMode = FilterMode.Point;
-            texture.wrapMode = TextureWrapMode.Clamp;
-            texture.Apply();
-            trackStampSprite = Sprite.Create(texture, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
-        }
-
-        if (trackStampMaterial == null)
-        {
-            var shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default")
-                ?? Shader.Find("Sprites/Default")
-                ?? Shader.Find("Universal Render Pipeline/Unlit");
-            trackStampMaterial = new Material(shader);
-        }
-    }
-
-    private void EnsureSanityStamp(Transform parent)
-    {
-        var sanityTransform = parent.Find("SanityStamp");
-        if (sanityTransform == null)
-        {
-            var sanity = new GameObject("SanityStamp");
-            sanity.transform.SetParent(parent, false);
-            sanityTransform = sanity.transform;
-        }
-
-        sanityStampRenderer = sanityTransform.GetComponent<SpriteRenderer>();
-        if (sanityStampRenderer == null)
-        {
-            sanityStampRenderer = sanityTransform.gameObject.AddComponent<SpriteRenderer>();
-        }
-
-        sanityStampRenderer.sprite = trackStampSprite;
-        sanityStampRenderer.sharedMaterial = trackStampMaterial;
-        sanityStampRenderer.color = new Color(1f, 0f, 1f, 0.9f);
-        sanityStampRenderer.sortingLayerName = "Default";
-        sanityStampRenderer.sortingOrder = 500;
-        sanityStampRenderer.enabled = true;
-
-        sanityTransform.position = Vector3.zero;
-        sanityTransform.rotation = Quaternion.identity;
-        sanityTransform.localScale = new Vector3(6f, 6f, 1f);
+        DisableLegacyTrackSurfaceStamps(trackDebugRoot.transform);
+        Debug.Log($"MarbleRaceRunner track debug built: samples={sampleCount}, avgWidth={averageWidth:F3}, nanFound={nanFound}");
     }
 
     private void DisableLegacyTrackSurfaceMesh(Transform parent)
     {
-        var legacy = parent.Find("TrackSurface");
+        var legacy = parent.Find("TrackSurfaceMesh");
+        if (legacy == null)
+        {
+            legacy = parent.Find("TrackSurface");
+        }
+
         if (legacy == null)
         {
             return;
@@ -1494,6 +1393,15 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         if (trackSurfaceMeshRenderer != null)
         {
             trackSurfaceMeshRenderer.enabled = false;
+        }
+    }
+
+    private static void DisableLegacyTrackSurfaceStamps(Transform parent)
+    {
+        var stamps = parent.Find("TrackSurfaceStamps");
+        if (stamps != null)
+        {
+            stamps.gameObject.SetActive(false);
         }
     }
 
@@ -1526,7 +1434,14 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
-    private LineRenderer CreateBoundaryRenderer(Transform parent, string name, Color color, float width, int sortingOrder, bool loop = true)
+    private enum TrackLineMaterialType
+    {
+        Surface,
+        Border,
+        StartLine,
+    }
+
+    private LineRenderer CreateBoundaryRenderer(Transform parent, string name, Color color, float width, int sortingOrder, TrackLineMaterialType materialType, bool loop = true)
     {
         var lineTransform = parent.Find(name);
         if (lineTransform == null)
@@ -1546,18 +1461,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         lr.useWorldSpace = true;
         lr.widthMultiplier = width;
 
-        var shader = Shader.Find("Universal Render Pipeline/Unlit")
-            ?? Shader.Find("Sprites/Default");
-        lr.material = new Material(shader);
-        if (lr.material.HasProperty("_BaseColor"))
-        {
-            lr.material.SetColor("_BaseColor", color);
-        }
-
-        if (lr.material.HasProperty("_Color"))
-        {
-            lr.material.SetColor("_Color", color);
-        }
+        var sharedMaterial = GetOrCreateSharedLineMaterial(materialType, color);
+        lr.sharedMaterial = sharedMaterial;
 
         lr.startColor = color;
         lr.endColor = color;
@@ -1567,6 +1472,62 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         lr.sortingLayerName = "Default";
         lr.sortingOrder = sortingOrder;
         return lr;
+    }
+
+    private Material GetOrCreateSharedLineMaterial(TrackLineMaterialType materialType, Color color)
+    {
+        Material cachedMaterial;
+        switch (materialType)
+        {
+            case TrackLineMaterialType.Surface:
+                cachedMaterial = sharedSurfaceLineMaterial;
+                break;
+            case TrackLineMaterialType.Border:
+                cachedMaterial = sharedBorderLineMaterial;
+                break;
+            default:
+                cachedMaterial = sharedStartLineMaterial;
+                break;
+        }
+
+        if (cachedMaterial != null)
+        {
+            ApplyLineColor(cachedMaterial, color);
+            return cachedMaterial;
+        }
+
+        var shader = Shader.Find("Universal Render Pipeline/Unlit")
+            ?? Shader.Find("Sprites/Default");
+        cachedMaterial = new Material(shader);
+        ApplyLineColor(cachedMaterial, color);
+
+        switch (materialType)
+        {
+            case TrackLineMaterialType.Surface:
+                sharedSurfaceLineMaterial = cachedMaterial;
+                break;
+            case TrackLineMaterialType.Border:
+                sharedBorderLineMaterial = cachedMaterial;
+                break;
+            default:
+                sharedStartLineMaterial = cachedMaterial;
+                break;
+        }
+
+        return cachedMaterial;
+    }
+
+    private static void ApplyLineColor(Material material, Color color)
+    {
+        if (material.HasProperty("_BaseColor"))
+        {
+            material.SetColor("_BaseColor", color);
+        }
+
+        if (material.HasProperty("_Color"))
+        {
+            material.SetColor("_Color", color);
+        }
     }
 
     private void ResolveArtPipeline()
