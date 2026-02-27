@@ -92,7 +92,7 @@ public static class FantasySportHazards
         const float edgeMargin = 5f;
 
         var xOuterAbs = Mathf.Clamp(halfWidth * 0.55f, goalDepth + 6f, halfWidth - edgeMargin);
-        var xInnerAbs = Mathf.Clamp(halfWidth * 0.28f, 2f, xOuterAbs - (preferredPadSize.x * 0.8f));
+        var xInnerAbs = Mathf.Clamp(halfWidth * 0.28f, 4f, xOuterAbs - (preferredPadSize.x * 0.9f));
         var yAbs = Mathf.Clamp(halfHeight * 0.28f, edgeMargin, halfHeight - edgeMargin);
 
         var scale = 1f;
@@ -113,7 +113,7 @@ public static class FantasySportHazards
                 break;
             }
 
-            scale *= 0.9f;
+            scale = Mathf.Max(minScale, scale * 0.9f);
         }
 
         if (!AllPadsDisjoint(pads))
