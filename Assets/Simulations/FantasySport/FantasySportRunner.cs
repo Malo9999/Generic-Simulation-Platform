@@ -3,9 +3,10 @@ using UnityEngine.UI;
 
 public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int PlayersPerTeam = 8;
-    private const int TotalAthletes = PlayersPerTeam * 2;
-    private const int GoalkeeperIndexPerTeam = PlayersPerTeam - 1;
+    private int playersPerTeam = 8;
+    private int teamCount = 2;
+    private int TotalAthletes => playersPerTeam * teamCount;
+    private int GoalkeeperIndexPerTeam => playersPerTeam - 1;
 
     private const float TeamSeparationRadius = 2.4f;
     private const float BoundaryAvoidanceDistance = 3f;
@@ -91,6 +92,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "FantasySport");
         EnsureMainCamera();
+        ApplySimulationConfig(config);
         BuildAthletes(config);
         EnsureBall();
         BuildHazards();
@@ -165,6 +167,17 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
+    private void ApplySimulationConfig(ScenarioConfig config)
+    {
+        teamCount = 2;
+        playersPerTeam = Mathf.Max(2, config?.fantasySport?.playersPerTeam ?? 8);
+
+        if (rules != null)
+        {
+            rules.matchSeconds = Mathf.Max(15f, config?.fantasySport?.periodLength ?? rules.matchSeconds);
+        }
+    }
+
     private void BuildAthletes(ScenarioConfig config)
     {
         Shutdown();
@@ -194,9 +207,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         for (var i = 0; i < TotalAthletes; i++)
         {
             athleteRngs[i] = RngService.Fork($"SIM:FantasySport:ATHLETE:{i}");
-            laneByPlayer[i] = ResolveLaneForTeamIndex(i % PlayersPerTeam);
-            var teamId = i < PlayersPerTeam ? 0 : 1;
-            var teamIndex = i % PlayersPerTeam;
+            laneByPlayer[i] = ResolveLaneForTeamIndex(i % playersPerTeam);
+            var teamId = i < playersPerTeam ? 0 : 1;
+            var teamIndex = i % playersPerTeam;
             var role = teamIndex == GoalkeeperIndexPerTeam ? "goalkeeper" : (teamIndex <= 2 ? "offense" : "defense");
 
             var identity = IdentityService.Create(nextEntityId++, teamId, role, 3, config?.seed ?? 0, "FantasySport");
@@ -343,7 +356,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         for (var i = 0; i < TotalAthletes; i++)
         {
             var teamId = identities[i].teamId;
-            var teamIndex = i % PlayersPerTeam;
+            var teamIndex = i % playersPerTeam;
             var homeSign = teamId == 0 ? -1f : 1f;
             var goalX = teamId == 0 ? -halfWidth : halfWidth;
 
@@ -1046,8 +1059,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         };
     }
 
-    private bool IsGoalkeeper(int athleteIndex) => (athleteIndex % PlayersPerTeam) == GoalkeeperIndexPerTeam;
-    private int GetGoalkeeperIndex(int teamId) => (teamId * PlayersPerTeam) + GoalkeeperIndexPerTeam;
+    private bool IsGoalkeeper(int athleteIndex) => (athleteIndex % playersPerTeam) == GoalkeeperIndexPerTeam;
+    private int GetGoalkeeperIndex(int teamId) => (teamId * playersPerTeam) + GoalkeeperIndexPerTeam;
 
     private Rect GetKeeperBox(int teamId)
     {

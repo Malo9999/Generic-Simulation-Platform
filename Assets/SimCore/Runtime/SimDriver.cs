@@ -7,7 +7,7 @@ using UnityEngine;
 
 public class SimDriver
 {
-    private readonly float tickDeltaTime;
+    private float tickDeltaTime;
     private ITickableSimulationRunner runner;
     private float accumulatedTime;
     private bool singleStepRequested;
@@ -53,6 +53,11 @@ public class SimDriver
     public void SetTimeScale(float newTimeScale)
     {
         TimeScale = Mathf.Max(0f, newTimeScale);
+    }
+
+    public void SetTickDeltaTime(float newTickDeltaTime)
+    {
+        tickDeltaTime = Mathf.Max(0.0001f, newTickDeltaTime);
     }
 
     public void Advance(float frameDeltaTime)

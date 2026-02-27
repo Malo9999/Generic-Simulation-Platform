@@ -6,6 +6,10 @@ public class BootstrapOptions : ScriptableObject
     public string simulationId = "MarbleRace";
     public SimulationCatalog simulationCatalog;
     public TextAsset presetJson;
+    public AntColoniesSimSettings antColoniesSettings;
+    public MarbleRaceSimSettings marbleRaceSettings;
+    public FantasySportSimSettings fantasySportSettings;
+    public RaceCarSimSettings raceCarSettings;
     public SeedPolicy seedPolicy = SeedPolicy.RandomEveryRun;
     public int fixedSeed = 12345;
     public bool allowHotkeySwitch = true;
