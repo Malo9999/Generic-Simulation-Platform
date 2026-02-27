@@ -53,8 +53,9 @@ public sealed class MarbleRaceTrackGenerator
         var safeW = Mathf.Max(12f, arenaHalfWidth);
         var safeH = Mathf.Max(12f, arenaHalfHeight);
         var minArenaHalf = Mathf.Min(safeW, safeH);
+        var baseHalfWidth = Mathf.Clamp(minArenaHalf * 0.035f, 0.9f, 2.2f);
         var baseStep = Mathf.Clamp(minArenaHalf * 0.04f, 0.45f, 1.2f);
-        var fitMargin = minArenaHalf * 0.12f;
+        var fitMargin = (baseHalfWidth * 2.2f) + (minArenaHalf * 0.06f);
 
         MarbleRaceTrack bestTrack = null;
         var bestTemplateId = -1;
@@ -122,8 +123,9 @@ public sealed class MarbleRaceTrackGenerator
         var safeW = Mathf.Max(12f, arenaHalfWidth);
         var safeH = Mathf.Max(12f, arenaHalfHeight);
         var minArenaHalf = Mathf.Min(safeW, safeH);
+        var baseHalfWidth = Mathf.Clamp(minArenaHalf * 0.035f, 0.9f, 2.2f);
         var step = Mathf.Clamp(minArenaHalf * 0.03f, 0.4f, 1f);
-        var fitMargin = minArenaHalf * 0.12f;
+        var fitMargin = (baseHalfWidth * 2.2f) + (minArenaHalf * 0.06f);
         return BuildFallbackTrack(safeW, safeH, 1, step, fitMargin);
     }
 
@@ -388,7 +390,7 @@ public sealed class MarbleRaceTrackGenerator
         for (var i = 0; i < points.Count; i++)
         {
             var p = points[i];
-            if (Mathf.Abs(p.x) > halfW - 0.001f || Mathf.Abs(p.y) > halfH - 0.001f)
+            if (Mathf.Abs(p.x) > usableX - 0.001f || Mathf.Abs(p.y) > usableY - 0.001f)
             {
                 return false;
             }
@@ -434,7 +436,7 @@ public sealed class MarbleRaceTrackGenerator
 
         PopulateFrames(center, tangent, normal, curvature);
 
-        var baseHalfWidth = Mathf.Clamp(Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.06f, 1.2f, 3.2f);
+        var baseHalfWidth = Mathf.Clamp(Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.035f, 0.9f, 2.2f);
         var widths = BuildWidths(curvature, baseHalfWidth);
         var startIndex = FindBestStraightStart(curvature);
         if (startIndex > 0)
@@ -787,6 +789,12 @@ public sealed class MarbleRaceTrackGenerator
         if (minClearance < marginFloor)
         {
             score -= (marginFloor - minClearance) * 30f;
+        }
+
+        var nearEdgeTarget = (widthMean * 1.2f) + (Mathf.Min(halfW, halfH) * 0.06f);
+        if (minClearance < nearEdgeTarget)
+        {
+            score -= (nearEdgeTarget - minClearance) * 22f;
         }
 
         return score;
