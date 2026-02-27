@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -46,12 +47,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private int marbleCount = 12;
     private int lapsToWin = 3;
     private int trackTemplate = -1;
-    private int[] rankingBuffer = System.Array.Empty<int>();
+    private int[] rankingBuffer;
 
     public RacePhase CurrentPhase => raceState;
     public bool IsReady => raceState == RacePhase.Ready;
     public bool IsRacing => raceState == RacePhase.Racing;
     public bool IsFinished => raceState == RacePhase.Finished || raceState == RacePhase.Cooldown;
+    public int LiveMarbleCount => marbles?.Length ?? 0;
     public int WinnerEntityId => winnerIndex >= 0 && identities != null && winnerIndex < identities.Length ? identities[winnerIndex].entityId : -1;
     public float WinnerFinishTime => finishTime;
 
@@ -118,6 +120,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         trackRenderer.Apply(arenaRoot, track);
         BuildMarbles(seed);
+        EnsureRankingBuffer(GetSafeCount());
 
         raceState = RacePhase.Ready;
         winnerIndex = -1;
@@ -250,18 +253,26 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         sb.Clear();
-        if (marbles == null)
+        var count = GetSafeCount();
+        if (count == 0)
         {
             sb.Append("No marbles.");
             return;
         }
 
-        var count = FillRankingBuffer(rankingBuffer);
-        var top = Mathf.Clamp(maxEntries <= 0 ? count : maxEntries, 1, count);
+        var buf = EnsureRankingBuffer(count);
+        var rankedCount = FillRankingBuffer(buf, count);
+        if (rankedCount <= 0)
+        {
+            sb.Append("No marbles.");
+            return;
+        }
+
+        var top = Mathf.Clamp(maxEntries <= 0 ? rankedCount : maxEntries, 1, rankedCount);
 
         for (var rank = 0; rank < top; rank++)
         {
-            var i = rankingBuffer[rank];
+            var i = buf[rank];
             if (rank > 0)
             {
                 sb.Append('\n');
@@ -332,6 +343,84 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         PlaceStartGrid();
+        EnsureRankingBuffer(GetSafeCount());
+    }
+
+    private int GetSafeCount()
+    {
+        var n = marbles?.Length ?? 0;
+        if (n <= 0)
+        {
+            return 0;
+        }
+
+        if (identities == null)
+        {
+            return 0;
+        }
+
+        n = Mathf.Min(n, identities.Length);
+        if (positions != null)
+        {
+            n = Mathf.Min(n, positions.Length);
+        }
+        else
+        {
+            return 0;
+        }
+
+        if (progress != null)
+        {
+            n = Mathf.Min(n, progress.Length);
+        }
+        else
+        {
+            return 0;
+        }
+
+        if (lapCount != null)
+        {
+            n = Mathf.Min(n, lapCount.Length);
+        }
+        else
+        {
+            return 0;
+        }
+
+        if (closestTrackIndex != null)
+        {
+            n = Mathf.Min(n, closestTrackIndex.Length);
+        }
+        else
+        {
+            return 0;
+        }
+
+        if (lastClosestIndex != null)
+        {
+            n = Mathf.Min(n, lastClosestIndex.Length);
+        }
+        else
+        {
+            return 0;
+        }
+
+        return Mathf.Max(0, n);
+    }
+
+    private int[] EnsureRankingBuffer(int count)
+    {
+        if (count <= 0)
+        {
+            return System.Array.Empty<int>();
+        }
+
+        if (rankingBuffer == null || rankingBuffer.Length != count)
+        {
+            rankingBuffer = new int[count];
+        }
+
+        return rankingBuffer;
     }
 
     private void PlaceStartGrid()
@@ -567,15 +656,27 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         closestTrackIndex[i] = bestIndex;
     }
 
-    private int FillRankingBuffer(int[] indices)
+    private int FillRankingBuffer(int[] indices, int count)
     {
-        for (var i = 0; i < marbleCount; i++)
+        if (indices == null || count <= 0)
+        {
+            return 0;
+        }
+
+        count = Mathf.Min(count, indices.Length);
+        for (var i = 0; i < count; i++)
         {
             indices[i] = i;
         }
 
-        System.Array.Sort(indices, (a, b) => progress[b].CompareTo(progress[a]));
-        return marbleCount;
+        System.Array.Sort(indices, 0, count, Comparer<int>.Create((a, b) =>
+        {
+            var pa = (progress != null && a >= 0 && a < progress.Length) ? progress[a] : float.NegativeInfinity;
+            var pb = (progress != null && b >= 0 && b < progress.Length) ? progress[b] : float.NegativeInfinity;
+            return pb.CompareTo(pa);
+        }));
+
+        return count;
     }
 
     private void CleanupLegacyTrackObjects()
