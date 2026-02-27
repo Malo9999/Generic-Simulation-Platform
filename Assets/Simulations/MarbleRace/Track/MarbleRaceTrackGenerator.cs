@@ -54,19 +54,45 @@ public sealed class MarbleRaceTrackGenerator
         var safeHalfW = Mathf.Max(12f, arenaHalfWidth);
         var safeHalfH = Mathf.Max(12f, arenaHalfHeight);
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
-        var trackSeed = rng != null ? rng.Seed : unchecked(seed ^ (variant * 31));
-
-        var tileGen = new TileTrackGenerator();
-        var tileRng = new SeededRng(unchecked((trackSeed * 397) ^ variant));
-        var center = tileGen.BuildBestLoop(safeHalfW, safeHalfH, tileRng, variant);
+        var trackSeed = rng != null ? rng.Seed : unchecked(seed ^ (variant * 31) ^ (int)0x9E3779B9);
 
         MarbleRaceTrack bestTrack = null;
-        if (center != null && center.Length >= 64)
+        var bestScore = int.MinValue;
+        var candidateRng = new SeededRng(unchecked((trackSeed * 397) ^ (variant * 131)));
+        for (var i = 0; i < CandidateCount; i++)
         {
-            bestTrack = BuildTrackData(center, minDim);
-            if (!ValidateStrict(bestTrack.Center, bestTrack.Tangent, bestTrack.Normal, bestTrack.HalfWidth, safeHalfW, safeHalfH))
+            var controlPointCount = candidateRng.NextInt(9, 14);
+            var controls = BuildJitteredControlPoints(safeHalfW, safeHalfH, controlPointCount, candidateRng);
+            if (controls == null || controls.Count < 6)
             {
-                bestTrack = null;
+                continue;
+            }
+
+            var splineSamples = SampleClosedCatmullRom(controls, 24);
+            if (splineSamples == null || splineSamples.Count < 64)
+            {
+                continue;
+            }
+
+            var center = ResampleArcLengthClosed(splineSamples, TargetSamples);
+            var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
+            var requiredMargin = baseHalfWidth * 1.45f + (minDim * 0.08f);
+            if (!FitToBounds(center, safeHalfW, safeHalfH, requiredMargin))
+            {
+                continue;
+            }
+
+            var candidateTrack = BuildTrackData(center, minDim);
+            if (!ValidateStrict(candidateTrack.Center, candidateTrack.Tangent, candidateTrack.Normal, candidateTrack.HalfWidth, safeHalfW, safeHalfH))
+            {
+                continue;
+            }
+
+            var quality = MarbleRaceTrackValidator.EvaluateQuality(candidateTrack);
+            if (quality.Score > bestScore)
+            {
+                bestScore = quality.Score;
+                bestTrack = candidateTrack;
             }
         }
 
@@ -77,8 +103,74 @@ public sealed class MarbleRaceTrackGenerator
         }
 
         RotateToBestStraight(bestTrack);
-        Debug.Log($"[TrackGen] variant={variant} tileFallback={(fallbackUsed ? 1 : 0)}");
+        Debug.Log($"[TrackGen] variant={variant} fallback={(fallbackUsed ? 1 : 0)} bestQuality={bestScore}");
         return bestTrack;
+    }
+
+    private static List<Vector2> BuildJitteredControlPoints(float halfW, float halfH, int count, IRng rng)
+    {
+        var controls = new List<Vector2>(count);
+        var radiusBase = Mathf.Min(halfW, halfH) * rng.Range(0.52f, 0.68f);
+        var scaleX = rng.Range(0.82f, 1.18f);
+        var scaleY = rng.Range(0.82f, 1.18f);
+        var angleJitter = 0.33f;
+        var minSpacing = Mathf.Min(halfW, halfH) * 0.16f;
+
+        for (var i = 0; i < count; i++)
+        {
+            var t = i / (float)count;
+            var angle = (t * Mathf.PI * 2f) + rng.Range(-angleJitter, angleJitter);
+            var radial = radiusBase * rng.Range(0.82f, 1.16f);
+            var p = new Vector2(Mathf.Cos(angle) * radial * scaleX, Mathf.Sin(angle) * radial * scaleY);
+            controls.Add(p);
+        }
+
+        for (var i = 0; i < controls.Count; i++)
+        {
+            var next = controls[(i + 1) % controls.Count];
+            if (Vector2.Distance(controls[i], next) < minSpacing)
+            {
+                return null;
+            }
+        }
+
+        return controls;
+    }
+
+    private static List<Vector2> SampleClosedCatmullRom(List<Vector2> controls, int samplesPerSegment)
+    {
+        if (controls == null || controls.Count < 4)
+        {
+            return null;
+        }
+
+        var sampled = new List<Vector2>(controls.Count * samplesPerSegment);
+        var count = controls.Count;
+        for (var i = 0; i < count; i++)
+        {
+            var p0 = controls[(i - 1 + count) % count];
+            var p1 = controls[i];
+            var p2 = controls[(i + 1) % count];
+            var p3 = controls[(i + 2) % count];
+            for (var s = 0; s < samplesPerSegment; s++)
+            {
+                var t = s / (float)samplesPerSegment;
+                sampled.Add(CatmullRom(p0, p1, p2, p3, t));
+            }
+        }
+
+        return sampled;
+    }
+
+    private static Vector2 CatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
+    {
+        var t2 = t * t;
+        var t3 = t2 * t;
+        return 0.5f * (
+            (2f * p1) +
+            (-p0 + p2) * t +
+            ((2f * p0) - (5f * p1) + (4f * p2) - p3) * t2 +
+            (-p0 + (3f * p1) - (3f * p2) + p3) * t3);
     }
 
     public MarbleRaceTrack BuildFallbackRoundedRectangle(float arenaHalfWidth, float arenaHalfHeight, int variant)
