@@ -16,72 +16,39 @@ public static class FantasySportHazards
 
     public static Bumper[] GenerateBumpers(IRng rng, int count, float halfWidth, float halfHeight, float radius, float minDistance, float goalDepth, float goalHeight, Rect[] keepouts)
     {
-        var bumpers = new Bumper[count];
-        var created = 0;
-        var attempts = 0;
+        _ = rng;
+        _ = minDistance;
+        const float backlineBuffer = 4f;
+        var adjustedRadius = radius * 0.8f;
+        var requestedCount = Mathf.Max(2, count);
+        var pairCount = Mathf.Max(1, requestedCount / 2);
+        var bumpers = new Bumper[pairCount * 2];
 
-        while (created < count && attempts < 400)
+        var xAbs = Mathf.Clamp(halfWidth * 0.22f, 6f, halfWidth - 10f);
+        var yAbsTop = Mathf.Clamp(halfHeight * 0.42f, 6f, halfHeight - 10f);
+        var rowY = new[] { yAbsTop, 0f, -yAbsTop };
+        var yShiftPattern = new[] { 0f, 2f, -2f, 4f, -4f, 6f, -6f, 8f, -8f };
+
+        for (var pair = 0; pair < pairCount; pair++)
         {
-            attempts++;
-            var candidate = new Vector2(
-                rng.Range(-halfWidth * 0.35f, halfWidth * 0.35f),
-                rng.Range(-halfHeight * 0.75f, halfHeight * 0.75f));
+            var baseY = rowY[pair % rowY.Length];
+            var mirrored = ResolveMirroredPair(
+                xAbs,
+                baseY,
+                yShiftPattern,
+                halfWidth,
+                halfHeight,
+                adjustedRadius,
+                goalDepth,
+                goalHeight,
+                backlineBuffer,
+                keepouts);
 
-            if (IsPointInGoalZone(candidate, halfWidth, goalDepth, goalHeight))
-            {
-                continue;
-            }
-
-            if (keepouts != null)
-            {
-                var overlapsKeepout = false;
-                for (var k = 0; k < keepouts.Length; k++)
-                {
-                    if (!CircleRectOverlap(candidate, radius + 0.6f, keepouts[k]))
-                    {
-                        continue;
-                    }
-
-                    overlapsKeepout = true;
-                    break;
-                }
-
-                if (overlapsKeepout)
-                {
-                    continue;
-                }
-            }
-
-            var valid = true;
-            for (var i = 0; i < created; i++)
-            {
-                if (Vector2.Distance(candidate, bumpers[i].position) < minDistance)
-                {
-                    valid = false;
-                    break;
-                }
-            }
-
-            if (!valid)
-            {
-                continue;
-            }
-
-            bumpers[created++] = new Bumper { position = candidate, radius = radius };
+            bumpers[pair * 2] = new Bumper { position = new Vector2(-xAbs, mirrored), radius = adjustedRadius };
+            bumpers[(pair * 2) + 1] = new Bumper { position = new Vector2(+xAbs, mirrored), radius = adjustedRadius };
         }
 
-        if (created == count)
-        {
-            return bumpers;
-        }
-
-        var result = new Bumper[created];
-        for (var i = 0; i < created; i++)
-        {
-            result[i] = bumpers[i];
-        }
-
-        return result;
+        return bumpers;
     }
 
     public static SpeedPad[] GenerateSymmetricPads(float halfWidth, float halfHeight, Vector2 preferredPadSize, float goalDepth)
@@ -176,6 +143,64 @@ public static class FantasySportHazards
     {
         var closest = new Vector2(Mathf.Clamp(center.x, rect.xMin, rect.xMax), Mathf.Clamp(center.y, rect.yMin, rect.yMax));
         return (closest - center).sqrMagnitude < radius * radius;
+    }
+
+    private static float ResolveMirroredPair(
+        float xAbs,
+        float baseY,
+        float[] yShiftPattern,
+        float halfWidth,
+        float halfHeight,
+        float radius,
+        float goalDepth,
+        float goalHeight,
+        float backlineBuffer,
+        Rect[] keepouts)
+    {
+        var maxY = halfHeight - radius - 1f;
+        var minY = -maxY;
+
+        for (var i = 0; i < yShiftPattern.Length; i++)
+        {
+            var y = Mathf.Clamp(baseY + yShiftPattern[i], minY, maxY);
+            var left = new Vector2(-xAbs, y);
+            var right = new Vector2(+xAbs, y);
+            if (!IsBumperPlacementBlocked(left, halfWidth, goalDepth, goalHeight, radius, backlineBuffer, keepouts) &&
+                !IsBumperPlacementBlocked(right, halfWidth, goalDepth, goalHeight, radius, backlineBuffer, keepouts))
+            {
+                return y;
+            }
+        }
+
+        return Mathf.Clamp(baseY, minY, maxY);
+    }
+
+    private static bool IsBumperPlacementBlocked(Vector2 candidate, float halfWidth, float goalDepth, float goalHeight, float radius, float backlineBuffer, Rect[] keepouts)
+    {
+        if (Mathf.Abs(candidate.y) <= goalHeight * 0.5f && Mathf.Abs(Mathf.Abs(candidate.x) - halfWidth) <= backlineBuffer)
+        {
+            return true;
+        }
+
+        if (IsPointInGoalZone(candidate, halfWidth, goalDepth, goalHeight))
+        {
+            return true;
+        }
+
+        if (keepouts == null)
+        {
+            return false;
+        }
+
+        for (var k = 0; k < keepouts.Length; k++)
+        {
+            if (CircleRectOverlap(candidate, radius + 0.6f, keepouts[k]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsPointInGoalZone(Vector2 p, float halfWidth, float goalDepth, float goalHeight)

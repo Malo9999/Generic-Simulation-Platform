@@ -17,15 +17,20 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float ShootSpeed = 23f;
     private const float ShootRange = 16f;
     private const float PassCooldownSeconds = 0.65f;
-    private const float ThrowWindowSeconds = 1.5f;
     private const float ReceiverLockSeconds = 0.45f;
     private const float StealDistance = 0.7f;
     private const float AthleteRadius = 0.75f;
     private const float BallRadius = 0.35f;
     private const float BumperRadius = 1.05f;
     private const float BumperMinDistance = 4.5f;
-    private const float BumperBallRestitution = 1.06f;
-    private const float BumperAthleteRestitution = 0.3f;
+    private const float BumperBallRestitution = 0.9f;
+    private const float BumperAthleteRestitution = 0.1f;
+    private const float BumperCollisionEpsilon = 0.0001f;
+    private const float BumperNudge = 0.001f;
+    private const float AthleteMinSlideSpeed = 0.65f;
+    private const float AthleteUnstickThresholdSeconds = 0.25f;
+    private const float AthleteUnstickBoost = 2.4f;
+    private const float BallMinSlideSpeed = 0.15f;
     private const int BumperCount = 6;
     private const float StaminaDrainRun = 0.95f;
     private const float StaminaRecoverIdle = 0.8f;
@@ -80,6 +85,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private SpriteRenderer[] possessionRings;
     private GameObject[] pipelineRenderers;
     private VisualKey[] visualKeys;
+    private int[] lastBumperHitIndex;
+    private float[] stuckTimeByAthlete;
 
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
@@ -87,6 +94,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private SimulationSceneGraph sceneGraph;
     private Transform ballTransform;
     private Vector2 ballPos;
+    private Vector2 previousBallPos;
     private Vector2 ballVel;
     private int ballOwnerIndex = -1;
     private int ballOwnerTeam = -1;
@@ -116,6 +124,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private int nextEntityId;
     private bool kickoffSanityLogPending;
     private int simulationSeed;
+    private bool scoreboardMissingLogged;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -237,6 +246,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         possessionRings = new SpriteRenderer[TotalAthletes];
         pipelineRenderers = new GameObject[TotalAthletes];
         visualKeys = new VisualKey[TotalAthletes];
+        lastBumperHitIndex = new int[TotalAthletes];
+        stuckTimeByAthlete = new float[TotalAthletes];
 
         ResolveArtPipeline();
 
@@ -300,6 +311,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             identities[i] = identity;
             visualKeys[i] = visualKey;
             assignedTargetIndex[i] = -1;
+            lastBumperHitIndex[i] = -1;
+            stuckTimeByAthlete[i] = 0f;
         }
 
         ResetAthleteFormationAndVelocities();
@@ -377,6 +390,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastScoreboardSecond = -1;
         lastScoreboardTeam0 = int.MinValue;
         lastScoreboardTeam1 = int.MinValue;
+        previousBallPos = Vector2.zero;
+        scoreboardMissingLogged = false;
     }
 
     private void ResetKickoff()
@@ -384,6 +399,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         ResetAthleteFormationAndVelocities();
         kickoffSanityLogPending = true;
         ballPos = Vector2.zero;
+        previousBallPos = Vector2.zero;
         ballVel = Vector2.zero;
         ballOwnerIndex = -1;
         ballOwnerTeam = -1;
@@ -403,6 +419,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             tackleCooldowns[i] = 0f;
             passCooldowns[i] = 0f;
             stamina[i] = staminaMaxByIndex[i];
+            lastBumperHitIndex[i] = -1;
+            stuckTimeByAthlete[i] = 0f;
         }
     }
 
@@ -567,7 +585,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             velocities[i] = Vector2.MoveTowards(velocities[i], desired, effectiveAccel * dt);
             positions[i] += velocities[i] * dt;
             ClampAthlete(i);
-            ResolveAthleteBumperCollision(i);
+            ResolveAthleteBumperCollision(i, dt);
             UpdateStamina(i, desired, dt);
         }
     }
@@ -652,7 +670,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         var athletePos = positions[athleteIndex];
         var objective = (objectiveTarget - athletePos).normalized;
-        var homePull = (homeTarget - athletePos).normalized;
+        var toHome = homeTarget - athletePos;
+        var homePull = toHome.sqrMagnitude > 0.0001f ? toHome.normalized : Vector2.zero;
 
         var separation = Vector2.zero;
         for (var i = 0; i < TotalAthletes; i++)
@@ -676,10 +695,105 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (athletePos.y < -halfHeight + BoundaryAvoidanceDistance) boundary.y += 1f;
         if (athletePos.y > halfHeight - BoundaryAvoidanceDistance) boundary.y -= 1f;
 
-        var engagedWeight = (athleteStates[athleteIndex] == AthleteState.ChaseFreeBall || athleteStates[athleteIndex] == AthleteState.PressCarrier || athleteStates[athleteIndex] == AthleteState.BallCarrier) ? 0.18f : BaseHomePullWeight;
+        var engagedWeight = BaseHomePullWeight * GetRoleShapeWeight(roleByIndex[athleteIndex]) * GetOpportunityTetherScale(athleteIndex);
         engagedWeight *= Mathf.Lerp(0.85f, 1.2f, 1f - profiles[athleteIndex].aggression);
-        var steering = (objective * 1.45f) + (homePull * engagedWeight) + (separation * 1.95f) + (boundary * 1.2f);
+
+        var roamDistance = toHome.magnitude;
+        var roamRadius = GetRoleRoamRadius(roleByIndex[athleteIndex]);
+        var roamOver = Mathf.Max(0f, roamDistance - roamRadius);
+        var roamPullWeight = roamOver > 0f ? (roamOver * roamOver) * 0.08f : 0f;
+
+        var steering = (objective * 1.45f) + (homePull * (engagedWeight + roamPullWeight)) + (separation * 1.95f) + (boundary * 1.2f);
         return steering.sqrMagnitude < 0.001f ? Vector2.zero : steering.normalized * maxSpeed;
+    }
+
+    private float GetRoleShapeWeight(Role role)
+    {
+        return role switch
+        {
+            Role.Goalkeeper => 1.5f,
+            Role.Defender => 1.2f,
+            Role.Midfielder => 0.9f,
+            Role.Attacker => 0.7f,
+            _ => 1f
+        };
+    }
+
+    private float GetRoleRoamRadius(Role role)
+    {
+        return role switch
+        {
+            Role.Goalkeeper => 5.2f,
+            Role.Defender => 10f,
+            Role.Midfielder => 13f,
+            Role.Attacker => 15f,
+            _ => 12f
+        };
+    }
+
+    private float GetOpportunityTetherScale(int athleteIndex)
+    {
+        if (IsGoalkeeper(athleteIndex))
+        {
+            return 1f;
+        }
+
+        var teamId = identities[athleteIndex].teamId;
+        var tetherScale = 1f;
+        var primaryChaser = FindClosestPlayerToPoint(teamId, ballPos, includeGoalkeeper: false);
+        if (athleteIndex == primaryChaser)
+        {
+            tetherScale = Mathf.Min(tetherScale, 0.25f);
+        }
+
+        if (ballOwnerIndex >= 0 && identities[ballOwnerIndex].teamId != teamId)
+        {
+            var tackleRange = rules.tackleRadius * 1.35f;
+            if (Vector2.Distance(positions[athleteIndex], positions[ballOwnerIndex]) <= tackleRange)
+            {
+                tetherScale = Mathf.Min(tetherScale, 0.35f);
+            }
+        }
+
+        var interceptRange = 4.6f;
+        var interceptDistance = DistanceToBallPath(positions[athleteIndex]);
+        if (interceptDistance <= interceptRange)
+        {
+            tetherScale = Mathf.Min(tetherScale, 0.35f);
+        }
+
+        if (roleByIndex[athleteIndex] == Role.Attacker && IsAttackerOpenNearGoal(athleteIndex))
+        {
+            tetherScale = Mathf.Min(tetherScale, 0.4f);
+        }
+
+        return tetherScale;
+    }
+
+    private float DistanceToBallPath(Vector2 point)
+    {
+        var path = ballVel;
+        if (path.sqrMagnitude < 0.001f)
+        {
+            return Vector2.Distance(point, ballPos);
+        }
+
+        var pathDir = path.normalized;
+        var along = Mathf.Clamp(Vector2.Dot(point - ballPos, pathDir), 0f, 10f);
+        var projection = ballPos + (pathDir * along);
+        return Vector2.Distance(point, projection);
+    }
+
+    private bool IsAttackerOpenNearGoal(int athleteIndex)
+    {
+        var teamId = identities[athleteIndex].teamId;
+        var toGoal = GetOpponentGoalCenter(teamId) - positions[athleteIndex];
+        if (toGoal.magnitude > ShootRange * 1.1f)
+        {
+            return false;
+        }
+
+        return FindNearestOpponentDistance(athleteIndex) >= OpenThreshold;
     }
 
     private void ResolveTackleEvents()
@@ -719,6 +833,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void UpdateBall(float dt)
     {
+        previousBallPos = ballPos;
+
         if (ballOwnerIndex >= 0)
         {
             var ownerVel = velocities[ballOwnerIndex];
@@ -829,29 +945,29 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void ResolveGoal(int tickIndex)
     {
-        if (matchFinished || ballOwnerIndex >= 0)
+        if (matchFinished)
         {
             return;
         }
 
-        var throwFresh = elapsedMatchTime - lastThrowTime <= ThrowWindowSeconds;
-        if (!throwFresh || lastThrowTeam < 0)
-        {
-            return;
-        }
+        var goalLineLeftX = -halfWidth;
+        var goalLineRightX = halfWidth;
+        var goalMouthHalfH = GetGoalMouthHalfHeight();
+        var crossedLeft = previousBallPos.x > goalLineLeftX && ballPos.x <= goalLineLeftX && Mathf.Abs(ballPos.y) <= goalMouthHalfH;
+        var crossedRight = previousBallPos.x < goalLineRightX && ballPos.x >= goalLineRightX && Mathf.Abs(ballPos.y) <= goalMouthHalfH;
 
-        if (IsInLeftGoal(ballPos) && lastThrowTeam == 1)
+        if (crossedLeft)
         {
             scoreTeam1++;
-            Debug.Log($"[FantasySport] THROW GOAL team=1 score={scoreTeam0}-{scoreTeam1} tick={tickIndex}");
+            Debug.Log($"[FantasySport] GOAL team=1 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} crossing=left");
             ResetKickoff();
             UpdateHud(force: true);
             UpdateScoreboardUI(force: true);
         }
-        else if (IsInRightGoal(ballPos) && lastThrowTeam == 0)
+        else if (crossedRight)
         {
             scoreTeam0++;
-            Debug.Log($"[FantasySport] THROW GOAL team=0 score={scoreTeam0}-{scoreTeam1} tick={tickIndex}");
+            Debug.Log($"[FantasySport] GOAL team=0 score={scoreTeam0}-{scoreTeam1} tick={tickIndex} crossing=right");
             ResetKickoff();
             UpdateHud(force: true);
             UpdateScoreboardUI(force: true);
@@ -920,6 +1036,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             FindScoreboardText();
             if (scoreboardText == null)
             {
+                if (!scoreboardMissingLogged)
+                {
+                    scoreboardMissingLogged = true;
+                    Debug.LogWarning("[FantasySport] ScoreboardText not found. Run 'GSP/Dev/Recreate Broadcast UI (Minimap + HUD)' to create it.");
+                }
                 return;
             }
         }
@@ -1005,33 +1126,105 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var delta = ballPos - bumpers[i].position;
             var minDist = bumpers[i].radius + BallRadius;
             var dist = delta.magnitude;
-            if (dist >= minDist || dist < 0.0001f)
+            if (dist >= minDist)
             {
                 continue;
             }
 
-            var normal = delta / dist;
-            ballPos = bumpers[i].position + (normal * minDist);
-            ballVel = Vector2.Reflect(ballVel, normal) * BumperBallRestitution;
+            var normal = dist > BumperCollisionEpsilon ? (delta / dist) : Vector2.right;
+            var penetration = minDist - dist;
+            ballPos += normal * (penetration + BumperNudge);
+
+            var vn = Vector2.Dot(ballVel, normal) * normal;
+            var vt = ballVel - vn;
+            if (Vector2.Dot(ballVel, normal) < 0f)
+            {
+                ballVel = vt + ((-vn) * BumperBallRestitution);
+            }
+
+            if (vt.magnitude < BallMinSlideSpeed)
+            {
+                var tangent = new Vector2(-normal.y, normal.x);
+                var sign = Vector2.Dot(vt, tangent) >= 0f ? 1f : -1f;
+                ballVel += tangent * (BallMinSlideSpeed * sign);
+            }
         }
     }
 
-    private void ResolveAthleteBumperCollision(int athleteIndex)
+    private void ResolveAthleteBumperCollision(int athleteIndex, float dt)
     {
+        var overlappingBumper = -1;
         for (var i = 0; i < bumpers.Length; i++)
         {
             var delta = positions[athleteIndex] - bumpers[i].position;
             var minDist = bumpers[i].radius + AthleteRadius;
             var dist = delta.magnitude;
-            if (dist >= minDist || dist < 0.0001f)
+            if (dist >= minDist)
             {
                 continue;
             }
 
-            var normal = delta / dist;
-            positions[athleteIndex] = bumpers[i].position + (normal * minDist);
-            velocities[athleteIndex] = Vector2.Reflect(velocities[athleteIndex], normal) * BumperAthleteRestitution;
+            overlappingBumper = i;
+            var normal = dist > BumperCollisionEpsilon ? (delta / dist) : Vector2.right;
+            var penetration = minDist - dist;
+            positions[athleteIndex] += normal * (penetration + BumperNudge);
+
+            var vel = velocities[athleteIndex];
+            var vn = Vector2.Dot(vel, normal) * normal;
+            var vt = vel - vn;
+            if (Vector2.Dot(vel, normal) < 0f)
+            {
+                vel = vt + ((-vn) * BumperAthleteRestitution);
+            }
+
+            if (vt.magnitude < AthleteMinSlideSpeed)
+            {
+                var tangent = new Vector2(-normal.y, normal.x);
+                var sign = GetDeterministicSlideSign(athleteIndex, tangent, vt);
+                vel += tangent * (AthleteMinSlideSpeed * sign);
+            }
+
+            velocities[athleteIndex] = vel;
         }
+
+        if (overlappingBumper >= 0)
+        {
+            if (lastBumperHitIndex[athleteIndex] == overlappingBumper)
+            {
+                stuckTimeByAthlete[athleteIndex] += dt;
+            }
+            else
+            {
+                lastBumperHitIndex[athleteIndex] = overlappingBumper;
+                stuckTimeByAthlete[athleteIndex] = 0f;
+            }
+
+            if (stuckTimeByAthlete[athleteIndex] > AthleteUnstickThresholdSeconds)
+            {
+                var normal = (positions[athleteIndex] - bumpers[overlappingBumper].position).normalized;
+                var tangent = new Vector2(-normal.y, normal.x);
+                var sign = GetDeterministicSlideSign(athleteIndex, tangent, velocities[athleteIndex]);
+                velocities[athleteIndex] += tangent * (AthleteUnstickBoost * sign);
+                stuckTimeByAthlete[athleteIndex] = 0f;
+            }
+        }
+        else
+        {
+            lastBumperHitIndex[athleteIndex] = -1;
+            stuckTimeByAthlete[athleteIndex] = 0f;
+        }
+    }
+
+    private float GetDeterministicSlideSign(int athleteIndex, Vector2 tangent, Vector2 reference)
+    {
+        var along = Vector2.Dot(reference, tangent);
+        if (Mathf.Abs(along) > 0.001f)
+        {
+            return Mathf.Sign(along);
+        }
+
+        var teamId = identities[athleteIndex].teamId;
+        return ((teamId + athleteIndex) & 1) == 0 ? 1f : -1f;
     }
 
     private float GetPadSpeedMultiplierAtPosition(Vector2 worldPos)
@@ -1319,13 +1512,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             : new Rect(halfWidth - depth, -height * 0.5f, depth, height);
     }
 
-    private float GetGoalHeight() => Mathf.Max(rules.goalHeight, halfHeight * 1.3f);
+    private float GetGoalMouthHalfHeight() => Mathf.Clamp(halfHeight * 0.45f, 6f, halfHeight - 3f);
+    private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
 
     private Vector2 GetOwnGoalCenter(int teamId) => teamId == 0 ? new Vector2(-halfWidth, 0f) : new Vector2(halfWidth, 0f);
     private Vector2 GetOpponentGoalCenter(int teamId) => teamId == 0 ? new Vector2(halfWidth, 0f) : new Vector2(-halfWidth, 0f);
-
-    private bool IsInLeftGoal(Vector2 point) => point.x >= -halfWidth && point.x <= -halfWidth + rules.goalDepth && Mathf.Abs(point.y) <= GetGoalHeight() * 0.5f;
-    private bool IsInRightGoal(Vector2 point) => point.x <= halfWidth && point.x >= halfWidth - rules.goalDepth && Mathf.Abs(point.y) <= GetGoalHeight() * 0.5f;
 
     private void ClampAthlete(int athleteIndex)
     {

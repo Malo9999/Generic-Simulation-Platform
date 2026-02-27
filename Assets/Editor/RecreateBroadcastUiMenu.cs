@@ -407,7 +407,7 @@ public static class RecreateBroadcastUiMenu
         rect.anchorMin = new Vector2(0.5f, 1f);
         rect.anchorMax = new Vector2(0.5f, 1f);
         rect.pivot = new Vector2(0.5f, 1f);
-        rect.anchoredPosition = new Vector2(0f, -18f);
+        rect.anchoredPosition = new Vector2(0f, -28f);
         rect.sizeDelta = new Vector2(520f, 40f);
 
         var text = scoreboardText.GetComponent<Text>() ?? scoreboardText.AddComponent<Text>();
