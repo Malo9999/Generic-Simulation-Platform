@@ -14,7 +14,7 @@ public static class FantasySportHazards
         public float speedMultiplier;
     }
 
-    public static Bumper[] GenerateBumpers(IRng rng, int count, float halfWidth, float halfHeight, float radius, float minDistance, float goalDepth, float goalHeight)
+    public static Bumper[] GenerateBumpers(IRng rng, int count, float halfWidth, float halfHeight, float radius, float minDistance, float goalDepth, float goalHeight, Rect[] keepouts)
     {
         var bumpers = new Bumper[count];
         var created = 0;
@@ -30,6 +30,26 @@ public static class FantasySportHazards
             if (IsPointInGoalZone(candidate, halfWidth, goalDepth, goalHeight))
             {
                 continue;
+            }
+
+            if (keepouts != null)
+            {
+                var overlapsKeepout = false;
+                for (var k = 0; k < keepouts.Length; k++)
+                {
+                    if (!CircleRectOverlap(candidate, radius + 0.6f, keepouts[k]))
+                    {
+                        continue;
+                    }
+
+                    overlapsKeepout = true;
+                    break;
+                }
+
+                if (overlapsKeepout)
+                {
+                    continue;
+                }
             }
 
             var valid = true;
@@ -64,23 +84,15 @@ public static class FantasySportHazards
         return result;
     }
 
-    public static SpeedPad[] GenerateSymmetricPads(float halfWidth, float halfHeight, Vector2 preferredPadSize, float goalDepth, Bumper[] bumpers)
+    public static SpeedPad[] GenerateSymmetricPads(float halfWidth, float halfHeight, Vector2 preferredPadSize, float goalDepth)
     {
-        const float margin = 3f;
         const float minScale = 0.45f;
         const float slowMultiplier = 0.72f;
         const float speedMultiplier = 1.35f;
+        const float edgeMargin = 5f;
 
-        var safeXMin = -halfWidth + margin;
-        var safeXMax = halfWidth - margin;
-        var safeYMin = -halfHeight + margin;
-        var safeYMax = halfHeight - margin;
-        var goalKeepout = goalDepth + 2f;
-
-        var xLeft = Mathf.Clamp(-halfWidth * 0.35f, Mathf.Max(safeXMin, -halfWidth + goalKeepout), -margin);
-        var xRight = Mathf.Clamp(halfWidth * 0.35f, margin, Mathf.Min(safeXMax, halfWidth - goalKeepout));
-        var yA = Mathf.Clamp(halfHeight * 0.25f, safeYMin, safeYMax);
-        var yB = Mathf.Clamp(-halfHeight * 0.25f, safeYMin, safeYMax);
+        var xAbs = Mathf.Clamp(halfWidth * 0.35f, goalDepth + 4f, halfWidth - edgeMargin);
+        var yAbs = Mathf.Clamp(halfHeight * 0.28f, edgeMargin, halfHeight - edgeMargin);
 
         var scale = 1f;
         SpeedPad[] pads;
@@ -89,10 +101,10 @@ public static class FantasySportHazards
             var size = preferredPadSize * scale;
             pads = new[]
             {
-                new SpeedPad { area = CreateRect(xLeft, yA, size), speedMultiplier = speedMultiplier },
-                new SpeedPad { area = CreateRect(xLeft, yB, size), speedMultiplier = slowMultiplier },
-                new SpeedPad { area = CreateRect(xRight, yA, size), speedMultiplier = speedMultiplier },
-                new SpeedPad { area = CreateRect(xRight, yB, size), speedMultiplier = slowMultiplier }
+                new SpeedPad { area = CreateRect(-xAbs, +yAbs, size), speedMultiplier = speedMultiplier },
+                new SpeedPad { area = CreateRect(-xAbs, -yAbs, size), speedMultiplier = slowMultiplier },
+                new SpeedPad { area = CreateRect(+xAbs, +yAbs, size), speedMultiplier = speedMultiplier },
+                new SpeedPad { area = CreateRect(+xAbs, -yAbs, size), speedMultiplier = slowMultiplier }
             };
 
             if (AllPadsDisjoint(pads) || scale <= minScale)
@@ -105,39 +117,27 @@ public static class FantasySportHazards
 
         if (!AllPadsDisjoint(pads))
         {
-            Debug.LogWarning("[FantasySport] Symmetric pad layout could not prevent overlaps; disabling colliding pads.");
-            DisableOverlappingPads(pads);
+            Debug.LogWarning("[FantasySport] Symmetric pad layout could not prevent overlaps; using minimum pad scale.");
         }
 
-        ShiftPadsAwayFromBumpers(pads, bumpers, safeYMin, safeYMax);
-        if (!AllPadsDisjoint(pads))
+        return pads;
+    }
+
+    public static Rect[] GetPadKeepouts(SpeedPad[] pads, float padding)
+    {
+        if (pads == null || pads.Length == 0)
         {
-            Debug.LogWarning("[FantasySport] Symmetric pad layout still overlaps after bumper shifts; disabling colliding pads.");
-            DisableOverlappingPads(pads);
+            return System.Array.Empty<Rect>();
         }
 
-        var activeCount = 0;
+        var keepouts = new Rect[pads.Length];
         for (var i = 0; i < pads.Length; i++)
         {
-            if (pads[i].area.width > 0f && pads[i].area.height > 0f)
-            {
-                activeCount++;
-            }
+            var area = pads[i].area;
+            keepouts[i] = Rect.MinMaxRect(area.xMin - padding, area.yMin - padding, area.xMax + padding, area.yMax + padding);
         }
 
-        var result = new SpeedPad[activeCount];
-        var index = 0;
-        for (var i = 0; i < pads.Length; i++)
-        {
-            if (pads[i].area.width <= 0f || pads[i].area.height <= 0f)
-            {
-                continue;
-            }
-
-            result[index++] = pads[i];
-        }
-
-        return result;
+        return keepouts;
     }
 
     private static Rect CreateRect(float centerX, float centerY, Vector2 size)
@@ -168,79 +168,6 @@ public static class FantasySportHazards
             }
         }
 
-        return true;
-    }
-
-    private static void DisableOverlappingPads(SpeedPad[] pads)
-    {
-        for (var i = 0; i < pads.Length; i++)
-        {
-            if (pads[i].area.width <= 0f || pads[i].area.height <= 0f)
-            {
-                continue;
-            }
-
-            for (var j = i + 1; j < pads.Length; j++)
-            {
-                if (pads[j].area.width <= 0f || pads[j].area.height <= 0f)
-                {
-                    continue;
-                }
-
-                if (pads[i].area.Overlaps(pads[j].area))
-                {
-                    pads[j].area = new Rect(0f, 0f, 0f, 0f);
-                }
-            }
-        }
-    }
-
-    private static void ShiftPadsAwayFromBumpers(SpeedPad[] pads, Bumper[] bumpers, float safeYMin, float safeYMax)
-    {
-        for (var i = 0; i < pads.Length; i++)
-        {
-            if (pads[i].area.width <= 0f || pads[i].area.height <= 0f)
-            {
-                continue;
-            }
-
-            for (var b = 0; b < bumpers.Length; b++)
-            {
-                if (!CircleRectOverlap(bumpers[b].position, bumpers[b].radius, pads[i].area))
-                {
-                    continue;
-                }
-
-                var shifted = TryShiftPad(pads, i, bumpers, safeYMin, safeYMax, +2f) || TryShiftPad(pads, i, bumpers, safeYMin, safeYMax, -2f);
-                if (!shifted)
-                {
-                    pads[i].area = new Rect(0f, 0f, 0f, 0f);
-                    break;
-                }
-            }
-        }
-    }
-
-    private static bool TryShiftPad(SpeedPad[] pads, int padIndex, Bumper[] bumpers, float safeYMin, float safeYMax, float yDelta)
-    {
-        var pad = pads[padIndex];
-        var center = pad.area.center;
-        var targetY = Mathf.Clamp(center.y + yDelta, safeYMin + (pad.area.height * 0.5f), safeYMax - (pad.area.height * 0.5f));
-        if (Mathf.Abs(targetY - center.y) < 0.01f)
-        {
-            return false;
-        }
-
-        pad.area.center = new Vector2(center.x, targetY);
-        for (var i = 0; i < bumpers.Length; i++)
-        {
-            if (CircleRectOverlap(bumpers[i].position, bumpers[i].radius, pad.area))
-            {
-                return false;
-            }
-        }
-
-        pads[padIndex] = pad;
         return true;
     }
 

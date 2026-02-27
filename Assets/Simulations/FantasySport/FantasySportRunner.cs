@@ -254,8 +254,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         var rng = RngService.Fork("SIM:FantasySport:HAZARDS");
         var goalHeight = GetGoalHeight();
-        bumpers = FantasySportHazards.GenerateBumpers(rng, BumperCount, halfWidth, halfHeight, BumperRadius, BumperMinDistance, rules.goalDepth, goalHeight);
-        speedPads = FantasySportHazards.GenerateSymmetricPads(halfWidth, halfHeight, PadSize, rules.goalDepth, bumpers);
+        speedPads = FantasySportHazards.GenerateSymmetricPads(halfWidth, halfHeight, PadSize, rules.goalDepth);
+        var keepouts = FantasySportHazards.GetPadKeepouts(speedPads, 1.2f);
+        bumpers = FantasySportHazards.GenerateBumpers(rng, BumperCount, halfWidth, halfHeight, BumperRadius, BumperMinDistance, rules.goalDepth, goalHeight, keepouts);
 
         var oldRoot = sceneGraph.WorldObjectsRoot.Find("FantasySportHazards");
         if (oldRoot != null)

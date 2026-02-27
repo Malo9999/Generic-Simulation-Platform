@@ -408,18 +408,17 @@ public static class RecreateBroadcastUiMenu
         rect.anchorMax = new Vector2(0.5f, 1f);
         rect.pivot = new Vector2(0.5f, 1f);
         rect.anchoredPosition = new Vector2(0f, -18f);
-        rect.sizeDelta = new Vector2(760f, 58f);
+        rect.sizeDelta = new Vector2(520f, 40f);
 
         var text = scoreboardText.GetComponent<Text>() ?? scoreboardText.AddComponent<Text>();
         text.text = string.Empty;
-        text.fontSize = 30;
+        text.fontSize = 24;
         text.alignment = TextAnchor.MiddleCenter;
         text.color = Color.white;
         text.raycastTarget = false;
-        if (text.font == null)
-        {
-            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        }
+        var hudObject = GameObject.Find(HudTextName);
+        var hudFont = hudObject != null ? hudObject.GetComponent<Text>()?.font : null;
+        text.font = hudFont != null ? hudFont : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
         var tmpType = Type.GetType("TMPro.TextMeshProUGUI, Unity.TextMeshPro");
         if (tmpType != null)
