@@ -1,15 +1,8 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public sealed class MarbleRaceTrackRenderer
 {
-    private static readonly string[] RequiredChildNames =
-    {
-        "TrackLane",
-        "TrackInnerBorder",
-        "TrackOuterBorder",
-        "StartFinishLine"
-    };
-
     private static Material sharedMaterial;
     private Transform trackRoot;
 
@@ -21,7 +14,7 @@ public sealed class MarbleRaceTrackRenderer
         }
 
         trackRoot = EnsureTrackRoot(decorRoot);
-        CleanupUnexpectedTrackRootChildren();
+        CleanupTrackRootChildren();
 
         var avgHalfWidth = 0f;
         for (var i = 0; i < track.SampleCount; i++)
@@ -35,31 +28,8 @@ public sealed class MarbleRaceTrackRenderer
         var borderWidth = Mathf.Clamp(roadWidth * 0.10f, 0.18f, 0.32f);
         var startWidth = Mathf.Clamp(roadWidth * 0.18f, 0.25f, 0.45f);
 
-        var centerPoints = new Vector3[track.SampleCount];
-        var innerPoints = new Vector3[track.SampleCount];
-        var outerPoints = new Vector3[track.SampleCount];
-
-        for (var i = 0; i < track.SampleCount; i++)
-        {
-            var center = track.Center[i];
-            var boundaryOffset = track.Normal[i] * track.HalfWidth[i];
-
-            centerPoints[i] = new Vector3(center.x, center.y, 0f);
-            innerPoints[i] = new Vector3(center.x + boundaryOffset.x, center.y + boundaryOffset.y, 0f);
-            outerPoints[i] = new Vector3(center.x - boundaryOffset.x, center.y - boundaryOffset.y, 0f);
-        }
-
-        var lane = EnsureLineRenderer("TrackLane", new Color(0.12f, 0.12f, 0.14f, 0.95f), 5, true, roadWidth);
-        lane.positionCount = centerPoints.Length;
-        lane.SetPositions(centerPoints);
-
-        var innerBorder = EnsureLineRenderer("TrackInnerBorder", new Color(0.90f, 0.90f, 0.92f, 0.95f), 10, true, borderWidth);
-        innerBorder.positionCount = innerPoints.Length;
-        innerBorder.SetPositions(innerPoints);
-
-        var outerBorder = EnsureLineRenderer("TrackOuterBorder", new Color(0.90f, 0.90f, 0.92f, 0.95f), 10, true, borderWidth);
-        outerBorder.positionCount = outerPoints.Length;
-        outerBorder.SetPositions(outerPoints);
+        BuildLayeredLines(track, roadWidth, borderWidth);
+        BuildBridgeShadow(track, roadWidth);
 
         var startFinish = EnsureLineRenderer("StartFinishLine", Color.white, 12, false, startWidth);
         var startA = track.Center[0] + (track.Normal[0] * track.HalfWidth[0]);
@@ -78,6 +48,115 @@ public sealed class MarbleRaceTrackRenderer
         }
     }
 
+    private void BuildLayeredLines(MarbleRaceTrack track, float roadWidth, float borderWidth)
+    {
+        var runs = BuildLayerRuns(track.Layer);
+        if (runs.Count == 0)
+        {
+            runs.Add(new LayerRun(0, track.SampleCount - 1, 0));
+        }
+
+        var laneGround = EnsureLineRenderer("TrackLane_Ground", new Color(0.12f, 0.12f, 0.14f, 0.95f), 5, false, roadWidth);
+        var laneBridge = EnsureLineRenderer("TrackLane_Bridge", new Color(0.13f, 0.13f, 0.15f, 0.98f), 15, false, roadWidth);
+        var innerGround = EnsureLineRenderer("TrackInnerBorder_Ground", new Color(0.90f, 0.90f, 0.92f, 0.95f), 10, false, borderWidth);
+        var innerBridge = EnsureLineRenderer("TrackInnerBorder_Bridge", new Color(0.93f, 0.93f, 0.95f, 1f), 20, false, borderWidth);
+        var outerGround = EnsureLineRenderer("TrackOuterBorder_Ground", new Color(0.90f, 0.90f, 0.92f, 0.95f), 10, false, borderWidth);
+        var outerBridge = EnsureLineRenderer("TrackOuterBorder_Bridge", new Color(0.93f, 0.93f, 0.95f, 1f), 20, false, borderWidth);
+
+        SetLineFromRuns(track, laneGround, runs, 0, false);
+        SetLineFromRuns(track, laneBridge, runs, 1, false);
+        SetLineFromRuns(track, innerGround, runs, 0, true);
+        SetLineFromRuns(track, innerBridge, runs, 1, true);
+        SetLineFromRuns(track, outerGround, runs, 0, true, -1f);
+        SetLineFromRuns(track, outerBridge, runs, 1, true, -1f);
+    }
+
+    private void BuildBridgeShadow(MarbleRaceTrack track, float roadWidth)
+    {
+        var shadow = EnsureLineRenderer("TrackBridgeShadow", new Color(0f, 0f, 0f, 0.3f), 14, false, roadWidth * 1.2f);
+        var runs = BuildLayerRuns(track.Layer);
+        SetLineFromRuns(track, shadow, runs, 1, false);
+    }
+
+    private static List<LayerRun> BuildLayerRuns(sbyte[] layer)
+    {
+        var runs = new List<LayerRun>();
+        if (layer == null || layer.Length == 0)
+        {
+            return runs;
+        }
+
+        var n = layer.Length;
+        var start = 0;
+        var current = layer[0];
+        for (var i = 1; i < n; i++)
+        {
+            if (layer[i] == current)
+            {
+                continue;
+            }
+
+            runs.Add(new LayerRun(start, i - 1, current));
+            start = i;
+            current = layer[i];
+        }
+
+        runs.Add(new LayerRun(start, n - 1, current));
+        if (runs.Count > 1 && runs[0].Layer == runs[runs.Count - 1].Layer)
+        {
+            var first = runs[0];
+            var last = runs[runs.Count - 1];
+            runs[0] = new LayerRun(last.Start, first.End, first.Layer, last.Length + first.Length);
+            runs.RemoveAt(runs.Count - 1);
+        }
+
+        if (runs.Count > 3)
+        {
+            runs.Sort((a, b) => (b.Length).CompareTo(a.Length));
+            runs.RemoveRange(3, runs.Count - 3);
+        }
+
+        return runs;
+    }
+
+    private static void SetLineFromRuns(MarbleRaceTrack track, LineRenderer lr, List<LayerRun> runs, int targetLayer, bool border, float side = 1f)
+    {
+        var points = new List<Vector3>(track.SampleCount + 8);
+        for (var r = 0; r < runs.Count; r++)
+        {
+            var run = runs[r];
+            if (run.Layer != targetLayer)
+            {
+                continue;
+            }
+
+            var len = run.Length;
+            for (var o = 0; o <= len; o++)
+            {
+                var idx = (run.Start + o) % track.SampleCount;
+                var p = track.Center[idx];
+                if (border)
+                {
+                    var boundary = track.Normal[idx] * track.HalfWidth[idx] * side;
+                    p += boundary;
+                }
+
+                points.Add(new Vector3(p.x, p.y, 0f));
+            }
+        }
+
+        lr.positionCount = points.Count;
+        if (points.Count > 0)
+        {
+            lr.SetPositions(points.ToArray());
+            lr.enabled = true;
+        }
+        else
+        {
+            lr.enabled = false;
+        }
+    }
+
     private Transform EnsureTrackRoot(Transform decorRoot)
     {
         var existing = decorRoot.Find("TrackRoot");
@@ -91,29 +170,16 @@ public sealed class MarbleRaceTrackRenderer
         return existing;
     }
 
-    private void CleanupUnexpectedTrackRootChildren()
+    private void CleanupTrackRootChildren()
     {
         for (var i = trackRoot.childCount - 1; i >= 0; i--)
         {
             var child = trackRoot.GetChild(i);
-            if (!IsRequiredChildName(child.name))
+            if (!child.name.StartsWith("Track") && child.name != "StartFinishLine")
             {
                 Object.Destroy(child.gameObject);
             }
         }
-    }
-
-    private static bool IsRequiredChildName(string name)
-    {
-        for (var i = 0; i < RequiredChildNames.Length; i++)
-        {
-            if (RequiredChildNames[i] == name)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private LineRenderer EnsureLineRenderer(string name, Color color, int sortingOrder, bool loop, float width)
@@ -167,5 +233,21 @@ public sealed class MarbleRaceTrackRenderer
 
         sharedMaterial = new Material(shader);
         return sharedMaterial;
+    }
+
+    private readonly struct LayerRun
+    {
+        public readonly int Start;
+        public readonly int End;
+        public readonly int Length;
+        public readonly sbyte Layer;
+
+        public LayerRun(int start, int end, sbyte layer, int length = -1)
+        {
+            Start = start;
+            End = end;
+            Layer = layer;
+            Length = length >= 0 ? length : Mathf.Max(0, end - start + 1);
+        }
     }
 }

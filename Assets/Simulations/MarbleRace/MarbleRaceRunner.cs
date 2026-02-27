@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 {
@@ -13,6 +14,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     }
 
     private const int TrackBuildAttempts = 6;
+    private const float Z_UNDER = 0f;
+    private const float Z_OVER = 0.02f;
     private static readonly string[] LegacyDecorTrackObjectNames =
     {
         "StartFinishTile",
@@ -38,6 +41,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private float[] desiredTopSpeed;
     private float[] stuckTimer;
     private int[] lastClosestIndex;
+    private SortingGroup[] marbleSortingGroups;
+    private SpriteRenderer[] marbleSpriteRenderers;
 
     private SimulationSceneGraph sceneGraph;
     private MarbleRaceTrack track;
@@ -152,7 +157,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 closestTrackIndex[i] = 0;
                 lastClosestIndex[i] = 0;
                 progress[i] = i * -0.001f;
-                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, GetMarbleZ(i));
             }
 
             return;
@@ -171,7 +176,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             {
                 velocities[i] = Vector2.MoveTowards(velocities[i], Vector2.zero, dt * 4f);
                 positions[i] += velocities[i] * dt;
-                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, GetMarbleZ(i));
             }
 
             return;
@@ -181,7 +186,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         {
             for (var i = 0; i < marbleCount; i++)
             {
-                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+                marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, GetMarbleZ(i));
             }
 
             return;
@@ -194,10 +199,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             ApplyCorridor(i);
             ClampArena(i);
             UpdateClosestIndex(i, 22);
+            SetMarbleRenderState(i, closestTrackIndex[i]);
             CheckRescue(i, dt);
             UpdateLapAndProgress(i);
             lastClosestIndex[i] = closestTrackIndex[i];
-            marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+            marbles[i].localPosition = new Vector3(positions[i].x, positions[i].y, GetMarbleZ(i));
         }
     }
 
@@ -229,6 +235,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         desiredTopSpeed = null;
         stuckTimer = null;
         lastClosestIndex = null;
+        marbleSortingGroups = null;
+        marbleSpriteRenderers = null;
 
         track = null;
         raceState = RacePhase.Ready;
@@ -323,6 +331,8 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         desiredTopSpeed = new float[marbleCount];
         stuckTimer = new float[marbleCount];
         lastClosestIndex = new int[marbleCount];
+        marbleSortingGroups = new SortingGroup[marbleCount];
+        marbleSpriteRenderers = new SpriteRenderer[marbleCount];
 
         var entitiesRoot = sceneGraph != null ? sceneGraph.EntitiesRoot : transform;
         for (var i = 0; i < marbleCount; i++)
@@ -337,11 +347,16 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             iconRoot.transform.SetParent(marble.transform, false);
             EntityIconFactory.BuildMarble(iconRoot.transform, identity);
 
-            var spriteRenderer = marble.GetComponentInChildren<SpriteRenderer>();
-            if (spriteRenderer != null)
+            var sortingGroup = marble.GetComponentInChildren<SortingGroup>();
+            if (sortingGroup == null)
             {
-                spriteRenderer.sortingOrder = 24;
+                sortingGroup = marble.AddComponent<SortingGroup>();
             }
+
+            var spriteRenderer = marble.GetComponentInChildren<SpriteRenderer>();
+            marbleSortingGroups[i] = sortingGroup;
+            marbleSpriteRenderers[i] = spriteRenderer;
+            SetMarbleRenderState(i, 0);
 
             desiredTopSpeed[i] = rng.Range(7.6f, 10.5f);
             laneOffset[i] = rng.Range(-0.35f, 0.35f);
@@ -509,6 +524,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 continue;
             }
 
+            if (IsDifferentElevationConflict(i, j))
+            {
+                continue;
+            }
+
             var delta = track.ForwardDelta(idx, closestTrackIndex[j]);
             if (delta > 0 && delta < 26 && delta < nearestDelta)
             {
@@ -543,6 +563,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
                 continue;
             }
 
+            if (IsDifferentElevationConflict(i, j))
+            {
+                continue;
+            }
+
             var delta = track.ForwardDelta(idx, closestTrackIndex[j]);
             if (delta <= 0 || delta > 16)
             {
@@ -559,6 +584,42 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         return 0f;
+    }
+
+    private void SetMarbleRenderState(int marbleIndex, int trackIndex)
+    {
+        var layer = track != null ? track.GetLayer(trackIndex) : (sbyte)0;
+        var sortingOrder = layer == 1 ? 30 : 8;
+        if (marbleSortingGroups != null && marbleIndex >= 0 && marbleIndex < marbleSortingGroups.Length && marbleSortingGroups[marbleIndex] != null)
+        {
+            marbleSortingGroups[marbleIndex].sortingOrder = sortingOrder;
+        }
+        else if (marbleSpriteRenderers != null && marbleIndex >= 0 && marbleIndex < marbleSpriteRenderers.Length && marbleSpriteRenderers[marbleIndex] != null)
+        {
+            marbleSpriteRenderers[marbleIndex].sortingOrder = sortingOrder;
+        }
+    }
+
+    private float GetMarbleZ(int marbleIndex)
+    {
+        if (track == null || closestTrackIndex == null || marbleIndex < 0 || marbleIndex >= closestTrackIndex.Length)
+        {
+            return Z_UNDER;
+        }
+
+        return track.GetLayer(closestTrackIndex[marbleIndex]) == 1 ? Z_OVER : Z_UNDER;
+    }
+
+    private bool IsDifferentElevationConflict(int a, int b)
+    {
+        if (track == null)
+        {
+            return false;
+        }
+
+        var layerA = track.GetLayer(closestTrackIndex[a]);
+        var layerB = track.GetLayer(closestTrackIndex[b]);
+        return layerA != layerB;
     }
 
     private void ApplyCorridor(int i)
@@ -861,11 +922,11 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             widths[i] = Mathf.Clamp(scaled, minWidth, maxWidth);
         }
 
-        var startIndex = FindStartOnStraight(source.Curvature);
+        var startIndex = FindStartOnStraight(source.Curvature, source.Layer);
         return RotateTrack(source, widths, startIndex);
     }
 
-    private static int FindStartOnStraight(float[] curvature)
+    private static int FindStartOnStraight(float[] curvature, sbyte[] layer)
     {
         if (curvature == null || curvature.Length == 0)
         {
@@ -884,6 +945,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             {
                 var idx = (i + j + n) % n;
                 score += curvature[idx];
+                if (layer != null && layer.Length == n && layer[idx] == 1)
+                {
+                    score += 1.5f;
+                }
             }
 
             if (score < bestScore)
@@ -901,7 +966,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var n = source.SampleCount;
         if (n <= 0 || startIndex <= 0)
         {
-            return new MarbleRaceTrack(source.Center, source.Tangent, source.Normal, widths, source.Curvature);
+            return new MarbleRaceTrack(source.Center, source.Tangent, source.Normal, widths, source.Curvature, source.Layer);
         }
 
         var center = new Vector2[n];
@@ -909,6 +974,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         var normal = new Vector2[n];
         var curvature = new float[n];
         var rotatedWidths = new float[n];
+        var rotatedLayer = new sbyte[n];
 
         for (var i = 0; i < n; i++)
         {
@@ -918,9 +984,10 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             normal[i] = source.Normal[src];
             curvature[i] = source.Curvature[src];
             rotatedWidths[i] = widths[src];
+            rotatedLayer[i] = source.GetLayer(src);
         }
 
-        return new MarbleRaceTrack(center, tangent, normal, rotatedWidths, curvature);
+        return new MarbleRaceTrack(center, tangent, normal, rotatedWidths, curvature, rotatedLayer);
     }
 
     private static bool ValidateTrack(MarbleRaceTrack candidate, Rect boundsRect)
