@@ -111,7 +111,7 @@ public class MarbleRacePanelBinder : MonoBehaviour
             startButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
             restartButton.gameObject.SetActive(final);
             newTrackButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
-            helpText.text = "Seed + Restart = deterministic new track. New Track = new variant with same seed.";
+            helpText.text = "Seed + Restart = deterministic new track. New Track = increments seed and rebuilds everything.";
             return;
         }
 
@@ -122,7 +122,7 @@ public class MarbleRacePanelBinder : MonoBehaviour
         startButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
         restartButton.gameObject.SetActive(final);
         newTrackButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
-        helpText.text = "Seed + Restart = deterministic new track. New Track = new variant with same seed.";
+        helpText.text = "Seed + Restart = deterministic new track. New Track = increments seed and rebuilds everything.";
     }
 
     private void EnsureReferences()
