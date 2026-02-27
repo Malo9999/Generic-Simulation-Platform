@@ -13,6 +13,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
     private const int MarbleCount = 12;
     private const int LapsToWin = 3;
+    private const int TrackBuildAttempts = 6;
 
     [SerializeField] private float maxSpeed = 12.5f;
     [SerializeField] private float steeringAcceleration = 13f;
@@ -57,29 +58,59 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     {
         Shutdown();
 
-        sceneGraph = SimulationSceneGraph.Ensure(transform);
+        CleanupLegacyGraphChildren();
+
+        var simulationRootGo = GameObject.Find("SimulationRoot");
+        if (simulationRootGo == null)
+        {
+            Debug.LogError("[MarbleRace] Missing SimulationRoot. Cannot initialize MarbleRaceRunner.");
+            return;
+        }
+
+        sceneGraph = SimulationSceneGraph.Ensure(simulationRootGo.transform);
+        if (sceneGraph == null)
+        {
+            Debug.LogError("[MarbleRace] Failed to resolve SimulationSceneGraph at SimulationRoot.");
+            return;
+        }
+
         CleanupLegacyTrackObjects();
 
         var arenaRoot = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot.Find("ArenaRoot") : null;
-        if (arenaRoot == null)
+        if (arenaRoot == null && sceneGraph.WorldRoot != null)
         {
-            arenaRoot = sceneGraph.WorldRoot;
+            var arenaRootGo = new GameObject("ArenaRoot");
+            arenaRootGo.transform.SetParent(sceneGraph.WorldRoot, false);
+            arenaRoot = arenaRootGo.transform;
         }
 
-        arenaHalfWidth = Mathf.Max(12f, (config != null && config.world != null ? config.world.arenaWidth : 64) * 0.5f);
-        arenaHalfHeight = Mathf.Max(12f, (config != null && config.world != null ? config.world.arenaHeight : 64) * 0.5f);
+        var arenaWidth = Mathf.Max(1f, config != null && config.world != null ? config.world.arenaWidth : 64f);
+        var arenaHeight = Mathf.Max(1f, config != null && config.world != null ? config.world.arenaHeight : 64f);
+        arenaHalfWidth = arenaWidth * 0.5f;
+        arenaHalfHeight = arenaHeight * 0.5f;
 
         trackGenerator ??= new MarbleRaceTrackGenerator();
         trackRenderer ??= new MarbleRaceTrackRenderer();
 
         var seed = config != null ? config.seed : 0;
-        var rng = new SeededRng(seed);
-        var variant = Mathf.Abs(seed) % 3;
-        track = trackGenerator.Build(arenaHalfWidth, arenaHalfHeight, rng, variant);
+        var fallbackUsed = false;
+        track = BuildTrack(seed, arenaWidth, arenaHeight, out fallbackUsed);
+
         if (track == null || track.SampleCount <= 0)
         {
             track = trackGenerator.BuildFallbackRoundedRectangle(arenaHalfWidth, arenaHalfHeight);
+            fallbackUsed = true;
         }
+
+        var minHalfWidth = float.MaxValue;
+        var maxHalfWidth = 0f;
+        for (var i = 0; i < track.SampleCount; i++)
+        {
+            minHalfWidth = Mathf.Min(minHalfWidth, track.HalfWidth[i]);
+            maxHalfWidth = Mathf.Max(maxHalfWidth, track.HalfWidth[i]);
+        }
+
+        Debug.Log($"[MarbleRace] Track built: samples={track.SampleCount} minHalfWidth={minHalfWidth:F2} maxHalfWidth={maxHalfWidth:F2} fallback={fallbackUsed}");
 
         trackRenderer.Apply(arenaRoot, track);
         BuildMarbles(seed);
@@ -558,6 +589,235 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         DestroyByNameRecursive(transform.root, "TrackSurfaceStamps");
         DestroyByNameRecursive(transform.root, "SanityStamp");
+    }
+
+    private void CleanupLegacyGraphChildren()
+    {
+        var legacyRoots = new[] { "WorldRoot", "RunnerRoot", "EntitiesRoot", "DebugRoot" };
+        for (var i = 0; i < legacyRoots.Length; i++)
+        {
+            var legacy = transform.Find(legacyRoots[i]);
+            if (legacy != null)
+            {
+                Destroy(legacy.gameObject);
+            }
+        }
+    }
+
+    private MarbleRaceTrack BuildTrack(int seed, float arenaWidth, float arenaHeight, out bool fallbackUsed)
+    {
+        fallbackUsed = false;
+        var halfW = arenaWidth * 0.5f;
+        var halfH = arenaHeight * 0.5f;
+        var bounds = new Rect(-halfW, -halfH, arenaWidth, arenaHeight);
+
+        var templateStart = Mathf.Abs(seed) % 3;
+        for (var attempt = 0; attempt < TrackBuildAttempts; attempt++)
+        {
+            var attemptSeed = unchecked(seed ^ (int)0x9E3779B9 ^ (attempt * 7919));
+            var rng = new SeededRng(attemptSeed);
+            var template = (templateStart + attempt + rng.NextInt(0, 3)) % 3;
+            var built = trackGenerator.Build(halfW, halfH, rng, template);
+            if (built == null || built.SampleCount <= 0)
+            {
+                continue;
+            }
+
+            var widthJitterScale = Mathf.Lerp(1f, 0.75f, attempt / (float)Mathf.Max(1, TrackBuildAttempts - 1));
+            var processed = PostProcessTrack(built, arenaWidth, arenaHeight, widthJitterScale);
+            if (ValidateTrack(processed, bounds))
+            {
+                return processed;
+            }
+        }
+
+        fallbackUsed = true;
+        var fallback = trackGenerator.BuildFallbackRoundedRectangle(halfW, halfH);
+        return PostProcessTrack(fallback, arenaWidth, arenaHeight, 0.8f);
+    }
+
+    private static MarbleRaceTrack PostProcessTrack(MarbleRaceTrack source, float arenaWidth, float arenaHeight, float widthJitterScale)
+    {
+        if (source == null || source.SampleCount <= 0)
+        {
+            return source;
+        }
+
+        var n = source.SampleCount;
+        var widths = new float[n];
+        var minArena = Mathf.Min(arenaWidth, arenaHeight);
+        var baseHalfWidth = Mathf.Clamp(minArena * 0.04f, 1.25f, 4f);
+        var minWidth = baseHalfWidth * 0.75f;
+        var maxWidth = baseHalfWidth * 1.75f;
+
+        for (var i = 0; i < n; i++)
+        {
+            var scaled = Mathf.Lerp(baseHalfWidth, source.HalfWidth[i], Mathf.Clamp01(widthJitterScale));
+            widths[i] = Mathf.Clamp(scaled, minWidth, maxWidth);
+        }
+
+        var startIndex = FindStartOnStraight(source.Curvature);
+        return RotateTrack(source, widths, startIndex);
+    }
+
+    private static int FindStartOnStraight(float[] curvature)
+    {
+        if (curvature == null || curvature.Length == 0)
+        {
+            return 0;
+        }
+
+        var n = curvature.Length;
+        var window = Mathf.Clamp(n / 32, 3, 12);
+        var bestIndex = 0;
+        var bestScore = float.MaxValue;
+
+        for (var i = 0; i < n; i++)
+        {
+            var score = 0f;
+            for (var j = -window; j <= window; j++)
+            {
+                var idx = (i + j + n) % n;
+                score += curvature[idx];
+            }
+
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private static MarbleRaceTrack RotateTrack(MarbleRaceTrack source, float[] widths, int startIndex)
+    {
+        var n = source.SampleCount;
+        if (n <= 0 || startIndex <= 0)
+        {
+            return new MarbleRaceTrack(source.Center, source.Tangent, source.Normal, widths, source.Curvature);
+        }
+
+        var center = new Vector2[n];
+        var tangent = new Vector2[n];
+        var normal = new Vector2[n];
+        var curvature = new float[n];
+        var rotatedWidths = new float[n];
+
+        for (var i = 0; i < n; i++)
+        {
+            var src = (i + startIndex) % n;
+            center[i] = source.Center[src];
+            tangent[i] = source.Tangent[src];
+            normal[i] = source.Normal[src];
+            curvature[i] = source.Curvature[src];
+            rotatedWidths[i] = widths[src];
+        }
+
+        return new MarbleRaceTrack(center, tangent, normal, rotatedWidths, curvature);
+    }
+
+    private static bool ValidateTrack(MarbleRaceTrack candidate, Rect boundsRect)
+    {
+        if (candidate == null || candidate.SampleCount < 16)
+        {
+            return false;
+        }
+
+        var center = candidate.Center;
+        var n = candidate.SampleCount;
+        var margin = Mathf.Min(boundsRect.width, boundsRect.height) * 0.1f;
+        var innerBounds = new Rect(
+            boundsRect.xMin + margin,
+            boundsRect.yMin + margin,
+            Mathf.Max(0.01f, boundsRect.width - (margin * 2f)),
+            Mathf.Max(0.01f, boundsRect.height - (margin * 2f)));
+
+        for (var i = 0; i < n; i++)
+        {
+            if (!innerBounds.Contains(center[i]))
+            {
+                return false;
+            }
+
+            var next = center[(i + 1) % n];
+            if ((next - center[i]).sqrMagnitude <= 0.0004f)
+            {
+                return false;
+            }
+
+            if (candidate.HalfWidth[i] <= 0f)
+            {
+                return false;
+            }
+
+            var boundarySpan = Vector2.Dot((candidate.Normal[i] * candidate.HalfWidth[i]) * 2f, candidate.Normal[i]);
+            if (boundarySpan <= 0.01f)
+            {
+                return false;
+            }
+        }
+
+        var prevTangent = candidate.Tangent[n - 1];
+        for (var i = 0; i < n; i++)
+        {
+            if (Vector2.Dot(candidate.Tangent[i], prevTangent) < 0.2f)
+            {
+                return false;
+            }
+
+            prevTangent = candidate.Tangent[i];
+        }
+
+        return !HasCoarseIntersection(center, 8);
+    }
+
+    private static bool HasCoarseIntersection(Vector2[] center, int stride)
+    {
+        var n = center.Length;
+        for (var i = 0; i < n; i += stride)
+        {
+            var a1 = center[i];
+            var a2 = center[(i + stride) % n];
+
+            for (var j = i + (2 * stride); j < n; j += stride)
+            {
+                if (Mathf.Abs(i - j) <= stride)
+                {
+                    continue;
+                }
+
+                var b1 = center[j];
+                var b2 = center[(j + stride) % n];
+                if (SegmentsIntersect(a1, a2, b1, b2))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool SegmentsIntersect(Vector2 p1, Vector2 p2, Vector2 q1, Vector2 q2)
+    {
+        var r = p2 - p1;
+        var s = q2 - q1;
+        var denom = Cross(r, s);
+        if (Mathf.Abs(denom) < 0.0001f)
+        {
+            return false;
+        }
+
+        var t = Cross(q1 - p1, s) / denom;
+        var u = Cross(q1 - p1, r) / denom;
+        return t > 0f && t < 1f && u > 0f && u < 1f;
+    }
+
+    private static float Cross(Vector2 a, Vector2 b)
+    {
+        return (a.x * b.y) - (a.y * b.x);
     }
 
     private static void DestroyIfFound(Transform parent, string childName)

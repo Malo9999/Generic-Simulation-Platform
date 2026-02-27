@@ -717,18 +717,23 @@ public class Bootstrapper : MonoBehaviour
     {
         var prefab = options?.simulationCatalog?.FindById(config.simulationId)?.runnerPrefab;
         prefab ??= SimulationRegistry.LoadRunnerPrefab(config.simulationId);
+        var graph = SimulationSceneGraph.Ensure(simulationRoot.transform);
+        var parent = graph != null && graph.RunnerRoot != null ? graph.RunnerRoot : simulationRoot.transform;
         GameObject runnerObject;
 
         if (prefab != null)
         {
-            runnerObject = Instantiate(prefab, simulationRoot.transform);
+            runnerObject = Instantiate(prefab, parent);
         }
         else
         {
             runnerObject = new GameObject($"{config.simulationId}RunnerPlaceholder");
-            runnerObject.transform.SetParent(simulationRoot.transform, false);
+            runnerObject.transform.SetParent(parent, false);
             Debug.LogWarning($"Bootstrapper: Missing prefab for {config.simulationId} at Resources/{SimulationRegistry.GetResourcePath(config.simulationId)}.prefab");
         }
+
+        runnerObject.transform.SetParent(parent, false);
+        runnerObject.name = $"{config.simulationId}Runner";
 
         activeRunnerObject = runnerObject;
         try
@@ -743,7 +748,7 @@ public class Bootstrapper : MonoBehaviour
             activeRunner = null;
             activeRunnerObject = null;
             var runnerError = new GameObject($"{config.simulationId}RunnerError");
-            runnerError.transform.SetParent(simulationRoot.transform, false);
+            runnerError.transform.SetParent(parent, false);
             simDriver?.SetRunner(null);
             replayDriver?.SetRunner(null);
             return false;
