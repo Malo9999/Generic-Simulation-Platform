@@ -87,6 +87,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private int lastScoreboardTeam1 = int.MinValue;
     private int previousPossessionTeam = int.MinValue;
     private int nextEntityId;
+    private bool kickoffSanityLogPending;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -110,6 +111,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             return;
         }
+
+        LogKickoffTeamSideSanity();
 
         if (!matchFinished)
         {
@@ -209,8 +212,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             athleteRngs[i] = RngService.Fork($"SIM:FantasySport:ATHLETE:{i}");
             laneByPlayer[i] = ResolveLaneForTeamIndex(i % playersPerTeam);
             var teamId = i < playersPerTeam ? 0 : 1;
-            var teamIndex = i % playersPerTeam;
-            var role = teamIndex == GoalkeeperIndexPerTeam ? "goalkeeper" : (teamIndex <= 2 ? "offense" : "defense");
+            var teamLocalIndex = i % playersPerTeam;
+            var role = teamLocalIndex == GoalkeeperIndexPerTeam ? "goalkeeper" : (teamLocalIndex <= 2 ? "offense" : "defense");
 
             var identity = IdentityService.Create(nextEntityId++, teamId, role, 3, config?.seed ?? 0, "FantasySport");
             var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, teamId);
@@ -237,7 +240,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var ring = new GameObject("PossessionRing").AddComponent<SpriteRenderer>();
             ring.transform.SetParent(athlete.transform, false);
             ring.sprite = PrimitiveSpriteLibrary.CircleOutline();
-            ring.color = teamId == 0 ? Team0Color : Team1Color;
+            ring.color = GetTeamColor(teamId);
             ring.transform.localScale = Vector3.one * 1.1f;
             ring.enabled = false;
             RenderOrder.Apply(ring, RenderOrder.SelectionRing);
@@ -340,6 +343,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void ResetKickoff()
     {
         ResetAthleteFormationAndVelocities();
+        kickoffSanityLogPending = true;
         ballPos = Vector2.zero;
         ballVel = Vector2.zero;
         ballOwnerIndex = -1;
@@ -353,22 +357,25 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void ResetAthleteFormationAndVelocities()
     {
         var yBand = halfHeight * 0.62f;
+        const float xMargin = 1.5f;
         for (var i = 0; i < TotalAthletes; i++)
         {
             var teamId = identities[i].teamId;
-            var teamIndex = i % playersPerTeam;
-            var homeSign = teamId == 0 ? -1f : 1f;
-            var goalX = teamId == 0 ? -halfWidth : halfWidth;
+            var teamLocalIndex = i % playersPerTeam;
+            var ownGoalX = GetOwnGoalX(teamId);
+            var centerSign = TowardCenterSign(teamId);
+            var offenseX = Mathf.Clamp(ownGoalX + (centerSign * (rules.goalDepth + 10f)), -halfWidth + xMargin, halfWidth - xMargin);
+            var defenseX = Mathf.Clamp(ownGoalX + (centerSign * (rules.goalDepth + 6f)), -halfWidth + xMargin, halfWidth - xMargin);
 
-            if (teamIndex == GoalkeeperIndexPerTeam)
+            if (teamLocalIndex == GoalkeeperIndexPerTeam)
             {
-                positions[i] = new Vector2(goalX + (teamId == 0 ? 2f : -2f), 0f);
+                positions[i] = new Vector2(Mathf.Clamp(ownGoalX + (centerSign * 2f), -halfWidth + xMargin, halfWidth - xMargin), 0f);
             }
             else
             {
                 var laneY = laneByPlayer[i] * yBand;
-                var isOffense = teamIndex <= 2;
-                var x = homeSign * (halfWidth * (isOffense ? 0.2f : 0.38f));
+                var isOffense = teamLocalIndex <= 2;
+                var x = isOffense ? offenseX : defenseX;
                 positions[i] = new Vector2(x, laneY);
             }
 
@@ -377,6 +384,42 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             tackleCooldowns[i] = 0f;
             passCooldowns[i] = 0f;
         }
+    }
+
+    private void LogKickoffTeamSideSanity()
+    {
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (!kickoffSanityLogPending || positions == null || identities == null)
+        {
+            return;
+        }
+
+        kickoffSanityLogPending = false;
+        var team0SumX = 0f;
+        var team1SumX = 0f;
+        var team0Count = 0;
+        var team1Count = 0;
+
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if (identities[i].teamId == 0)
+            {
+                team0SumX += positions[i].x;
+                team0Count++;
+            }
+            else
+            {
+                team1SumX += positions[i].x;
+                team1Count++;
+            }
+        }
+
+        var team0AvgX = team0Count > 0 ? team0SumX / team0Count : 0f;
+        var team1AvgX = team1Count > 0 ? team1SumX / team1Count : 0f;
+        Debug.Log($"[FantasySport] Kickoff side sanity => team0 avgX={team0AvgX:F2}, team1 avgX={team1AvgX:F2}");
+        Debug.Assert(team0AvgX < 0f, "[FantasySport] Team0 expected on LEFT at kickoff (avgX < 0).");
+        Debug.Assert(team1AvgX > 0f, "[FantasySport] Team1 expected on RIGHT at kickoff (avgX > 0).");
+#endif
     }
 
     private void RefreshAssignments()
@@ -871,7 +914,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void TintAthlete(Transform iconRoot, int teamId, bool isGoalkeeper)
     {
-        var teamColor = teamId == 0 ? Team0Color : Team1Color;
+        var teamColor = GetTeamColor(teamId);
         var fillColor = isGoalkeeper ? teamColor * 0.78f : teamColor;
         var renderers = iconRoot.GetComponentsInChildren<SpriteRenderer>(true);
         for (var i = 0; i < renderers.Length; i++)
@@ -1061,6 +1104,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private bool IsGoalkeeper(int athleteIndex) => (athleteIndex % playersPerTeam) == GoalkeeperIndexPerTeam;
     private int GetGoalkeeperIndex(int teamId) => (teamId * playersPerTeam) + GoalkeeperIndexPerTeam;
+    private Color GetTeamColor(int teamId) => teamId == 0 ? Team0Color : Team1Color;
+    private float GetOwnGoalX(int teamId) => teamId == 0 ? (-halfWidth + (rules.goalDepth * 0.5f)) : (halfWidth - (rules.goalDepth * 0.5f));
+    private float TowardCenterSign(int teamId) => teamId == 0 ? 1f : -1f;
 
     private Rect GetKeeperBox(int teamId)
     {
