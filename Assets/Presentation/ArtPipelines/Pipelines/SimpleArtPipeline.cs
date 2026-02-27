@@ -103,31 +103,70 @@ public class SimpleArtPipeline : ArtPipelineBase
             return;
         }
 
-        if (debugEnabled)
+        var debugReplace = debugEnabled && debugMode == DebugPlaceholderMode.Replace;
+        var debugOverlay = debugEnabled && debugMode == DebugPlaceholderMode.Overlay;
+
+        if (debugReplace)
         {
             ApplyPlaceholderSorting(renderer, debugOn: true);
             SetPlaceholderVisibility(renderer, dotVisible: true, outlineVisible: false, arrowVisible: true);
             animator.ApplyDebugFacing(velocity);
             animator.ApplyPulse(deltaTime);
 
-            if (debugMode == DebugPlaceholderMode.Replace)
-            {
-                SetIconRootVisibility(renderer, false);
-                SetDebugReplaceVisibility(renderer);
-            }
+            SetIconRootVisibility(renderer, false);
+            SetDebugReplaceVisibility(renderer);
 
             return;
         }
 
-        ApplyPlaceholderSorting(renderer, debugOn: false);
+        ApplyPlaceholderSorting(renderer, debugOn: debugOverlay);
 
         if (!IsAntEntity(key))
         {
-            SetPlaceholderVisibility(renderer, dotVisible: false, outlineVisible: false, arrowVisible: false);
+            SetPlaceholderVisibility(renderer, dotVisible: false, outlineVisible: false, arrowVisible: debugOverlay);
+            if (debugOverlay)
+            {
+                animator.ApplyDebugFacing(velocity);
+            }
             SetIconRootVisibility(renderer, true);
             return;
         }
 
+        if (ResolveAndApplyBodySprite(renderer, animator, key, velocity, deltaTime, BuildAgentSpriteId(key)))
+        {
+            SetPlaceholderVisibility(renderer, dotVisible: true, outlineVisible: animator.IsOutlineVisible, arrowVisible: debugOverlay);
+            if (debugOverlay)
+            {
+                animator.ApplyDebugFacing(velocity);
+            }
+            SetIconRootVisibility(renderer, false);
+            return;
+        }
+
+        SetPlaceholderVisibility(renderer, dotVisible: false, outlineVisible: false, arrowVisible: debugOverlay);
+        if (debugOverlay)
+        {
+            animator.ApplyDebugFacing(velocity);
+        }
+        SetIconRootVisibility(renderer, true);
+    }
+
+    private bool ResolveAndApplyBodySprite(
+        GameObject renderer,
+        SimplePipelineSpriteAnimator animator,
+        VisualKey key,
+        Vector2 velocity,
+        float deltaTime,
+        string spriteId)
+    {
+        if (string.IsNullOrWhiteSpace(spriteId)
+            || !spriteId.StartsWith("agent:", StringComparison.OrdinalIgnoreCase)
+            || animator == null)
+        {
+            return false;
+        }
+
+        var visualSettings = SimVisualSettingsService.CurrentForActiveSim();
         var preferredPack = GetPreferredAgentPack();
         if (preferredPack != null)
         {
@@ -138,25 +177,58 @@ public class SimpleArtPipeline : ArtPipelineBase
                 var frameIndex = SelectFrameIndex(key.state, speed, animator, deltaTime);
                 animator.lastSpriteBaseId = resolvedSource.BaseId;
                 animator.Apply(frames, frameIndex);
+                animator.SetOutline(null, enabled: false);
                 animator.ApplyContentFacing(velocity);
-                SetPlaceholderVisibility(renderer, dotVisible: true, outlineVisible: false, arrowVisible: false);
-                SetIconRootVisibility(renderer, false);
-                return;
+                DisableAnyExtraBodyRenderers(renderer, animator.DotRenderer, animator.OutlineRenderer);
+                return true;
             }
         }
 
-        var spriteId = BuildAgentSpriteId(key);
-        if (AgentSpriteResolver.TryResolve(spriteId, out var primitiveFill, out var primitiveOutline))
+        var usePrimitiveBaseline = visualSettings == null || visualSettings.usePrimitiveBaseline;
+        if (!usePrimitiveBaseline)
         {
-            animator.ApplySingle(primitiveFill, primitiveOutline);
-            animator.ApplyContentFacing(velocity);
-            SetPlaceholderVisibility(renderer, dotVisible: true, outlineVisible: primitiveOutline != null, arrowVisible: false);
-            SetIconRootVisibility(renderer, false);
+            return false;
+        }
+
+        if (!AgentSpriteResolver.TryResolve(spriteId, out var primitiveFill, out var primitiveOutline) || primitiveFill == null)
+        {
+            return false;
+        }
+
+        animator.ApplySingle(primitiveFill, primitiveOutline);
+        animator.SetOutline(primitiveOutline, enabled: primitiveOutline != null);
+        animator.ApplyContentFacing(velocity);
+        DisableAnyExtraBodyRenderers(renderer, animator.DotRenderer, animator.OutlineRenderer);
+        return true;
+    }
+
+    private static void DisableAnyExtraBodyRenderers(GameObject rendererRoot, SpriteRenderer bodyFill, SpriteRenderer bodyOutline)
+    {
+        if (rendererRoot == null)
+        {
             return;
         }
 
-        SetPlaceholderVisibility(renderer, dotVisible: false, outlineVisible: false, arrowVisible: false);
-        SetIconRootVisibility(renderer, true);
+        var renderers = rendererRoot.GetComponentsInChildren<SpriteRenderer>(true);
+        foreach (var candidate in renderers)
+        {
+            if (candidate == null || candidate == bodyFill || candidate == bodyOutline)
+            {
+                continue;
+            }
+
+            if (string.Equals(candidate.gameObject.name, PlaceholderArrowName, StringComparison.Ordinal)
+                || string.Equals(candidate.gameObject.name, MaskName, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (candidate.transform == rendererRoot.transform)
+            {
+                candidate.sprite = null;
+                candidate.enabled = false;
+            }
+        }
     }
 
     private static void ApplyPlaceholderSorting(GameObject rendererRoot, bool debugOn)
@@ -488,6 +560,7 @@ public class SimpleArtPipeline : ArtPipelineBase
         public SpriteRenderer DotRenderer { get; private set; }
         public SpriteRenderer OutlineRenderer { get; private set; }
         public SpriteRenderer ArrowRenderer { get; private set; }
+        public bool IsOutlineVisible => OutlineRenderer != null && OutlineRenderer.enabled && OutlineRenderer.sprite != null;
         public string lastSpriteBaseId;
         public float animTime;
         public int lastFrame = -1;
@@ -559,6 +632,17 @@ public class SimpleArtPipeline : ArtPipelineBase
                 OutlineRenderer.transform.localPosition = Vector3.zero;
                 OutlineRenderer.transform.localScale = Vector3.one;
             }
+        }
+
+        public void SetOutline(Sprite outlineSprite, bool enabled)
+        {
+            if (OutlineRenderer == null)
+            {
+                return;
+            }
+
+            OutlineRenderer.sprite = outlineSprite;
+            OutlineRenderer.enabled = enabled && outlineSprite != null;
         }
 
         public void ApplyContentFacing(Vector2 velocity)
