@@ -276,13 +276,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var fill = go.AddComponent<SpriteRenderer>();
             fill.sprite = PrimitiveSpriteLibrary.RoundedRectFill();
             var isSpeedPad = speedPads[i].speedMultiplier >= 1f;
-            fill.color = isSpeedPad ? new Color(0.46f, 1f, 0.55f, 0.26f) : new Color(0.56f, 0.33f, 0.86f, 0.28f);
+            fill.color = isSpeedPad ? new Color(0.62f, 0.30f, 0.92f, 0.28f) : new Color(0.44f, 0.22f, 0.72f, 0.28f);
             RenderOrder.Apply(fill, RenderOrder.WorldDeco);
 
             var outline = new GameObject("Outline").AddComponent<SpriteRenderer>();
             outline.transform.SetParent(go.transform, false);
             outline.sprite = PrimitiveSpriteLibrary.RoundedRectOutline();
-            outline.color = isSpeedPad ? new Color(0.08f, 0.2f, 0.08f, 0.68f) : new Color(0.2f, 0.08f, 0.3f, 0.72f);
+            outline.color = isSpeedPad ? new Color(0.20f, 0.08f, 0.30f, 0.78f) : new Color(0.18f, 0.06f, 0.26f, 0.78f);
             RenderOrder.Apply(outline, RenderOrder.WorldAbove);
         }
 
@@ -344,7 +344,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             var teamId = identities[i].teamId;
             var teamIndex = i % PlayersPerTeam;
-            var attackSign = teamId == 0 ? 1f : -1f;
+            var homeSign = teamId == 0 ? -1f : 1f;
             var goalX = teamId == 0 ? -halfWidth : halfWidth;
 
             if (teamIndex == GoalkeeperIndexPerTeam)
@@ -355,7 +355,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             {
                 var laneY = laneByPlayer[i] * yBand;
                 var isOffense = teamIndex <= 2;
-                var x = attackSign * (halfWidth * (isOffense ? 0.2f : 0.38f));
+                var x = homeSign * (halfWidth * (isOffense ? 0.2f : 0.38f));
                 positions[i] = new Vector2(x, laneY);
             }
 

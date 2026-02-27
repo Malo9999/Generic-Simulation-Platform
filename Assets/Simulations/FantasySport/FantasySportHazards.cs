@@ -91,7 +91,8 @@ public static class FantasySportHazards
         const float speedMultiplier = 1.35f;
         const float edgeMargin = 5f;
 
-        var xAbs = Mathf.Clamp(halfWidth * 0.35f, goalDepth + 4f, halfWidth - edgeMargin);
+        var xOuterAbs = Mathf.Clamp(halfWidth * 0.55f, goalDepth + 6f, halfWidth - edgeMargin);
+        var xInnerAbs = Mathf.Clamp(halfWidth * 0.28f, 2f, xOuterAbs - (preferredPadSize.x * 0.8f));
         var yAbs = Mathf.Clamp(halfHeight * 0.28f, edgeMargin, halfHeight - edgeMargin);
 
         var scale = 1f;
@@ -101,10 +102,10 @@ public static class FantasySportHazards
             var size = preferredPadSize * scale;
             pads = new[]
             {
-                new SpeedPad { area = CreateRect(-xAbs, +yAbs, size), speedMultiplier = speedMultiplier },
-                new SpeedPad { area = CreateRect(-xAbs, -yAbs, size), speedMultiplier = slowMultiplier },
-                new SpeedPad { area = CreateRect(+xAbs, +yAbs, size), speedMultiplier = speedMultiplier },
-                new SpeedPad { area = CreateRect(+xAbs, -yAbs, size), speedMultiplier = slowMultiplier }
+                new SpeedPad { area = CreateRect(-xOuterAbs, +yAbs, size), speedMultiplier = speedMultiplier },
+                new SpeedPad { area = CreateRect(-xInnerAbs, -yAbs, size), speedMultiplier = slowMultiplier },
+                new SpeedPad { area = CreateRect(+xOuterAbs, +yAbs, size), speedMultiplier = speedMultiplier },
+                new SpeedPad { area = CreateRect(+xInnerAbs, -yAbs, size), speedMultiplier = slowMultiplier }
             };
 
             if (AllPadsDisjoint(pads) || scale <= minScale)
