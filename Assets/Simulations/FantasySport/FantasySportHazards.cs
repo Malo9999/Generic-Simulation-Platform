@@ -14,24 +14,22 @@ public static class FantasySportHazards
         public float speedMultiplier;
     }
 
-    public static Bumper[] GenerateBumpers(IRng rng, int count, float halfWidth, float halfHeight, float radius, float minDistance, float goalDepth, float goalHeight, Rect[] keepouts)
+    public static Bumper[] GenerateBumpers(IRng rng, int count, float halfWidth, float halfHeight, float radius, float minDistance, float endzoneDepth, float endzoneHalfHeight, Rect[] keepouts)
     {
         _ = rng;
+        _ = count;
         _ = minDistance;
-        const float backlineBuffer = 4f;
-        var adjustedRadius = radius * 0.8f;
-        var requestedCount = Mathf.Max(2, count);
-        var pairCount = Mathf.Max(1, requestedCount / 2);
-        var bumpers = new Bumper[pairCount * 2];
+        var adjustedRadius = radius / 3f;
+        var bumpers = new Bumper[6];
 
-        var xAbs = Mathf.Clamp(halfWidth * 0.22f, 6f, halfWidth - 10f);
-        var yAbsTop = Mathf.Clamp(halfHeight * 0.42f, 6f, halfHeight - 10f);
+        var xAbs = halfWidth * 0.18f;
+        var yAbsTop = halfHeight * 0.36f;
         var rowY = new[] { yAbsTop, 0f, -yAbsTop };
-        var yShiftPattern = new[] { 0f, 2f, -2f, 4f, -4f, 6f, -6f, 8f, -8f };
+        var yShiftPattern = new[] { 0f, 2f, -2f, 4f, -4f };
 
-        for (var pair = 0; pair < pairCount; pair++)
+        for (var pair = 0; pair < rowY.Length; pair++)
         {
-            var baseY = rowY[pair % rowY.Length];
+            var baseY = rowY[pair];
             var mirrored = ResolveMirroredPair(
                 xAbs,
                 baseY,
@@ -39,9 +37,8 @@ public static class FantasySportHazards
                 halfWidth,
                 halfHeight,
                 adjustedRadius,
-                goalDepth,
-                goalHeight,
-                backlineBuffer,
+                endzoneDepth,
+                endzoneHalfHeight,
                 keepouts);
 
             bumpers[pair * 2] = new Bumper { position = new Vector2(-xAbs, mirrored), radius = adjustedRadius };
@@ -152,9 +149,8 @@ public static class FantasySportHazards
         float halfWidth,
         float halfHeight,
         float radius,
-        float goalDepth,
-        float goalHeight,
-        float backlineBuffer,
+        float endzoneDepth,
+        float endzoneHalfHeight,
         Rect[] keepouts)
     {
         var maxY = halfHeight - radius - 1f;
@@ -165,8 +161,8 @@ public static class FantasySportHazards
             var y = Mathf.Clamp(baseY + yShiftPattern[i], minY, maxY);
             var left = new Vector2(-xAbs, y);
             var right = new Vector2(+xAbs, y);
-            if (!IsBumperPlacementBlocked(left, halfWidth, goalDepth, goalHeight, radius, backlineBuffer, keepouts) &&
-                !IsBumperPlacementBlocked(right, halfWidth, goalDepth, goalHeight, radius, backlineBuffer, keepouts))
+            if (!IsBumperPlacementBlocked(left, halfWidth, endzoneDepth, endzoneHalfHeight, radius, keepouts) &&
+                !IsBumperPlacementBlocked(right, halfWidth, endzoneDepth, endzoneHalfHeight, radius, keepouts))
             {
                 return y;
             }
@@ -175,14 +171,9 @@ public static class FantasySportHazards
         return Mathf.Clamp(baseY, minY, maxY);
     }
 
-    private static bool IsBumperPlacementBlocked(Vector2 candidate, float halfWidth, float goalDepth, float goalHeight, float radius, float backlineBuffer, Rect[] keepouts)
+    private static bool IsBumperPlacementBlocked(Vector2 candidate, float halfWidth, float endzoneDepth, float endzoneHalfHeight, float radius, Rect[] keepouts)
     {
-        if (Mathf.Abs(candidate.y) <= goalHeight * 0.5f && Mathf.Abs(Mathf.Abs(candidate.x) - halfWidth) <= backlineBuffer)
-        {
-            return true;
-        }
-
-        if (IsPointInGoalZone(candidate, halfWidth, goalDepth, goalHeight))
+        if (IsCircleInEndzone(candidate, radius + 0.6f, halfWidth, endzoneDepth, endzoneHalfHeight))
         {
             return true;
         }
@@ -203,11 +194,10 @@ public static class FantasySportHazards
         return false;
     }
 
-    private static bool IsPointInGoalZone(Vector2 p, float halfWidth, float goalDepth, float goalHeight)
+    private static bool IsCircleInEndzone(Vector2 center, float radius, float halfWidth, float endzoneDepth, float endzoneHalfHeight)
     {
-        var yOk = Mathf.Abs(p.y) <= goalHeight * 0.5f;
-        var left = p.x >= -halfWidth && p.x <= -halfWidth + goalDepth;
-        var right = p.x <= halfWidth && p.x >= halfWidth - goalDepth;
-        return yOk && (left || right);
+        var left = Rect.MinMaxRect(-halfWidth, -endzoneHalfHeight, -halfWidth + endzoneDepth, endzoneHalfHeight);
+        var right = Rect.MinMaxRect(halfWidth - endzoneDepth, -endzoneHalfHeight, halfWidth, endzoneHalfHeight);
+        return CircleRectOverlap(center, radius, left) || CircleRectOverlap(center, radius, right);
     }
 }
