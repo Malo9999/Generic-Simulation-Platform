@@ -30,6 +30,7 @@ public class Bootstrapper : MonoBehaviour
     private ITickableSimulationRunner activeRunner;
     private SimDriver simDriver;
     private ReplayDriver replayDriver;
+    private ContentPack runtimeMergedPack;
     private ScenarioConfig currentConfig;
     private string currentPresetSource = "<defaults>";
     private string currentRunFolder;
@@ -336,23 +337,125 @@ public class Bootstrapper : MonoBehaviour
 
     private ContentPack ResolveContentPack(string simulationId)
     {
-        if (contentPackOverride != null)
+        var entry = options?.simulationCatalog?.FindById(simulationId);
+        ContentPack basePack = null;
+        if (entry != null && entry.defaultContentPack != null)
         {
+            basePack = entry.defaultContentPack;
+        }
+
+        var catalog = options?.simulationCatalog;
+        if (basePack == null && catalog != null && catalog.GlobalDefaultContentPack != null)
+        {
+            basePack = catalog.GlobalDefaultContentPack;
+        }
+
+        if (contentPackOverride == null)
+        {
+            DestroyRuntimeMergedPack();
+            return basePack;
+        }
+
+        if (basePack == null)
+        {
+            DestroyRuntimeMergedPack();
             return contentPackOverride;
         }
 
-        var entry = options?.simulationCatalog?.FindById(simulationId);
-        if (entry != null && entry.defaultContentPack != null)
+        return MergeContentPacks(basePack, contentPackOverride);
+    }
+
+    private ContentPack MergeContentPacks(ContentPack basePack, ContentPack overridePack)
+    {
+        DestroyRuntimeMergedPack();
+
+        runtimeMergedPack = ScriptableObject.CreateInstance<ContentPack>();
+        runtimeMergedPack.name = $"{basePack.name}+{overridePack.name}";
+
+        var textureById = new Dictionary<string, ContentPack.TextureEntry>(StringComparer.Ordinal);
+        foreach (var entry in basePack.Textures)
         {
-            return entry.defaultContentPack;
-        }
-        var catalog = options?.simulationCatalog;
-        if (catalog != null && catalog.GlobalDefaultContentPack != null)
-        {
-            return catalog.GlobalDefaultContentPack;
+            if (!string.IsNullOrWhiteSpace(entry.id))
+            {
+                textureById[entry.id] = entry;
+            }
         }
 
-        return null;
+        foreach (var entry in overridePack.Textures)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.id))
+            {
+                textureById[entry.id] = entry;
+            }
+        }
+
+        var spriteById = new Dictionary<string, ContentPack.SpriteEntry>(StringComparer.Ordinal);
+        foreach (var entry in basePack.Sprites)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.id))
+            {
+                spriteById[entry.id] = entry;
+            }
+        }
+
+        foreach (var entry in overridePack.Sprites)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.id))
+            {
+                spriteById[entry.id] = entry;
+            }
+        }
+
+        var selectionByEntityId = new Dictionary<string, ContentPack.SpeciesSelection>(StringComparer.OrdinalIgnoreCase);
+        foreach (var selection in basePack.Selections)
+        {
+            if (!string.IsNullOrWhiteSpace(selection.entityId))
+            {
+                selectionByEntityId[selection.entityId] = selection;
+            }
+        }
+
+        foreach (var selection in overridePack.Selections)
+        {
+            if (!string.IsNullOrWhiteSpace(selection.entityId))
+            {
+                selectionByEntityId[selection.entityId] = selection;
+            }
+        }
+
+        var clipByPrefix = new Dictionary<string, ContentPack.ClipMetadataEntry>(StringComparer.Ordinal);
+        foreach (var clip in basePack.ClipMetadata)
+        {
+            if (!string.IsNullOrWhiteSpace(clip.keyPrefix))
+            {
+                clipByPrefix[clip.keyPrefix] = clip;
+            }
+        }
+
+        foreach (var clip in overridePack.ClipMetadata)
+        {
+            if (!string.IsNullOrWhiteSpace(clip.keyPrefix))
+            {
+                clipByPrefix[clip.keyPrefix] = clip;
+            }
+        }
+
+        runtimeMergedPack.SetEntries(new List<ContentPack.TextureEntry>(textureById.Values), new List<ContentPack.SpriteEntry>(spriteById.Values));
+        runtimeMergedPack.SetSelections(new List<ContentPack.SpeciesSelection>(selectionByEntityId.Values));
+        runtimeMergedPack.SetClipMetadata(new List<ContentPack.ClipMetadataEntry>(clipByPrefix.Values));
+
+        return runtimeMergedPack;
+    }
+
+    private void DestroyRuntimeMergedPack()
+    {
+        if (runtimeMergedPack == null)
+        {
+            return;
+        }
+
+        Destroy(runtimeMergedPack);
+        runtimeMergedPack = null;
     }
 
     private static string DescribeContentPack(ContentPack pack)
@@ -752,6 +855,11 @@ public class Bootstrapper : MonoBehaviour
         }
 
         simDriver?.SetTimeScale(timeScale);
+    }
+
+    private void OnDestroy()
+    {
+        DestroyRuntimeMergedPack();
     }
 
     private string WriteRunManifest(ScenarioConfig config, string presetSource)
