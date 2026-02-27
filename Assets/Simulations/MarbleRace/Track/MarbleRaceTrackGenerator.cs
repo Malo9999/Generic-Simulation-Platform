@@ -56,50 +56,17 @@ public sealed class MarbleRaceTrackGenerator
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
         var trackSeed = rng != null ? rng.Seed : unchecked(seed ^ (variant * 31));
 
-        var selectedTemplate = fixedTemplateId >= 0 ? Mathf.Clamp(fixedTemplateId, 0, TemplateCount - 1) : Mathf.Abs(variant) % TemplateCount;
+        var tileGen = new TileTrackGenerator();
+        var tileRng = new SeededRng(unchecked((trackSeed * 397) ^ variant));
+        var center = tileGen.BuildBestLoop(safeHalfW, safeHalfH, tileRng, variant);
 
         MarbleRaceTrack bestTrack = null;
-        var bestScore = float.MinValue;
-        var bestTemplateId = selectedTemplate;
-
-        for (var k = 0; k < CandidateCount; k++)
+        if (center != null && center.Length >= 64)
         {
-            var templateId = selectedTemplate;
-            var candidateRng = ForkRng(trackSeed, variant, k, templateId);
-            var raw = ComposeCircuit(minDim, candidateRng, templateId);
-            if (raw == null || raw.Count < 16)
+            bestTrack = BuildTrackData(center, minDim);
+            if (!ValidateStrict(bestTrack.Center, bestTrack.Tangent, bestTrack.Normal, bestTrack.HalfWidth, safeHalfW, safeHalfH))
             {
-                continue;
-            }
-
-            ChaikinClosed(raw, 2);
-            var center = ResampleArcLengthClosed(raw, TargetSamples);
-
-            var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
-            var requiredMargin = baseHalfWidth * 1.45f + (minDim * 0.08f);
-            if (!FitToBounds(center, safeHalfW, safeHalfH, requiredMargin))
-            {
-                continue;
-            }
-
-            var candidate = BuildTrackData(center, minDim);
-            if (!ValidateStrict(candidate.Center, candidate.Tangent, candidate.Normal, candidate.HalfWidth, safeHalfW, safeHalfH))
-            {
-                continue;
-            }
-
-            var score = ScoreTrack(candidate, safeHalfW, safeHalfH, out var stats);
-            if (!PassesHardAcceptRules(candidate, ref stats))
-            {
-                continue;
-            }
-
-            score += 0.001f * templateId;
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestTrack = candidate;
-                bestTemplateId = templateId;
+                bestTrack = null;
             }
         }
 
@@ -107,11 +74,10 @@ public sealed class MarbleRaceTrackGenerator
         {
             fallbackUsed = true;
             bestTrack = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH, variant);
-            bestScore = ScoreTrack(bestTrack, safeHalfW, safeHalfH, out _);
         }
 
         RotateToBestStraight(bestTrack);
-        Debug.Log($"[TrackGen] variant={variant} template={bestTemplateId} fallback={(fallbackUsed ? 1 : 0)}");
+        Debug.Log($"[TrackGen] variant={variant} tileFallback={(fallbackUsed ? 1 : 0)}");
         return bestTrack;
     }
 
