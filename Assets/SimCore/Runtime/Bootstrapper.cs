@@ -37,6 +37,7 @@ public class Bootstrapper : MonoBehaviour
     private int tickCount;
     private float smoothedFps;
     private readonly Dictionary<string, SimArtSettings> artBySim = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ContentPack> preferredAgentPackBySim = new(StringComparer.OrdinalIgnoreCase);
 
     public string CurrentSimulationId => currentConfig?.simulationId ?? options?.simulationId ?? "MarbleRace";
     public int CurrentSeed => currentConfig?.seed ?? 0;
@@ -51,6 +52,7 @@ public class Bootstrapper : MonoBehaviour
     public ArtMode CurrentArtMode => GetArt(CurrentSimulationId).mode;
     public bool CurrentUsePlaceholders => GetArt(CurrentSimulationId).usePlaceholders;
     public DebugPlaceholderMode CurrentDebugMode => GetArt(CurrentSimulationId).debugMode;
+    public ContentPack CurrentPreferredAgentPack => GetPreferredAgentPack(CurrentSimulationId);
 
     private bool IsReplayMode => string.Equals(currentConfig?.mode, "Replay", StringComparison.OrdinalIgnoreCase);
 
@@ -205,7 +207,7 @@ public class Bootstrapper : MonoBehaviour
             {
                 mode = ArtMode.Simple,
                 usePlaceholders = false,
-                debugMode = DebugPlaceholderMode.Replace
+                debugMode = DebugPlaceholderMode.Overlay
             };
             artBySim[simId] = settings;
         }
@@ -213,6 +215,52 @@ public class Bootstrapper : MonoBehaviour
         return settings;
     }
 
+
+
+    private ContentPack GetPreferredAgentPack(string simId)
+    {
+        if (string.IsNullOrWhiteSpace(simId))
+        {
+            return null;
+        }
+
+        return preferredAgentPackBySim.TryGetValue(simId, out var pack) ? pack : null;
+    }
+
+    private static SimVisualSettings FindVisualSettingsFor(string simulationId, BootstrapOptions bootstrapOptions)
+    {
+        if (bootstrapOptions == null || string.IsNullOrWhiteSpace(simulationId))
+        {
+            return null;
+        }
+
+        if (string.Equals(simulationId, "AntColonies", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.antColoniesVisual;
+        }
+
+        if (string.Equals(simulationId, "MarbleRace", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.marbleRaceVisual;
+        }
+
+        if (string.Equals(simulationId, "FantasySport", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.fantasySportVisual;
+        }
+
+        if (string.Equals(simulationId, "RaceCar", StringComparison.OrdinalIgnoreCase))
+        {
+            return bootstrapOptions.raceCarVisual;
+        }
+
+        return null;
+    }
+
+    public SimVisualSettings GetCurrentVisualSettings()
+    {
+        return FindVisualSettingsFor(CurrentSimulationId, options);
+    }
 
     private static SimSettingsBase FindSimSettingsFor(string simulationId, BootstrapOptions bootstrapOptions)
     {
@@ -244,14 +292,16 @@ public class Bootstrapper : MonoBehaviour
         return null;
     }
 
-    private void ApplyArtDefaults(string simulationId, SimSettingsBase settings)
+    private void ApplyArtDefaults(string simulationId, SimVisualSettings visualSettings)
     {
-        var forceBasic = settings.artPolicy.packSelectionMode == SimSettingsBase.PackSelectionMode.ForceBasic;
+        var preferredPack = visualSettings != null ? visualSettings.preferredAgentPack : null;
+        preferredAgentPackBySim[simulationId] = preferredPack;
+
         artBySim[simulationId] = new SimArtSettings
         {
-            mode = forceBasic ? ArtMode.Simple : ArtMode.Flat,
-            usePlaceholders = false,
-            debugMode = forceBasic ? DebugPlaceholderMode.Replace : DebugPlaceholderMode.Overlay
+            mode = ArtMode.Simple,
+            usePlaceholders = visualSettings != null && visualSettings.usePrimitiveBaseline && preferredPack == null,
+            debugMode = visualSettings != null ? visualSettings.defaultDebugMode : DebugPlaceholderMode.Overlay
         };
     }
 
@@ -296,8 +346,10 @@ public class Bootstrapper : MonoBehaviour
             if (simSettings != null)
             {
                 simSettings.ApplyTo(resolved);
-                ApplyArtDefaults(simulationId, simSettings);
             }
+
+            var visualSettings = FindVisualSettingsFor(simulationId, options);
+            ApplyArtDefaults(simulationId, visualSettings);
 
             resolved.seed = ResolveSeed(resolved, simSettings);
             resolved.NormalizeAliases();
@@ -654,6 +706,27 @@ public class Bootstrapper : MonoBehaviour
             $"{rootFolder}/RaceCarSimSettings.asset",
             bootstrapOptions.raceCarSettings);
 
+        bootstrapOptions.antColoniesVisual = EnsureSimVisualSettingsAsset(
+            $"{rootFolder}/AntColoniesVisualSettings.asset",
+            "AntColonies",
+            BasicShapeKind.Capsule,
+            bootstrapOptions.antColoniesVisual);
+        bootstrapOptions.marbleRaceVisual = EnsureSimVisualSettingsAsset(
+            $"{rootFolder}/MarbleRaceVisualSettings.asset",
+            "MarbleRace",
+            BasicShapeKind.Circle,
+            bootstrapOptions.marbleRaceVisual);
+        bootstrapOptions.fantasySportVisual = EnsureSimVisualSettingsAsset(
+            $"{rootFolder}/FantasySportVisualSettings.asset",
+            "FantasySport",
+            BasicShapeKind.RoundedRect,
+            bootstrapOptions.fantasySportVisual);
+        bootstrapOptions.raceCarVisual = EnsureSimVisualSettingsAsset(
+            $"{rootFolder}/RaceCarVisualSettings.asset",
+            "RaceCar",
+            BasicShapeKind.RoundedRect,
+            bootstrapOptions.raceCarVisual);
+
         EditorUtility.SetDirty(bootstrapOptions);
         AssetDatabase.SaveAssets();
     }
@@ -672,6 +745,30 @@ public class Bootstrapper : MonoBehaviour
         }
 
         var created = ScriptableObject.CreateInstance<T>();
+        AssetDatabase.CreateAsset(created, assetPath);
+        return created;
+    }
+
+    private static SimVisualSettings EnsureSimVisualSettingsAsset(string assetPath, string simulationId, BasicShapeKind shape, SimVisualSettings current)
+    {
+        if (current != null)
+        {
+            return current;
+        }
+
+        var existing = AssetDatabase.LoadAssetAtPath<SimVisualSettings>(assetPath);
+        if (existing != null)
+        {
+            return existing;
+        }
+
+        var created = ScriptableObject.CreateInstance<SimVisualSettings>();
+        created.simulationId = simulationId;
+        created.agentShape = shape;
+        created.usePrimitiveBaseline = true;
+        created.agentOutline = true;
+        created.agentSizePx = 64;
+        created.defaultDebugMode = DebugPlaceholderMode.Overlay;
         AssetDatabase.CreateAsset(created, assetPath);
         return created;
     }
