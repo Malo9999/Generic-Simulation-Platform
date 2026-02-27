@@ -296,11 +296,12 @@ public class Bootstrapper : MonoBehaviour
     {
         var preferredPack = visualSettings != null ? visualSettings.preferredAgentPack : null;
         preferredAgentPackBySim[simulationId] = preferredPack;
+        SimVisualSettingsService.SetForSimulation(simulationId, visualSettings);
 
         artBySim[simulationId] = new SimArtSettings
         {
             mode = ArtMode.Simple,
-            usePlaceholders = visualSettings != null && visualSettings.usePrimitiveBaseline && preferredPack == null,
+            usePlaceholders = visualSettings != null && visualSettings.usePrimitiveBaseline,
             debugMode = visualSettings != null ? visualSettings.defaultDebugMode : DebugPlaceholderMode.Overlay
         };
     }
@@ -707,22 +708,22 @@ public class Bootstrapper : MonoBehaviour
             bootstrapOptions.raceCarSettings);
 
         bootstrapOptions.antColoniesVisual = EnsureSimVisualSettingsAsset(
-            $"{rootFolder}/AntColoniesVisualSettings.asset",
+            $"{rootFolder}/AntColoniesSimVisualSettings.asset",
             "AntColonies",
             BasicShapeKind.Capsule,
             bootstrapOptions.antColoniesVisual);
         bootstrapOptions.marbleRaceVisual = EnsureSimVisualSettingsAsset(
-            $"{rootFolder}/MarbleRaceVisualSettings.asset",
+            $"{rootFolder}/MarbleRaceSimVisualSettings.asset",
             "MarbleRace",
             BasicShapeKind.Circle,
             bootstrapOptions.marbleRaceVisual);
         bootstrapOptions.fantasySportVisual = EnsureSimVisualSettingsAsset(
-            $"{rootFolder}/FantasySportVisualSettings.asset",
+            $"{rootFolder}/FantasySportSimVisualSettings.asset",
             "FantasySport",
             BasicShapeKind.RoundedRect,
             bootstrapOptions.fantasySportVisual);
         bootstrapOptions.raceCarVisual = EnsureSimVisualSettingsAsset(
-            $"{rootFolder}/RaceCarVisualSettings.asset",
+            $"{rootFolder}/RaceCarSimVisualSettings.asset",
             "RaceCar",
             BasicShapeKind.RoundedRect,
             bootstrapOptions.raceCarVisual);
@@ -753,12 +754,24 @@ public class Bootstrapper : MonoBehaviour
     {
         if (current != null)
         {
+            if (!string.Equals(current.simulationId, simulationId, StringComparison.Ordinal))
+            {
+                current.simulationId = simulationId;
+                EditorUtility.SetDirty(current);
+            }
+
             return current;
         }
 
         var existing = AssetDatabase.LoadAssetAtPath<SimVisualSettings>(assetPath);
         if (existing != null)
         {
+            if (!string.Equals(existing.simulationId, simulationId, StringComparison.Ordinal))
+            {
+                existing.simulationId = simulationId;
+                EditorUtility.SetDirty(existing);
+            }
+
             return existing;
         }
 
@@ -1117,6 +1130,7 @@ public class Bootstrapper : MonoBehaviour
 
     private void OnDestroy()
     {
+        SimVisualSettingsService.Clear();
         DestroyRuntimeMergedPack();
     }
 
