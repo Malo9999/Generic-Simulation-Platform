@@ -19,11 +19,11 @@ public static class FantasySportHazards
         _ = rng;
         _ = count;
         _ = minDistance;
-        var adjustedRadius = radius / 3f;
+        var adjustedRadius = radius * 0.33f;
         var bumpers = new Bumper[6];
 
         var xAbs = halfWidth * 0.18f;
-        var yAbsTop = halfHeight * 0.36f;
+        var yAbsTop = halfHeight * 0.34f;
         var rowY = new[] { yAbsTop, 0f, -yAbsTop };
         var yShiftPattern = new[] { 0f, 2f, -2f, 4f, -4f };
 

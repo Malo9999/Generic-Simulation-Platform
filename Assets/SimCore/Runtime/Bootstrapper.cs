@@ -309,6 +309,7 @@ public class Bootstrapper : MonoBehaviour
     private void StartSimulation(string simulationId, bool initialRun)
     {
         simulationId = string.IsNullOrWhiteSpace(simulationId) ? GetFallbackSimulationId() : simulationId;
+        SetScoreboardVisible(string.Equals(simulationId, "FantasySport", StringComparison.OrdinalIgnoreCase));
         if (options != null)
         {
             options.simulationId = simulationId;
@@ -445,6 +446,15 @@ public class Bootstrapper : MonoBehaviour
                 var go = new GameObject($"{simulationId}Runner_ERROR");
                 go.transform.SetParent(runnerRoot, false);
             }
+        }
+    }
+
+    private static void SetScoreboardVisible(bool visible)
+    {
+        var scoreboardObject = GameObject.Find("ScoreboardText");
+        if (scoreboardObject != null && scoreboardObject.activeSelf != visible)
+        {
+            scoreboardObject.SetActive(visible);
         }
     }
 
