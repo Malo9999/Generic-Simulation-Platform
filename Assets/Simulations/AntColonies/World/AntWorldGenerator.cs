@@ -43,7 +43,7 @@ public static class AntWorldGenerator
     {
         var speciesOrder = ResolveSpeciesOrder();
         var minDistance = recipe.nestMinDistance;
-        for (var team = 0; team < 5; team++)
+        for (var team = 0; team < recipe.nestCount; team++)
         {
             var placed = false;
             for (var relax = 0; relax < 5 && !placed; relax++)
@@ -76,7 +76,7 @@ public static class AntWorldGenerator
                         teamId = team,
                         position = p,
                         hp = recipe.nestHp,
-                        teamColor = TeamColors[team],
+                        teamColor = TeamColors[team % TeamColors.Length],
                         foodStored = 0
                     });
                     placed = true;

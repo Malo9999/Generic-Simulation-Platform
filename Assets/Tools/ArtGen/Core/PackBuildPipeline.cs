@@ -5,7 +5,6 @@ using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEditor;
-using UnityEditor.U2D.Sprites;
 using UnityEngine;
 
 public static class PackBuildPipeline
@@ -63,18 +62,29 @@ public static class PackBuildPipeline
 
         foreach (var entity in recipe.entities)
         {
-            var module = ModuleRegistry.GetArchetype(entity.archetypeId) ?? throw new InvalidOperationException($"Missing archetype module '{entity.archetypeId}'");
-            module.EnsureLibrariesExist();
+            var isBasicShapesAgentBuild = string.Equals(recipe.agentsBuildStyle, "BasicShapes", StringComparison.OrdinalIgnoreCase);
+            var module = isBasicShapesAgentBuild
+                ? null
+                : ModuleRegistry.GetArchetype(entity.archetypeId) ?? throw new InvalidOperationException($"Missing archetype module '{entity.archetypeId}'");
+            module?.EnsureLibrariesExist();
             var assetNeeds = (recipe.referenceAssets ?? new List<PackRecipe.ReferenceAssetNeed>()).Where(a => string.Equals(a.entityId, entity.entityId, StringComparison.OrdinalIgnoreCase)).ToList();
             var useOutline = assetNeeds.Any(a => a.generationMode == PackRecipe.GenerationMode.OutlineDriven);
 
-            var speciesIds = module.PickSpeciesIds(Deterministic.DeriveSeed(recipe.seed, "species:" + entity.entityId), entity.speciesCount);
+            var speciesIds = module != null
+                ? module.PickSpeciesIds(Deterministic.DeriveSeed(recipe.seed, "species:" + entity.entityId), entity.speciesCount)
+                : new List<string>();
             var recipeSpeciesIds = BuildRecipeSpeciesIds(entity.entityId, assetNeeds, entity.speciesCount);
             var displaySpecies = recipeSpeciesIds.Count > 0 ? recipeSpeciesIds : BuildDisplaySpeciesIds(assetNeeds, entity.speciesCount);
             var resolvedSpeciesIds = recipeSpeciesIds.Count > 0 ? recipeSpeciesIds : speciesIds;
+            if (resolvedSpeciesIds.Count == 0)
+            {
+                resolvedSpeciesIds = new List<string> { "default" };
+            }
 
             speciesSelections.Add(new ContentPack.SpeciesSelection { entityId = entity.entityId, speciesIds = new List<string>(resolvedSpeciesIds) });
-            var cells = useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, speciesIds, module);
+            var cells = isBasicShapesAgentBuild
+                ? BuildBasicShapeAgentCells(entity, resolvedSpeciesIds, 10)
+                : (useOutline ? BuildOutlineCells(recipe, entity, displaySpecies) : BuildProceduralCells(recipe, report, entity, resolvedSpeciesIds, module));
 
             var clipStates = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase) ? AntContractStates() : entity.states;
             foreach (var role in entity.roles)
@@ -103,6 +113,16 @@ public static class PackBuildPipeline
                     overwrite,
                     recipe.simulationId,
                     new CompileSheetOptions(recipe.generationPolicy.renderAntStripeOverlay));
+                if (generatedSprites.Count == 0 && !isBasicShapesAgentBuild)
+                {
+                    Debug.LogWarning($"[PackBuildPipeline] Pipeline generated zero sprites for '{entity.entityId}'. Falling back to placeholder sprites.");
+                    var expectedIds = BuildExpectedSpriteIds(entity, resolvedSpeciesIds);
+                    generatedSprites = BuildMissingPipelinePlaceholderSprites(
+                        texPath,
+                        expectedIds,
+                        recipe.agentSpriteSize,
+                        overwrite);
+                }
                 textureEntries.Add(new ContentPack.TextureEntry { id = "sheet:" + sheetName, texture = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath) });
                 foreach (var sp in generatedSprites) spriteEntries.Add(new ContentPack.SpriteEntry { id = sp.name, category = "agent", sprite = sp });
                 report.spriteCount += generatedSprites.Count;
@@ -161,6 +181,8 @@ public static class PackBuildPipeline
         EditorUtility.SetDirty(pack);
         report.contentPackVersion = pack.Version;
 
+        ValidateBuildOutputs(recipe, pack, report);
+
         if (recipe.generationPolicy.exportCompatibilityAntContentPack) ExportAntCompatibility(recipe, spriteEntries, textureEntries, antsCompatTextureForExport, antsCompatForExport);
 
         if (antSpeciesLogged.Count > 0)
@@ -172,6 +194,105 @@ public static class PackBuildPipeline
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         return report;
+    }
+
+    private static void ValidateBuildOutputs(PackRecipe recipe, ContentPack pack, BuildReport report)
+    {
+        var ids = pack.GetAllSpriteIds().OrderBy(id => id, StringComparer.Ordinal).ToList();
+        Debug.Log($"[PackBuildPipeline] Generated sprite ids: {ids.Count}");
+        Debug.Log($"[PackBuildPipeline] Sprite id samples: {string.Join(", ", ids.Take(10))}");
+
+        foreach (var entity in recipe.entities)
+        {
+            var prefix = $"agent:{entity.entityId}:";
+            if (ids.Any(id => id.StartsWith(prefix, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            var message = $"No generated sprites found for entity '{entity.entityId}' (expected prefix '{prefix}').";
+            report.warnings.Add(message);
+            Debug.LogError("[PackBuildPipeline] " + message);
+        }
+    }
+
+    private static List<SheetCell> BuildBasicShapeAgentCells(PackRecipe.EntityRequirement entityReq, List<string> resolvedSpeciesIds, int frameCount)
+    {
+        var cells = new List<SheetCell>();
+        var roles = entityReq.roles != null && entityReq.roles.Count > 0 ? entityReq.roles : new List<string> { "worker" };
+        var stages = entityReq.lifeStages != null && entityReq.lifeStages.Count > 0 ? entityReq.lifeStages : new List<string> { "adult" };
+        var states = entityReq.states != null && entityReq.states.Count > 0
+            ? entityReq.states
+            : new List<string> { "idle", "walk", "run", "fight" };
+        var speciesIds = resolvedSpeciesIds != null && resolvedSpeciesIds.Count > 0
+            ? resolvedSpeciesIds
+            : new List<string> { "default" };
+
+        foreach (var speciesId in speciesIds)
+        {
+            var fillColor = BasicShapeColorForSpecies(speciesId);
+            foreach (var role in roles)
+            foreach (var stage in stages)
+            foreach (var state in states)
+            for (var frame = 0; frame < Mathf.Max(1, frameCount); frame++)
+            {
+                var body = CreateBasicCircleBlueprint(32, 32, 16, 16, 10, 11);
+                cells.Add(new SheetCell
+                {
+                    id = $"agent:{entityReq.entityId}:{speciesId}:{role}:{stage}:{state}:{frame:00}",
+                    body = body,
+                    baseColor = fillColor,
+                    outlineColor = MultiplyColor(fillColor, 0.4f)
+                });
+            }
+        }
+
+        return cells;
+    }
+
+    private static PixelBlueprint2D CreateBasicCircleBlueprint(int width, int height, int centerX, int centerY, int fillRadius, int outlineRadius)
+    {
+        var blueprint = ScriptableObject.CreateInstance<PixelBlueprint2D>();
+        blueprint.width = width;
+        blueprint.height = height;
+
+        for (var y = 0; y < height; y++)
+        for (var x = 0; x < width; x++)
+        {
+            var dx = x - centerX;
+            var dy = y - centerY;
+            var distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared <= fillRadius * fillRadius)
+            {
+                blueprint.Set("body", x, y, 1);
+                continue;
+            }
+
+            if (distanceSquared <= outlineRadius * outlineRadius)
+            {
+                blueprint.Set("outline", x, y, 1);
+            }
+        }
+
+        return blueprint;
+    }
+
+    private static Color32 BasicShapeColorForSpecies(string speciesId)
+    {
+        switch ((speciesId ?? string.Empty).Trim().ToLowerInvariant())
+        {
+            case "fireant": return new Color32(214, 78, 52, 255);
+            case "carpenterant": return new Color32(48, 48, 56, 255);
+            case "pharaohant": return new Color32(236, 178, 82, 255);
+            case "weaverant": return new Color32(58, 168, 98, 255);
+            case "armyant": return new Color32(124, 62, 154, 255);
+            default:
+                var hash = Mathf.Abs((speciesId ?? "default").GetHashCode());
+                var r = (byte)(80 + (hash % 120));
+                var g = (byte)(70 + ((hash / 7) % 140));
+                var b = (byte)(70 + ((hash / 17) % 140));
+                return new Color32(r, g, b, 255);
+        }
     }
 
     private static List<SheetCell> BuildProceduralCells(PackRecipe recipe, BuildReport report, PackRecipe.EntityRequirement entity, List<string> speciesIds, IArchetypeModule module)
@@ -343,6 +464,102 @@ public static class PackBuildPipeline
         yield return BuildAntSpriteId(speciesId, "worker", "adult", "fight", 9);
     }
 
+    private static List<string> BuildExpectedSpriteIds(PackRecipe.EntityRequirement entity, List<string> speciesIds)
+    {
+        var ids = new List<string>();
+        var isAntEntity = string.Equals(entity.entityId, "ant", StringComparison.OrdinalIgnoreCase);
+        var states = isAntEntity ? AntContractStates() : entity.states;
+
+        foreach (var speciesId in speciesIds)
+        foreach (var role in entity.roles)
+        foreach (var stage in entity.lifeStages)
+        foreach (var state in states)
+        {
+            var localFrames = isAntEntity ? AntContractLocalFrameCount(state) : Mathf.Max(1, entity.animationPolicy.FramesForState(state));
+            for (var frame = 0; frame < localFrames; frame++)
+            {
+                var contractFrame = isAntEntity ? ContractFrameIndex(state, frame) : frame;
+                var id = isAntEntity
+                    ? BuildAntSpriteId(speciesId, role, stage, state, contractFrame)
+                    : $"agent:{entity.entityId}:{speciesId}:{role}:{stage}:{state}:{contractFrame:00}";
+                ids.Add(id);
+            }
+        }
+
+        return ids;
+    }
+
+    private static List<Sprite> BuildMissingPipelinePlaceholderSprites(string texturePath, List<string> spriteIds, int cellSize, bool overwrite)
+    {
+        var spritesAssetPath = BuildSpritesAssetPath(texturePath);
+        if (spriteIds == null || spriteIds.Count == 0)
+        {
+            spriteIds = new List<string> { "agent:missing:default:worker:adult:idle:00" };
+        }
+
+        if (!overwrite)
+        {
+            var cached = LoadSpritesFromAssetPath(spritesAssetPath);
+            if (cached.Count > 0)
+            {
+                return cached;
+            }
+        }
+
+        const int pad = 2;
+        const int columns = 5;
+        var rows = Mathf.CeilToInt(spriteIds.Count / (float)columns);
+        var width = pad + columns * (cellSize + pad);
+        var height = pad + rows * (cellSize + pad);
+        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        var fill = Enumerable.Repeat(new Color32(255, 0, 255, 255), width * height).ToArray();
+        texture.SetPixels32(fill);
+
+        for (var i = 0; i < spriteIds.Count; i++)
+        {
+            var col = i % columns;
+            var row = i / columns;
+            var startX = pad + col * (cellSize + pad);
+            var startY = pad + row * (cellSize + pad);
+            for (var y = 0; y < cellSize; y++)
+            for (var x = 0; x < cellSize; x++)
+            {
+                var isChecker = ((x / 4) + (y / 4)) % 2 == 0;
+                var px = startX + x;
+                var py = startY + y;
+                fill[py * width + px] = isChecker ? new Color32(255, 0, 255, 255) : new Color32(60, 0, 60, 255);
+            }
+        }
+
+        texture.SetPixels32(fill);
+        texture.Apply(false, false);
+        File.WriteAllBytes(texturePath, texture.EncodeToPNG());
+        UnityEngine.Object.DestroyImmediate(texture);
+        AssetDatabase.ImportAsset(texturePath, ImportAssetOptions.ForceSynchronousImport);
+        SpriteBakeUtility.EnsureTextureImportSettings(texturePath);
+        AssetDatabase.ImportAsset(texturePath, ImportAssetOptions.ForceSynchronousImport);
+
+        var importedTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+        if (importedTexture == null)
+        {
+            return new List<Sprite>();
+        }
+
+        var baked = SpriteBakeUtility.BakeSpritesFromGrid(
+            importedTexture,
+            cellSize,
+            cellSize,
+            columns,
+            rows,
+            pad,
+            new Vector2(0.5f, 0.5f),
+            cellSize,
+            index => index < spriteIds.Count ? spriteIds[index] : $"placeholder:{index:000}");
+        var container = GetOrCreateSpriteSubAssetContainer(spritesAssetPath);
+        SpriteBakeUtility.AddOrReplaceSubAssets(container, baked);
+        return LoadSpritesFromAssetPath(spritesAssetPath);
+    }
+
     private static List<SheetCell> BuildOutlineCells(PackRecipe recipe, PackRecipe.EntityRequirement entity, List<string> displaySpecies)
     {
         var cells = new List<SheetCell>();
@@ -369,6 +586,8 @@ public static class PackBuildPipeline
                     var id = isAntEntity
                         ? BuildAntSpriteId(species, "worker", "adult", state, contractFrame)
                         : $"agent:{entity.entityId}:{species}:worker:adult:{state}:{contractFrame:00}";
+                    AddBasicShapesStateStripe(warped, recipe.agentSpriteSize, recipe.agentSpriteSize, state, fillColor);
+                    AddBasicShapesDirectionNoseDot(warped, recipe.agentSpriteSize, recipe.agentSpriteSize, id, fillColor);
                     cells.Add(new SheetCell { id = id, pixels = warped });
                     if (!isAntEntity || recipe.generationPolicy.includeAntMaskSpritesInMainPack)
                     {
@@ -534,6 +753,123 @@ public static class PackBuildPipeline
 
         AddOutline(result, w, h, new Color32(24, 18, 12, 255));
         return result;
+    }
+
+    private static void AddBasicShapesStateStripe(Color32[] pixels, int w, int h, string state, Color32 speciesColor)
+    {
+        var thickness = ResolveStateStripeThickness(state);
+        if (thickness <= 0) return;
+        if (!TryGetOpaqueBounds(pixels, w, h, out var minX, out var maxX, out _, out var maxY)) return;
+
+        var stripeColor = MultiplyColor(speciesColor, 0.65f);
+        var startY = Mathf.Max(0, maxY - thickness + 1);
+        for (var y = startY; y <= maxY; y++)
+        for (var x = minX; x <= maxX; x++)
+        {
+            var index = y * w + x;
+            if (pixels[index].a == 0) continue;
+            pixels[index] = stripeColor;
+        }
+    }
+
+    private static void AddBasicShapesDirectionNoseDot(Color32[] pixels, int w, int h, string spriteId, Color32 speciesColor)
+    {
+        if (!TryGetOpaqueBounds(pixels, w, h, out var minX, out var maxX, out var minY, out var maxY)) return;
+
+        var noseColor = MultiplyColor(speciesColor, 1.25f);
+        var direction = ResolveDirectionToken(spriteId);
+
+        var startX = minX;
+        var startY = minY;
+
+        switch (direction)
+        {
+            case FacingDirection.South:
+                startX = Mathf.Clamp((minX + maxX) / 2, 0, w - 2);
+                startY = Mathf.Clamp(maxY - 1, 0, h - 2);
+                break;
+            case FacingDirection.East:
+                startX = Mathf.Clamp(maxX - 1, 0, w - 2);
+                startY = Mathf.Clamp((minY + maxY) / 2, 0, h - 2);
+                break;
+            case FacingDirection.West:
+                startX = Mathf.Clamp(minX, 0, w - 2);
+                startY = Mathf.Clamp((minY + maxY) / 2, 0, h - 2);
+                break;
+            default:
+                startX = Mathf.Clamp((minX + maxX) / 2, 0, w - 2);
+                startY = Mathf.Clamp(minY, 0, h - 2);
+                break;
+        }
+
+        for (var y = 0; y < 2; y++)
+        for (var x = 0; x < 2; x++)
+        {
+            var px = Mathf.Clamp(startX + x, 0, w - 1);
+            var py = Mathf.Clamp(startY + y, 0, h - 1);
+            pixels[py * w + px] = noseColor;
+        }
+    }
+
+    private static int ResolveStateStripeThickness(string state)
+    {
+        switch ((state ?? string.Empty).ToLowerInvariant())
+        {
+            case "walk": return 1;
+            case "run": return 2;
+            case "fight": return 3;
+            default: return 0;
+        }
+    }
+
+    private static FacingDirection ResolveDirectionToken(string spriteId)
+    {
+        if (string.IsNullOrWhiteSpace(spriteId)) return FacingDirection.North;
+        var tokens = spriteId.Split(':');
+        foreach (var token in tokens)
+        {
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "n":
+                case "north": return FacingDirection.North;
+                case "s":
+                case "south": return FacingDirection.South;
+                case "e":
+                case "east": return FacingDirection.East;
+                case "w":
+                case "west": return FacingDirection.West;
+            }
+        }
+
+        return FacingDirection.North;
+    }
+
+    private static bool TryGetOpaqueBounds(Color32[] pixels, int w, int h, out int minX, out int maxX, out int minY, out int maxY)
+    {
+        minX = w;
+        maxX = -1;
+        minY = h;
+        maxY = -1;
+
+        for (var y = 0; y < h; y++)
+        for (var x = 0; x < w; x++)
+        {
+            if (pixels[y * w + x].a == 0) continue;
+            minX = Mathf.Min(minX, x);
+            maxX = Mathf.Max(maxX, x);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+
+        return maxX >= minX && maxY >= minY;
+    }
+
+    private enum FacingDirection
+    {
+        North,
+        South,
+        East,
+        West
     }
 
     private static void ApplyFlatShading(bool[] mask, int w, int h, Color32 fillColor, Color32[] dst)
@@ -856,11 +1192,27 @@ public static class PackBuildPipeline
 
     private static List<Sprite> CompileSheet(string path, List<SheetCell> cells, int cellSize, bool overwrite, string simulationId, CompileSheetOptions options)
     {
-        if (!overwrite && File.Exists(path)) return AssetDatabase.LoadAllAssetRepresentationsAtPath(path).OfType<Sprite>().OrderBy(s => s.name).ToList();
+        var spritesAssetPath = BuildSpritesAssetPath(path);
+        if (!overwrite)
+        {
+            var cached = LoadSpritesFromAssetPath(spritesAssetPath);
+            if (cached.Count > 0)
+            {
+                Debug.Log($"[PackBuildPipeline] Reusing existing sprite container at '{spritesAssetPath}' with {cached.Count} sprites.");
+                return cached;
+            }
+        }
+        if (cells == null || cells.Count == 0)
+        {
+            Debug.LogWarning($"[PackBuildPipeline] CompileSheet called with 0 cells for path '{path}'. Returning empty list so fallback can generate placeholders.");
+            return new List<Sprite>();
+        }
+        if (cellSize <= 0) return new List<Sprite>();
         var columns = Mathf.Clamp(Mathf.CeilToInt(Mathf.Sqrt(Mathf.Max(1, cells.Count))), 1, 64);
-        var rows = Mathf.CeilToInt(cells.Count / (float)columns);
+        var rows = Mathf.Max(1, Mathf.CeilToInt(cells.Count / (float)columns));
         var width = columns * cellSize;
         var height = rows * cellSize;
+        Debug.Log($"[PackBuildPipeline] CompileSheet sheetPath='{path}', spritesAssetPath='{spritesAssetPath}', cellCount={cells.Count}, columns={columns}, rows={rows}, width={width}, height={height}");
         var pixels = new Color32[width * height];
 
         for (var i = 0; i < cells.Count; i++)
@@ -900,16 +1252,93 @@ public static class PackBuildPipeline
             BlueprintRasterizer.Render(cells[i].mask, "stripe", cellSize, (int)rect.x, (int)rect.y, Color.white, pixels, width);
         }
 
-        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-        texture.SetPixels32(pixels);
-        texture.Apply(false, false);
-        File.WriteAllBytes(path, texture.EncodeToPNG());
-        UnityEngine.Object.DestroyImmediate(texture);
-        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+        var container = GetOrCreateSpriteSubAssetContainer(spritesAssetPath);
+        foreach (var subAsset in AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath))
+        {
+            if (subAsset == null || ReferenceEquals(subAsset, container))
+            {
+                continue;
+            }
 
-        var rects = new List<SpriteRect>(cells.Count);
-        for (var i = 0; i < cells.Count; i++) rects.Add(new SpriteRect { name = cells[i].id, rect = SheetLayout.CellRect(i, columns, cellSize, cells.Count), alignment = SpriteAlignment.Center, pivot = new Vector2(0.5f, 0.5f), spriteID = GUID.Generate() });
-        return ImportSettingsUtil.ConfigureAsPixelArtMultiple(path, cellSize, rects);
+            if (subAsset is Sprite || subAsset is Texture2D)
+            {
+                UnityEngine.Object.DestroyImmediate(subAsset, true);
+            }
+        }
+
+        var sheetTex = new Texture2D(width, height, TextureFormat.RGBA32, false)
+        {
+            name = Path.GetFileNameWithoutExtension(path) + "_sheet",
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+        sheetTex.SetPixels32(pixels);
+        sheetTex.Apply(false, false);
+        AssetDatabase.AddObjectToAsset(sheetTex, container);
+
+        EditorUtility.SetDirty(container);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.ImportAsset(spritesAssetPath, ImportAssetOptions.ForceSynchronousImport);
+
+        Debug.Log($"[PackBuildPipeline] CompileSheet created sub-asset sheet '{sheetTex.name}' ({sheetTex.width}x{sheetTex.height}) in '{spritesAssetPath}'.");
+
+        var sprites = SpriteBakeUtility.BakeSpritesFromGrid(
+            sheetTex,
+            cellSize,
+            cellSize,
+            columns,
+            rows,
+            0,
+            new Vector2(0.5f, 0.5f),
+            cellSize,
+            index => index < cells.Count ? cells[index].id : $"sheet:{index:000}");
+        Debug.Log($"[PackBuildPipeline] CompileSheet bakedSprites.Count={sprites.Count} for sheetPath='{path}'");
+
+        if (sprites.Count > 0)
+        {
+            var firstSprite = sprites[0];
+            Debug.Log($"First sprite texture null? {sprites[0].texture == null} texName={sprites[0].texture?.name}");
+            if (firstSprite.texture == null)
+            {
+                Debug.LogError($"[PackBuildPipeline] First baked sprite '{firstSprite.name}' has null texture for sheetPath='{path}'. Failing fast.");
+                return new List<Sprite>();
+            }
+        }
+
+        SpriteBakeUtility.AddOrReplaceSubAssets(container, sprites);
+
+        File.WriteAllBytes(path, sheetTex.EncodeToPNG());
+        AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+        SpriteBakeUtility.EnsureTextureImportSettings(path);
+
+        return LoadSpritesFromAssetPath(spritesAssetPath);
+    }
+
+    private static string BuildSpritesAssetPath(string texturePath)
+    {
+        return $"{Path.GetDirectoryName(texturePath)}/{Path.GetFileNameWithoutExtension(texturePath)}_sprites.asset".Replace("\\", "/");
+    }
+
+    private static SpriteSubAssetContainer GetOrCreateSpriteSubAssetContainer(string spritesAssetPath)
+    {
+        var container = AssetDatabase.LoadAssetAtPath<SpriteSubAssetContainer>(spritesAssetPath);
+        if (container != null)
+        {
+            return container;
+        }
+
+        container = ScriptableObject.CreateInstance<SpriteSubAssetContainer>();
+        container.name = Path.GetFileNameWithoutExtension(spritesAssetPath);
+        AssetDatabase.CreateAsset(container, spritesAssetPath);
+        return container;
+    }
+
+    private static List<Sprite> LoadSpritesFromAssetPath(string spritesAssetPath)
+    {
+        return AssetDatabase.LoadAllAssetsAtPath(spritesAssetPath)
+            .OfType<Sprite>()
+            .OrderBy(s => s.name, StringComparer.Ordinal)
+            .ToList();
     }
 
     private static void RenderAntLayers(SheetCell cell, int cellSize, int ox, int oy, Color32[] pixels, int width, Color32 fallbackBaseColor, bool renderStripeOverlay)

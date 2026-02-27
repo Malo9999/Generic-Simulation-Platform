@@ -8,6 +8,7 @@ public static class RenderOrder
     public const int WorldBase = 0;
     public const int WorldTiles = WorldBase + 0;
     public const int WorldDeco = WorldBase + 200;
+    public const int GroundDecor = WorldDeco; // Backward-compatible alias
     public const int WorldAbove = WorldBase + 400;
 
     // Entities (ALL sims)

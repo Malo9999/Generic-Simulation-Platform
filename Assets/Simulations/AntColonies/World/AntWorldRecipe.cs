@@ -60,7 +60,7 @@ public class AntWorldRecipe
 
     public void Normalize()
     {
-        nestCount = 5;
+        nestCount = Mathf.Clamp(nestCount, 1, 64);
         nestMinDistance = Mathf.Max(2f, nestMinDistance);
         nestBorderMargin = Mathf.Max(0.5f, nestBorderMargin);
         nestHp = Mathf.Max(1, nestHp);
@@ -118,11 +118,22 @@ public class AntWorldRecipe
 [Serializable]
 public class AntColoniesConfig
 {
+    public int nestCount = 2;
+    public int antsPerNest = 12;
+    public int maxAntsTotal = 50;
+
     public AntWorldRecipe worldRecipe = new();
 
     public void Normalize()
     {
+        nestCount = Mathf.Clamp(nestCount, 1, 64);
+        antsPerNest = Mathf.Clamp(antsPerNest, 0, 500);
+        maxAntsTotal = Mathf.Clamp(maxAntsTotal, 1, 2000);
+
         worldRecipe ??= new AntWorldRecipe();
+        worldRecipe.nestCount = nestCount;
+        worldRecipe.maxAntsGlobal = maxAntsTotal;
+        worldRecipe.maxAntsPerNest = Mathf.Clamp(worldRecipe.maxAntsPerNest, 1, maxAntsTotal);
         worldRecipe.Normalize();
     }
 }

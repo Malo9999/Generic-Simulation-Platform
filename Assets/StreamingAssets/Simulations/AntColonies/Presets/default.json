@@ -5,5 +5,10 @@
     "arenaHeight": 64,
     "walls": true,
     "obstacleDensity": 0.1
+  },
+  "antColonies": {
+    "nestCount": 2,
+    "antsPerNest": 12,
+    "maxAntsTotal": 50
   }
 }
