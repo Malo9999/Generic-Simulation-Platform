@@ -145,6 +145,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         Debug.Log($"[MarbleRace] Track built: samples={track.SampleCount} minHalfWidth={minHalfWidth:F2} maxHalfWidth={maxHalfWidth:F2} fallback={fallbackUsed}");
 
         trackRenderer.Apply(sceneGraph.DecorRoot, track);
+        LogTrackValidation();
         BuildMarbles(seed);
         EnsureRankingBuffer(GetSafeCount());
 
@@ -282,8 +283,9 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
+        simulationSeed = GenerateNextTrackSeed(simulationSeed);
         trackVariant++;
-        Debug.Log($"[MarbleRace] ForceNewTrack trackVariant={trackVariant}");
+        Debug.Log($"[MarbleRace] ForceNewTrack seed={simulationSeed} trackVariant={trackVariant}");
         RebuildTrackAndResetToReady();
     }
 
@@ -933,6 +935,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         trackRenderer.Apply(sceneGraph.DecorRoot, track);
+        LogTrackValidation();
 
         if (marbles == null || marbles.Length != marbleCount)
         {
@@ -947,6 +950,20 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         winnerIndex = -1;
         elapsedTime = 0f;
         finishTime = 0f;
+    }
+
+    private static int GenerateNextTrackSeed(int current)
+    {
+        unchecked
+        {
+            var next = current + 1;
+            if (next == current)
+            {
+                next ^= (int)0x9E3779B9;
+            }
+
+            return next;
+        }
     }
 
     private static int ResolveTrackTemplate(string preset)
@@ -982,6 +999,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             default:
                 return -1;
         }
+    }
+
+    private void LogTrackValidation()
+    {
+        var validation = MarbleRaceTrackValidator.Validate(track, marbleCount, trackRenderer != null ? trackRenderer.TrackRoot : null);
+        var status = validation.Passed ? "PASS" : "FAIL";
+        Debug.Log($"[MarbleRace] TrackValidator={status} reasons={string.Join(" | ", validation.Reasons)}");
     }
 
     private static MarbleRaceTrack PostProcessTrack(MarbleRaceTrack source, float arenaWidth, float arenaHeight, float widthJitterScale)

@@ -6,6 +6,8 @@ public sealed class MarbleRaceTrackRenderer
     private static Material sharedMaterial;
     private Transform trackRoot;
 
+    public Transform TrackRoot => trackRoot;
+
     public void Apply(Transform decorRoot, MarbleRaceTrack track)
     {
         if (decorRoot == null || track == null || track.SampleCount <= 3)
@@ -30,6 +32,7 @@ public sealed class MarbleRaceTrackRenderer
 
         BuildLayeredLines(track, roadWidth, borderWidth);
         BuildBridgeShadow(track, roadWidth);
+        BuildBoundaryColliders(track);
 
         var startFinish = EnsureLineRenderer("StartFinishLine", Color.white, 12, false, startWidth);
         var startA = track.Center[0] + (track.Normal[0] * track.HalfWidth[0]);
@@ -37,6 +40,28 @@ public sealed class MarbleRaceTrackRenderer
         startFinish.positionCount = 2;
         startFinish.SetPosition(0, new Vector3(startA.x, startA.y, 0f));
         startFinish.SetPosition(1, new Vector3(startB.x, startB.y, 0f));
+    }
+
+    private void BuildBoundaryColliders(MarbleRaceTrack track)
+    {
+        var leftCollider = EnsureEdgeCollider("TrackBoundaryInnerCollider");
+        var rightCollider = EnsureEdgeCollider("TrackBoundaryOuterCollider");
+
+        leftCollider.points = BuildBoundaryPoints(track, 1f);
+        rightCollider.points = BuildBoundaryPoints(track, -1f);
+    }
+
+    private static Vector2[] BuildBoundaryPoints(MarbleRaceTrack track, float side)
+    {
+        var n = track.SampleCount;
+        var points = new Vector2[n + 1];
+        for (var i = 0; i < n; i++)
+        {
+            points[i] = track.Center[i] + (track.Normal[i] * track.HalfWidth[i] * side);
+        }
+
+        points[n] = points[0];
+        return points;
     }
 
     public void Clear()
@@ -193,6 +218,27 @@ public sealed class MarbleRaceTrackRenderer
         }
 
         return ConfigureLineRenderer(lineTransform.gameObject, color, sortingOrder, loop, width);
+    }
+
+    private EdgeCollider2D EnsureEdgeCollider(string name)
+    {
+        var colliderTransform = trackRoot.Find(name);
+        if (colliderTransform == null)
+        {
+            var go = new GameObject(name);
+            colliderTransform = go.transform;
+            colliderTransform.SetParent(trackRoot, false);
+        }
+
+        var edgeCollider = colliderTransform.GetComponent<EdgeCollider2D>();
+        if (edgeCollider == null)
+        {
+            edgeCollider = colliderTransform.gameObject.AddComponent<EdgeCollider2D>();
+        }
+
+        edgeCollider.edgeRadius = 0.02f;
+        edgeCollider.enabled = true;
+        return edgeCollider;
     }
 
     private static LineRenderer ConfigureLineRenderer(GameObject go, Color color, int sortingOrder, bool loop, float width)
