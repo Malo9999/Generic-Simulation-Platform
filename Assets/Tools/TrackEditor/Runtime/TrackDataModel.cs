@@ -32,43 +32,6 @@ namespace GSP.TrackEditor
         public Vector2[] localRightBoundary;
     }
 
-    [CreateAssetMenu(menuName = "GSP/Track Editor/Track Piece Definition", fileName = "TrackPieceDef")]
-    public class TrackPieceDef : ScriptableObject
-    {
-        public string pieceId;
-        public string displayName;
-        public string category;
-        public float trackWidth = 8f;
-        public TrackConnector[] connectors;
-        public TrackSegment[] segments;
-        public Rect localBounds = new Rect(-10f, -10f, 20f, 20f);
-    }
-
-    [CreateAssetMenu(menuName = "GSP/Track Editor/Track Piece Library", fileName = "TrackPieceLibrary")]
-    public class TrackPieceLibrary : ScriptableObject
-    {
-        public List<TrackPieceDef> pieces = new();
-
-    #if UNITY_EDITOR
-        public void RefreshFromAssets()
-        {
-            pieces.Clear();
-            var guids = UnityEditor.AssetDatabase.FindAssets("t:TrackPieceDef");
-            foreach (var guid in guids)
-            {
-                var path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
-                var piece = UnityEditor.AssetDatabase.LoadAssetAtPath<TrackPieceDef>(path);
-                if (piece != null)
-                {
-                    pieces.Add(piece);
-                }
-            }
-
-            UnityEditor.EditorUtility.SetDirty(this);
-        }
-    #endif
-    }
-
     [Serializable]
     public class PlacedPiece
     {
@@ -105,31 +68,4 @@ namespace GSP.TrackEditor
         public Vector2 dir;
     }
 
-    [CreateAssetMenu(menuName = "GSP/Track Editor/Track Layout", fileName = "TrackLayout")]
-    public class TrackLayout : ScriptableObject
-    {
-        public List<PlacedPiece> pieces = new();
-        public List<ConnectorLink> links = new();
-        public StartFinishMarker startFinish = new();
-        public List<TrackSlot> startGridSlots = new();
-        public string pitEntryGuid;
-        public string pitExitGuid;
-        public Vector2 pan;
-        public float zoom = 1f;
-    }
-
-    [CreateAssetMenu(menuName = "GSP/Track Editor/Track Baked Data", fileName = "TrackBakedData")]
-    public class TrackBakedData : ScriptableObject
-    {
-        public float trackWidth = 8f;
-        public Vector2[] mainCenterline;
-        public Vector2[] mainLeftBoundary;
-        public Vector2[] mainRightBoundary;
-        public float lapLength;
-        public List<TrackSlot> startGridSlots = new();
-        public Vector2[] pitCenterline;
-        public Vector2[] pitLeftBoundary;
-        public Vector2[] pitRightBoundary;
-        public float[] cumulativeMainLength;
-    }
 }
