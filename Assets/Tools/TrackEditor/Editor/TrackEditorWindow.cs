@@ -29,6 +29,9 @@ namespace GSP.TrackEditor.Editor
         private string status = "Ready.";
         private int selectedPiece = -1;
         private TrackBakeUtility.ValidationReport lastValidation;
+        private TrackPieceDef _palettePressedPiece;
+        private Vector2 _palettePressedPos;
+        private bool _paletteDragStarted;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -163,19 +166,43 @@ namespace GSP.TrackEditor.Editor
                 TrackPieceLibraryEditorUtility.RefreshFromAssets(library);
             }
 
+            if (layout == null)
+            {
+                EditorGUILayout.HelpBox("Create/assign a TrackLayout to place pieces.", MessageType.Info);
+            }
+
+            var evt = Event.current;
+            if (evt.type == EventType.MouseUp)
+            {
+                _palettePressedPiece = null;
+                _paletteDragStarted = false;
+            }
+
             paletteScroll = EditorGUILayout.BeginScrollView(paletteScroll);
             foreach (var piece in library.pieces.Where(p => p != null && (string.IsNullOrWhiteSpace(search) || p.displayName.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 || p.pieceId.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)))
             {
-                var buttonRect = GUILayoutUtility.GetRect(280f, 24f);
-                if (GUI.Button(buttonRect, $"{piece.displayName} ({piece.category})"))
+                var rowRect = GUILayoutUtility.GetRect(280f, 24f);
+                GUI.Box(rowRect, GUIContent.none);
+                GUI.Label(rowRect, $"{piece.displayName} ({piece.category})", EditorStyles.label);
+                EditorGUIUtility.AddCursorRect(rowRect, MouseCursor.MoveArrow);
+
+                if (evt.type == EventType.MouseDown && evt.button == 0 && rowRect.Contains(evt.mousePosition))
                 {
-                    StartDragPiece(piece);
+                    _palettePressedPiece = piece;
+                    _palettePressedPos = evt.mousePosition;
+                    _paletteDragStarted = false;
+                    evt.Use();
                 }
 
-                if (Event.current.type == EventType.MouseDrag && buttonRect.Contains(Event.current.mousePosition))
+                if (evt.type == EventType.MouseDrag && _palettePressedPiece == piece && !_paletteDragStarted)
                 {
-                    StartDragPiece(piece);
-                    Event.current.Use();
+                    var delta = evt.mousePosition - _palettePressedPos;
+                    if (delta.sqrMagnitude > 16f)
+                    {
+                        StartDragPiece(piece);
+                        _paletteDragStarted = true;
+                        evt.Use();
+                    }
                 }
             }
             EditorGUILayout.EndScrollView();
@@ -185,6 +212,12 @@ namespace GSP.TrackEditor.Editor
 
         private void StartDragPiece(TrackPieceDef piece)
         {
+            var t = Event.current?.type ?? EventType.Ignore;
+            if (t != EventType.MouseDown && t != EventType.MouseDrag)
+            {
+                return;
+            }
+
             DragAndDrop.PrepareStartDrag();
             DragAndDrop.objectReferences = new UnityEngine.Object[] { piece };
             DragAndDrop.SetGenericData("TrackPieceDef", piece);
