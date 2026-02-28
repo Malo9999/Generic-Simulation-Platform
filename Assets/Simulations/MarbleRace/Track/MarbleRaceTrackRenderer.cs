@@ -11,14 +11,37 @@ public sealed class MarbleRaceTrackRenderer
     private const float MiterLimit = 3.0f;
     private const int LineCornerVertices = 8;
     private const int LineCapVertices = 8;
+    private const float BorderRoundAngleThresholdDeg = 12f;
+    private const int BorderRoundStepsPerCorner = 5;
+    private const float BorderRoundInset = 0.35f;
     private const bool EnableDebugGizmos = false;
     private const int DebugNormalStride = 8;
     private const float HighAngleThresholdDeg = 35f;
 
     private static Material sharedMaterial;
     private Transform trackRoot;
+    private RenderDebugStats lastDebugStats;
 
     public Transform TrackRoot => trackRoot;
+    public RenderDebugStats LastDebugStats => lastDebugStats;
+
+    public readonly struct RenderDebugStats
+    {
+        public readonly int CenterPointCount;
+        public readonly int LeftEdgePointCount;
+        public readonly int RightEdgePointCount;
+        public readonly int RoundedLeftBorderPointCount;
+        public readonly int RoundedRightBorderPointCount;
+
+        public RenderDebugStats(int centerPointCount, int leftEdgePointCount, int rightEdgePointCount, int roundedLeftBorderPointCount, int roundedRightBorderPointCount)
+        {
+            CenterPointCount = centerPointCount;
+            LeftEdgePointCount = leftEdgePointCount;
+            RightEdgePointCount = rightEdgePointCount;
+            RoundedLeftBorderPointCount = roundedLeftBorderPointCount;
+            RoundedRightBorderPointCount = roundedRightBorderPointCount;
+        }
+    }
 
     public void Apply(Transform decorRoot, MarbleRaceTrack track)
     {
@@ -44,10 +67,17 @@ public sealed class MarbleRaceTrackRenderer
 
         var sampled = BuildStableTrackData(track, TargetSpacing, TangentWindow, MiterLimit);
 
-        BuildLayeredLines(sampled, roadWidth, borderWidth);
+        BuildLayeredLines(sampled, roadWidth, borderWidth, out var roundedLeftCount, out var roundedRightCount);
         BuildBridgeShadow(sampled, roadWidth);
         BuildBoundaryColliders(sampled);
         ConfigureDebugGizmos(sampled);
+
+        lastDebugStats = new RenderDebugStats(
+            sampled.Center.Length,
+            sampled.LeftEdge.Length,
+            sampled.RightEdge.Length,
+            roundedLeftCount,
+            roundedRightCount);
 
         var startFinish = EnsureLineRenderer("StartFinishLine", Color.white, 12, false, startWidth);
         var startA = sampled.LeftEdge[0];
@@ -114,7 +144,7 @@ public sealed class MarbleRaceTrackRenderer
 #endif
     }
 
-    private void BuildLayeredLines(SampledTrackData sampled, float roadWidth, float borderWidth)
+    private void BuildLayeredLines(SampledTrackData sampled, float roadWidth, float borderWidth, out int roundedLeftCount, out int roundedRightCount)
     {
         var runs = BuildLayerRuns(sampled.Layer);
         if (runs.Count == 0)
@@ -129,19 +159,19 @@ public sealed class MarbleRaceTrackRenderer
         var outerGround = EnsureLineRenderer("TrackOuterBorder_Ground", new Color(0.90f, 0.90f, 0.92f, 0.95f), 10, false, borderWidth);
         var outerBridge = EnsureLineRenderer("TrackOuterBorder_Bridge", new Color(0.93f, 0.93f, 0.95f, 1f), 20, false, borderWidth);
 
-        SetLineFromRuns(sampled, laneGround, runs, 0, sampled.Center);
-        SetLineFromRuns(sampled, laneBridge, runs, 1, sampled.Center);
-        SetLineFromRuns(sampled, innerGround, runs, 0, sampled.LeftEdge);
-        SetLineFromRuns(sampled, innerBridge, runs, 1, sampled.LeftEdge);
-        SetLineFromRuns(sampled, outerGround, runs, 0, sampled.RightEdge);
-        SetLineFromRuns(sampled, outerBridge, runs, 1, sampled.RightEdge);
+        SetLineFromRuns(sampled, laneGround, runs, 0, sampled.Center, false);
+        SetLineFromRuns(sampled, laneBridge, runs, 1, sampled.Center, false);
+        roundedLeftCount = SetLineFromRuns(sampled, innerGround, runs, 0, sampled.LeftEdge, true);
+        SetLineFromRuns(sampled, innerBridge, runs, 1, sampled.LeftEdge, true);
+        roundedRightCount = SetLineFromRuns(sampled, outerGround, runs, 0, sampled.RightEdge, true);
+        SetLineFromRuns(sampled, outerBridge, runs, 1, sampled.RightEdge, true);
     }
 
     private void BuildBridgeShadow(SampledTrackData sampled, float roadWidth)
     {
         var shadow = EnsureLineRenderer("TrackBridgeShadow", new Color(0f, 0f, 0f, 0.3f), 14, false, roadWidth * 1.2f);
         var runs = BuildLayerRuns(sampled.Layer);
-        SetLineFromRuns(sampled, shadow, runs, 1, sampled.Center);
+        SetLineFromRuns(sampled, shadow, runs, 1, sampled.Center, false);
     }
 
     private static List<LayerRun> BuildLayerRuns(sbyte[] layer)
@@ -185,7 +215,7 @@ public sealed class MarbleRaceTrackRenderer
         return runs;
     }
 
-    private static void SetLineFromRuns(SampledTrackData sampled, LineRenderer lr, List<LayerRun> runs, int targetLayer, Vector2[] source)
+    private static int SetLineFromRuns(SampledTrackData sampled, LineRenderer lr, List<LayerRun> runs, int targetLayer, Vector2[] source, bool applyRoundedCorners)
     {
         var points = new List<Vector3>(sampled.SampleCount + 8);
         for (var r = 0; r < runs.Count; r++)
@@ -206,6 +236,11 @@ public sealed class MarbleRaceTrackRenderer
             }
         }
 
+        if (applyRoundedCorners)
+        {
+            points = RoundCorners(points, BorderRoundAngleThresholdDeg, BorderRoundStepsPerCorner);
+        }
+
         lr.positionCount = points.Count;
         if (points.Count > 0)
         {
@@ -216,6 +251,65 @@ public sealed class MarbleRaceTrackRenderer
         {
             lr.enabled = false;
         }
+
+        return points.Count;
+    }
+
+    private static List<Vector3> RoundCorners(List<Vector3> points, float angleThresholdDeg, int stepsPerCorner)
+    {
+        if (points == null || points.Count < 3)
+        {
+            return points;
+        }
+
+        var rounded = new List<Vector3>(points.Count + (stepsPerCorner * points.Count / 2));
+        rounded.Add(points[0]);
+
+        for (var i = 1; i < points.Count - 1; i++)
+        {
+            var prev = (Vector2)points[i - 1];
+            var current = (Vector2)points[i];
+            var next = (Vector2)points[i + 1];
+
+            var incoming = current - prev;
+            var outgoing = next - current;
+            var incomingLength = incoming.magnitude;
+            var outgoingLength = outgoing.magnitude;
+            if (incomingLength <= 1e-4f || outgoingLength <= 1e-4f)
+            {
+                rounded.Add(points[i]);
+                continue;
+            }
+
+            var incomingDir = incoming / incomingLength;
+            var outgoingDir = outgoing / outgoingLength;
+            var angle = Vector2.Angle(incomingDir, outgoingDir);
+            if (angle < angleThresholdDeg)
+            {
+                rounded.Add(points[i]);
+                continue;
+            }
+
+            var inset = Mathf.Min(incomingLength, outgoingLength) * BorderRoundInset;
+            inset = Mathf.Clamp(inset, 0.05f, 1.0f);
+
+            var inPoint = current - (incomingDir * inset);
+            var outPoint = current + (outgoingDir * inset);
+            rounded.Add(inPoint);
+
+            for (var step = 1; step <= stepsPerCorner; step++)
+            {
+                var t = step / (float)(stepsPerCorner + 1);
+                var oneMinusT = 1f - t;
+                var bezier = (oneMinusT * oneMinusT * inPoint) + (2f * oneMinusT * t * current) + (t * t * outPoint);
+                rounded.Add(bezier);
+            }
+
+            rounded.Add(outPoint);
+        }
+
+        rounded.Add(points[points.Count - 1]);
+        return rounded;
     }
 
     private Transform EnsureTrackRoot(Transform decorRoot)
