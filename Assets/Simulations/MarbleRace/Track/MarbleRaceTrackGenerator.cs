@@ -3,8 +3,12 @@ using UnityEngine;
 
 public sealed class MarbleRaceTrackGenerator
 {
-    private const int TargetSamples = 512;
-    private const int TemplateCount = 10;
+    private const int TargetSamples = 384;
+    private const int DenseSamples = 320;
+    private const int MinControlPointCount = 12;
+    private const int MaxControlPointCount = 16;
+    private const int MaxAttempts = 30;
+    private const int QualityThreshold = 75;
 
     public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int variant)
     {
@@ -17,45 +21,72 @@ public sealed class MarbleRaceTrackGenerator
         var safeHalfH = Mathf.Max(12f, arenaHalfHeight);
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
         var sourceSeed = rng != null ? rng.Seed : variant;
-        var v = Mathf.Abs(variant) % TemplateCount;
 
-        fallback = true;
-        MarbleRaceTrack track = null;
+        MarbleRaceTrack bestTrack = null;
+        var bestScore = int.MinValue;
 
-        for (var attempt = 0; attempt < 12; attempt++)
+        for (var attempt = 0; attempt < MaxAttempts; attempt++)
         {
-            var attemptSeed = StableMix(sourceSeed, variant, v, attempt);
+            var attemptSeed = StableMix(sourceSeed, variant, attempt, 0x2D2816FE);
             var attemptRng = new SeededRng(attemptSeed);
-            var raw = BuildPolyline(safeHalfW, safeHalfH, attemptRng, v);
-            if (raw == null || raw.Count < 12)
+            var controlPoints = BuildPolarControlPoints(safeHalfW, safeHalfH, attemptRng);
+            if (controlPoints == null || controlPoints.Count < 6)
             {
                 continue;
             }
 
-            CloseLoopByDrift(raw);
-            ClampInside(raw, safeHalfW - 3f, safeHalfH - 3f);
-            var smooth = ApplyChaikin(raw, 1);
-            var center = ResampleArcLengthClosed(smooth, TargetSamples);
+            var denseSpline = SampleClosedCentripetalCatmullRom(controlPoints, DenseSamples);
+            if (denseSpline == null || denseSpline.Length < 32)
+            {
+                continue;
+            }
+
+            var equalized = ResampleArcLengthClosed(denseSpline, TargetSamples);
+            if (equalized == null)
+            {
+                continue;
+            }
+
+            var smoothed = ApplyChaikin(equalized, 1);
+            var center = ResampleArcLengthClosed(smoothed, TargetSamples);
             if (center == null)
             {
                 continue;
             }
 
-            if (TryBuildTrack(center, minDim, out track))
+            ClampInside(center, safeHalfW - 3f, safeHalfH - 3f);
+
+            if (!TryBuildTrack(center, minDim, out var candidate))
+            {
+                continue;
+            }
+
+            var quality = MarbleRaceTrackValidator.EvaluateQuality(candidate);
+            if (quality.Score > bestScore)
+            {
+                bestScore = quality.Score;
+                bestTrack = candidate;
+            }
+
+            if (quality.Score >= QualityThreshold)
             {
                 fallback = false;
-                break;
+                Debug.Log($"[TrackGen] variant={variant} accepted attempt={attempt + 1}/{MaxAttempts} score={quality.Score}");
+                return candidate;
             }
         }
 
-        if (fallback)
+        if (bestTrack != null)
         {
-            track = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH, variant);
+            fallback = bestScore < QualityThreshold;
+            Debug.Log($"[TrackGen] variant={variant} bestOfN score={bestScore} attempts={MaxAttempts}");
+            return bestTrack;
         }
 
-        Debug.Log($"[TrackGen] variant={variant} template={v} usedFallback={(fallback ? 1 : 0)}");
-
-        return track;
+        fallback = true;
+        var backup = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH, variant);
+        Debug.Log($"[TrackGen] variant={variant} generated fallback rounded rectangle");
+        return backup;
     }
 
     public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int seed, int variant, int fixedTemplateId, out bool fallbackUsed)
@@ -96,256 +127,132 @@ public sealed class MarbleRaceTrackGenerator
         return track;
     }
 
-    private static List<Vector2> BuildPolyline(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int template)
+    private static List<Vector2> BuildPolarControlPoints(float arenaHalfWidth, float arenaHalfHeight, IRng rng)
     {
-        var points = new List<Vector2>(256) { Vector2.zero };
-        var pos = Vector2.zero;
-        var heading = Vector2.right;
-        var localRng = rng ?? new SeededRng(template);
-        var radiusScale = Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.115f * localRng.Range(0.92f, 1.08f);
-        var straightScale = Mathf.Min(arenaHalfWidth, arenaHalfHeight) * 0.34f * localRng.Range(0.9f, 1.1f);
+        var localRng = rng ?? new SeededRng(0x4F1BBCDC);
+        var controlPointCount = localRng.Range(MinControlPointCount, MaxControlPointCount + 1);
+        var minHalf = Mathf.Min(arenaHalfWidth, arenaHalfHeight);
+        var margin = Mathf.Clamp(minHalf * 0.18f, 2.5f, 7.5f);
+        var maxAllowedRadius = Mathf.Max(3f, minHalf - margin);
+        var baseRadius = maxAllowedRadius * localRng.Range(0.74f, 0.86f);
+        var angleStep = (Mathf.PI * 2f) / controlPointCount;
 
-        switch (template)
+        var points = new List<Vector2>(controlPointCount);
+        var minNeighborDistance = maxAllowedRadius * 0.3f;
+
+        for (var i = 0; i < controlPointCount; i++)
         {
-            case 0:
-                DoStraight(ref pos, heading, straightScale * 0.9f, points);
-                DoArc(ref pos, ref heading, radiusScale, 45f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 35f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 40f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.5f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 55f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.55f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 30f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 42f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.6f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 60f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale, 38f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.15f, 48f, true, points);
-                break;
-            case 1:
-                DoStraight(ref pos, heading, straightScale * 0.7f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 50f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.35f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.75f, 32f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.75f, 36f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale, 70f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.55f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 40f, false, points);
-                DoStraight(ref pos, heading, straightScale * 0.3f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 44f, true, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.2f, 66f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale, 28f, false, points);
-                DoArc(ref pos, ref heading, radiusScale, 34f, true, points);
-                break;
-            case 2:
-                DoStraight(ref pos, heading, straightScale * 0.8f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 42f, true, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 35f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 38f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.6f, points);
-                DoArc(ref pos, ref heading, radiusScale, 62f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.8f, 30f, false, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 58f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.5f, points);
-                DoArc(ref pos, ref heading, radiusScale, 33f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 45f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.55f, points);
-                break;
-            case 3:
-                DoStraight(ref pos, heading, straightScale * 0.75f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 48f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.35f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 30f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 28f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.35f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.15f, 72f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.65f, points);
-                DoArc(ref pos, ref heading, radiusScale, 40f, false, points);
-                DoArc(ref pos, ref heading, radiusScale, 40f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.5f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 64f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 36f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 36f, true, points);
-                break;
-            case 4:
-                DoStraight(ref pos, heading, straightScale * 0.95f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.2f, 52f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.7f, 34f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.7f, 34f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.5f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 60f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.65f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 37f, false, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 46f, true, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 50f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.35f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 30f, false, points);
-                DoArc(ref pos, ref heading, radiusScale, 30f, true, points);
-                break;
-            case 5:
-                DoStraight(ref pos, heading, straightScale * 0.85f, points);
-                DoArc(ref pos, ref heading, radiusScale, 44f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.8f, 26f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.8f, 34f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.35f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 68f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.55f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 42f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 46f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.15f, 62f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 30f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 40f, true, points);
-                break;
-            case 6:
-                DoStraight(ref pos, heading, straightScale * 0.8f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 50f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.8f, 32f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 32f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.6f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.2f, 70f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.55f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 44f, false, points);
-                DoStraight(ref pos, heading, straightScale * 0.35f, points);
-                DoArc(ref pos, ref heading, radiusScale, 44f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.15f, 55f, true, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 30f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 30f, true, points);
-                break;
-            case 7:
-                DoStraight(ref pos, heading, straightScale * 0.75f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 42f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.75f, 28f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.75f, 31f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.5f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 66f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.6f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 45f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 36f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.2f, 58f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 34f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 38f, true, points);
-                break;
-            case 8:
-                DoStraight(ref pos, heading, straightScale * 0.88f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.05f, 47f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.35f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 30f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 41f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.5f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.15f, 62f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.65f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 39f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 36f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 52f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.3f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 33f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 44f, true, points);
-                break;
-            default:
-                DoStraight(ref pos, heading, straightScale * 0.85f, points);
-                DoArc(ref pos, ref heading, radiusScale, 43f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.85f, 28f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 36f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.55f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.2f, 65f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.5f, points);
-                DoArc(ref pos, ref heading, radiusScale, 43f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 37f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.45f, points);
-                DoArc(ref pos, ref heading, radiusScale * 1.1f, 54f, true, points);
-                DoStraight(ref pos, heading, straightScale * 0.4f, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.9f, 30f, false, points);
-                DoArc(ref pos, ref heading, radiusScale * 0.95f, 40f, true, points);
-                break;
+            var baseAngle = i * angleStep;
+            var angleJitter = localRng.Range(-angleStep * 0.25f, angleStep * 0.25f);
+            var angle = baseAngle + angleJitter;
+
+            var radiusJitter = localRng.Range(-baseRadius * 0.25f, baseRadius * 0.25f);
+            var radius = Mathf.Clamp(baseRadius + radiusJitter, baseRadius * 0.62f, maxAllowedRadius);
+
+            var p = new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius);
+            if (i > 0)
+            {
+                var prev = points[i - 1];
+                var d = Vector2.Distance(prev, p);
+                if (d < minNeighborDistance)
+                {
+                    var toPrev = (p - prev).normalized;
+                    if (toPrev.sqrMagnitude < 1e-4f)
+                    {
+                        toPrev = new Vector2(Mathf.Cos(baseAngle), Mathf.Sin(baseAngle)).normalized;
+                    }
+
+                    p = prev + (toPrev * minNeighborDistance);
+                    var clampedRadius = Mathf.Clamp(p.magnitude, baseRadius * 0.62f, maxAllowedRadius);
+                    p = p.normalized * clampedRadius;
+                }
+            }
+
+            points.Add(p);
+        }
+
+        var first = points[0];
+        var last = points[points.Count - 1];
+        var endDist = Vector2.Distance(first, last);
+        if (endDist < minNeighborDistance)
+        {
+            var dir = (last - first).normalized;
+            if (dir.sqrMagnitude < 1e-4f)
+            {
+                dir = (last + first).normalized;
+            }
+
+            last = first + (dir * minNeighborDistance);
+            var r = Mathf.Clamp(last.magnitude, baseRadius * 0.62f, maxAllowedRadius);
+            points[points.Count - 1] = last.normalized * r;
         }
 
         return points;
     }
 
-    private static void DoStraight(ref Vector2 pos, Vector2 heading, float distance, List<Vector2> outPoints)
+    private static Vector2[] SampleClosedCentripetalCatmullRom(List<Vector2> controlPoints, int sampleCount)
     {
-        var samples = Mathf.Max(2, Mathf.CeilToInt(distance / 2.8f));
-        for (var i = 1; i <= samples; i++)
+        if (controlPoints == null || controlPoints.Count < 4 || sampleCount < 16)
         {
-            var p = pos + (heading * distance * (i / (float)samples));
-            AddUnique(outPoints, p);
+            return null;
         }
 
-        pos += heading * distance;
+        var n = controlPoints.Count;
+        var output = new Vector2[sampleCount];
+
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var u = i / (float)sampleCount;
+            var segmentF = u * n;
+            var seg = Mathf.FloorToInt(segmentF) % n;
+            var t = segmentF - Mathf.Floor(segmentF);
+
+            var p0 = controlPoints[(seg - 1 + n) % n];
+            var p1 = controlPoints[seg];
+            var p2 = controlPoints[(seg + 1) % n];
+            var p3 = controlPoints[(seg + 2) % n];
+
+            output[i] = EvaluateCentripetalCatmullRom(p0, p1, p2, p3, t);
+        }
+
+        return output;
     }
 
-    private static void DoArc(ref Vector2 pos, ref Vector2 heading, float radius, float angleDeg, bool left, List<Vector2> outPoints)
+    private static Vector2 EvaluateCentripetalCatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
     {
-        var side = left ? new Vector2(-heading.y, heading.x) : new Vector2(heading.y, -heading.x);
-        var center = pos + (side * radius);
-        var start = pos - center;
-        var signed = left ? angleDeg : -angleDeg;
-        var steps = Mathf.Max(4, Mathf.CeilToInt(Mathf.Abs(angleDeg) / 8f));
+        const float alpha = 0.5f;
+        var t0 = 0f;
+        var t1 = t0 + Mathf.Pow(Vector2.Distance(p0, p1), alpha);
+        var t2 = t1 + Mathf.Pow(Vector2.Distance(p1, p2), alpha);
+        var t3 = t2 + Mathf.Pow(Vector2.Distance(p2, p3), alpha);
 
-        for (var i = 1; i <= steps; i++)
+        if (Mathf.Abs(t1 - t0) < 1e-4f || Mathf.Abs(t2 - t1) < 1e-4f || Mathf.Abs(t3 - t2) < 1e-4f)
         {
-            var t = i / (float)steps;
-            var rot = Quaternion.Euler(0f, 0f, signed * t);
-            var p = center + (Vector2)(rot * start);
-            AddUnique(outPoints, p);
+            return Vector2.Lerp(p1, p2, t);
         }
 
-        var endRot = Quaternion.Euler(0f, 0f, signed);
-        pos = center + (Vector2)(endRot * start);
-        heading = ((Vector2)(endRot * heading)).normalized;
+        var tt = Mathf.Lerp(t1, t2, t);
+
+        var a1 = ((t1 - tt) / (t1 - t0) * p0) + ((tt - t0) / (t1 - t0) * p1);
+        var a2 = ((t2 - tt) / (t2 - t1) * p1) + ((tt - t1) / (t2 - t1) * p2);
+        var a3 = ((t3 - tt) / (t3 - t2) * p2) + ((tt - t2) / (t3 - t2) * p3);
+
+        var b1 = ((t2 - tt) / (t2 - t0) * a1) + ((tt - t0) / (t2 - t0) * a2);
+        var b2 = ((t3 - tt) / (t3 - t1) * a2) + ((tt - t1) / (t3 - t1) * a3);
+
+        return ((t2 - tt) / (t2 - t1) * b1) + ((tt - t1) / (t2 - t1) * b2);
     }
 
-    private static void CloseLoopByDrift(List<Vector2> pts)
+    private static void ClampInside(Vector2[] pts, float halfW, float halfH)
     {
-        if (pts == null || pts.Count < 3) return;
-        var start = pts[0];
-        var end = pts[pts.Count - 1];
-        var delta = end - start;
-        if (delta.sqrMagnitude < 0.0001f)
-        {
-            pts[pts.Count - 1] = start;
-            return;
-        }
-
-        var last = pts.Count - 1;
-        for (var i = 0; i <= last; i++)
-        {
-            var t = i / (float)last;
-            pts[i] -= delta * t;
-        }
-
-        pts[last] = start;
-    }
-
-    private static void ClampInside(List<Vector2> pts, float halfW, float halfH)
-    {
-        for (var i = 0; i < pts.Count; i++)
+        for (var i = 0; i < pts.Length; i++)
         {
             var p = pts[i];
             pts[i] = new Vector2(Mathf.Clamp(p.x, -halfW, halfW), Mathf.Clamp(p.y, -halfH, halfH));
         }
     }
 
-    private static List<Vector2> ApplyChaikin(List<Vector2> points, int passes)
+    private static Vector2[] ApplyChaikin(Vector2[] points, int passes)
     {
         if (points == null)
         {
@@ -355,7 +262,7 @@ public sealed class MarbleRaceTrackGenerator
         var outPts = new List<Vector2>(points);
         if (passes <= 0 || outPts.Count < 4)
         {
-            return outPts;
+            return outPts.ToArray();
         }
 
         for (var pass = 0; pass < passes; pass++)
@@ -367,32 +274,28 @@ public sealed class MarbleRaceTrackGenerator
             {
                 var p0 = src[i];
                 var p1 = src[(i + 1) % n];
-                var q = Vector2.Lerp(p0, p1, 0.25f);
-                var r = Vector2.Lerp(p0, p1, 0.75f);
-                outPts.Add(q);
-                outPts.Add(r);
+                outPts.Add(Vector2.Lerp(p0, p1, 0.25f));
+                outPts.Add(Vector2.Lerp(p0, p1, 0.75f));
             }
         }
 
-        return outPts;
+        return outPts.ToArray();
     }
 
-    private static Vector2[] ResampleArcLengthClosed(List<Vector2> points, int target)
+    private static Vector2[] ResampleArcLengthClosed(Vector2[] points, int target)
     {
-        if (points == null || points.Count < 3)
+        if (points == null || points.Length < 3)
         {
             return null;
         }
 
-        var n = points.Count;
+        var n = points.Length;
         var lengths = new float[n + 1];
         var total = 0f;
         lengths[0] = 0f;
         for (var i = 0; i < n; i++)
         {
-            var a = points[i];
-            var b = points[(i + 1) % n];
-            total += Vector2.Distance(a, b);
+            total += Vector2.Distance(points[i], points[(i + 1) % n]);
             lengths[i + 1] = total;
         }
 
@@ -411,11 +314,9 @@ public sealed class MarbleRaceTrackGenerator
                 seg++;
             }
 
-            var segStart = points[seg];
-            var segEnd = points[(seg + 1) % n];
             var segLen = Mathf.Max(1e-6f, lengths[seg + 1] - lengths[seg]);
             var t = Mathf.Clamp01((d - lengths[seg]) / segLen);
-            outPts[i] = Vector2.Lerp(segStart, segEnd, t);
+            outPts[i] = Vector2.Lerp(points[seg], points[(seg + 1) % n], t);
         }
 
         return outPts;
@@ -429,69 +330,12 @@ public sealed class MarbleRaceTrackGenerator
             return false;
         }
 
-        if (HasSelfIntersections(center, 16, 4))
+        if (HasSelfIntersections(center, 12, 4))
         {
             return false;
         }
 
-        var n = center.Length;
-        var tangent = new Vector2[n];
-        var normal = new Vector2[n];
-        var curvature = new float[n];
-
-        for (var i = 0; i < n; i++)
-        {
-            var prev = center[(i - 1 + n) % n];
-            var next = center[(i + 1) % n];
-            var t = (next - prev).normalized;
-            if (i > 0 && Vector2.Dot(tangent[i - 1], t) < 0f)
-            {
-                t = -t;
-            }
-
-            tangent[i] = t;
-            normal[i] = new Vector2(-t.y, t.x);
-        }
-
-        var cornerCount = 0;
-        var inCorner = false;
-        var lastTurnSign = 0;
-        var signChanges = 0;
-
-        for (var i = 0; i < n; i++)
-        {
-            var prev = tangent[(i - 1 + n) % n];
-            curvature[i] = Vector2.Angle(prev, tangent[i]) / 180f;
-
-            var isCorner = curvature[i] > 0.06f;
-            if (isCorner && !inCorner)
-            {
-                cornerCount++;
-            }
-
-            inCorner = isCorner;
-
-            var cross = Cross(prev, tangent[i]);
-            var sign = cross > 0.0005f ? 1 : (cross < -0.0005f ? -1 : 0);
-            if (sign != 0)
-            {
-                if (lastTurnSign != 0 && sign != lastTurnSign)
-                {
-                    signChanges++;
-                }
-
-                lastTurnSign = sign;
-            }
-        }
-
-        if (cornerCount < 8 || signChanges < 2)
-        {
-            return false;
-        }
-
-        var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
-        var halfWidth = BuildWidths(curvature, tangent, baseHalfWidth);
-        track = new MarbleRaceTrack(center, tangent, normal, halfWidth, curvature, new sbyte[n]);
+        track = BuildTrackData(center, minDim);
         RotateToBestStraight(track);
         return true;
     }
@@ -633,22 +477,23 @@ public sealed class MarbleRaceTrackGenerator
     private static void RotateToBestStraight(MarbleRaceTrack track)
     {
         var n = track.SampleCount;
-        var window = Mathf.Clamp(n / 28, 6, 24);
+        var window = Mathf.Clamp(n / 48, 5, 9);
         var bestStart = 0;
         var bestScore = float.MaxValue;
 
         for (var i = 0; i < n; i++)
         {
-            var sum = 0f;
-            var widthScore = 0f;
+            var turnAccum = 0f;
+            var widthAccum = 0f;
             for (var j = -window; j <= window; j++)
             {
-                var idx = (i + j + n) % n;
-                sum += track.Curvature[idx];
-                widthScore += track.HalfWidth[idx];
+                var idxA = (i + j + n) % n;
+                var idxB = (idxA + 1) % n;
+                turnAccum += Vector2.Angle(track.Tangent[idxA], track.Tangent[idxB]);
+                widthAccum += track.HalfWidth[idxA];
             }
 
-            var score = sum - (widthScore * 0.02f);
+            var score = turnAccum - (widthAccum * 0.015f);
             if (score < bestScore)
             {
                 bestScore = score;
@@ -676,14 +521,6 @@ public sealed class MarbleRaceTrackGenerator
         for (var i = 0; i < n; i++)
         {
             data[i] = copy[i];
-        }
-    }
-
-    private static void AddUnique(List<Vector2> pts, Vector2 p)
-    {
-        if (pts.Count == 0 || (pts[pts.Count - 1] - p).sqrMagnitude > 0.0001f)
-        {
-            pts.Add(p);
         }
     }
 }
