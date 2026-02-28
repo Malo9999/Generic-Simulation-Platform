@@ -214,6 +214,14 @@ namespace GSP.TrackEditor.Editor
                 GenerateStartGrid(10);
             }
 
+            if (GUILayout.Button("Clear Start/Finish"))
+            {
+                layout.startFinish = null;
+                layout.startGridSlots.Clear();
+                EditorUtility.SetDirty(layout);
+                Repaint();
+            }
+
             if (GUILayout.Button("Clear Layout") && EditorUtility.DisplayDialog("Clear Layout", "Delete all pieces and links?", "Yes", "No"))
             {
                 layout.pieces.Clear();
@@ -783,7 +791,7 @@ namespace GSP.TrackEditor.Editor
                 Handles.DrawAAPolyLine(2.2f, tickStart, tickEnd);
             }
 
-            if (!HasStartMarker() || layout.startFinish == null)
+            if (!IsStartFinishSet())
             {
                 return;
             }
@@ -1434,14 +1442,19 @@ namespace GSP.TrackEditor.Editor
             return best;
         }
 
+        private bool IsStartFinishSet()
+        {
+            return layout != null &&
+                   layout.startFinish != null &&
+                   (layout.startFinish.worldDir.sqrMagnitude > 0.001f ||
+                    layout.startFinish.worldPos.sqrMagnitude > 0.001f ||
+                    !string.IsNullOrEmpty(layout.startFinish.pieceGuid));
+        }
+
         private bool HasStartMarker()
         {
             return layout != null &&
-                   ((layout.startGridSlots != null && layout.startGridSlots.Count > 0) ||
-                    (layout.startFinish != null &&
-                     (!string.IsNullOrEmpty(layout.startFinish.pieceGuid) ||
-                      layout.startFinish.worldDir.sqrMagnitude > 0.001f ||
-                      layout.startFinish.worldPos.sqrMagnitude > 0.001f)));
+                   ((layout.startGridSlots != null && layout.startGridSlots.Count > 0) || IsStartFinishSet());
         }
 
         private float GetLayoutTrackWidth()
@@ -1482,7 +1495,7 @@ namespace GSP.TrackEditor.Editor
         private bool IsMouseOverStartLine(Vector2 mouseWorld, out float distWorld)
         {
             distWorld = float.MaxValue;
-            if (!HasStartMarker() || layout?.startFinish == null)
+            if (!IsStartFinishSet())
             {
                 return false;
             }
@@ -1831,14 +1844,9 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            if (layout.startFinish == null)
-            {
-                layout.startFinish = new StartFinishMarker();
-            }
-
             Vector2 startPos;
             Vector2 forward;
-            if (HasStartMarker())
+            if (IsStartFinishSet())
             {
                 startPos = layout.startFinish.worldPos;
                 forward = layout.startFinish.worldDir.sqrMagnitude > 0.001f ? layout.startFinish.worldDir.normalized : Vector2.right;
@@ -1848,6 +1856,11 @@ namespace GSP.TrackEditor.Editor
                 if (!TryGetFallbackStart(out startPos, out forward, out _))
                 {
                     return;
+                }
+
+                if (layout.startFinish == null)
+                {
+                    layout.startFinish = new StartFinishMarker();
                 }
 
                 layout.startFinish.worldPos = startPos;

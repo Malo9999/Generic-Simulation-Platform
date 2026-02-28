@@ -8,7 +8,7 @@ namespace GSP.TrackEditor
     {
         public List<PlacedPiece> pieces = new();
         public List<ConnectorLink> links = new();
-        public StartFinishMarker startFinish = new();
+        public StartFinishMarker startFinish;
         public List<TrackSlot> startGridSlots = new();
         public string pitEntryGuid;
         public string pitExitGuid;
