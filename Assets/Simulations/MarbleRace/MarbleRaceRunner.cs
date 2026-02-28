@@ -1028,19 +1028,19 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             widths[i] = Mathf.Clamp(scaled, minWidth, maxWidth);
         }
 
-        var startIndex = FindStartOnStraight(source.Curvature, source.Layer);
+        var startIndex = FindStartOnStraight(source.Tangent, source.HalfWidth, source.Layer);
         return RotateTrack(source, widths, startIndex);
     }
 
-    private static int FindStartOnStraight(float[] curvature, sbyte[] layer)
+    private static int FindStartOnStraight(Vector2[] tangent, float[] halfWidth, sbyte[] layer)
     {
-        if (curvature == null || curvature.Length == 0)
+        if (tangent == null || tangent.Length == 0)
         {
             return 0;
         }
 
-        var n = curvature.Length;
-        var window = Mathf.Clamp(n / 32, 3, 12);
+        var n = tangent.Length;
+        var window = Mathf.Clamp(n / 48, 5, 9);
         var bestIndex = 0;
         var bestScore = float.MaxValue;
 
@@ -1050,7 +1050,13 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
             for (var j = -window; j <= window; j++)
             {
                 var idx = (i + j + n) % n;
-                score += curvature[idx];
+                var next = (idx + 1) % n;
+                score += Vector2.Angle(tangent[idx], tangent[next]);
+                if (halfWidth != null && halfWidth.Length == n)
+                {
+                    score -= halfWidth[idx] * 0.1f;
+                }
+
                 if (layer != null && layer.Length == n && layer[idx] == 1)
                 {
                     score += 1.5f;
