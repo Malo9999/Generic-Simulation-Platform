@@ -207,8 +207,9 @@ public sealed class NewSimulationWizardWindow : EditorWindow
         EnsureFolder($"{SimulationsRoot}/{request.simulationId}");
         EnsureFolder(SimSettingsFolder);
 
+        string prefabError = string.Empty;
         var runnerPrefab = request.createRunnerPrefab
-            ? EnsureRunnerPrefab(request.simulationId, out var prefabError)
+            ? EnsureRunnerPrefab(request.simulationId, out prefabError)
             : AssetDatabase.LoadAssetAtPath<GameObject>($"{SimulationsRoot}/{request.simulationId}/{request.simulationId}Runner.prefab");
 
         if (request.createRunnerPrefab && runnerPrefab == null)
