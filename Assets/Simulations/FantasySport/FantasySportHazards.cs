@@ -20,29 +20,36 @@ public static class FantasySportHazards
         _ = count;
         _ = minDistance;
         var adjustedRadius = radius * 0.33f;
-        var bumpers = new Bumper[6];
-
         var xAbs = halfWidth * 0.18f;
-        var yAbsTop = halfHeight * 0.34f;
-        var rowY = new[] { yAbsTop, 0f, -yAbsTop };
-        var yShiftPattern = new[] { 0f, 2f, -2f, 4f, -4f };
+        var y1 = halfHeight * 0.34f;
+        var y2 = halfHeight * 0.12f;
 
-        for (var pair = 0; pair < rowY.Length; pair++)
+        var rows = new[] { y1, y2, -y2, -y1 };
+        var canPlace = false;
+
+        for (var iter = 0; iter < 6; iter++)
         {
-            var baseY = rowY[pair];
-            var mirrored = ResolveMirroredPair(
-                xAbs,
-                baseY,
-                yShiftPattern,
-                halfWidth,
-                halfHeight,
-                adjustedRadius,
-                endzoneDepth,
-                endzoneHalfHeight,
-                keepouts);
+            canPlace = IsGridPlacementClear(xAbs, rows, adjustedRadius, halfWidth, endzoneDepth, endzoneHalfHeight, keepouts);
+            if (canPlace)
+            {
+                break;
+            }
 
-            bumpers[pair * 2] = new Bumper { position = new Vector2(-xAbs, mirrored), radius = adjustedRadius };
-            bumpers[(pair * 2) + 1] = new Bumper { position = new Vector2(+xAbs, mirrored), radius = adjustedRadius };
+            adjustedRadius *= 0.9f;
+            xAbs *= 0.95f;
+        }
+
+        var bumpers = new Bumper[rows.Length * 2];
+        for (var row = 0; row < rows.Length; row++)
+        {
+            var y = Mathf.Clamp(rows[row], -halfHeight + adjustedRadius + 1f, halfHeight - adjustedRadius - 1f);
+            bumpers[row * 2] = new Bumper { position = new Vector2(-xAbs, y), radius = adjustedRadius };
+            bumpers[(row * 2) + 1] = new Bumper { position = new Vector2(+xAbs, y), radius = adjustedRadius };
+        }
+
+        if (!canPlace)
+        {
+            Debug.LogWarning("[FantasySport] Bumper grid keepouts still intersect after uniform shrink; preserving aligned grid placement.");
         }
 
         return bumpers;
@@ -142,33 +149,28 @@ public static class FantasySportHazards
         return (closest - center).sqrMagnitude < radius * radius;
     }
 
-    private static float ResolveMirroredPair(
+    private static bool IsGridPlacementClear(
         float xAbs,
-        float baseY,
-        float[] yShiftPattern,
-        float halfWidth,
-        float halfHeight,
+        float[] rows,
         float radius,
+        float halfWidth,
         float endzoneDepth,
         float endzoneHalfHeight,
         Rect[] keepouts)
     {
-        var maxY = halfHeight - radius - 1f;
-        var minY = -maxY;
-
-        for (var i = 0; i < yShiftPattern.Length; i++)
+        for (var i = 0; i < rows.Length; i++)
         {
-            var y = Mathf.Clamp(baseY + yShiftPattern[i], minY, maxY);
+            var y = rows[i];
             var left = new Vector2(-xAbs, y);
             var right = new Vector2(+xAbs, y);
-            if (!IsBumperPlacementBlocked(left, halfWidth, endzoneDepth, endzoneHalfHeight, radius, keepouts) &&
-                !IsBumperPlacementBlocked(right, halfWidth, endzoneDepth, endzoneHalfHeight, radius, keepouts))
+            if (IsBumperPlacementBlocked(left, halfWidth, endzoneDepth, endzoneHalfHeight, radius, keepouts) ||
+                IsBumperPlacementBlocked(right, halfWidth, endzoneDepth, endzoneHalfHeight, radius, keepouts))
             {
-                return y;
+                return false;
             }
         }
 
-        return Mathf.Clamp(baseY, minY, maxY);
+        return true;
     }
 
     private static bool IsBumperPlacementBlocked(Vector2 candidate, float halfWidth, float endzoneDepth, float endzoneHalfHeight, float radius, Rect[] keepouts)
