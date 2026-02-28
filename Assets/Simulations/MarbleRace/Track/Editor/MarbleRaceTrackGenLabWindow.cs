@@ -40,8 +40,14 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         GetWindow<MarbleRaceTrackGenLabWindow>("TrackGen Lab");
     }
 
-    [MenuItem("Tools/MarbleRace/Clear Track Preview")]
+    [MenuItem("MarbleRace/TrackGen/Clear Preview")]
     private static void ClearTrackPreviewMenu()
+    {
+        CleanupPreviewGlobal(force: true);
+    }
+
+    [MenuItem("Tools/MarbleRace/Clear Track Preview")]
+    private static void ClearTrackPreviewLegacyMenu()
     {
         CleanupPreviewGlobal(force: true);
     }
@@ -56,12 +62,12 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
     {
         EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
         AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
-        CleanupPreview();
+        CleanupPreview(force: true);
     }
 
     private void OnDestroy()
     {
-        CleanupPreview();
+        CleanupPreview(force: true);
     }
 
     private void OnGUI()
@@ -277,6 +283,7 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
             previewRoot = new GameObject(PreviewRootName);
         }
 
+        previewRoot.name = PreviewRootName;
         previewRoot.transform.SetParent(null);
         ApplyPreviewHideFlags(previewRoot);
         return previewRoot;
@@ -295,13 +302,13 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
     {
         if (state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.EnteredPlayMode)
         {
-            CleanupPreview();
+            CleanupPreview(force: true);
         }
     }
 
     private void OnBeforeAssemblyReload()
     {
-        CleanupPreview();
+        CleanupPreview(force: true);
     }
 
     private void CleanupPreview(bool force = false)
@@ -335,8 +342,23 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
 
         if (cachedRoot != null)
         {
-            DestroyImmediate(cachedRoot);
+            var rootToDestroy = cachedRoot;
             cachedRoot = null;
+
+            if (Application.isPlaying)
+            {
+                Destroy(rootToDestroy);
+            }
+            else
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    if (rootToDestroy != null)
+                    {
+                        DestroyImmediate(rootToDestroy);
+                    }
+                };
+            }
         }
     }
 
