@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: TrackPieceLibrary
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceLibrary
   pieces:
-  - {fileID: 11400000, guid: 4d96846255c634a4facd0eaa50f72199, type: 2}
   - {fileID: 11400000, guid: 383df6ad5c4108a499484b6a9f298654, type: 2}
   - {fileID: 11400000, guid: 72895edd5da7f224db76db02aae75772, type: 2}
   - {fileID: 11400000, guid: 603fc3e9cc1ea684e8477e25723dfd11, type: 2}
+  - {fileID: 11400000, guid: 4d96846255c634a4facd0eaa50f72199, type: 2}

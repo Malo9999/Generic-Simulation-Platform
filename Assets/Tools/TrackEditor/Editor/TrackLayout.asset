@@ -1,0 +1,61 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d326ef2582144697b86af9770f03f856, type: 3}
+  m_Name: TrackLayout
+  m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
+  pieces:
+  - guid: a868a564a1c04b6cbffab16a0586affd
+    piece: {fileID: 11400000, guid: 4d96846255c634a4facd0eaa50f72199, type: 2}
+    position: {x: 1.7, y: -4.6166663}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: eb50a742908445cd812f000bd5eeb263
+    piece: {fileID: 11400000, guid: 383df6ad5c4108a499484b6a9f298654, type: 2}
+    position: {x: 3.6999998, y: -4.6166663}
+    rotationSteps45: 6
+    mirrored: 0
+  links:
+  - pieceGuidA: a868a564a1c04b6cbffab16a0586affd
+    connectorIndexA: 1
+    pieceGuidB: eb50a742908445cd812f000bd5eeb263
+    connectorIndexB: 1
+  startFinish:
+    pieceGuid: 
+    segmentIndex: 0
+    connectorIndex: 0
+    worldPos: {x: 0, y: 0}
+    worldDir: {x: 1, y: 0}
+  startGridSlots:
+  - pos: {x: 0, y: -1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: 0, y: 1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -5, y: -1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -5, y: 1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -10, y: -1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -10, y: 1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -15, y: -1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -15, y: 1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -20, y: -1.2}
+    dir: {x: 1, y: 0}
+  - pos: {x: -20, y: 1.2}
+    dir: {x: 1, y: 0}
+  pitEntryGuid: 
+  pitExitGuid: 
+  pan: {x: 0, y: 0}
+  zoom: 1
