@@ -255,6 +255,24 @@ public class Bootstrapper : MonoBehaviour
             return bootstrapOptions.raceCarVisual;
         }
 
+        var extraBindings = bootstrapOptions.extraSimulations;
+        if (extraBindings != null)
+        {
+            for (var i = 0; i < extraBindings.Count; i++)
+            {
+                var binding = extraBindings[i];
+                if (binding == null || string.IsNullOrWhiteSpace(binding.simulationId))
+                {
+                    continue;
+                }
+
+                if (string.Equals(binding.simulationId, simulationId, StringComparison.OrdinalIgnoreCase) && binding.visual != null)
+                {
+                    return binding.visual;
+                }
+            }
+        }
+
         return null;
     }
 
@@ -288,6 +306,24 @@ public class Bootstrapper : MonoBehaviour
         if (string.Equals(simulationId, "RaceCar", StringComparison.OrdinalIgnoreCase))
         {
             return bootstrapOptions.raceCarSettings;
+        }
+
+        var extraBindings = bootstrapOptions.extraSimulations;
+        if (extraBindings != null)
+        {
+            for (var i = 0; i < extraBindings.Count; i++)
+            {
+                var binding = extraBindings[i];
+                if (binding == null || string.IsNullOrWhiteSpace(binding.simulationId))
+                {
+                    continue;
+                }
+
+                if (string.Equals(binding.simulationId, simulationId, StringComparison.OrdinalIgnoreCase) && binding.settings != null)
+                {
+                    return binding.settings;
+                }
+            }
         }
 
         return null;

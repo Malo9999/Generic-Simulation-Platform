@@ -1,4 +1,14 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
+
+[Serializable]
+public class ExtraSimulationBinding
+{
+    public string simulationId;
+    public SimSettingsBase settings;
+    public SimVisualSettings visual;
+}
 
 [CreateAssetMenu(fileName = "BootstrapOptions", menuName = "GSP/Bootstrap Options")]
 public class BootstrapOptions : ScriptableObject
@@ -14,6 +24,7 @@ public class BootstrapOptions : ScriptableObject
     public SimVisualSettings marbleRaceVisual;
     public SimVisualSettings fantasySportVisual;
     public SimVisualSettings raceCarVisual;
+    [SerializeField] public List<ExtraSimulationBinding> extraSimulations = new();
     public SeedPolicy seedPolicy = SeedPolicy.RandomEveryRun;
     public int fixedSeed = 12345;
     public bool allowHotkeySwitch = true;
