@@ -46,10 +46,19 @@ namespace GSP.TrackEditor.Editor
             public Dir8 openWorldDir;
         }
 
+        private struct OpenConnectorTarget
+        {
+            public PlacedPiece placed;
+            public int index;
+            public TrackConnector connector;
+            public Vector2 worldPos;
+            public Dir8 worldDir;
+        }
+
         private const float RightPanelWidth = 330f;
         private const float PixelsPerUnit = 24f;
-        private const float SnapRadiusPx = 80f;
-        private const float SnapLockRadiusPx = 55f;
+        private const float SnapRadiusPx = 110f;
+        private const float SnapLockRadiusPx = 80f;
         private const float SnapEpsilonWorld = 0.05f;
 
         private TrackPieceLibrary library;
@@ -76,8 +85,8 @@ namespace GSP.TrackEditor.Editor
         private Vector2 _markerStartPos;
         private List<Vector2> _markerSlotStartPositions = new();
         private bool _snapLocked;
-        private string _lockedOpenPieceGuid;
-        private int _lockedOpenConnectorIndex = -1;
+        private OpenConnectorTarget _lockedOpen;
+        private float _lockedDistPx;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -554,6 +563,7 @@ namespace GSP.TrackEditor.Editor
                 _dragGroup.Clear();
                 _startPositions.Clear();
                 _markerSlotStartPositions.Clear();
+                ClearSnapLock();
             }
 
             if (evt.type == EventType.DragExited)
@@ -702,6 +712,14 @@ namespace GSP.TrackEditor.Editor
                             : new Color(0.2f, 1f, 1f, 1f);
                     var baseColor = used.Contains(key) ? new Color(roleColor.r * 0.45f, roleColor.g * 0.45f, roleColor.b * 0.45f, 0.8f) : roleColor;
 
+                    if (isHighlighted)
+                    {
+                        Handles.color = new Color(1f, 0.92f, 0.2f, 0.35f);
+                        Handles.DrawSolidDisc(canvas, Vector3.forward, 12f);
+                        Handles.color = new Color(1f, 0.92f, 0.2f, 0.9f);
+                        Handles.DrawWireDisc(canvas, Vector3.forward, 16f);
+                    }
+
                     Handles.color = isHighlighted ? Color.yellow : baseColor;
                     Handles.DrawSolidDisc(canvas, Vector3.forward, isHighlighted ? 5f : 4f);
                     Handles.DrawAAPolyLine(isHighlighted ? 3f : 2f, canvas, tip);
@@ -742,9 +760,13 @@ namespace GSP.TrackEditor.Editor
             };
 
             TryFindSnap(draggedPiece, worldDrop, canvasSize, out var snapped, out _, out var bestDistPx, out var preview);
-            var ghost = preview.valid ? snapped : fallback;
 
-            DrawPieceGeometry(ghost, canvasSize, new Color(0.35f, 0.55f, 0.95f, 0.45f), new Color(0.95f, 0.95f, 1f, 0.9f));
+            DrawPieceGeometry(fallback, canvasSize, new Color(0.28f, 0.4f, 0.62f, 0.22f), new Color(0.7f, 0.8f, 0.95f, 0.45f));
+            if (preview.valid)
+            {
+                DrawPieceGeometry(snapped, canvasSize, new Color(0.35f, 0.55f, 0.95f, 0.45f), new Color(0.95f, 0.95f, 1f, 0.9f));
+            }
+
             DrawConnectors(canvasSize, preview.valid ? preview : null);
 
             var statusRect = new Rect(10f, canvasSize.y - 24f, canvasSize.x - 20f, 20f);
@@ -879,146 +901,179 @@ namespace GSP.TrackEditor.Editor
             bestDistPx = float.MaxValue;
             preview = default;
 
-            var bestWorldDelta = float.MaxValue;
-            var bestRotationDelta = int.MaxValue;
             var mouseCanvas = Event.current.mousePosition;
             var openConnectors = GetOpenConnectors();
-            var lockedConnector = ResolveLockedOpenConnector(openConnectors, canvasSize, mouseCanvas);
-            var candidates = lockedConnector.HasValue
-                ? new List<(PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir)> { lockedConnector.Value }
-                : openConnectors;
-
-            foreach (var open in candidates)
+            var lockedConnector = UpdateSnapLock(openConnectors, canvasSize, mouseCanvas);
+            if (!lockedConnector.HasValue)
             {
-                var openCanvas = WorldToCanvas(open.worldPos, canvasSize);
-                var mouseDistPx = Vector2.Distance(openCanvas, mouseCanvas);
-                if (mouseDistPx > SnapRadiusPx)
-                {
-                    continue;
-                }
-
-                for (var i = 0; i < piece.connectors.Length; i++)
-                {
-                    var connector = piece.connectors[i];
-                    if (!RolesCompatible(connector.role, open.connector.role))
-                    {
-                        continue;
-                    }
-
-                    if (Mathf.Abs(connector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
-                    {
-                        continue;
-                    }
-
-                    for (var rot = 0; rot < 8; rot++)
-                    {
-                        var rotated = (rot + dragRotationOffset) % 8;
-                        var candidateDirWorld = connector.localDir.RotateSteps45(rotated);
-                        if (candidateDirWorld != open.worldDir.Opposite())
-                        {
-                            continue;
-                        }
-
-                        var rotatedLocal = TrackMathUtil.Rotate45(connector.localPos, rotated);
-                        var snappedPos = open.worldPos - rotatedLocal;
-                        var worldDelta = Vector2.Distance(snappedPos, worldDrop);
-                        var rotationDelta = Mathf.Min(rotated, 8 - rotated);
-                        if (!IsBetterSnapCandidate(mouseDistPx, worldDelta, rotationDelta, bestDistPx, bestWorldDelta, bestRotationDelta))
-                        {
-                            continue;
-                        }
-
-                        bestDistPx = mouseDistPx;
-                        bestWorldDelta = worldDelta;
-                        bestRotationDelta = rotationDelta;
-
-                        snapped = new PlacedPiece
-                        {
-                            guid = Guid.NewGuid().ToString("N"),
-                            piece = piece,
-                            position = snappedPos,
-                            rotationSteps45 = rotated,
-                            mirrored = false
-                        };
-
-                        link = new ConnectorLink
-                        {
-                            pieceGuidA = open.placed.guid,
-                            connectorIndexA = open.index,
-                            pieceGuidB = snapped.guid,
-                            connectorIndexB = i
-                        };
-
-                        preview = new SnapPreview
-                        {
-                            valid = true,
-                            snapped = snapped,
-                            link = link,
-                            distancePx = mouseDistPx,
-                            openPiece = open.placed,
-                            openConnectorIndex = open.index,
-                            candidateConnectorIndex = i,
-                            rotationSteps45 = rotated,
-                            openWorldPos = open.worldPos,
-                            openWorldDir = open.worldDir
-                        };
-
-                        SetSnapLock(open.placed.guid, open.index);
-                    }
-                }
+                return false;
             }
 
-            if (link == null)
+            var open = lockedConnector.Value;
+            var mouseDistPx = Vector2.Distance(WorldToCanvas(open.worldPos, canvasSize), mouseCanvas);
+            bestDistPx = mouseDistPx;
+
+            if (!TrySolveSnapCandidate(piece, worldDrop, open, out snapped, out link, out preview))
             {
-                ClearSnapLock();
+                return false;
             }
 
-            return link != null;
+            preview.distancePx = mouseDistPx;
+            return true;
         }
 
-        private (PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir)? ResolveLockedOpenConnector(
+        private OpenConnectorTarget? UpdateSnapLock(
             List<(PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir)> openConnectors,
             Vector2 canvasSize,
             Vector2 mouseCanvas)
         {
-            if (!_snapLocked)
+            if (_snapLocked)
             {
-                return null;
+                var existing = openConnectors.FirstOrDefault(o => o.placed.guid == _lockedOpen.placed.guid && o.index == _lockedOpen.index);
+                if (existing.placed != null)
+                {
+                    var dist = Vector2.Distance(WorldToCanvas(existing.worldPos, canvasSize), mouseCanvas);
+                    if (dist <= SnapLockRadiusPx)
+                    {
+                        _lockedOpen = new OpenConnectorTarget
+                        {
+                            placed = existing.placed,
+                            index = existing.index,
+                            connector = existing.connector,
+                            worldPos = existing.worldPos,
+                            worldDir = existing.worldDir
+                        };
+                        _lockedDistPx = dist;
+                        return _lockedOpen;
+                    }
+                }
+
+                ClearSnapLock();
             }
 
+            var nearestFound = false;
+            var nearestDist = float.MaxValue;
+            OpenConnectorTarget nearest = default;
             foreach (var open in openConnectors)
             {
-                if (open.placed.guid != _lockedOpenPieceGuid || open.index != _lockedOpenConnectorIndex)
+                var dist = Vector2.Distance(WorldToCanvas(open.worldPos, canvasSize), mouseCanvas);
+                if (dist >= nearestDist)
                 {
                     continue;
                 }
 
-                var dist = Vector2.Distance(WorldToCanvas(open.worldPos, canvasSize), mouseCanvas);
-                if (dist <= SnapLockRadiusPx)
+                nearestFound = true;
+                nearestDist = dist;
+                nearest = new OpenConnectorTarget
                 {
-                    return open;
-                }
+                    placed = open.placed,
+                    index = open.index,
+                    connector = open.connector,
+                    worldPos = open.worldPos,
+                    worldDir = open.worldDir
+                };
+            }
 
-                ClearSnapLock();
+            if (!nearestFound || nearestDist >= SnapRadiusPx)
+            {
                 return null;
             }
 
-            ClearSnapLock();
-            return null;
+            _snapLocked = true;
+            _lockedOpen = nearest;
+            _lockedDistPx = nearestDist;
+            return _lockedOpen;
         }
 
-        private void SetSnapLock(string pieceGuid, int connectorIndex)
+        private bool TrySolveSnapCandidate(
+            TrackPieceDef piece,
+            Vector2 worldDrop,
+            OpenConnectorTarget open,
+            out PlacedPiece snapped,
+            out ConnectorLink link,
+            out SnapPreview preview)
         {
-            _snapLocked = true;
-            _lockedOpenPieceGuid = pieceGuid;
-            _lockedOpenConnectorIndex = connectorIndex;
+            snapped = null;
+            link = null;
+            preview = default;
+            var bestWorldDelta = float.MaxValue;
+            var bestRotationDelta = int.MaxValue;
+
+            for (var i = 0; i < piece.connectors.Length; i++)
+            {
+                var connector = piece.connectors[i];
+                if (!RolesCompatible(connector.role, open.connector.role))
+                {
+                    continue;
+                }
+
+                if (Mathf.Abs(connector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
+                {
+                    continue;
+                }
+
+                for (var rot = 0; rot < 8; rot++)
+                {
+                    var rotated = (rot + dragRotationOffset) % 8;
+                    var candidateDirWorld = connector.localDir.RotateSteps45(rotated);
+                    if (candidateDirWorld != open.worldDir.Opposite())
+                    {
+                        continue;
+                    }
+
+                    var rotatedLocal = TrackMathUtil.Rotate45(connector.localPos, rotated);
+                    var snappedPos = open.worldPos - rotatedLocal;
+                    var worldDelta = Vector2.Distance(snappedPos, worldDrop);
+                    var rotationDelta = RotationDelta(rotated, dragRotationOffset);
+                    if (!IsBetterSnapCandidate(worldDelta, rotationDelta, bestWorldDelta, bestRotationDelta))
+                    {
+                        continue;
+                    }
+
+                    bestWorldDelta = worldDelta;
+                    bestRotationDelta = rotationDelta;
+
+                    snapped = new PlacedPiece
+                    {
+                        guid = Guid.NewGuid().ToString("N"),
+                        piece = piece,
+                        position = snappedPos,
+                        rotationSteps45 = rotated,
+                        mirrored = false
+                    };
+
+                    link = new ConnectorLink
+                    {
+                        pieceGuidA = open.placed.guid,
+                        connectorIndexA = open.index,
+                        pieceGuidB = snapped.guid,
+                        connectorIndexB = i
+                    };
+
+                    preview = new SnapPreview
+                    {
+                        valid = true,
+                        snapped = snapped,
+                        link = link,
+                        distancePx = _lockedDistPx,
+                        openPiece = open.placed,
+                        openConnectorIndex = open.index,
+                        candidateConnectorIndex = i,
+                        rotationSteps45 = rotated,
+                        openWorldPos = open.worldPos,
+                        openWorldDir = open.worldDir
+                    };
+                }
+            }
+
+            return preview.valid;
         }
 
         private void ClearSnapLock()
         {
             _snapLocked = false;
-            _lockedOpenPieceGuid = string.Empty;
-            _lockedOpenConnectorIndex = -1;
+            _lockedOpen = default;
+            _lockedDistPx = float.MaxValue;
         }
 
         private bool RolesCompatible(TrackConnectorRole aRole, TrackConnectorRole bRole)
@@ -1031,25 +1086,19 @@ namespace GSP.TrackEditor.Editor
             return aRole == bRole;
         }
 
+        private static int RotationDelta(int rotation, int reference)
+        {
+            var delta = Mathf.Abs(rotation - reference);
+            return Mathf.Min(delta, 8 - delta);
+        }
+
         private static bool IsBetterSnapCandidate(
-            float distPx,
             float worldDelta,
             int rotationDelta,
-            float bestDistPx,
             float bestWorldDelta,
             int bestRotationDelta)
         {
             const float epsilon = 0.001f;
-            if (distPx < bestDistPx - epsilon)
-            {
-                return true;
-            }
-
-            if (Mathf.Abs(distPx - bestDistPx) > epsilon)
-            {
-                return false;
-            }
-
             if (worldDelta < bestWorldDelta - epsilon)
             {
                 return true;
@@ -1377,14 +1426,24 @@ namespace GSP.TrackEditor.Editor
             }
 
             var openConnectors = GetOpenConnectors().Where(o => !movedGuids.Contains(o.placed.guid)).ToList();
+            if (openConnectors.Count == 0)
+            {
+                return;
+            }
+
+            var mouseCanvas = Event.current.mousePosition;
+            var locked = UpdateSnapLock(openConnectors, canvasSize, mouseCanvas);
+            if (!locked.HasValue)
+            {
+                return;
+            }
+
+            var open = locked.Value;
             var used = GetUsedConnectorKeys();
             var bestDistPx = float.MaxValue;
             PlacedPiece bestMovedPiece = null;
-            int bestMovedIndex = -1;
-            Vector2 bestMovedWorld = Vector2.zero;
-            PlacedPiece bestOpenPiece = null;
-            int bestOpenIndex = -1;
-            Vector2 bestOpenWorld = Vector2.zero;
+            var bestMovedIndex = -1;
+            var bestMovedWorld = Vector2.zero;
 
             foreach (var moved in movedPieces)
             {
@@ -1396,40 +1455,33 @@ namespace GSP.TrackEditor.Editor
                     }
 
                     var movedConnector = moved.piece.connectors[i];
-                    var movedWorldPos = TrackMathUtil.ToWorld(moved, movedConnector.localPos);
-                    var movedWorldDir = TrackMathUtil.ToWorld(moved, movedConnector.localDir);
-
-                    foreach (var open in openConnectors)
+                    if (!RolesCompatible(movedConnector.role, open.connector.role))
                     {
-                        if (!RolesCompatible(movedConnector.role, open.connector.role))
-                        {
-                            continue;
-                        }
-
-                        if (Mathf.Abs(movedConnector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
-                        {
-                            continue;
-                        }
-
-                        if (movedWorldDir != open.worldDir.Opposite())
-                        {
-                            continue;
-                        }
-
-                        var distPx = Vector2.Distance(WorldToCanvas(movedWorldPos, canvasSize), WorldToCanvas(open.worldPos, canvasSize));
-                        if (distPx >= bestDistPx)
-                        {
-                            continue;
-                        }
-
-                        bestDistPx = distPx;
-                        bestMovedPiece = moved;
-                        bestMovedIndex = i;
-                        bestMovedWorld = movedWorldPos;
-                        bestOpenPiece = open.placed;
-                        bestOpenIndex = open.index;
-                        bestOpenWorld = open.worldPos;
+                        continue;
                     }
+
+                    if (Mathf.Abs(movedConnector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
+                    {
+                        continue;
+                    }
+
+                    var movedWorldDir = TrackMathUtil.ToWorld(moved, movedConnector.localDir);
+                    if (movedWorldDir != open.worldDir.Opposite())
+                    {
+                        continue;
+                    }
+
+                    var movedWorldPos = TrackMathUtil.ToWorld(moved, movedConnector.localPos);
+                    var distPx = Vector2.Distance(WorldToCanvas(movedWorldPos, canvasSize), WorldToCanvas(open.worldPos, canvasSize));
+                    if (distPx >= bestDistPx)
+                    {
+                        continue;
+                    }
+
+                    bestDistPx = distPx;
+                    bestMovedPiece = moved;
+                    bestMovedIndex = i;
+                    bestMovedWorld = movedWorldPos;
                 }
             }
 
@@ -1438,7 +1490,7 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            var delta = bestOpenWorld - bestMovedWorld;
+            var delta = open.worldPos - bestMovedWorld;
             foreach (var piece in movedPieces)
             {
                 piece.position += delta;
@@ -1446,8 +1498,8 @@ namespace GSP.TrackEditor.Editor
 
             layout.links.Add(new ConnectorLink
             {
-                pieceGuidA = bestOpenPiece.guid,
-                connectorIndexA = bestOpenIndex,
+                pieceGuidA = open.placed.guid,
+                connectorIndexA = open.index,
                 pieceGuidB = bestMovedPiece.guid,
                 connectorIndexB = bestMovedIndex
             });
