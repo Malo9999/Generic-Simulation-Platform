@@ -81,6 +81,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private static readonly Color Team0Color = new Color(0.2f, 0.78f, 1f, 1f);
     private static readonly Color Team1Color = new Color(1f, 0.45f, 0.25f, 1f);
     private const float ArenaBoundsMargin = 2f;
+    private const float AthleteBoundsMargin = 0.8f;
+    private const float AthleteEdgeRecoveryBand = 0.5f;
+    private const float AthleteEdgePushStrength = 2.2f;
+    private const float MaxHomeSnapPerTick = 7f;
 
     private enum AthleteState { BallCarrier, ChaseFreeBall, SupportAttack, PressCarrier, MarkLane, GoalkeeperHome }
     private enum AttackSide { Left, Right }
@@ -101,11 +105,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private struct PlayPlan
     {
         public int teamId;
-        public int carrierIdx;
-        public int leftWingIdx;
-        public int rightWingIdx;
-        public int overlapDefIdx;
-        public int halfspaceMidIdx;
+        public int shortIdx;
+        public int wideIdx;
+        public int forwardIdx;
+        public int overlapIdx;
+        public int cutbackIdx;
         public float untilTime;
         public int side;
     }
@@ -1458,7 +1462,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private bool TryCrossPlay(int carrierIndex, int teamId, Vector2 carrierPos)
     {
-        var receiver = FindCentralAttackReceiver(teamId, carrierIndex);
+        var plan = activePlayPlans[teamId];
+        var receiver = IsValidAthleteIndex(plan.forwardIdx) ? plan.forwardIdx : FindCentralAttackReceiver(teamId, carrierIndex);
         if (receiver < 0 || FindNearestOpponentDistance(receiver) < OpenThreshold * 0.9f)
         {
             return false;
@@ -1475,13 +1480,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         ThrowBallSpecialPass(carrierIndex, target, receiver, 1.1f, 1f, 1.8f, "FS:CROSS", applyDefaultFollowUp: false);
         AssignCrossFollowUpIntents(carrierIndex, receiver, teamId, carrierPos, towardGoal);
-        Debug.Log($"[FINISH] CROSS team={teamId} passer={carrierIndex} receiver={receiver} t={matchTimeSeconds:F2}");
+        Debug.Log($"[CROSS] team={teamId} passer={carrierIndex} receiver={receiver} t={matchTimeSeconds:F2}");
         return true;
     }
 
     private bool TryCutbackPlay(int carrierIndex, int teamId, Vector2 carrierPos)
     {
-        var receiver = FindCutbackReceiver(teamId, carrierIndex, carrierPos);
+        var plan = activePlayPlans[teamId];
+        var receiver = IsValidAthleteIndex(plan.cutbackIdx) ? plan.cutbackIdx : FindCutbackReceiver(teamId, carrierIndex, carrierPos);
         if (receiver < 0)
         {
             return false;
@@ -1500,7 +1506,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         ThrowBallSpecialPass(carrierIndex, target, receiver, 0.93f, 0.75f, 1.45f, "FS:CUTBACK", applyDefaultFollowUp: false);
         AssignCutbackFollowUpIntents(carrierIndex, receiver, teamId, carrierPos, towardGoal);
-        Debug.Log($"[FINISH] CUTBACK team={teamId} passer={carrierIndex} receiver={receiver} t={matchTimeSeconds:F2}");
+        Debug.Log($"[CUTBACK] team={teamId} passer={carrierIndex} receiver={receiver} t={matchTimeSeconds:F2}");
         return true;
     }
 
@@ -1675,16 +1681,24 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var plan = new PlayPlan
         {
             teamId = teamId,
-            carrierIdx = ballOwnerIndex,
             side = side,
             untilTime = untilTime,
-            leftWingIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Attacker, -1f, ballOwnerIndex, -1, ballPos),
-            rightWingIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Attacker, 1f, ballOwnerIndex, -1, ballPos),
-            overlapDefIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Defender, side, ballOwnerIndex, -1, ballPos),
-            halfspaceMidIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Midfielder, side, ballOwnerIndex, -1, ballPos)
+            shortIdx = FindShortSupportNode(teamId, ballOwnerIndex, (GetOpponentGoalCenter(teamId) - ballPos).normalized),
+            wideIdx = FindWideOutletNode(teamId, ballOwnerIndex),
+            forwardIdx = FindForwardRunNode(teamId, ballOwnerIndex, (GetOpponentGoalCenter(teamId) - ballPos).normalized),
+            overlapIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Defender, side, ballOwnerIndex, -1, ballPos),
+            cutbackIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Midfielder, side, ballOwnerIndex, -1, ballPos)
         };
 
+        if (!IsValidAthleteIndex(plan.wideIdx))
+        {
+            plan.wideIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Attacker, side, ballOwnerIndex, -1, ballPos);
+        }
+
         activePlayPlans[teamId] = plan;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        Debug.Log($"[PLAN] build t={matchTimeSeconds:F1} team={teamId} side={plan.side} until={plan.untilTime:F1} nodes={plan.shortIdx}/{plan.wideIdx}/{plan.forwardIdx}/{plan.overlapIdx}/{plan.cutbackIdx}");
+#endif
     }
 
     private void ApplyPlayPlanIntents(int teamId)
@@ -1701,33 +1715,39 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var towardGoal = (GetOpponentGoalCenter(teamId) - ballPos).normalized;
+        var carrierPos = ballOwnerIndex >= 0 ? positions[ballOwnerIndex] : ballPos;
         var wingY = plan.side * GetLaneWideY(teamId);
-        var wingIdx = plan.side < 0 ? plan.leftWingIdx : plan.rightWingIdx;
 
-        if (IsValidAthleteIndex(plan.overlapDefIdx))
+        if (IsValidAthleteIndex(plan.shortIdx))
+        {
+            var shortTarget = carrierPos - (towardGoal * 2.8f) + new Vector2(0f, plan.side * 1.1f);
+            SetIntent(plan.shortIdx, IntentType.SupportShort, shortTarget, 2f);
+        }
+
+        if (IsValidAthleteIndex(plan.wideIdx))
+        {
+            var wingTarget = new Vector2(Mathf.Clamp(carrierPos.x + towardGoal.x * 6f, -halfWidth + 1.2f, halfWidth - 1.2f), wingY);
+            SetIntent(plan.wideIdx, IntentType.HoldWidth, wingTarget, 2.2f);
+        }
+
+        if (IsValidAthleteIndex(plan.overlapIdx))
         {
             var overlapX = Mathf.Lerp(midLineXByTeam[teamId], attLineXByTeam[teamId], 0.6f);
-            SetIntent(plan.overlapDefIdx, IntentType.OverlapRun, new Vector2(overlapX, wingY), 2.2f);
+            SetIntent(plan.overlapIdx, IntentType.OverlapRun, new Vector2(overlapX, wingY), 2.2f);
         }
 
-        if (IsValidAthleteIndex(plan.halfspaceMidIdx))
+        if (IsValidAthleteIndex(plan.forwardIdx))
         {
-            var halfY = plan.side * GetLaneNarrowY(teamId);
-            var halfX = Mathf.Lerp(midLineXByTeam[teamId], attLineXByTeam[teamId], 0.45f);
-            SetIntent(plan.halfspaceMidIdx, IntentType.SupportShort, new Vector2(halfX, halfY), 2.1f);
+            var laneY = plan.side * GetLaneNarrowY(teamId) * 0.7f;
+            var runTarget = carrierPos + (towardGoal * RunDepth) + new Vector2(0f, laneY);
+            SetIntent(plan.forwardIdx, IntentType.RunInBehind, runTarget, 2.3f);
         }
 
-        if (IsValidAthleteIndex(wingIdx))
+        if (IsValidAthleteIndex(plan.cutbackIdx))
         {
-            var wingTarget = new Vector2(Mathf.Clamp(ballPos.x + towardGoal.x * 6f, -halfWidth + 1.2f, halfWidth - 1.2f), wingY);
-            SetIntent(wingIdx, IntentType.HoldWidth, wingTarget, 2.2f);
-        }
-
-        var centralAttacker = FindCentralAttackReceiver(teamId, ballOwnerIndex, wingIdx);
-        if (teamPhase[teamId] == TeamPhase.FinalThird && centralAttacker >= 0)
-        {
-            var runTarget = ballPos + (towardGoal * 8f);
-            SetIntent(centralAttacker, IntentType.RunInBehind, runTarget, 2f);
+            var endzone = GetEndzoneRect(1 - teamId);
+            var topOfBox = new Vector2(endzone.center.x - (towardGoal.x * Mathf.Min(5f, endzone.width * 0.8f)), plan.side * GetLaneNarrowY(teamId));
+            SetIntent(plan.cutbackIdx, IntentType.SupportShort, topOfBox, 2f);
         }
     }
 
@@ -2473,6 +2493,19 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var home = ComputeHomePosition(i);
+        var homeDelta = home - positions[i];
+        var fieldWidth = halfWidth * 2f;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (homeDelta.magnitude > fieldWidth * 0.75f)
+        {
+            Debug.LogWarning($"[FS] Huge homeTarget jump i={i} team={teamId} pos={positions[i]} home={home} lane={laneByIndex[i]} role={roleByIndex[i]}");
+        }
+#endif
+        if (homeDelta.magnitude > MaxHomeSnapPerTick)
+        {
+            home = positions[i] + (homeDelta.normalized * MaxHomeSnapPerTick);
+        }
+
         if (i < intentUntilTime.Length && matchTimeSeconds < intentUntilTime[i] && !IsActiveChaser(i) && athleteStates[i] != AthleteState.BallCarrier)
         {
             objective = intentTarget[i];
@@ -3051,7 +3084,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             lastTacticsDebugSecond = currentSecond;
             var team = possessingTeam >= 0 ? possessingTeam : 0;
-            Debug.Log($"[FantasySport:Tactics] t={matchTimeSeconds:F1} phase0={teamPhase[0]} phase1={teamPhase[1]} possTime={possessionTime:F1} noProg={noProgressTime:F1} tri={triangleShortSupportByTeam[team]}/{triangleWideOutletByTeam[team]}/{triangleForwardRunByTeam[team]} lastPass={lastPasserIndex}->{lastReceiverIndex} passT={lastPassTime:F2}");
+            var plan = activePlayPlans[team];
+            Debug.Log($"[PLAN] t={matchTimeSeconds:F1} team={team} side={plan.side} planUntil={plan.untilTime:F1} nodes={plan.shortIdx}/{plan.wideIdx}/{plan.forwardIdx}/{plan.overlapIdx}/{plan.cutbackIdx} tri={triangleShortSupportByTeam[team]}/{triangleWideOutletByTeam[team]}/{triangleForwardRunByTeam[team]} lastPass={lastPasserIndex}->{lastReceiverIndex} passT={lastPassTime:F2}");
         }
 
         if (ballOwnerIndex >= 0)
@@ -3621,20 +3655,35 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             if (planActive)
             {
-                var sideWing = plan.side < 0 ? plan.leftWingIdx : plan.rightWingIdx;
-                if (i == plan.overlapDefIdx && nearestOpponent > OpenThreshold)
+                var isPlanNode = i == plan.shortIdx || i == plan.wideIdx || i == plan.forwardIdx || i == plan.overlapIdx || i == plan.cutbackIdx;
+                if (i == plan.shortIdx)
                 {
-                    score += 5.4f;
+                    score += 6.5f;
                 }
 
-                if (i == sideWing && nearestOpponent > OpenThreshold * 0.95f)
+                if (i == plan.wideIdx && nearestOpponent > OpenThreshold * 0.95f)
                 {
-                    score += 6.2f;
+                    score += 10.5f;
                 }
 
-                if (i == plan.halfspaceMidIdx && nearestOpponent > OpenThreshold * 0.9f)
+                if (i == plan.forwardIdx)
                 {
-                    score += 4.8f;
+                    score += progressGain > 0.02f ? 12f : 6f;
+                }
+
+                if (i == plan.overlapIdx && nearestOpponent > OpenThreshold)
+                {
+                    score += 8.2f;
+                }
+
+                if (i == plan.cutbackIdx && nearestOpponent > OpenThreshold * 0.9f)
+                {
+                    score += 7.5f;
+                }
+
+                if (!pressured && !isPlanNode)
+                {
+                    score -= 6f;
                 }
 
                 if (!pressured && (roleByIndex[i] == RoleGroup.Defender || roleByIndex[i] == RoleGroup.Sweeper) && progressGain < 0.02f)
@@ -4286,18 +4335,47 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             p.y = sign > 0f ? Mathf.Max(p.y, minWideY) : Mathf.Min(p.y, -minWideY);
         }
 
-        if (p.x < -halfWidth || p.x > halfWidth)
+        var minX = -halfWidth + AthleteBoundsMargin;
+        var maxX = halfWidth - AthleteBoundsMargin;
+        var minY = -halfHeight + AthleteBoundsMargin;
+        var maxY = halfHeight - AthleteBoundsMargin;
+
+        var clampedX = false;
+        var clampedY = false;
+        if (p.x < minX || p.x > maxX)
         {
-            p.x = Mathf.Clamp(p.x, -halfWidth, halfWidth);
-            velocities[athleteIndex].x *= -0.35f;
+            p.x = Mathf.Clamp(p.x, minX, maxX);
+            clampedX = true;
         }
 
-        if (p.y < -halfHeight || p.y > halfHeight)
+        if (p.y < minY || p.y > maxY)
         {
-            p.y = Mathf.Clamp(p.y, -halfHeight, halfHeight);
-            velocities[athleteIndex].y *= -0.35f;
+            p.y = Mathf.Clamp(p.y, minY, maxY);
+            clampedY = true;
         }
 
+        var v = velocities[athleteIndex];
+        if (clampedX)
+        {
+            v.x *= -0.25f;
+        }
+
+        if (clampedY)
+        {
+            v.y *= -0.25f;
+        }
+
+        if (Mathf.Abs(p.x) > halfWidth - AthleteEdgeRecoveryBand)
+        {
+            v.x += p.x > 0f ? -AthleteEdgePushStrength : AthleteEdgePushStrength;
+        }
+
+        if (Mathf.Abs(p.y) > halfHeight - AthleteEdgeRecoveryBand)
+        {
+            v.y += p.y > 0f ? -AthleteEdgePushStrength : AthleteEdgePushStrength;
+        }
+
+        velocities[athleteIndex] = v;
         positions[athleteIndex] = p;
     }
 
