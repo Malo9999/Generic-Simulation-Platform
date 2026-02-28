@@ -162,11 +162,12 @@ public static class MarbleRaceTrackValidator
             }
         }
 
+        const int turnWindow = 2;
         for (var i = 0; i < n; i++)
         {
-            var prev = track.Center[(i - 1 + n) % n];
+            var prev = track.Center[(i - turnWindow + n) % n];
             var p = track.Center[i];
-            var next = track.Center[(i + 1) % n];
+            var next = track.Center[(i + turnWindow) % n];
             var a = (p - prev).normalized;
             var b = (next - p).normalized;
             var unsignedTurn = Vector2.Angle(a, b);
@@ -176,7 +177,7 @@ public static class MarbleRaceTrackValidator
                 sharpCornerIndices.Add(i);
             }
 
-            turns[i] = Mathf.DeltaAngle(segmentAngles[(i - 1 + n) % n], segmentAngles[i]);
+            turns[i] = Mathf.DeltaAngle(segmentAngles[(i - turnWindow + n) % n], segmentAngles[(i + turnWindow) % n]);
             var avgLen = 0.5f * (Vector2.Distance(prev, p) + Vector2.Distance(p, next));
             var theta = Mathf.Abs(turns[i]) * Mathf.Deg2Rad;
             var radius = theta > 1e-3f ? avgLen / theta : float.MaxValue;
@@ -200,6 +201,12 @@ public static class MarbleRaceTrackValidator
         }
 
         var sharpCornerCount = sharpCornerIndices.Count;
+        var minRadiusEstimate = EstimateRobustMinRadius(track.Center, 2, 14);
+        if (minRadiusEstimate > 0f && minRadiusEstimate < float.MaxValue)
+        {
+            minRadius = Mathf.Min(minRadius, minRadiusEstimate);
+        }
+
         var axisRatio = axisAligned / (float)n;
         var avgTurnDiff = turnDiffCount > 0 ? sumTurnDiff / turnDiffCount : 0f;
         var entropy = ComputeDirectionEntropy(directionBins, n);
@@ -275,6 +282,53 @@ public static class MarbleRaceTrackValidator
         }
 
         return new QualityReport(clampedScore, maxTurn, sharpCornerCount, minRadius, axisRatio, avgTurnDiff, entropy, uniqueDirectionBins, boxyFail, issues, sharpCornerIndices, axisAlignedSegmentIndices, minRadiusIndices);
+    }
+
+    private static float EstimateRobustMinRadius(Vector2[] center, int step, int percentile)
+    {
+        if (center == null || center.Length < 8)
+        {
+            return float.MaxValue;
+        }
+
+        var n = center.Length;
+        var radii = new List<float>(n);
+        for (var i = 0; i < n; i++)
+        {
+            var a = center[(i - step + n) % n];
+            var b = center[i];
+            var c = center[(i + step) % n];
+
+            var radius = Circumradius(a, b, c);
+            if (!float.IsNaN(radius) && !float.IsInfinity(radius) && radius > 0f)
+            {
+                radii.Add(radius);
+            }
+        }
+
+        if (radii.Count == 0)
+        {
+            return float.MaxValue;
+        }
+
+        radii.Sort();
+        var percentile01 = Mathf.Clamp01(percentile / 100f);
+        var idx = Mathf.Clamp(Mathf.FloorToInt((radii.Count - 1) * percentile01), 0, radii.Count - 1);
+        return radii[idx];
+    }
+
+    private static float Circumradius(Vector2 a, Vector2 b, Vector2 c)
+    {
+        var ab = Vector2.Distance(a, b);
+        var bc = Vector2.Distance(b, c);
+        var ca = Vector2.Distance(c, a);
+        var area2 = Mathf.Abs(Cross(b - a, c - a));
+        if (area2 < 1e-4f)
+        {
+            return float.MaxValue;
+        }
+
+        return (ab * bc * ca) / (2f * area2);
     }
 
     private static QualityBand GetBand(int score)
