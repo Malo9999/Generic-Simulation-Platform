@@ -5,81 +5,90 @@ using GSP.TrackEditor;
 
 namespace GSP.TrackEditor.Editor
 {
-    public static class TrackDefaultPieceCreator
+    public static class TrackEditorDefaultAssetsMenu
     {
         private const string BaseFolder = "Assets/Tools/TrackEditor/Defaults";
         private const string PieceFolder = BaseFolder + "/Pieces";
+        private const string LibraryPath = BaseFolder + "/TrackPieceLibrary.asset";
 
-        [MenuItem("Tools/GSP/Track Editor/Create Default Track Pieces")]
-        public static void CreateDefaults()
+        // HOW TO TEST
+        // 1) In Unity, wait for compilation.
+        // 2) Menu bar: GSP -> TrackEditor -> Create Default Track Pieces
+        //    - Confirm NO "No script asset..." errors.
+        //    - Confirm assets appear under Assets/Tools/TrackEditor/Defaults/
+        //    - Click a TrackPieceDef asset -> Inspector shows script TrackPieceDef (not Missing Script).
+        // 3) Menu bar: GSP -> TrackEditor -> TrackEditor (opens window).
+        // 4) Menu bar: GSP -> Art -> Create Default Species Blueprints (exists).
+        //    - Confirm the old menu location is gone.
+        [MenuItem("GSP/TrackEditor/Create Default Track Pieces")]
+        public static void CreateDefaultTrackPieces()
         {
             EnsureFolder("Assets/Tools");
             EnsureFolder("Assets/Tools/TrackEditor");
             EnsureFolder(BaseFolder);
             EnsureFolder(PieceFolder);
 
+            DeleteDefaultPieceAssets();
+            DeleteDefaultLibraryAsset();
+
             var pieces = new List<TrackPieceDef>
             {
-                CreateStraightEW(),
-                CreateStraightDiagonal(),
-                CreateCorner45(),
-                CreateCorner90(),
+                CreateStraight(),
+                CreateCorner(),
                 CreatePitEntry(),
                 CreatePitExit()
             };
 
-            var libraryPath = BaseFolder + "/TrackPieceLibrary.asset";
-            var library = AssetDatabase.LoadAssetAtPath<TrackPieceLibrary>(libraryPath);
-            if (library == null)
-            {
-                library = ScriptableObject.CreateInstance<TrackPieceLibrary>();
-                AssetDatabase.CreateAsset(library, libraryPath);
-            }
-
+            var library = ScriptableObject.CreateInstance<TrackPieceLibrary>();
             library.pieces = pieces;
+            AssetDatabase.CreateAsset(library, LibraryPath);
             EditorUtility.SetDirty(library);
+
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
+
+            Debug.Log($"TrackEditor defaults recreated at '{BaseFolder}' with library '{LibraryPath}'.");
         }
 
-        private static TrackPieceDef CreateStraightEW()
+        private static void DeleteDefaultPieceAssets()
+        {
+            var guids = AssetDatabase.FindAssets("t:Object", new[] { PieceFolder });
+            foreach (var guid in guids)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!path.EndsWith(".asset"))
+                {
+                    continue;
+                }
+
+                AssetDatabase.DeleteAsset(path);
+            }
+        }
+
+        private static void DeleteDefaultLibraryAsset()
+        {
+            if (AssetDatabase.LoadAssetAtPath<TrackPieceLibrary>(LibraryPath) != null || AssetDatabase.AssetPathExists(LibraryPath))
+            {
+                AssetDatabase.DeleteAsset(LibraryPath);
+            }
+        }
+
+        private static TrackPieceDef CreateStraight()
         {
             var c0 = Connector("West", new Vector2(-10f, 0f), Dir8.W);
             var c1 = Connector("East", new Vector2(10f, 0f), Dir8.E);
-            return CreatePiece("Straight_EW", "Straight EW", "Straight", new[] { c0, c1 }, new[]
+            return CreatePiece("Straight", "Straight", "Straight", new[] { c0, c1 }, new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, new[] { c0.localPos, c1.localPos }),
                 Segment(1, 0, TrackConnectorRole.Main, new[] { c1.localPos, c0.localPos })
             }, new Rect(-10f, -4f, 20f, 8f));
         }
 
-        private static TrackPieceDef CreateStraightDiagonal()
-        {
-            var c0 = Connector("SW", new Vector2(-7f, -7f), Dir8.SW);
-            var c1 = Connector("NE", new Vector2(7f, 7f), Dir8.NE);
-            return CreatePiece("Straight_NE_SW", "Straight Diagonal", "Straight", new[] { c0, c1 }, new[]
-            {
-                Segment(0, 1, TrackConnectorRole.Main, new[] { c0.localPos, c1.localPos }),
-                Segment(1, 0, TrackConnectorRole.Main, new[] { c1.localPos, c0.localPos })
-            }, new Rect(-8f, -8f, 16f, 16f));
-        }
-
-        private static TrackPieceDef CreateCorner45()
-        {
-            var c0 = Connector("E", new Vector2(8f, 0f), Dir8.E);
-            var c1 = Connector("NE", new Vector2(6f, 6f), Dir8.NE);
-            return CreatePiece("Corner_E_to_NE", "Corner 45", "Corner", new[] { c0, c1 }, new[]
-            {
-                Segment(0, 1, TrackConnectorRole.Main, new[] { c0.localPos, new Vector2(7f, 3f), c1.localPos }),
-                Segment(1, 0, TrackConnectorRole.Main, new[] { c1.localPos, new Vector2(7f, 3f), c0.localPos })
-            }, new Rect(0f, -4f, 10f, 12f));
-        }
-
-        private static TrackPieceDef CreateCorner90()
+        private static TrackPieceDef CreateCorner()
         {
             var c0 = Connector("E", new Vector2(8f, 0f), Dir8.E);
             var c1 = Connector("N", new Vector2(0f, 8f), Dir8.N);
-            return CreatePiece("Corner_E_to_N", "Corner 90", "Corner", new[] { c0, c1 }, new[]
+            return CreatePiece("Corner", "Corner", "Corner", new[] { c0, c1 }, new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, new[] { c0.localPos, new Vector2(6f, 6f), c1.localPos }),
                 Segment(1, 0, TrackConnectorRole.Main, new[] { c1.localPos, new Vector2(6f, 6f), c0.localPos })
@@ -92,7 +101,7 @@ namespace GSP.TrackEditor.Editor
             var mainOut = Connector("MainOut", new Vector2(10f, 0f), Dir8.E, TrackConnectorRole.Main);
             var pitOut = Connector("PitOut", new Vector2(0f, -8f), Dir8.S, TrackConnectorRole.Pit);
 
-            return CreatePiece("PitEntry_3Conn", "Pit Entry", "Pit", new[] { mainIn, mainOut, pitOut }, new[]
+            return CreatePiece("PitEntry", "Pit Entry", "Pit", new[] { mainIn, mainOut, pitOut }, new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }),
                 Segment(1, 0, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }),
@@ -106,7 +115,7 @@ namespace GSP.TrackEditor.Editor
             var mainIn = Connector("MainIn", new Vector2(-10f, 0f), Dir8.W, TrackConnectorRole.Main);
             var mainOut = Connector("MainOut", new Vector2(10f, 0f), Dir8.E, TrackConnectorRole.Main);
 
-            return CreatePiece("PitExit_3Conn", "Pit Exit", "Pit", new[] { pitIn, mainIn, mainOut }, new[]
+            return CreatePiece("PitExit", "Pit Exit", "Pit", new[] { pitIn, mainIn, mainOut }, new[]
             {
                 Segment(1, 2, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }),
                 Segment(2, 1, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }),
@@ -116,14 +125,7 @@ namespace GSP.TrackEditor.Editor
 
         private static TrackPieceDef CreatePiece(string pieceId, string displayName, string category, TrackConnector[] connectors, TrackSegment[] segments, Rect bounds)
         {
-            var path = $"{PieceFolder}/{pieceId}.asset";
-            var piece = AssetDatabase.LoadAssetAtPath<TrackPieceDef>(path);
-            if (piece == null)
-            {
-                piece = ScriptableObject.CreateInstance<TrackPieceDef>();
-                AssetDatabase.CreateAsset(piece, path);
-            }
-
+            var piece = ScriptableObject.CreateInstance<TrackPieceDef>();
             piece.pieceId = pieceId;
             piece.displayName = displayName;
             piece.category = category;
@@ -131,6 +133,9 @@ namespace GSP.TrackEditor.Editor
             piece.connectors = connectors;
             piece.segments = segments;
             piece.localBounds = bounds;
+
+            var path = $"{PieceFolder}/{pieceId}.asset";
+            AssetDatabase.CreateAsset(piece, path);
             EditorUtility.SetDirty(piece);
             return piece;
         }
@@ -145,16 +150,12 @@ namespace GSP.TrackEditor.Editor
             var offset = Vector2.Perpendicular((center[^1] - center[0]).normalized) * 4f;
             var left = new Vector2[center.Length];
             var right = new Vector2[center.Length];
+
             for (var i = 0; i < center.Length; i++)
             {
                 left[i] = center[i] + offset;
                 right[i] = center[i] - offset;
             }
-
-            left[0] = center[0] + offset;
-            left[^1] = center[^1] + offset;
-            right[0] = center[0] - offset;
-            right[^1] = center[^1] - offset;
 
             return new TrackSegment
             {
