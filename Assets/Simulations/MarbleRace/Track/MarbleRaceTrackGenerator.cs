@@ -1,11 +1,7 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 public sealed class MarbleRaceTrackGenerator
 {
-    private const int MinSampleCount = 240;
-    private const int MaxSampleCount = 480;
-    private const int MaxAttempts = 30;
     private const int MinAcceptQualityScore = 70;
 
     public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int seed, int variant, int fixedTemplateId, out bool fallbackUsed)
@@ -15,55 +11,26 @@ public sealed class MarbleRaceTrackGenerator
         var safeHalfH = Mathf.Max(12f, arenaHalfHeight);
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
         var sourceSeed = rng != null ? rng.Seed : seed;
+        var mixedSeed = StableMix(sourceSeed, variant, fixedTemplateId, 0x71A3);
+        var trackRng = new SeededRng(mixedSeed);
+        var tileGen = new TileTrackGenerator();
+        var center = tileGen.BuildBestLoop(safeHalfW, safeHalfH, trackRng, variant);
 
         MarbleRaceTrack bestTrack = null;
         var bestScore = int.MinValue;
-
-        for (var attemptIndex = 0; attemptIndex <= MaxAttempts; attemptIndex++)
+        if (center != null && center.Length >= 120)
         {
-            var attemptSeed = StableMix(sourceSeed, variant, fixedTemplateId, attemptIndex);
-            var attemptRng = new SeededRng(attemptSeed);
-            var controlCount = attemptRng.NextInt(10, 17);
-            var controls = BuildPolarControlPoints(safeHalfW, safeHalfH, controlCount, attemptRng, minDim);
-            if (controls == null || controls.Count < 8)
-            {
-                continue;
-            }
-
-            var targetSamples = Mathf.Clamp(attemptRng.NextInt(MinSampleCount, MaxSampleCount + 1), MinSampleCount, MaxSampleCount);
-            var perSegment = Mathf.Max(20, Mathf.CeilToInt(targetSamples / (float)controls.Count));
-            var splineSamples = SampleClosedCatmullRom(controls, perSegment);
-            if (splineSamples == null || splineSamples.Count < 64)
-            {
-                continue;
-            }
-
-            var center = ResampleArcLengthClosed(splineSamples, targetSamples);
-            var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
-            var requiredMargin = baseHalfWidth * 1.6f + (minDim * 0.09f);
-            if (!FitToBounds(center, safeHalfW, safeHalfH, requiredMargin))
-            {
-                continue;
-            }
-
             var candidate = BuildTrackData(center, minDim);
-            if (!ValidateStrict(candidate.Center, candidate.Tangent, candidate.Normal, candidate.HalfWidth, safeHalfW, safeHalfH))
+            if (ValidateStrict(candidate.Center, candidate.Tangent, candidate.Normal, candidate.HalfWidth, safeHalfW, safeHalfH))
             {
-                continue;
-            }
-
-            RotateToBestStraight(candidate);
-            var quality = MarbleRaceTrackValidator.EvaluateQuality(candidate);
-            if (quality.Score > bestScore)
-            {
+                RotateToBestStraight(candidate);
+                var quality = MarbleRaceTrackValidator.EvaluateQuality(candidate);
                 bestScore = quality.Score;
                 bestTrack = candidate;
-            }
-
-            if (quality.Score >= MinAcceptQualityScore)
-            {
-                bestTrack = candidate;
-                break;
+                if (quality.Score < MinAcceptQualityScore)
+                {
+                    Debug.Log($"[TrackGen] tile loop generated with lower quality score={quality.Score}; accepting since constraints pass.");
+                }
             }
         }
 
@@ -78,75 +45,6 @@ public sealed class MarbleRaceTrackGenerator
         return bestTrack;
     }
 
-    private static List<Vector2> BuildPolarControlPoints(float halfW, float halfH, int count, IRng rng, float minDim)
-    {
-        var controls = new List<Vector2>(count);
-        var twoPi = Mathf.PI * 2f;
-        var axis = Mathf.Min(halfW, halfH);
-        var margin = Mathf.Max(minDim * 0.16f, 4.5f);
-        var maxRadius = Mathf.Max(6f, axis - margin);
-        var minRadius = Mathf.Clamp(maxRadius * 0.58f, 4f, maxRadius - 1f);
-        var baseRadius = Mathf.Lerp(minRadius, maxRadius, 0.62f);
-        var angleJitter = twoPi / count * 0.18f;
-        var radialJitter = Mathf.Max(1f, maxRadius * 0.2f);
-        var minNeighborDistance = Mathf.Max(3f, minDim * 0.11f);
-
-        for (var i = 0; i < count; i++)
-        {
-            var baseAngle = (i / (float)count) * twoPi;
-            var angle = baseAngle + rng.Range(-angleJitter, angleJitter);
-            var radius = Mathf.Clamp(baseRadius + rng.Range(-radialJitter, radialJitter), minRadius, maxRadius);
-            controls.Add(new Vector2(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius));
-        }
-
-        for (var i = 0; i < controls.Count; i++)
-        {
-            var next = controls[(i + 1) % controls.Count];
-            if (Vector2.Distance(controls[i], next) < minNeighborDistance)
-            {
-                return null;
-            }
-        }
-
-        return controls;
-    }
-
-    private static List<Vector2> SampleClosedCatmullRom(List<Vector2> controls, int samplesPerSegment)
-    {
-        if (controls == null || controls.Count < 4)
-        {
-            return null;
-        }
-
-        var sampled = new List<Vector2>(controls.Count * samplesPerSegment);
-        var count = controls.Count;
-        for (var i = 0; i < count; i++)
-        {
-            var p0 = controls[(i - 1 + count) % count];
-            var p1 = controls[i];
-            var p2 = controls[(i + 1) % count];
-            var p3 = controls[(i + 2) % count];
-            for (var s = 0; s < samplesPerSegment; s++)
-            {
-                var t = s / (float)samplesPerSegment;
-                sampled.Add(CatmullRom(p0, p1, p2, p3, t));
-            }
-        }
-
-        return sampled;
-    }
-
-    private static Vector2 CatmullRom(Vector2 p0, Vector2 p1, Vector2 p2, Vector2 p3, float t)
-    {
-        var t2 = t * t;
-        var t3 = t2 * t;
-        return 0.5f * (
-            (2f * p1) +
-            (-p0 + p2) * t +
-            ((2f * p0) - (5f * p1) + (4f * p2) - p3) * t2 +
-            (-p0 + (3f * p1) - (3f * p2) + p3) * t3);
-    }
-
     public MarbleRaceTrack BuildFallbackRoundedRectangle(float arenaHalfWidth, float arenaHalfHeight, int variant)
     {
         var safeHalfW = Mathf.Max(12f, arenaHalfWidth);
@@ -157,19 +55,13 @@ public sealed class MarbleRaceTrackGenerator
 
         for (var retry = 0; retry < 6; retry++)
         {
-            var controls = BuildPolarControlPoints(safeHalfW, safeHalfH, 12, rng, minDim);
-            if (controls == null)
+            var tileGen = new TileTrackGenerator();
+            var center = tileGen.BuildBestLoop(safeHalfW, safeHalfH, rng, variant + retry);
+            if (center == null || center.Length < 120)
             {
                 continue;
             }
 
-            var spline = SampleClosedCatmullRom(controls, 28);
-            if (spline == null || spline.Count < 64)
-            {
-                continue;
-            }
-
-            var center = ResampleArcLengthClosed(spline, 320);
             var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
             var requiredMargin = baseHalfWidth * 1.6f + (minDim * 0.09f);
             if (!FitToBounds(center, safeHalfW, safeHalfH, requiredMargin))
@@ -207,36 +99,6 @@ public sealed class MarbleRaceTrackGenerator
             h ^= h >> 16;
             return h;
         }
-    }
-
-    private static Vector2[] ResampleArcLengthClosed(List<Vector2> points, int target)
-    {
-        var n = points.Count;
-        var cumulative = new float[n + 1];
-        cumulative[0] = 0f;
-        for (var i = 1; i <= n; i++)
-        {
-            cumulative[i] = cumulative[i - 1] + Vector2.Distance(points[i - 1], points[i % n]);
-        }
-
-        var total = cumulative[n];
-        var result = new Vector2[target];
-        var seg = 0;
-
-        for (var i = 0; i < target; i++)
-        {
-            var d = (i / (float)target) * total;
-            while (seg < n - 1 && cumulative[seg + 1] < d)
-            {
-                seg++;
-            }
-
-            var segLen = cumulative[seg + 1] - cumulative[seg];
-            var t = segLen > 1e-6f ? (d - cumulative[seg]) / segLen : 0f;
-            result[i] = Vector2.Lerp(points[seg], points[(seg + 1) % n], t);
-        }
-
-        return result;
     }
 
     private static bool FitToBounds(Vector2[] points, float halfW, float halfH, float requiredMargin)
