@@ -2498,6 +2498,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
         if (homeDelta.magnitude > fieldWidth * 0.75f)
         {
+            var teamId = identities[i].teamId;
             Debug.LogWarning($"[FS] Huge homeTarget jump i={i} team={teamId} pos={positions[i]} home={home} lane={laneByIndex[i]} role={roleByIndex[i]}");
         }
 #endif
