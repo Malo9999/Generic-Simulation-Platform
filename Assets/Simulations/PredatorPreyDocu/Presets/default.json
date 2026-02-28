@@ -1,0 +1,51 @@
+{
+  "simulationId": "PredatorPreyDocu",
+  "world": {
+    "arenaWidth": 320,
+    "arenaHeight": 200,
+    "walls": true,
+    "obstacleDensity": 0.0
+  },
+  "predatorPreyDocu": {
+    "season": {
+      "wetTicks": 18000,
+      "dryTicks": 18000
+    },
+    "map": {
+      "riverWidth": 10.0,
+      "floodplainWidth": 26.0,
+      "creekCount": 6,
+      "creekWidth": 2.2,
+      "treeClusterCount": 55
+    },
+    "pop": {
+      "herdCount": 4,
+      "preyPerHerd": 120,
+      "prideCount": 6,
+      "lionsPerPride": 10,
+      "roamingCoalitions": 2,
+      "coalitionSize": 2
+    },
+    "visuals": {
+      "preyScale": 0.55,
+      "lionScale": 0.68,
+      "treeScale": 1.15,
+      "showPackAccent": true,
+      "showMaleRing": true
+    },
+    "movement": {
+      "herdCruiseSpeed": 4.0,
+      "herdWander": 0.65,
+      "preyJitter": 0.35,
+      "pridePatrolSpeed": 2.2,
+      "lionWander": 0.45,
+      "edgeMargin": 4.0,
+      "herdRadius": 7.5
+    }
+  },
+  "recording": {
+    "enabled": true,
+    "eventsEnabled": true,
+    "snapshotEveryNTicks": 60
+  }
+}
