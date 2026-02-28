@@ -6,6 +6,15 @@ using UnityEditor;
 
 public sealed class MarbleRaceTrackRenderer
 {
+    private const float TargetSpacing = 0.35f;
+    private const int TangentWindow = 2;
+    private const float MiterLimit = 3.0f;
+    private const int LineCornerVertices = 8;
+    private const int LineCapVertices = 8;
+    private const bool EnableDebugGizmos = false;
+    private const int DebugNormalStride = 8;
+    private const float HighAngleThresholdDeg = 35f;
+
     private static Material sharedMaterial;
     private Transform trackRoot;
 
@@ -33,34 +42,37 @@ public sealed class MarbleRaceTrackRenderer
         var borderWidth = Mathf.Clamp(roadWidth * 0.10f, 0.18f, 0.32f);
         var startWidth = Mathf.Clamp(roadWidth * 0.18f, 0.25f, 0.45f);
 
-        BuildLayeredLines(track, roadWidth, borderWidth);
-        BuildBridgeShadow(track, roadWidth);
-        BuildBoundaryColliders(track);
+        var sampled = BuildStableTrackData(track, TargetSpacing, TangentWindow, MiterLimit);
+
+        BuildLayeredLines(sampled, roadWidth, borderWidth);
+        BuildBridgeShadow(sampled, roadWidth);
+        BuildBoundaryColliders(sampled);
+        ConfigureDebugGizmos(sampled);
 
         var startFinish = EnsureLineRenderer("StartFinishLine", Color.white, 12, false, startWidth);
-        var startA = track.Center[0] + (track.Normal[0] * track.HalfWidth[0]);
-        var startB = track.Center[0] - (track.Normal[0] * track.HalfWidth[0]);
+        var startA = sampled.LeftEdge[0];
+        var startB = sampled.RightEdge[0];
         startFinish.positionCount = 2;
         startFinish.SetPosition(0, new Vector3(startA.x, startA.y, 0f));
         startFinish.SetPosition(1, new Vector3(startB.x, startB.y, 0f));
     }
 
-    private void BuildBoundaryColliders(MarbleRaceTrack track)
+    private void BuildBoundaryColliders(SampledTrackData sampled)
     {
         var leftCollider = EnsureEdgeCollider("TrackBoundaryInnerCollider");
         var rightCollider = EnsureEdgeCollider("TrackBoundaryOuterCollider");
 
-        leftCollider.points = BuildBoundaryPoints(track, 1f);
-        rightCollider.points = BuildBoundaryPoints(track, -1f);
+        leftCollider.points = BuildBoundaryPoints(sampled.LeftEdge);
+        rightCollider.points = BuildBoundaryPoints(sampled.RightEdge);
     }
 
-    private static Vector2[] BuildBoundaryPoints(MarbleRaceTrack track, float side)
+    private static Vector2[] BuildBoundaryPoints(Vector2[] edge)
     {
-        var n = track.SampleCount;
+        var n = edge.Length;
         var points = new Vector2[n + 1];
         for (var i = 0; i < n; i++)
         {
-            points[i] = track.Center[i] + (track.Normal[i] * track.HalfWidth[i] * side);
+            points[i] = edge[i];
         }
 
         points[n] = points[0];
@@ -102,12 +114,12 @@ public sealed class MarbleRaceTrackRenderer
 #endif
     }
 
-    private void BuildLayeredLines(MarbleRaceTrack track, float roadWidth, float borderWidth)
+    private void BuildLayeredLines(SampledTrackData sampled, float roadWidth, float borderWidth)
     {
-        var runs = BuildLayerRuns(track.Layer);
+        var runs = BuildLayerRuns(sampled.Layer);
         if (runs.Count == 0)
         {
-            runs.Add(new LayerRun(0, track.SampleCount - 1, 0));
+            runs.Add(new LayerRun(0, sampled.SampleCount - 1, 0));
         }
 
         var laneGround = EnsureLineRenderer("TrackLane_Ground", new Color(0.12f, 0.12f, 0.14f, 0.95f), 5, false, roadWidth);
@@ -117,19 +129,19 @@ public sealed class MarbleRaceTrackRenderer
         var outerGround = EnsureLineRenderer("TrackOuterBorder_Ground", new Color(0.90f, 0.90f, 0.92f, 0.95f), 10, false, borderWidth);
         var outerBridge = EnsureLineRenderer("TrackOuterBorder_Bridge", new Color(0.93f, 0.93f, 0.95f, 1f), 20, false, borderWidth);
 
-        SetLineFromRuns(track, laneGround, runs, 0, false);
-        SetLineFromRuns(track, laneBridge, runs, 1, false);
-        SetLineFromRuns(track, innerGround, runs, 0, true);
-        SetLineFromRuns(track, innerBridge, runs, 1, true);
-        SetLineFromRuns(track, outerGround, runs, 0, true, -1f);
-        SetLineFromRuns(track, outerBridge, runs, 1, true, -1f);
+        SetLineFromRuns(sampled, laneGround, runs, 0, sampled.Center);
+        SetLineFromRuns(sampled, laneBridge, runs, 1, sampled.Center);
+        SetLineFromRuns(sampled, innerGround, runs, 0, sampled.LeftEdge);
+        SetLineFromRuns(sampled, innerBridge, runs, 1, sampled.LeftEdge);
+        SetLineFromRuns(sampled, outerGround, runs, 0, sampled.RightEdge);
+        SetLineFromRuns(sampled, outerBridge, runs, 1, sampled.RightEdge);
     }
 
-    private void BuildBridgeShadow(MarbleRaceTrack track, float roadWidth)
+    private void BuildBridgeShadow(SampledTrackData sampled, float roadWidth)
     {
         var shadow = EnsureLineRenderer("TrackBridgeShadow", new Color(0f, 0f, 0f, 0.3f), 14, false, roadWidth * 1.2f);
-        var runs = BuildLayerRuns(track.Layer);
-        SetLineFromRuns(track, shadow, runs, 1, false);
+        var runs = BuildLayerRuns(sampled.Layer);
+        SetLineFromRuns(sampled, shadow, runs, 1, sampled.Center);
     }
 
     private static List<LayerRun> BuildLayerRuns(sbyte[] layer)
@@ -173,9 +185,9 @@ public sealed class MarbleRaceTrackRenderer
         return runs;
     }
 
-    private static void SetLineFromRuns(MarbleRaceTrack track, LineRenderer lr, List<LayerRun> runs, int targetLayer, bool border, float side = 1f)
+    private static void SetLineFromRuns(SampledTrackData sampled, LineRenderer lr, List<LayerRun> runs, int targetLayer, Vector2[] source)
     {
-        var points = new List<Vector3>(track.SampleCount + 8);
+        var points = new List<Vector3>(sampled.SampleCount + 8);
         for (var r = 0; r < runs.Count; r++)
         {
             var run = runs[r];
@@ -187,13 +199,8 @@ public sealed class MarbleRaceTrackRenderer
             var len = run.Length;
             for (var o = 0; o <= len; o++)
             {
-                var idx = (run.Start + o) % track.SampleCount;
-                var p = track.Center[idx];
-                if (border)
-                {
-                    var boundary = track.Normal[idx] * track.HalfWidth[idx] * side;
-                    p += boundary;
-                }
+                var idx = (run.Start + o) % sampled.SampleCount;
+                var p = source[idx];
 
                 points.Add(new Vector3(p.x, p.y, 0f));
             }
@@ -270,6 +277,29 @@ public sealed class MarbleRaceTrackRenderer
         return edgeCollider;
     }
 
+    private void ConfigureDebugGizmos(SampledTrackData sampled)
+    {
+        var gizmoTransform = trackRoot.Find("TrackEdgeDebugGizmos");
+        TrackEdgeDebugGizmos gizmos;
+        if (gizmoTransform == null)
+        {
+            var go = new GameObject("TrackEdgeDebugGizmos");
+            go.transform.SetParent(trackRoot, false);
+            gizmos = go.AddComponent<TrackEdgeDebugGizmos>();
+        }
+        else
+        {
+            gizmos = gizmoTransform.GetComponent<TrackEdgeDebugGizmos>();
+            if (gizmos == null)
+            {
+                gizmos = gizmoTransform.gameObject.AddComponent<TrackEdgeDebugGizmos>();
+            }
+        }
+
+        gizmos.enabled = EnableDebugGizmos;
+        gizmos.Configure(sampled.Center, sampled.Normal, sampled.HighAngleOrMiter, DebugNormalStride);
+    }
+
     private static LineRenderer ConfigureLineRenderer(GameObject go, Color color, int sortingOrder, bool loop, float width)
     {
         var lr = go.GetComponent<LineRenderer>();
@@ -283,8 +313,8 @@ public sealed class MarbleRaceTrackRenderer
         lr.useWorldSpace = true;
         lr.alignment = LineAlignment.View;
         lr.textureMode = LineTextureMode.Stretch;
-        lr.numCapVertices = 8;
-        lr.numCornerVertices = 8;
+        lr.numCapVertices = LineCapVertices;
+        lr.numCornerVertices = LineCornerVertices;
         lr.widthMultiplier = width;
         lr.startColor = color;
         lr.endColor = color;
@@ -323,6 +353,189 @@ public sealed class MarbleRaceTrackRenderer
             End = end;
             Layer = layer;
             Length = length >= 0 ? length : Mathf.Max(0, end - start + 1);
+        }
+    }
+
+    private readonly struct SampledTrackData
+    {
+        public readonly Vector2[] Center;
+        public readonly Vector2[] Tangent;
+        public readonly Vector2[] Normal;
+        public readonly float[] HalfWidth;
+        public readonly sbyte[] Layer;
+        public readonly Vector2[] LeftEdge;
+        public readonly Vector2[] RightEdge;
+        public readonly bool[] HighAngleOrMiter;
+
+        public int SampleCount => Center.Length;
+
+        public SampledTrackData(
+            Vector2[] center,
+            Vector2[] tangent,
+            Vector2[] normal,
+            float[] halfWidth,
+            sbyte[] layer,
+            Vector2[] leftEdge,
+            Vector2[] rightEdge,
+            bool[] highAngleOrMiter)
+        {
+            Center = center;
+            Tangent = tangent;
+            Normal = normal;
+            HalfWidth = halfWidth;
+            Layer = layer;
+            LeftEdge = leftEdge;
+            RightEdge = rightEdge;
+            HighAngleOrMiter = highAngleOrMiter;
+        }
+    }
+
+    private static SampledTrackData BuildStableTrackData(MarbleRaceTrack track, float targetSpacing, int tangentWindow, float miterLimit)
+    {
+        var center = ResampleClosed(track.Center, targetSpacing, out var sourceIndex, out var sourceT);
+        var sampleCount = center.Length;
+        var halfWidth = new float[sampleCount];
+        var layer = new sbyte[sampleCount];
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var a = sourceIndex[i];
+            var b = (a + 1) % track.SampleCount;
+            var t = sourceT[i];
+            halfWidth[i] = Mathf.Lerp(track.HalfWidth[a], track.HalfWidth[b], t);
+            layer[i] = t < 0.5f ? track.Layer[a] : track.Layer[b];
+        }
+
+        var tangent = new Vector2[sampleCount];
+        var normal = new Vector2[sampleCount];
+        var left = new Vector2[sampleCount];
+        var right = new Vector2[sampleCount];
+        var highAngleOrMiter = new bool[sampleCount];
+
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var forward = center[Wrap(i + tangentWindow, sampleCount)];
+            var backward = center[Wrap(i - tangentWindow, sampleCount)];
+            var tan = (forward - backward).normalized;
+            if (tan.sqrMagnitude < 1e-6f)
+            {
+                tan = (center[Wrap(i + 1, sampleCount)] - center[Wrap(i - 1, sampleCount)]).normalized;
+            }
+
+            tangent[i] = tan;
+            normal[i] = new Vector2(-tan.y, tan.x);
+            if (i > 0 && Vector2.Dot(normal[i], normal[i - 1]) < 0f)
+            {
+                normal[i] = -normal[i];
+            }
+
+            left[i] = center[i] + (normal[i] * halfWidth[i]);
+            right[i] = center[i] - (normal[i] * halfWidth[i]);
+
+            var prevDir = (center[i] - center[Wrap(i - 1, sampleCount)]).normalized;
+            var nextDir = (center[Wrap(i + 1, sampleCount)] - center[i]).normalized;
+            var angleDelta = Vector2.Angle(prevDir, nextDir);
+            var bisector = (prevDir + nextDir).normalized;
+            var prevNormal = new Vector2(-prevDir.y, prevDir.x);
+            var denom = Mathf.Abs(Vector2.Dot(bisector, prevNormal));
+            var miterLength = denom > 1e-4f ? halfWidth[i] / denom : float.MaxValue;
+            highAngleOrMiter[i] = angleDelta >= HighAngleThresholdDeg || miterLength > (miterLimit * halfWidth[i]);
+        }
+
+        return new SampledTrackData(center, tangent, normal, halfWidth, layer, left, right, highAngleOrMiter);
+    }
+
+    private static Vector2[] ResampleClosed(Vector2[] points, float targetSpacing, out int[] sourceIndex, out float[] sourceT)
+    {
+        var n = points.Length;
+        var segmentLengths = new float[n];
+        var cumulative = new float[n + 1];
+        for (var i = 0; i < n; i++)
+        {
+            var j = (i + 1) % n;
+            segmentLengths[i] = Vector2.Distance(points[i], points[j]);
+            cumulative[i + 1] = cumulative[i] + segmentLengths[i];
+        }
+
+        var totalLength = cumulative[n];
+        var sampleCount = Mathf.Max(8, Mathf.RoundToInt(totalLength / Mathf.Max(0.05f, targetSpacing)));
+        var step = totalLength / sampleCount;
+
+        var result = new Vector2[sampleCount];
+        sourceIndex = new int[sampleCount];
+        sourceT = new float[sampleCount];
+        var seg = 0;
+        for (var i = 0; i < sampleCount; i++)
+        {
+            var distance = i * step;
+            while (seg < n - 1 && cumulative[seg + 1] < distance)
+            {
+                seg++;
+            }
+
+            var segLen = Mathf.Max(1e-5f, segmentLengths[seg]);
+            var t = Mathf.Clamp01((distance - cumulative[seg]) / segLen);
+            var next = (seg + 1) % n;
+
+            result[i] = Vector2.Lerp(points[seg], points[next], t);
+            sourceIndex[i] = seg;
+            sourceT[i] = t;
+        }
+
+        return result;
+    }
+
+    private static int Wrap(int idx, int count)
+    {
+        var wrapped = idx % count;
+        return wrapped < 0 ? wrapped + count : wrapped;
+    }
+}
+
+public sealed class TrackEdgeDebugGizmos : MonoBehaviour
+{
+    private Vector2[] center;
+    private Vector2[] normal;
+    private bool[] highAngleOrMiter;
+    private int normalStride = 8;
+
+    public void Configure(Vector2[] centerPoints, Vector2[] normalVectors, bool[] highPoints, int stride)
+    {
+        center = centerPoints;
+        normal = normalVectors;
+        highAngleOrMiter = highPoints;
+        normalStride = Mathf.Max(1, stride);
+    }
+
+    private void OnDrawGizmos()
+    {
+        if (center == null || normal == null || center.Length == 0)
+        {
+            return;
+        }
+
+        Gizmos.color = Color.cyan;
+        for (var i = 0; i < center.Length; i += normalStride)
+        {
+            var c = center[i];
+            var n = normal[i];
+            Gizmos.DrawLine(new Vector3(c.x, c.y, 0f), new Vector3(c.x + (n.x * 0.35f), c.y + (n.y * 0.35f), 0f));
+        }
+
+        if (highAngleOrMiter == null)
+        {
+            return;
+        }
+
+        Gizmos.color = Color.red;
+        for (var i = 0; i < center.Length && i < highAngleOrMiter.Length; i++)
+        {
+            if (!highAngleOrMiter[i])
+            {
+                continue;
+            }
+
+            var c = center[i];
+            Gizmos.DrawSphere(new Vector3(c.x, c.y, 0f), 0.12f);
         }
     }
 }
