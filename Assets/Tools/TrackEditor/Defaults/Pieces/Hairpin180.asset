@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Hairpin180
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
   pieceId: Hairpin180
-  displayName: "MAIN \u2014 Hairpin 180"
+  displayName: Hairpin 180
   category: Corner
   trackWidth: 8
   connectors:

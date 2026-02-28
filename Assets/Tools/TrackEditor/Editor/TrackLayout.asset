@@ -12,39 +12,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d326ef2582144697b86af9770f03f856, type: 3}
   m_Name: TrackLayout
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
-  pieces:
-  - guid: f3b46dd64d2747aaa62a862afc71d4bc
-    piece: {fileID: 11400000, guid: 9bb4c5d84c3347e4aa6014b2dac74ad3, type: 2}
-    position: {x: -49.96345, y: -39.857452}
-    rotationSteps45: 0
-    mirrored: 0
+  pieces: []
   links: []
   startFinish:
     pieceGuid: 
     segmentIndex: 0
     connectorIndex: 0
-    worldPos: {x: -49.08625, y: -39.71127}
+    worldPos: {x: -33.369877, y: -40.44226}
     worldDir: {x: 1, y: 0}
   startGridSlots:
-  - pos: {x: -49.08625, y: -42.11127}
+  - pos: {x: -33.369877, y: -42.842262}
     dir: {x: 1, y: 0}
-  - pos: {x: -49.08625, y: -40.91127}
+  - pos: {x: -33.369877, y: -41.642265}
     dir: {x: 1, y: 0}
-  - pos: {x: -49.08625, y: -39.71127}
+  - pos: {x: -33.369877, y: -40.44226}
     dir: {x: 1, y: 0}
-  - pos: {x: -49.08625, y: -38.51127}
+  - pos: {x: -33.369877, y: -39.24226}
     dir: {x: 1, y: 0}
-  - pos: {x: -49.08625, y: -37.311268}
+  - pos: {x: -33.369877, y: -38.04226}
     dir: {x: 1, y: 0}
-  - pos: {x: -52.08625, y: -42.11127}
+  - pos: {x: -36.369877, y: -42.842262}
     dir: {x: 1, y: 0}
-  - pos: {x: -52.08625, y: -40.91127}
+  - pos: {x: -36.369877, y: -41.642265}
     dir: {x: 1, y: 0}
-  - pos: {x: -52.08625, y: -39.71127}
+  - pos: {x: -36.369877, y: -40.44226}
     dir: {x: 1, y: 0}
-  - pos: {x: -52.08625, y: -38.51127}
+  - pos: {x: -36.369877, y: -39.24226}
     dir: {x: 1, y: 0}
-  - pos: {x: -52.08625, y: -37.311268}
+  - pos: {x: -36.369877, y: -38.04226}
     dir: {x: 1, y: 0}
   pitEntryGuid: 
   pitExitGuid: 
