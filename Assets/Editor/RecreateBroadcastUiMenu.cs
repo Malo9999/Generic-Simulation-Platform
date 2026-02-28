@@ -487,6 +487,7 @@ public static class RecreateBroadcastUiMenu
         camera.orthographic = true;
         camera.orthographicSize = ResolveOrthographicSize();
         camera.targetTexture = rt;
+        camera.allowMSAA = true;
         camera.clearFlags = CameraClearFlags.SolidColor;
         camera.backgroundColor = new Color(0.11f, 0.14f, 0.19f, 1f);
         camera.depth = 10f;
