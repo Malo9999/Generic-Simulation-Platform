@@ -2,6 +2,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
@@ -123,7 +124,11 @@ public sealed class NewSimulationWizardWindow : EditorWindow
             var presetPath = $"{folder}/Presets/default.json";
             if (!File.Exists(presetPath))
             {
-                var json = "{\n  \"simulationId\": \"" + id + "\"\n}\n";
+                var jsonBuilder = new StringBuilder();
+                jsonBuilder.AppendLine("{");
+                jsonBuilder.AppendLine($"  \"simulationId\": \"{id}\"");
+                jsonBuilder.AppendLine("}");
+                var json = jsonBuilder.ToString();
                 File.WriteAllText(presetPath, json);
             }
         }
@@ -432,27 +437,27 @@ public sealed class NewSimulationWizardWindow : EditorWindow
     private static string BuildRunnerStubSource(string simulationId)
     {
         var runnerType = simulationId + "Runner";
-        return
-$@"using UnityEngine;
-
-public class {runnerType} : MonoBehaviour, ITickableSimulationRunner
-{{
-    public void Initialize(ScenarioConfig config)
-    {{
-        SceneGraphUtil.PrepareRunner(transform, \"{simulationId}\");
-        Debug.Log(\"{runnerType} Initialize simulationId={simulationId}, seed=\" + (config != null ? config.seed : 0));
-    }}
-
-    public void Tick(int tickIndex, float dt)
-    {{
-    }}
-
-    public void Shutdown()
-    {{
-        Debug.Log(\"{runnerType} Shutdown\");
-    }}
-}}
-";
+        var source = new StringBuilder();
+        source.AppendLine("using UnityEngine;");
+        source.AppendLine();
+        source.AppendLine($"public class {runnerType} : MonoBehaviour, ITickableSimulationRunner");
+        source.AppendLine("{");
+        source.AppendLine("    public void Initialize(ScenarioConfig config)");
+        source.AppendLine("    {");
+        source.AppendLine($"        SceneGraphUtil.PrepareRunner(transform, \"{simulationId}\");");
+        source.AppendLine($"        Debug.Log(\"{runnerType} Initialize simulationId={simulationId}, seed=\" + (config != null ? config.seed : 0));");
+        source.AppendLine("    }");
+        source.AppendLine();
+        source.AppendLine("    public void Tick(int tickIndex, float dt)");
+        source.AppendLine("    {");
+        source.AppendLine("    }");
+        source.AppendLine();
+        source.AppendLine("    public void Shutdown()");
+        source.AppendLine("    {");
+        source.AppendLine($"        Debug.Log(\"{runnerType} Shutdown\");");
+        source.AppendLine("    }");
+        source.AppendLine("}");
+        return source.ToString();
     }
 
     private static void EnsureFolder(string assetFolderPath)
