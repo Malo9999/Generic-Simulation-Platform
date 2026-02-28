@@ -15,6 +15,8 @@ public class ArenaCameraPolicy : MonoBehaviour
     public Vector2 worldSize = new Vector2(200f, 120f);
     public bool centeredAtOrigin = true; // true: [-W/2..+W/2], false: [0..W]
     public bool clampToBounds = true;
+    [Tooltip("When enabled, keep full camera extents inside arena bounds (legacy behavior). When disabled, only camera center is clamped so zoom-out can exceed arena extents.")]
+    public bool clampViewExtentsToBounds = false;
 
     [Header("Optional: auto-bounds from collider")]
     [Tooltip("Camera clamp uses this collider\'s world-space bounds. Ensure this collider fully covers the playable arena extents.")]
@@ -31,6 +33,18 @@ public class ArenaCameraPolicy : MonoBehaviour
     public int zoomLevel = 0;
     public int minZoomLevel = -6;
     public int maxZoomLevel = 6;
+    [Min(16)]
+    public int minPixelPerfectRefResolutionX = 16;
+
+    [Header("Optional Soft Zoom-Out Limit")]
+    [Tooltip("If enabled, zoom-out is softly capped relative to the fit-to-bounds orthographic size.")]
+    public bool useSoftMaxOrthoLimit = true;
+    [Min(1f)]
+    public float softMaxOrthoFitMultiplier = 1.5f;
+
+    [Header("Simulation-Specific PixelPerfect Overrides")]
+    [Tooltip("FantasySport broadcast mode: reduce letterboxing while keeping PixelPerfect camera active.")]
+    public bool applyFantasySportPixelPerfectOverrides = true;
 
     [Header("Pan Quality")]
     public bool snapRigToPixelGrid = false;
@@ -39,9 +53,16 @@ public class ArenaCameraPolicy : MonoBehaviour
     [Header("Debug")]
     public bool logAutoWire = false;
     public bool logZoomChanges = false;
+    public bool debugCameraHud = false;
 
     private bool _warnedMissingPixelPerfect;
     private float _baseOrthographicSize = -1f;
+    private float _nextDebugHudTime;
+    private float _lastOrthoBeforeApply;
+    private float _lastOrthoAfterApply;
+    private float _lastDesiredOrtho;
+    private float _lastMaxAllowedOrtho;
+    private Rect _lastBoundsRect;
 
     private void Reset() => AutoWire();
     private void OnValidate() => AutoWire();
@@ -64,17 +85,25 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         if (clampToBounds)
         {
-            float halfH = targetCamera.orthographicSize;
-            float halfW = halfH * targetCamera.aspect;
+            if (clampViewExtentsToBounds)
+            {
+                float halfH = targetCamera.orthographicSize;
+                float halfW = halfH * targetCamera.aspect;
 
-            float worldW = maxX - minX;
-            float worldH = maxY - minY;
+                float worldW = maxX - minX;
+                float worldH = maxY - minY;
 
-            if (halfW * 2f >= worldW) p.x = (minX + maxX) * 0.5f;
-            else p.x = Mathf.Clamp(p.x, minX + halfW, maxX - halfW);
+                if (halfW * 2f >= worldW) p.x = (minX + maxX) * 0.5f;
+                else p.x = Mathf.Clamp(p.x, minX + halfW, maxX - halfW);
 
-            if (halfH * 2f >= worldH) p.y = (minY + maxY) * 0.5f;
-            else p.y = Mathf.Clamp(p.y, minY + halfH, maxY - halfH);
+                if (halfH * 2f >= worldH) p.y = (minY + maxY) * 0.5f;
+                else p.y = Mathf.Clamp(p.y, minY + halfH, maxY - halfH);
+            }
+            else
+            {
+                p.x = Mathf.Clamp(p.x, minX, maxX);
+                p.y = Mathf.Clamp(p.y, minY, maxY);
+            }
         }
 
         if (snapRigToPixelGrid)
@@ -88,6 +117,11 @@ public class ArenaCameraPolicy : MonoBehaviour
         }
 
         transform.position = p;
+
+        if (debugCameraHud)
+        {
+            LogDebugCameraHud();
+        }
     }
 
     public void StepZoom(int delta)
@@ -176,14 +210,26 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         float factor = Mathf.Pow(zoomStep, zoomLevel);
         var pixelPerfectActive = IsPixelPerfectActive();
+        var beforeOrtho = targetCamera != null ? targetCamera.orthographicSize : 0f;
+        var desiredOrtho = Mathf.Max(0.01f, _baseOrthographicSize * factor);
+        var maxAllowedOrtho = ComputeMaxAllowedOrthoFromBoundsAndSoftLimit();
+
+        _lastOrthoBeforeApply = beforeOrtho;
+        _lastDesiredOrtho = desiredOrtho;
+        _lastMaxAllowedOrtho = maxAllowedOrtho;
+        CacheBoundsForDebug();
 
         if (!pixelPerfectActive)
         {
             if (targetCamera != null)
             {
                 targetCamera.orthographic = true;
-                targetCamera.orthographicSize = Mathf.Max(0.01f, _baseOrthographicSize * factor);
+                targetCamera.orthographicSize = maxAllowedOrtho > 0f
+                    ? Mathf.Min(desiredOrtho, maxAllowedOrtho)
+                    : desiredOrtho;
             }
+
+            _lastOrthoAfterApply = targetCamera != null ? targetCamera.orthographicSize : beforeOrtho;
 
             if (!_warnedMissingPixelPerfect)
             {
@@ -195,7 +241,15 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         _warnedMissingPixelPerfect = false;
 
-        int rx = Mathf.Max(64, Mathf.RoundToInt(baseRefResolution.x * factor));
+        ApplyFantasySportPixelPerfectOverrides();
+
+        if (maxAllowedOrtho > 0f)
+        {
+            var maxFactor = Mathf.Max(0.01f, maxAllowedOrtho / Mathf.Max(0.01f, _baseOrthographicSize));
+            factor = Mathf.Min(factor, maxFactor);
+        }
+
+        int rx = Mathf.Max(minPixelPerfectRefResolutionX, Mathf.RoundToInt(baseRefResolution.x * factor));
         int ry = Mathf.RoundToInt(rx * 9f / 16f);
 
         bool okX = TrySetMember(pixelPerfectComponent, "refResolutionX", rx);
@@ -209,6 +263,75 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         if (logZoomChanges)
             UnityEngine.Debug.Log($"[GSP] Zoom level={zoomLevel} -> refRes={rx}x{ry} (appliedTo={pixelPerfectComponent.GetType().FullName})");
+
+        _lastOrthoAfterApply = targetCamera != null ? targetCamera.orthographicSize : beforeOrtho;
+    }
+
+    private void ApplyFantasySportPixelPerfectOverrides()
+    {
+        if (!applyFantasySportPixelPerfectOverrides || pixelPerfectComponent == null || !IsCurrentSimulation("FantasySport"))
+        {
+            return;
+        }
+
+        TrySetMember(pixelPerfectComponent, "stretchFill", true);
+        TrySetMember(pixelPerfectComponent, "cropFrameX", false);
+        TrySetMember(pixelPerfectComponent, "cropFrameY", false);
+        TrySetMember(pixelPerfectComponent, "upscaleRT", false);
+    }
+
+    private bool IsCurrentSimulation(string simulationId)
+    {
+        var bootstrapper = UnityEngine.Object.FindAnyObjectByType<Bootstrapper>();
+        return bootstrapper != null && string.Equals(bootstrapper.CurrentSimulationId, simulationId, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    private float ComputeMaxAllowedOrthoFromBoundsAndSoftLimit()
+    {
+        if (!useSoftMaxOrthoLimit || targetCamera == null)
+        {
+            return -1f;
+        }
+
+        GetWorldMinMax(out var minX, out var minY, out var maxX, out var maxY);
+        var width = Mathf.Max(0.01f, maxX - minX);
+        var height = Mathf.Max(0.01f, maxY - minY);
+        var pad = Mathf.Max(width, height) * Mathf.Clamp01(fitMarginPercent);
+        var paddedWidth = width + pad * 2f;
+        var paddedHeight = height + pad * 2f;
+        var aspect = Mathf.Max(0.01f, targetCamera.aspect);
+        var fitOrtho = Mathf.Max(paddedHeight * 0.5f, (paddedWidth * 0.5f) / aspect);
+        return fitOrtho * Mathf.Max(1f, softMaxOrthoFitMultiplier);
+    }
+
+    private void CacheBoundsForDebug()
+    {
+        GetWorldMinMax(out var minX, out var minY, out var maxX, out var maxY);
+        _lastBoundsRect = Rect.MinMaxRect(minX, minY, maxX, maxY);
+    }
+
+    private void LogDebugCameraHud()
+    {
+        if (Time.unscaledTime < _nextDebugHudTime)
+        {
+            return;
+        }
+
+        _nextDebugHudTime = Time.unscaledTime + 1f;
+
+        var pixelPerfectPresent = pixelPerfectComponent != null;
+        var pixelPerfectEnabled = IsPixelPerfectActive();
+        var upscaleRT = TryGetPixelPerfectMember("upscaleRT", out bool upscale) ? upscale : false;
+        var cropX = TryGetPixelPerfectMember("cropFrameX", out bool cx) ? cx : false;
+        var cropY = TryGetPixelPerfectMember("cropFrameY", out bool cy) ? cy : false;
+        var stretchFill = TryGetPixelPerfectMember("stretchFill", out bool sf) ? sf : false;
+        var refX = TryGetPixelPerfectMember("refResolutionX", out int rx) ? rx : -1;
+        var refY = TryGetPixelPerfectMember("refResolutionY", out int ry) ? ry : -1;
+        var ppu = GetPPU();
+
+        UnityEngine.Debug.Log(
+            $"[GSP][CameraHUD] zoom={zoomLevel} range=[{minZoomLevel},{maxZoomLevel}] orthoBefore={_lastOrthoBeforeApply:F3} desiredOrtho={_lastDesiredOrtho:F3} orthoAfter={_lastOrthoAfterApply:F3} maxAllowedOrthoFromBounds={_lastMaxAllowedOrtho:F3} bounds=({_lastBoundsRect.xMin:F2},{_lastBoundsRect.yMin:F2},{_lastBoundsRect.width:F2},{_lastBoundsRect.height:F2}) pp[present={pixelPerfectPresent} enabled={pixelPerfectEnabled} upscaleRT={upscaleRT} cropX={cropX} cropY={cropY} stretchFill={stretchFill} ref={refX}x{refY} assetsPPU={ppu:F2}]"
+        );
     }
 
     private bool IsPixelPerfectActive()
@@ -371,5 +494,11 @@ public class ArenaCameraPolicy : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool TryGetPixelPerfectMember<T>(string name, out T value)
+    {
+        value = default;
+        return pixelPerfectComponent != null && TryGetMember(pixelPerfectComponent, name, out value);
     }
 }
