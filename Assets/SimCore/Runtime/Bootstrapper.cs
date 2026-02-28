@@ -382,6 +382,7 @@ public class Bootstrapper : MonoBehaviour
 
             ArenaBuilder.Build(simulationRoot.transform, currentConfig);
             var runnerSpawned = SpawnRunner(currentConfig);
+            SyncCameraBoundsAndFit();
 
             if (IsReplayMode)
             {
@@ -450,6 +451,31 @@ public class Bootstrapper : MonoBehaviour
         if (scoreboardObject != null && scoreboardObject.activeSelf != visible)
         {
             scoreboardObject.SetActive(visible);
+        }
+    }
+
+    private static void SyncCameraBoundsAndFit()
+    {
+        var arenaBoundsObject = GameObject.Find("ArenaBounds");
+        var arenaBoundsCollider = arenaBoundsObject != null ? arenaBoundsObject.GetComponent<Collider2D>() : null;
+        var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
+
+        if (arenaCameraPolicy != null)
+        {
+            if (arenaBoundsCollider != null)
+            {
+                arenaCameraPolicy.BindArenaBounds(arenaBoundsCollider, fitToBounds: true);
+            }
+            else
+            {
+                arenaCameraPolicy.FitToBounds();
+            }
+        }
+
+        var followController = UnityEngine.Object.FindAnyObjectByType<CameraFollowController>();
+        if (followController != null)
+        {
+            followController.arenaCameraPolicy = arenaCameraPolicy;
         }
     }
 

@@ -19,6 +19,11 @@ public class ArenaCameraPolicy : MonoBehaviour
     [Header("Optional: auto-bounds from collider")]
     [Tooltip("Camera clamp uses this collider\'s world-space bounds. Ensure this collider fully covers the playable arena extents.")]
     public Collider2D arenaBoundsCollider;
+    public bool autoFindArenaBoundsCollider = true;
+
+    [Header("Fit To Bounds")]
+    [Range(0f, 0.5f)]
+    public float fitMarginPercent = 0.06f;
 
     [Header("Pixel Perfect Zoom")]
     public Vector2Int baseRefResolution = new Vector2Int(480, 270);
@@ -89,6 +94,79 @@ public class ArenaCameraPolicy : MonoBehaviour
         ApplyZoom();
     }
 
+    public void FitToBounds()
+    {
+        AutoWire();
+        if (targetCamera == null)
+        {
+            return;
+        }
+
+        GetWorldMinMax(out var minX, out var minY, out var maxX, out var maxY);
+        var width = Mathf.Max(0.01f, maxX - minX);
+        var height = Mathf.Max(0.01f, maxY - minY);
+        var pad = Mathf.Max(width, height) * Mathf.Clamp01(fitMarginPercent);
+
+        width += pad * 2f;
+        height += pad * 2f;
+
+        var aspect = Mathf.Max(0.01f, targetCamera.aspect);
+        var requiredOrthographicSize = Mathf.Max(height * 0.5f, (width * 0.5f) / aspect);
+
+        var center = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, transform.position.z);
+        transform.position = center;
+
+        if (pixelPerfectComponent == null)
+        {
+            targetCamera.orthographicSize = requiredOrthographicSize;
+            return;
+        }
+
+        var bestLevel = minZoomLevel;
+        var foundFit = false;
+
+        for (var level = maxZoomLevel; level >= minZoomLevel; level--)
+        {
+            zoomLevel = level;
+            ApplyZoom();
+
+            if (targetCamera.orthographicSize + 0.001f >= requiredOrthographicSize)
+            {
+                bestLevel = level;
+                foundFit = true;
+                break;
+            }
+        }
+
+        if (!foundFit)
+        {
+            bestLevel = minZoomLevel;
+        }
+
+        zoomLevel = Mathf.Clamp(bestLevel, minZoomLevel, maxZoomLevel);
+        ApplyZoom();
+    }
+
+    public void BindArenaBounds(Collider2D boundsCollider, bool fitToBounds)
+    {
+        if (boundsCollider != null)
+        {
+            arenaBoundsCollider = boundsCollider;
+        }
+
+        if (fitToBounds)
+        {
+            FitToBounds();
+        }
+    }
+
+    public bool TryGetWorldBoundsRect(out Rect boundsRect)
+    {
+        GetWorldMinMax(out var minX, out var minY, out var maxX, out var maxY);
+        boundsRect = Rect.MinMaxRect(minX, minY, maxX, maxY);
+        return boundsRect.width > 0f && boundsRect.height > 0f;
+    }
+
     private void ApplyZoom()
     {
         AutoWire();
@@ -129,6 +207,15 @@ public class ArenaCameraPolicy : MonoBehaviour
         if (pixelPerfectComponent == null && targetCamera != null)
         {
             pixelPerfectComponent = FindPixelPerfectOnCamera(targetCamera);
+        }
+
+        if (autoFindArenaBoundsCollider && arenaBoundsCollider == null)
+        {
+            var arenaBoundsObject = GameObject.Find("ArenaBounds");
+            if (arenaBoundsObject != null)
+            {
+                arenaBoundsCollider = arenaBoundsObject.GetComponent<Collider2D>();
+            }
         }
 
         if (pixelPerfectComponent == null)
