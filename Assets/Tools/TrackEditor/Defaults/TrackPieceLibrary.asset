@@ -13,10 +13,14 @@ MonoBehaviour:
   m_Name: TrackPieceLibrary
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceLibrary
   pieces:
-  - {fileID: 11400000, guid: 4d96846255c634a4facd0eaa50f72199, type: 2}
-  - {fileID: 11400000, guid: d2bf665531e65ee4abfff5c3ae1963b6, type: 2}
-  - {fileID: 11400000, guid: 46852a795a2285e47b4bfffe7087a41c, type: 2}
-  - {fileID: 11400000, guid: 847475a18cac9ab4c941a1fc08014294, type: 2}
-  - {fileID: 11400000, guid: 5d2ee33dbb9c767499b2768389c9484a, type: 2}
+  - {fileID: 11400000, guid: 9bb4c5d84c3347e4aa6014b2dac74ad3, type: 2}
+  - {fileID: 11400000, guid: b6050414c3eed8a4ba93ce95cf5faa10, type: 2}
+  - {fileID: 11400000, guid: 4ea1d92d00b51ec4a92516bd3dfc53d7, type: 2}
+  - {fileID: 11400000, guid: 94467470377d0854e965723675e5e2f8, type: 2}
+  - {fileID: 11400000, guid: 111c80a2ad869914da1ae12aafcdf52d, type: 2}
+  - {fileID: 11400000, guid: 05fa6ae28d5ce2541ac6fe5f18a92256, type: 2}
+  - {fileID: 11400000, guid: 9d4be9c44a027944d8d0691d38f33b21, type: 2}
+  - {fileID: 11400000, guid: bb45254f25a7b2346a7141a645c7c6ee, type: 2}
+  - {fileID: 11400000, guid: 677bc7791d1849247a170b08dfd5435c, type: 2}
   - {fileID: 11400000, guid: 72895edd5da7f224db76db02aae75772, type: 2}
   - {fileID: 11400000, guid: 603fc3e9cc1ea684e8477e25723dfd11, type: 2}

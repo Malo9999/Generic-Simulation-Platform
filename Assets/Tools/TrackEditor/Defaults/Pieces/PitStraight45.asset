@@ -10,27 +10,27 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dbef79a7a07d4235a6f121ad67428ec3, type: 3}
-  m_Name: Straight45
+  m_Name: PitStraight45
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
-  pieceId: Straight45
-  displayName: Straight 45
-  category: Straight
+  pieceId: PitStraight45
+  displayName: Pit Straight 45 (Pit)
+  category: Pit Straight 45 (Pit)
   trackWidth: 8
   connectors:
   - id: SW
     localPos: {x: -7.071068, y: -7.071068}
     localDir: 5
-    role: 2
+    role: 1
     trackWidth: 8
   - id: NE
     localPos: {x: 7.071068, y: 7.071068}
     localDir: 1
-    role: 2
+    role: 1
     trackWidth: 8
   segments:
   - fromConnectorIndex: 0
     toConnectorIndex: 1
-    pathRole: 0
+    pathRole: 1
     localCenterline:
     - {x: -7.071068, y: -7.071068}
     - {x: 7.071068, y: 7.071068}
@@ -42,7 +42,7 @@ MonoBehaviour:
     - {x: 9.899495, y: 4.2426405}
   - fromConnectorIndex: 1
     toConnectorIndex: 0
-    pathRole: 0
+    pathRole: 1
     localCenterline:
     - {x: 7.071068, y: 7.071068}
     - {x: -7.071068, y: -7.071068}
@@ -54,7 +54,7 @@ MonoBehaviour:
     - {x: -9.899495, y: -4.2426405}
   localBounds:
     serializedVersion: 2
-    x: -11.071068
-    y: -11.071068
-    width: 22.142136
-    height: 22.142136
+    x: -10.099495
+    y: -10.099495
+    width: 20.19899
+    height: 20.19899

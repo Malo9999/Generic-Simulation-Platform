@@ -13,67 +13,104 @@ MonoBehaviour:
   m_Name: TrackLayout
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
   pieces:
-  - guid: f73238a880034d5e81a16c4436358926
-    piece: {fileID: 0}
-    position: {x: -16.99633, y: 0.37844127}
+  - guid: c99205f8468e44c3ac70227474340429
+    piece: {fileID: 11400000, guid: 9bb4c5d84c3347e4aa6014b2dac74ad3, type: 2}
+    position: {x: -26.45832, y: -22.556635}
     rotationSteps45: 0
     mirrored: 0
-  - guid: b3bed59ba20e4b968eb2fc13bb2d7959
-    piece: {fileID: 0}
-    position: {x: -36.99633, y: 0.37844127}
+  - guid: 8d6af13730b64bb2b384d0aa00b0b7dd
+    piece: {fileID: 11400000, guid: 9bb4c5d84c3347e4aa6014b2dac74ad3, type: 2}
+    position: {x: -6.4583206, y: -22.556635}
     rotationSteps45: 0
     mirrored: 0
-  - guid: 9eeec9b434f245a0ae70cdb90664b31e
-    piece: {fileID: 0}
-    position: {x: 3.0036688, y: 0.37844127}
+  - guid: 0303a9b33def4366a3a6e31a5e027fa9
+    piece: {fileID: 11400000, guid: 9bb4c5d84c3347e4aa6014b2dac74ad3, type: 2}
+    position: {x: -99.65276, y: -46.70137}
     rotationSteps45: 0
     mirrored: 0
-  - guid: 5821f554bba44ab691c1351a0309a9ce
-    piece: {fileID: 11400000, guid: 383df6ad5c4108a499484b6a9f298654, type: 2}
-    position: {x: 21.00367, y: 0.37844196}
-    rotationSteps45: 4
+  - guid: d239611edbfd42cc9f01bdabeba3cbdb
+    piece: {fileID: 11400000, guid: 94467470377d0854e965723675e5e2f8, type: 2}
+    position: {x: 13.541679, y: -22.556635}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 053c049470f0437ca6f198f052a4cf1a
+    piece: {fileID: 11400000, guid: 4ea1d92d00b51ec4a92516bd3dfc53d7, type: 2}
+    position: {x: 3.5416794, y: -12.556635}
+    rotationSteps45: 5
+    mirrored: 0
+  - guid: c778c0bada4d45f9b2b173999e1ed98b
+    piece: {fileID: 11400000, guid: 603fc3e9cc1ea684e8477e25723dfd11, type: 2}
+    position: {x: -46.45832, y: -22.556635}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 620c2f469faa420c94b0ff9f187d280b
+    piece: {fileID: 11400000, guid: 72895edd5da7f224db76db02aae75772, type: 2}
+    position: {x: -66.45832, y: -22.556635}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 93dc02171f5f49039b795bee03963679
+    piece: {fileID: 11400000, guid: 677bc7791d1849247a170b08dfd5435c, type: 2}
+    position: {x: -46.45832, y: -42.556633}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: cc8baa065d5e445f82b0c77b1a02f469
+    piece: {fileID: 11400000, guid: 677bc7791d1849247a170b08dfd5435c, type: 2}
+    position: {x: -68.6513, y: -43.872425}
+    rotationSteps45: 6
     mirrored: 0
   links:
-  - pieceGuidA: f73238a880034d5e81a16c4436358926
-    connectorIndexA: 0
-    pieceGuidB: b3bed59ba20e4b968eb2fc13bb2d7959
+  - pieceGuidA: c99205f8468e44c3ac70227474340429
+    connectorIndexA: 1
+    pieceGuidB: 8d6af13730b64bb2b384d0aa00b0b7dd
+    connectorIndexB: 0
+  - pieceGuidA: 8d6af13730b64bb2b384d0aa00b0b7dd
+    connectorIndexA: 1
+    pieceGuidB: d239611edbfd42cc9f01bdabeba3cbdb
+    connectorIndexB: 0
+  - pieceGuidA: d239611edbfd42cc9f01bdabeba3cbdb
+    connectorIndexA: 1
+    pieceGuidB: 053c049470f0437ca6f198f052a4cf1a
     connectorIndexB: 1
-  - pieceGuidA: f73238a880034d5e81a16c4436358926
+  - pieceGuidA: c99205f8468e44c3ac70227474340429
+    connectorIndexA: 0
+    pieceGuidB: c778c0bada4d45f9b2b173999e1ed98b
+    connectorIndexB: 2
+  - pieceGuidA: c778c0bada4d45f9b2b173999e1ed98b
     connectorIndexA: 1
-    pieceGuidB: 9eeec9b434f245a0ae70cdb90664b31e
-    connectorIndexB: 0
-  - pieceGuidA: 9eeec9b434f245a0ae70cdb90664b31e
-    connectorIndexA: 1
-    pieceGuidB: 5821f554bba44ab691c1351a0309a9ce
-    connectorIndexB: 0
+    pieceGuidB: 620c2f469faa420c94b0ff9f187d280b
+    connectorIndexB: 1
+  - pieceGuidA: c778c0bada4d45f9b2b173999e1ed98b
+    connectorIndexA: 0
+    pieceGuidB: 93dc02171f5f49039b795bee03963679
+    connectorIndexB: 1
   startFinish:
     pieceGuid: 
     segmentIndex: 0
     connectorIndex: 0
-    worldPos: {x: -123.73736, y: 5.8586025}
+    worldPos: {x: 99.793365, y: -44.901653}
     worldDir: {x: 1, y: 0}
   startGridSlots:
-  - pos: {x: -123.73736, y: 4.6586027}
+  - pos: {x: 99.793365, y: -46.10165}
     dir: {x: 1, y: 0}
-  - pos: {x: -123.73736, y: 7.0586023}
+  - pos: {x: 99.793365, y: -43.70165}
     dir: {x: 1, y: 0}
-  - pos: {x: -128.73737, y: 4.6586027}
+  - pos: {x: 94.79335, y: -46.10165}
     dir: {x: 1, y: 0}
-  - pos: {x: -128.73737, y: 7.0586023}
+  - pos: {x: 94.79335, y: -43.70165}
     dir: {x: 1, y: 0}
-  - pos: {x: -133.73737, y: 4.6586027}
+  - pos: {x: 89.79335, y: -46.10165}
     dir: {x: 1, y: 0}
-  - pos: {x: -133.73737, y: 7.0586023}
+  - pos: {x: 89.79335, y: -43.70165}
     dir: {x: 1, y: 0}
-  - pos: {x: -138.73737, y: 4.6586027}
+  - pos: {x: 84.79335, y: -46.10165}
     dir: {x: 1, y: 0}
-  - pos: {x: -138.73737, y: 7.0586023}
+  - pos: {x: 84.79335, y: -43.70165}
     dir: {x: 1, y: 0}
-  - pos: {x: -143.73737, y: 4.6586027}
+  - pos: {x: 79.79335, y: -46.10165}
     dir: {x: 1, y: 0}
-  - pos: {x: -143.73737, y: 7.0586023}
+  - pos: {x: 79.79335, y: -43.70165}
     dir: {x: 1, y: 0}
   pitEntryGuid: 
   pitExitGuid: 
-  pan: {x: -2, y: 102.666626}
-  zoom: 0.2
+  pan: {x: 111.33334, y: 219.33331}
+  zoom: 0.38

@@ -24,7 +24,7 @@ MonoBehaviour:
   fantasySportVisual: {fileID: 11400000, guid: 398f3e63742d4b7f93598eef69a4b6f0, type: 2}
   raceCarVisual: {fileID: 11400000, guid: eb95ca42d1804cf29a98556b3e28023e, type: 2}
   seedPolicy: 1
-  fixedSeed: 3232
+  fixedSeed: 1000
   allowHotkeySwitch: 1
   showOverlay: 1
   persistSelectionToPreset: 0

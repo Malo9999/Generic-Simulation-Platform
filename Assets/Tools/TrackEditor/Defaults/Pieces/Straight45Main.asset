@@ -10,63 +10,51 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dbef79a7a07d4235a6f121ad67428ec3, type: 3}
-  m_Name: Corner135
+  m_Name: Straight45Main
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
-  pieceId: Corner135
-  displayName: Corner 135
-  category: Corner
+  pieceId: Straight45Main
+  displayName: Straight 45 (Main)
+  category: Straight 45 (Main)
   trackWidth: 8
   connectors:
-  - id: W
-    localPos: {x: -10, y: 0}
-    localDir: 6
-    role: 2
+  - id: SW
+    localPos: {x: -7.071068, y: -7.071068}
+    localDir: 5
+    role: 0
     trackWidth: 8
   - id: NE
     localPos: {x: 7.071068, y: 7.071068}
     localDir: 1
-    role: 2
+    role: 0
     trackWidth: 8
   segments:
   - fromConnectorIndex: 0
     toConnectorIndex: 1
     pathRole: 0
     localCenterline:
-    - {x: -10, y: 0}
-    - {x: -8, y: 8}
-    - {x: 0, y: 12}
+    - {x: -7.071068, y: -7.071068}
     - {x: 7.071068, y: 7.071068}
     localLeftBoundary:
-    - {x: -13.88057, y: 0.97014254}
-    - {x: -11.0728855, y: 10.560738}
-    - {x: 0.24608016, y: 15.992424}
-    - {x: 9.35843, y: 10.352528}
+    - {x: -9.899495, y: -4.2426405}
+    - {x: 4.2426405, y: 9.899495}
     localRightBoundary:
-    - {x: -6.1194296, y: -0.97014254}
-    - {x: -4.927115, y: 5.4392624}
-    - {x: -0.24608016, y: 8.007576}
-    - {x: 4.7837057, y: 3.7896082}
+    - {x: -4.2426405, y: -9.899495}
+    - {x: 9.899495, y: 4.2426405}
   - fromConnectorIndex: 1
     toConnectorIndex: 0
     pathRole: 0
     localCenterline:
     - {x: 7.071068, y: 7.071068}
-    - {x: 0, y: 12}
-    - {x: -8, y: 8}
-    - {x: -10, y: 0}
+    - {x: -7.071068, y: -7.071068}
     localLeftBoundary:
-    - {x: 4.7837057, y: 3.7896082}
-    - {x: -0.24608016, y: 8.007576}
-    - {x: -4.927115, y: 5.4392624}
-    - {x: -6.1194296, y: -0.97014254}
+    - {x: 9.899495, y: 4.2426405}
+    - {x: -4.2426405, y: -9.899495}
     localRightBoundary:
-    - {x: 9.35843, y: 10.352528}
-    - {x: 0.24608016, y: 15.992424}
-    - {x: -11.0728855, y: 10.560738}
-    - {x: -13.88057, y: 0.97014254}
+    - {x: 4.2426405, y: 9.899495}
+    - {x: -9.899495, y: -4.2426405}
   localBounds:
     serializedVersion: 2
-    x: -14
-    y: -4
-    width: 25.071068
-    height: 20
+    x: -10.099495
+    y: -10.099495
+    width: 20.19899
+    height: 20.19899
