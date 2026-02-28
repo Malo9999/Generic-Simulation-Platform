@@ -18,7 +18,6 @@ namespace GSP.TrackEditor.Editor
     6) Select a piece by clicking on its road surface:
        - Detach Selected removes only its links (piece remains).
        - Delete Selected removes piece and its links.
-       - Rotate +/-45 works.
     7) Place start marker:
        - Click "Place Start/Finish" then click on the track: start line appears at clicked location with correct tangent.
        - Drag start line: grid and marker move together.
@@ -57,8 +56,8 @@ namespace GSP.TrackEditor.Editor
 
         private const float RightPanelWidth = 330f;
         private const float PixelsPerUnit = 24f;
-        private const float SnapRadiusPx = 110f;
-        private const float SnapLockRadiusPx = 80f;
+        private const float SnapRadiusPx = 120f;
+        private const float SnapLockRadiusPx = 90f;
         private const float SnapEpsilonWorld = 0.05f;
 
         private TrackPieceLibrary library;
@@ -70,7 +69,6 @@ namespace GSP.TrackEditor.Editor
         private string search = string.Empty;
         private string status = "Ready.";
         private int selectedPiece = -1;
-        private int dragRotationOffset;
         private TrackBakeUtility.ValidationReport lastValidation;
         private TrackPieceDef _palettePressedPiece;
         private Vector2 _palettePressedPos;
@@ -180,28 +178,6 @@ namespace GSP.TrackEditor.Editor
             {
                 var p = layout.pieces[selectedPiece];
                 GUILayout.Label(p.piece != null ? p.piece.displayName : "None");
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("Rotate -45")) RotateSelected(-1);
-                if (GUILayout.Button("Rotate +45")) RotateSelected(1);
-                EditorGUILayout.EndHorizontal();
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("Rotate -90")) RotateSelected(-2);
-                if (GUILayout.Button("Rotate +90")) RotateSelected(2);
-                EditorGUILayout.EndHorizontal();
-            }
-
-            if (DragAndDrop.GetGenericData("TrackPieceDef") is TrackPieceDef)
-            {
-                GUILayout.Space(4f);
-                GUILayout.Label("Drag Rotation", EditorStyles.miniBoldLabel);
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("-45")) dragRotationOffset = (dragRotationOffset + 7) % 8;
-                if (GUILayout.Button("+45")) dragRotationOffset = (dragRotationOffset + 1) % 8;
-                EditorGUILayout.EndHorizontal();
-                EditorGUILayout.BeginHorizontal();
-                if (GUILayout.Button("-90")) dragRotationOffset = (dragRotationOffset + 6) % 8;
-                if (GUILayout.Button("+90")) dragRotationOffset = (dragRotationOffset + 2) % 8;
-                EditorGUILayout.EndHorizontal();
             }
 
             EditorGUI.BeginDisabledGroup(selectedPiece < 0 || selectedPiece >= layout.pieces.Count);
@@ -301,7 +277,6 @@ namespace GSP.TrackEditor.Editor
                     {
                         StartDragPiece(piece);
                         _paletteDragStarted = true;
-                        dragRotationOffset = 0;
                         evt.Use();
                     }
                 }
@@ -350,33 +325,6 @@ namespace GSP.TrackEditor.Editor
             }
 
             var canvasRect = new Rect(Vector2.zero, size);
-            if (DragAndDrop.GetGenericData("TrackPieceDef") is TrackPieceDef)
-            {
-                if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Q)
-                {
-                    dragRotationOffset = (dragRotationOffset + 7) % 8;
-                    Repaint();
-                    evt.Use();
-                }
-                else if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.E)
-                {
-                    dragRotationOffset = (dragRotationOffset + 1) % 8;
-                    Repaint();
-                    evt.Use();
-                }
-                else if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.A)
-                {
-                    dragRotationOffset = (dragRotationOffset + 6) % 8;
-                    Repaint();
-                    evt.Use();
-                }
-                else if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.D)
-                {
-                    dragRotationOffset = (dragRotationOffset + 2) % 8;
-                    Repaint();
-                    evt.Use();
-                }
-            }
 
             if ((evt.type == EventType.DragUpdated || evt.type == EventType.DragPerform) && canvasRect.Contains(evt.mousePosition))
             {
@@ -390,7 +338,6 @@ namespace GSP.TrackEditor.Editor
                         TryPlacePiece(piece, world, size);
                         DragAndDrop.AcceptDrag();
                         DragAndDrop.SetGenericData("TrackPieceDef", null);
-                        dragRotationOffset = 0;
                         ClearSnapLock();
                     }
 
@@ -409,30 +356,6 @@ namespace GSP.TrackEditor.Editor
                 selectedPiece = -1;
                 _isPlacingStartFinish = false;
                 Repaint();
-                evt.Use();
-            }
-
-            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Q && selectedPiece >= 0)
-            {
-                RotateSelected(-1);
-                evt.Use();
-            }
-
-            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.E && selectedPiece >= 0)
-            {
-                RotateSelected(1);
-                evt.Use();
-            }
-
-            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.A && selectedPiece >= 0)
-            {
-                RotateSelected(-2);
-                evt.Use();
-            }
-
-            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.D && selectedPiece >= 0)
-            {
-                RotateSelected(2);
                 evt.Use();
             }
 
@@ -755,7 +678,7 @@ namespace GSP.TrackEditor.Editor
                 guid = Guid.NewGuid().ToString("N"),
                 piece = draggedPiece,
                 position = worldDrop,
-                rotationSteps45 = dragRotationOffset,
+                rotationSteps45 = 0,
                 mirrored = false
             };
 
@@ -772,7 +695,7 @@ namespace GSP.TrackEditor.Editor
             var statusRect = new Rect(10f, canvasSize.y - 24f, canvasSize.x - 20f, 20f);
             if (preview.valid)
             {
-                GUI.Label(statusRect, $"Snap: OK (dist {bestDistPx:F0}px) → connector A:{preview.openConnectorIndex} ↔ new:{preview.candidateConnectorIndex} rot={preview.rotationSteps45 * 45}°", EditorStyles.miniBoldLabel);
+                GUI.Label(statusRect, $"Snap: OK (dist {bestDistPx:F0}px) → connector A:{preview.openConnectorIndex} ↔ new:{preview.candidateConnectorIndex} rot=0°", EditorStyles.miniBoldLabel);
             }
             else
             {
@@ -855,7 +778,7 @@ namespace GSP.TrackEditor.Editor
                 guid = Guid.NewGuid().ToString("N"),
                 piece = piece,
                 position = worldDrop,
-                rotationSteps45 = dragRotationOffset,
+                rotationSteps45 = 0,
                 mirrored = false
             };
 
@@ -903,7 +826,7 @@ namespace GSP.TrackEditor.Editor
 
             var mouseCanvas = Event.current.mousePosition;
             var openConnectors = GetOpenConnectors();
-            var lockedConnector = UpdateSnapLock(openConnectors, canvasSize, mouseCanvas);
+            var lockedConnector = UpdateSnapLock(piece, openConnectors, canvasSize, mouseCanvas);
             if (!lockedConnector.HasValue)
             {
                 return false;
@@ -923,6 +846,7 @@ namespace GSP.TrackEditor.Editor
         }
 
         private OpenConnectorTarget? UpdateSnapLock(
+            TrackPieceDef piece,
             List<(PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir)> openConnectors,
             Vector2 canvasSize,
             Vector2 mouseCanvas)
@@ -930,7 +854,7 @@ namespace GSP.TrackEditor.Editor
             if (_snapLocked)
             {
                 var existing = openConnectors.FirstOrDefault(o => o.placed.guid == _lockedOpen.placed.guid && o.index == _lockedOpen.index);
-                if (existing.placed != null)
+                if (existing.placed != null && CanSnapPieceToOpenConnector(piece, existing.connector, existing.worldDir))
                 {
                     var dist = Vector2.Distance(WorldToCanvas(existing.worldPos, canvasSize), mouseCanvas);
                     if (dist <= SnapLockRadiusPx)
@@ -956,6 +880,11 @@ namespace GSP.TrackEditor.Editor
             OpenConnectorTarget nearest = default;
             foreach (var open in openConnectors)
             {
+                if (!CanSnapPieceToOpenConnector(piece, open.connector, open.worldDir))
+                {
+                    continue;
+                }
+
                 var dist = Vector2.Distance(WorldToCanvas(open.worldPos, canvasSize), mouseCanvas);
                 if (dist >= nearestDist)
                 {
@@ -974,7 +903,7 @@ namespace GSP.TrackEditor.Editor
                 };
             }
 
-            if (!nearestFound || nearestDist >= SnapRadiusPx)
+            if (!nearestFound || nearestDist > SnapRadiusPx)
             {
                 return null;
             }
@@ -997,7 +926,6 @@ namespace GSP.TrackEditor.Editor
             link = null;
             preview = default;
             var bestWorldDelta = float.MaxValue;
-            var bestRotationDelta = int.MaxValue;
 
             for (var i = 0; i < piece.connectors.Length; i++)
             {
@@ -1012,61 +940,82 @@ namespace GSP.TrackEditor.Editor
                     continue;
                 }
 
-                for (var rot = 0; rot < 8; rot++)
+                if (connector.localDir != open.worldDir.Opposite())
                 {
-                    var rotated = (rot + dragRotationOffset) % 8;
-                    var candidateDirWorld = connector.localDir.RotateSteps45(rotated);
-                    if (candidateDirWorld != open.worldDir.Opposite())
-                    {
-                        continue;
-                    }
-
-                    var rotatedLocal = TrackMathUtil.Rotate45(connector.localPos, rotated);
-                    var snappedPos = open.worldPos - rotatedLocal;
-                    var worldDelta = Vector2.Distance(snappedPos, worldDrop);
-                    var rotationDelta = RotationDelta(rotated, dragRotationOffset);
-                    if (!IsBetterSnapCandidate(worldDelta, rotationDelta, bestWorldDelta, bestRotationDelta))
-                    {
-                        continue;
-                    }
-
-                    bestWorldDelta = worldDelta;
-                    bestRotationDelta = rotationDelta;
-
-                    snapped = new PlacedPiece
-                    {
-                        guid = Guid.NewGuid().ToString("N"),
-                        piece = piece,
-                        position = snappedPos,
-                        rotationSteps45 = rotated,
-                        mirrored = false
-                    };
-
-                    link = new ConnectorLink
-                    {
-                        pieceGuidA = open.placed.guid,
-                        connectorIndexA = open.index,
-                        pieceGuidB = snapped.guid,
-                        connectorIndexB = i
-                    };
-
-                    preview = new SnapPreview
-                    {
-                        valid = true,
-                        snapped = snapped,
-                        link = link,
-                        distancePx = _lockedDistPx,
-                        openPiece = open.placed,
-                        openConnectorIndex = open.index,
-                        candidateConnectorIndex = i,
-                        rotationSteps45 = rotated,
-                        openWorldPos = open.worldPos,
-                        openWorldDir = open.worldDir
-                    };
+                    continue;
                 }
+
+                var snappedPos = open.worldPos - connector.localPos;
+                var worldDelta = Vector2.Distance(snappedPos, worldDrop);
+                if (worldDelta >= bestWorldDelta)
+                {
+                    continue;
+                }
+
+                bestWorldDelta = worldDelta;
+
+                snapped = new PlacedPiece
+                {
+                    guid = Guid.NewGuid().ToString("N"),
+                    piece = piece,
+                    position = snappedPos,
+                    rotationSteps45 = 0,
+                    mirrored = false
+                };
+
+                link = new ConnectorLink
+                {
+                    pieceGuidA = open.placed.guid,
+                    connectorIndexA = open.index,
+                    pieceGuidB = snapped.guid,
+                    connectorIndexB = i
+                };
+
+                preview = new SnapPreview
+                {
+                    valid = true,
+                    snapped = snapped,
+                    link = link,
+                    distancePx = _lockedDistPx,
+                    openPiece = open.placed,
+                    openConnectorIndex = open.index,
+                    candidateConnectorIndex = i,
+                    rotationSteps45 = 0,
+                    openWorldPos = open.worldPos,
+                    openWorldDir = open.worldDir
+                };
             }
 
             return preview.valid;
+        }
+
+
+        private bool CanSnapPieceToOpenConnector(TrackPieceDef piece, TrackConnector openConnector, Dir8 openWorldDir)
+        {
+            if (piece?.connectors == null)
+            {
+                return false;
+            }
+
+            foreach (var connector in piece.connectors)
+            {
+                if (!RolesCompatible(connector.role, openConnector.role))
+                {
+                    continue;
+                }
+
+                if (Mathf.Abs(connector.trackWidth - openConnector.trackWidth) > SnapEpsilonWorld)
+                {
+                    continue;
+                }
+
+                if (connector.localDir == openWorldDir.Opposite())
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void ClearSnapLock()
@@ -1086,31 +1035,6 @@ namespace GSP.TrackEditor.Editor
             return aRole == bRole;
         }
 
-        private static int RotationDelta(int rotation, int reference)
-        {
-            var delta = Mathf.Abs(rotation - reference);
-            return Mathf.Min(delta, 8 - delta);
-        }
-
-        private static bool IsBetterSnapCandidate(
-            float worldDelta,
-            int rotationDelta,
-            float bestWorldDelta,
-            int bestRotationDelta)
-        {
-            const float epsilon = 0.001f;
-            if (worldDelta < bestWorldDelta - epsilon)
-            {
-                return true;
-            }
-
-            if (Mathf.Abs(worldDelta - bestWorldDelta) > epsilon)
-            {
-                return false;
-            }
-
-            return rotationDelta < bestRotationDelta;
-        }
 
         private HashSet<string> ConnectedComponentGuids(string rootGuid)
         {
@@ -1431,17 +1355,10 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            var mouseCanvas = Event.current.mousePosition;
-            var locked = UpdateSnapLock(openConnectors, canvasSize, mouseCanvas);
-            if (!locked.HasValue)
-            {
-                return;
-            }
-
-            var open = locked.Value;
             var used = GetUsedConnectorKeys();
             var bestDistPx = float.MaxValue;
             PlacedPiece bestMovedPiece = null;
+            OpenConnectorTarget bestOpen = default;
             var bestMovedIndex = -1;
             var bestMovedWorld = Vector2.zero;
 
@@ -1455,42 +1372,53 @@ namespace GSP.TrackEditor.Editor
                     }
 
                     var movedConnector = moved.piece.connectors[i];
-                    if (!RolesCompatible(movedConnector.role, open.connector.role))
-                    {
-                        continue;
-                    }
-
-                    if (Mathf.Abs(movedConnector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
-                    {
-                        continue;
-                    }
-
-                    var movedWorldDir = TrackMathUtil.ToWorld(moved, movedConnector.localDir);
-                    if (movedWorldDir != open.worldDir.Opposite())
-                    {
-                        continue;
-                    }
-
                     var movedWorldPos = TrackMathUtil.ToWorld(moved, movedConnector.localPos);
-                    var distPx = Vector2.Distance(WorldToCanvas(movedWorldPos, canvasSize), WorldToCanvas(open.worldPos, canvasSize));
-                    if (distPx >= bestDistPx)
+                    foreach (var open in openConnectors)
                     {
-                        continue;
-                    }
+                        if (!RolesCompatible(movedConnector.role, open.connector.role))
+                        {
+                            continue;
+                        }
 
-                    bestDistPx = distPx;
-                    bestMovedPiece = moved;
-                    bestMovedIndex = i;
-                    bestMovedWorld = movedWorldPos;
+                        if (Mathf.Abs(movedConnector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
+                        {
+                            continue;
+                        }
+
+                        var movedWorldDir = TrackMathUtil.ToWorld(moved, movedConnector.localDir);
+                        if (movedWorldDir != open.worldDir.Opposite())
+                        {
+                            continue;
+                        }
+
+                        var distPx = Vector2.Distance(WorldToCanvas(movedWorldPos, canvasSize), WorldToCanvas(open.worldPos, canvasSize));
+                        if (distPx >= bestDistPx)
+                        {
+                            continue;
+                        }
+
+                        bestDistPx = distPx;
+                        bestMovedPiece = moved;
+                        bestMovedIndex = i;
+                        bestMovedWorld = movedWorldPos;
+                        bestOpen = new OpenConnectorTarget
+                        {
+                            placed = open.placed,
+                            index = open.index,
+                            connector = open.connector,
+                            worldPos = open.worldPos,
+                            worldDir = open.worldDir
+                        };
+                    }
                 }
             }
 
-            if (bestMovedPiece == null || bestDistPx >= SnapRadiusPx)
+            if (bestMovedPiece == null || bestDistPx > SnapRadiusPx)
             {
                 return;
             }
 
-            var delta = open.worldPos - bestMovedWorld;
+            var delta = bestOpen.worldPos - bestMovedWorld;
             foreach (var piece in movedPieces)
             {
                 piece.position += delta;
@@ -1498,25 +1426,13 @@ namespace GSP.TrackEditor.Editor
 
             layout.links.Add(new ConnectorLink
             {
-                pieceGuidA = open.placed.guid,
-                connectorIndexA = open.index,
+                pieceGuidA = bestOpen.placed.guid,
+                connectorIndexA = bestOpen.index,
                 pieceGuidB = bestMovedPiece.guid,
                 connectorIndexB = bestMovedIndex
             });
 
             status = "Snapped moved piece/group.";
-            EditorUtility.SetDirty(layout);
-        }
-
-        private void RotateSelected(int delta)
-        {
-            if (selectedPiece < 0 || selectedPiece >= layout.pieces.Count)
-            {
-                return;
-            }
-
-            layout.pieces[selectedPiece].rotationSteps45 = (layout.pieces[selectedPiece].rotationSteps45 + delta + 8) % 8;
-            PruneInvalidLinks(SnapEpsilonWorld);
             EditorUtility.SetDirty(layout);
         }
 
@@ -1556,8 +1472,6 @@ namespace GSP.TrackEditor.Editor
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent("Detach"), false, DetachSelectedPiece);
             menu.AddItem(new GUIContent("Delete"), false, DeleteSelectedPiece);
-            menu.AddItem(new GUIContent("Rotate +45"), false, () => RotateSelected(1));
-            menu.AddItem(new GUIContent("Rotate -45"), false, () => RotateSelected(-1));
             menu.ShowAsContext();
         }
 

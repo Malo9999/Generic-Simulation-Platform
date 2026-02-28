@@ -27,20 +27,47 @@ namespace GSP.TrackEditor.Editor
             DeleteDefaultPieceAssets();
             DeleteDefaultLibraryAsset();
 
-            var pieces = new List<TrackPieceDef>
+            var pieces = new List<TrackPieceDef>();
+
+            var mainStraightBase = BuildStraightBase("MainStraightBase", "MAIN — Straight H", "Main", TrackConnectorRole.Main);
+            pieces.Add(CloneRotated(mainStraightBase, 0, "MainStraightH", "MAIN — Straight H"));
+            pieces.Add(CloneRotated(mainStraightBase, 2, "MainStraightV", "MAIN — Straight V"));
+            pieces.Add(CloneRotated(mainStraightBase, 1, "MainStraight45Slash", "MAIN — Straight 45 /"));
+            pieces.Add(CloneRotated(mainStraightBase, 3, "MainStraight45Backslash", @"MAIN — Straight 45 \"));
+
+            var mainCornerBase = BuildCorner90Base("MainCorner90ENBase", "MAIN — Corner 90 (E+N)", "Main", TrackConnectorRole.Main);
+            pieces.Add(CloneRotated(mainCornerBase, 0, "MainCorner90EN", "MAIN — Corner 90 (E+N)"));
+            pieces.Add(CloneRotated(mainCornerBase, 2, "MainCorner90NW", "MAIN — Corner 90 (N+W)"));
+            pieces.Add(CloneRotated(mainCornerBase, 4, "MainCorner90WS", "MAIN — Corner 90 (W+S)"));
+            pieces.Add(CloneRotated(mainCornerBase, 6, "MainCorner90SE", "MAIN — Corner 90 (S+E)"));
+
+            var hairpinH = BuildHairpin180Horizontal();
+            pieces.Add(CreatePiece("MainHairpin180WE", "MAIN — Hairpin 180 (W+E)", "Main", TrackWidth, hairpinH.connectors, hairpinH.segments));
+            pieces.Add(CloneRotated(hairpinH, 2, "MainHairpin180NS", "MAIN — Hairpin 180 (N+S)"));
+
+            var pitStraightBase = BuildStraightBase("PitStraightBase", "PIT — Straight H", "PitLane", TrackConnectorRole.Pit);
+            pieces.Add(CloneRotated(pitStraightBase, 0, "PitLaneStraightH", "PIT — Straight H"));
+            pieces.Add(CloneRotated(pitStraightBase, 2, "PitLaneStraightV", "PIT — Straight V"));
+            pieces.Add(CloneRotated(pitStraightBase, 1, "PitLaneStraight45Slash", "PIT — Straight 45 /"));
+            pieces.Add(CloneRotated(pitStraightBase, 3, "PitLaneStraight45Backslash", @"PIT — Straight 45 \"));
+
+            var pitCornerBase = BuildCorner90Base("PitCorner90ENBase", "PIT — Corner 90 (E+N)", "PitLane", TrackConnectorRole.Pit);
+            pieces.Add(CloneRotated(pitCornerBase, 0, "PitLaneCorner90EN", "PIT — Corner 90 (E+N)"));
+            pieces.Add(CloneRotated(pitCornerBase, 2, "PitLaneCorner90NW", "PIT — Corner 90 (N+W)"));
+            pieces.Add(CloneRotated(pitCornerBase, 4, "PitLaneCorner90WS", "PIT — Corner 90 (W+S)"));
+            pieces.Add(CloneRotated(pitCornerBase, 6, "PitLaneCorner90SE", "PIT — Corner 90 (S+E)"));
+
+            var pitEntry90 = BuildPitEntry90();
+            var pitExit90 = BuildPitExit90();
+            var pitEntryParallel = BuildPitEntryParallel();
+            var pitExitParallel = BuildPitExitParallel();
+            foreach (var steps in new[] { 0, 2, 4, 6 })
             {
-                CreateStraight("StraightMain", "MAIN — Straight", "Main", TrackConnectorRole.Main),
-                CreateStraight45("Straight45Main", "MAIN — Straight 45", "Main", TrackConnectorRole.Main),
-                CreateCorner45("Corner45Main", "MAIN — Corner 45", "Corner", TrackConnectorRole.Main),
-                CreateCorner90("Corner90Main", "MAIN — Corner 90", "Corner", TrackConnectorRole.Main),
-                CreateHairpin180(),
-                CreateStraight("PitStraight", "PIT — Straight", "PitLane", TrackConnectorRole.Pit),
-                CreateStraight45("PitStraight45", "PIT — Straight 45", "PitLane", TrackConnectorRole.Pit),
-                CreateCorner45("PitCorner45", "PIT — Corner 45", "PitLane", TrackConnectorRole.Pit),
-                CreateCorner90("PitCorner90", "PIT — Corner 90", "PitLane", TrackConnectorRole.Pit),
-                CreatePitEntry(),
-                CreatePitExit()
-            };
+                pieces.Add(CloneRotated(pitEntry90, steps, $"PitEntry90_{steps}", $"PIT — Entry 90° (Main+Pit) [{steps * 45}°]", "Pit"));
+                pieces.Add(CloneRotated(pitExit90, steps, $"PitExit90_{steps}", $"PIT — Exit 90° (Main+Pit) [{steps * 45}°]", "Pit"));
+                pieces.Add(CloneRotated(pitEntryParallel, steps, $"PitEntryParallel_{steps}", $"PIT — Entry Parallel (Main+Pit) [{steps * 45}°]", "Pit"));
+                pieces.Add(CloneRotated(pitExitParallel, steps, $"PitExitParallel_{steps}", $"PIT — Exit Parallel (Main+Pit) [{steps * 45}°]", "Pit"));
+            }
 
             var library = ScriptableObject.CreateInstance<TrackPieceLibrary>();
             library.pieces = pieces;
@@ -52,191 +79,206 @@ namespace GSP.TrackEditor.Editor
             Debug.Log($"TrackEditor defaults recreated at '{BaseFolder}' with library '{LibraryPath}'.");
         }
 
-        private static TrackPieceDef CreateStraight(string pieceId, string displayName, string category, TrackConnectorRole role)
+        private static TrackPieceDef BuildStraightBase(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
             var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
             var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
-            var connectors = new[] { c0, c1 };
-
             var segments = new[]
             {
                 Segment(0, 1, role, new[] { c0.localPos, c1.localPos }, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
                 Segment(1, 0, role, new[] { c1.localPos, c0.localPos }, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
-            return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
+            return CreateTransientPiece(pieceId, displayName, category, TrackWidth, new[] { c0, c1 }, segments);
         }
 
-        private static TrackPieceDef CreateStraight45(string pieceId, string displayName, string category, TrackConnectorRole role)
+        private static TrackPieceDef BuildCorner90Base(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
-            var c0 = Connector("SW", new Vector2(-D, -D), Dir8.SW, role);
-            var c1 = Connector("NE", new Vector2(D, D), Dir8.NE, role);
-            var connectors = new[] { c0, c1 };
-
-            var segments = new[]
-            {
-                Segment(0, 1, role, new[] { c0.localPos, c1.localPos }, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
-                Segment(1, 0, role, new[] { c1.localPos, c0.localPos }, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
-            };
-
-            return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
-        }
-
-        private static TrackPieceDef CreateCorner45(string pieceId, string displayName, string category, TrackConnectorRole role)
-        {
-            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
-            var c1 = Connector("NE", new Vector2(D, D), Dir8.NE, role);
-            var connectors = new[] { c0, c1 };
-
-            const float h = 9f;
-            var endDir = new Vector2(1f, 1f).normalized;
-            var path = MakeCubicBezier(c0.localPos, c0.localPos + Vector2.right * h, c1.localPos - endDir * h, c1.localPos, 14);
-            var reverse = Reverse(path);
-            var segments = new[]
-            {
-                Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
-                Segment(1, 0, role, reverse, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
-            };
-
-            return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
-        }
-
-        private static TrackPieceDef CreateCorner90(string pieceId, string displayName, string category, TrackConnectorRole role)
-        {
-            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
+            var c0 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
             var c1 = Connector("N", new Vector2(0f, L), Dir8.N, role);
-            var connectors = new[] { c0, c1 };
-
-            var path = MakeCorner90QuarterArc(12);
-            var reverse = Reverse(path);
+            var path = MakeCorner90QuarterArc(16);
             var segments = new[]
             {
                 Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
-                Segment(1, 0, role, reverse, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
+                Segment(1, 0, role, Reverse(path), -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
-            return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
+            return CreateTransientPiece(pieceId, displayName, category, TrackWidth, new[] { c0, c1 }, segments);
         }
 
-        private static TrackPieceDef CreateHairpin180()
+        private static TrackPieceDef BuildHairpin180Horizontal()
         {
             var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
-            var connectors = new[] { c0, c1 };
 
             var control = new[]
             {
-                new Vector2(-L, 0f),
-                new Vector2(-L, -L),
-                new Vector2(L, -L),
-                new Vector2(L, 0f)
+                c0.localPos,
+                new Vector2(-2f * L, 0f),
+                new Vector2(-2f * L, -2f * L),
+                new Vector2(2f * L, -2f * L),
+                new Vector2(2f * L, 0f),
+                c1.localPos
             };
-
-            var path = FilletPolyline(control, 6f, 10);
-            path[0] = c0.localPos;
-            path[path.Length - 1] = c1.localPos;
-
-            var reverse = Reverse(path);
+            var path = FilletPolyline(control, L * 0.55f, 8);
             var segments = new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
-                Segment(1, 0, TrackConnectorRole.Main, reverse, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
+                Segment(1, 0, TrackConnectorRole.Main, Reverse(path), -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
-            return CreatePiece("Hairpin180", "Hairpin 180", "Corner", connectors, segments, BuildBounds(segments));
+            return CreateTransientPiece("MainHairpin180Base", "MAIN — Hairpin 180 (W+E)", "Main", TrackWidth, new[] { c0, c1 }, segments);
         }
 
-        private static TrackPieceDef CreatePitEntry()
+        private static TrackPieceDef BuildPitEntry90()
         {
             var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
             var pitOut = Connector("PitOut", new Vector2(0f, -L), Dir8.S, TrackConnectorRole.Pit);
-            var connectors = new[] { mainIn, mainOut, pitOut };
-
-            var pitPath = MakeArcShort(mainIn.localPos, pitOut.localPos, L, false, 12);
-            var pitReverse = Reverse(pitPath);
+            var pitPath = MakeCubicBezier(mainIn.localPos, mainIn.localPos + Vector2.right * 7f, pitOut.localPos + Vector2.up * 7f, pitOut.localPos, 14);
 
             var segments = new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }, -mainIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
                 Segment(1, 0, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }, -mainOut.localDir.ToVector2(), mainIn.localDir.ToVector2()),
                 Segment(0, 2, TrackConnectorRole.Pit, pitPath, -mainIn.localDir.ToVector2(), pitOut.localDir.ToVector2()),
-                Segment(2, 0, TrackConnectorRole.Pit, pitReverse, -pitOut.localDir.ToVector2(), mainIn.localDir.ToVector2())
+                Segment(2, 0, TrackConnectorRole.Pit, Reverse(pitPath), -pitOut.localDir.ToVector2(), mainIn.localDir.ToVector2())
             };
 
-            return CreatePiece("PitEntry", "PIT — Entry", "PitLane", connectors, segments, BuildBounds(segments));
+            return CreateTransientPiece("PitEntry90Base", "PIT — Entry 90° (Main+Pit)", "Pit", TrackWidth, new[] { mainIn, mainOut, pitOut }, segments);
         }
 
-        private static TrackPieceDef CreatePitExit()
+        private static TrackPieceDef BuildPitExit90()
         {
             var pitIn = Connector("PitIn", new Vector2(0f, -L), Dir8.S, TrackConnectorRole.Pit);
             var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
-            var connectors = new[] { pitIn, mainIn, mainOut };
+            var pitPath = MakeCubicBezier(pitIn.localPos, pitIn.localPos + Vector2.up * 7f, mainOut.localPos + Vector2.left * 7f, mainOut.localPos, 14);
 
-            var pitPath = MakeArcShort(pitIn.localPos, mainOut.localPos, L, false, 12);
-            var pitReverse = Reverse(pitPath);
             var segments = new[]
             {
                 Segment(1, 2, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }, -mainIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
                 Segment(2, 1, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }, -mainOut.localDir.ToVector2(), mainIn.localDir.ToVector2()),
                 Segment(0, 2, TrackConnectorRole.Pit, pitPath, -pitIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
-                Segment(2, 0, TrackConnectorRole.Pit, pitReverse, -mainOut.localDir.ToVector2(), pitIn.localDir.ToVector2())
+                Segment(2, 0, TrackConnectorRole.Pit, Reverse(pitPath), -mainOut.localDir.ToVector2(), pitIn.localDir.ToVector2())
             };
 
-            return CreatePiece("PitExit", "PIT — Exit", "PitLane", connectors, segments, BuildBounds(segments));
+            return CreateTransientPiece("PitExit90Base", "PIT — Exit 90° (Main+Pit)", "Pit", TrackWidth, new[] { pitIn, mainIn, mainOut }, segments);
+        }
+
+        private static TrackPieceDef BuildPitEntryParallel()
+        {
+            var offset = TrackWidth * 1.2f;
+            var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
+            var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
+            var pitOut = Connector("PitOut", new Vector2(L, -offset), Dir8.E, TrackConnectorRole.Pit);
+            var pitPath = MakeCubicBezier(mainIn.localPos, mainIn.localPos + Vector2.right * 8f, pitOut.localPos + Vector2.left * 8f, pitOut.localPos, 14);
+
+            var segments = new[]
+            {
+                Segment(0, 1, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }, -mainIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
+                Segment(1, 0, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }, -mainOut.localDir.ToVector2(), mainIn.localDir.ToVector2()),
+                Segment(0, 2, TrackConnectorRole.Pit, pitPath, -mainIn.localDir.ToVector2(), pitOut.localDir.ToVector2()),
+                Segment(2, 0, TrackConnectorRole.Pit, Reverse(pitPath), -pitOut.localDir.ToVector2(), mainIn.localDir.ToVector2())
+            };
+
+            return CreateTransientPiece("PitEntryParallelBase", "PIT — Entry Parallel (Main+Pit)", "Pit", TrackWidth, new[] { mainIn, mainOut, pitOut }, segments);
+        }
+
+        private static TrackPieceDef BuildPitExitParallel()
+        {
+            var offset = TrackWidth * 1.2f;
+            var pitIn = Connector("PitIn", new Vector2(-L, -offset), Dir8.W, TrackConnectorRole.Pit);
+            var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
+            var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
+            var pitPath = MakeCubicBezier(pitIn.localPos, pitIn.localPos + Vector2.right * 8f, mainOut.localPos + Vector2.left * 8f, mainOut.localPos, 14);
+
+            var segments = new[]
+            {
+                Segment(1, 2, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }, -mainIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
+                Segment(2, 1, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }, -mainOut.localDir.ToVector2(), mainIn.localDir.ToVector2()),
+                Segment(0, 2, TrackConnectorRole.Pit, pitPath, -pitIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
+                Segment(2, 0, TrackConnectorRole.Pit, Reverse(pitPath), -mainOut.localDir.ToVector2(), pitIn.localDir.ToVector2())
+            };
+
+            return CreateTransientPiece("PitExitParallelBase", "PIT — Exit Parallel (Main+Pit)", "Pit", TrackWidth, new[] { pitIn, mainIn, mainOut }, segments);
+        }
+
+        private static TrackPieceDef CloneRotated(TrackPieceDef baseDef, int steps, string newId, string newName, string category = null)
+        {
+            var connectors = new TrackConnector[baseDef.connectors.Length];
+            for (var i = 0; i < baseDef.connectors.Length; i++)
+            {
+                var c = baseDef.connectors[i];
+                connectors[i] = new TrackConnector
+                {
+                    id = c.id,
+                    localPos = Rot45(c.localPos, steps),
+                    localDir = RotDir(c.localDir, steps),
+                    role = c.role,
+                    trackWidth = c.trackWidth
+                };
+            }
+
+            var segments = new TrackSegment[baseDef.segments.Length];
+            for (var i = 0; i < baseDef.segments.Length; i++)
+            {
+                var s = baseDef.segments[i];
+                segments[i] = new TrackSegment
+                {
+                    fromConnectorIndex = s.fromConnectorIndex,
+                    toConnectorIndex = s.toConnectorIndex,
+                    pathRole = s.pathRole,
+                    localCenterline = RotatePoints(s.localCenterline, steps),
+                    localLeftBoundary = RotatePoints(s.localLeftBoundary, steps),
+                    localRightBoundary = RotatePoints(s.localRightBoundary, steps)
+                };
+            }
+
+            return CreatePiece(newId, newName, category ?? baseDef.category, baseDef.trackWidth, connectors, segments);
+        }
+
+        private static Vector2 Rot45(Vector2 p, int steps)
+        {
+            return TrackMathUtil.Rotate45(p, steps);
+        }
+
+        private static Dir8 RotDir(Dir8 d, int steps)
+        {
+            return d.RotateSteps45(steps);
+        }
+
+        private static Vector2[] RotatePoints(Vector2[] points, int steps)
+        {
+            if (points == null)
+            {
+                return null;
+            }
+
+            var rotated = new Vector2[points.Length];
+            for (var i = 0; i < points.Length; i++)
+            {
+                rotated[i] = Rot45(points[i], steps);
+            }
+
+            return rotated;
         }
 
         private static Vector2[] MakeCorner90QuarterArc(int steps)
         {
-            var center = new Vector2(-L, L);
+            var center = new Vector2(L, L);
             var samples = Mathf.Max(1, steps);
             var path = new Vector2[samples + 1];
             for (var i = 0; i <= samples; i++)
             {
                 var t = i / (float)samples;
-                var angle = Mathf.Lerp(-Mathf.PI * 0.5f, 0f, t);
+                var angle = Mathf.Lerp(-Mathf.PI * 0.5f, -Mathf.PI, t);
                 path[i] = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * L;
             }
 
-            path[0] = new Vector2(-L, 0f);
+            path[0] = new Vector2(L, 0f);
             path[samples] = new Vector2(0f, L);
             return path;
-        }
-
-        private static Vector2[] MakeArcShort(Vector2 p0, Vector2 p1, float radius, bool useUpperSide, int steps)
-        {
-            var chord = p1 - p0;
-            var c = chord.magnitude;
-            if (c <= 1e-5f)
-            {
-                return new[] { p0, p1 };
-            }
-
-            radius = Mathf.Max(radius, c * 0.5f);
-            var midpoint = (p0 + p1) * 0.5f;
-            var perp = new Vector2(-chord.y, chord.x).normalized;
-            var h = Mathf.Sqrt(Mathf.Max(0f, radius * radius - (c * 0.5f) * (c * 0.5f)));
-            var center = midpoint + perp * (useUpperSide ? h : -h);
-
-            var a0 = Mathf.Atan2(p0.y - center.y, p0.x - center.x);
-            var a1 = Mathf.Atan2(p1.y - center.y, p1.x - center.x);
-            var ccw = Mathf.Repeat(a1 - a0, Mathf.PI * 2f);
-            var cw = ccw - Mathf.PI * 2f;
-            var delta = Mathf.Abs(ccw) <= Mathf.Abs(cw) ? ccw : cw;
-
-            var count = Mathf.Max(1, steps);
-            var result = new Vector2[count + 1];
-            for (var i = 0; i <= count; i++)
-            {
-                var t = i / (float)count;
-                var angle = a0 + delta * t;
-                result[i] = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-            }
-
-            result[0] = p0;
-            result[count] = p1;
-            return result;
         }
 
         private static Vector2[] MakeCubicBezier(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 p1, int steps)
@@ -382,17 +424,22 @@ namespace GSP.TrackEditor.Editor
             return output;
         }
 
-        private static TrackPieceDef CreatePiece(string pieceId, string displayName, string category, TrackConnector[] connectors, TrackSegment[] segments, Rect bounds)
+        private static TrackPieceDef CreateTransientPiece(string pieceId, string displayName, string category, float trackWidth, TrackConnector[] connectors, TrackSegment[] segments)
         {
             var piece = ScriptableObject.CreateInstance<TrackPieceDef>();
             piece.pieceId = pieceId;
             piece.displayName = displayName;
             piece.category = category;
-            piece.trackWidth = TrackWidth;
+            piece.trackWidth = trackWidth;
             piece.connectors = connectors;
             piece.segments = segments;
-            piece.localBounds = bounds;
+            piece.localBounds = BuildBounds(connectors, segments);
+            return piece;
+        }
 
+        private static TrackPieceDef CreatePiece(string pieceId, string displayName, string category, float trackWidth, TrackConnector[] connectors, TrackSegment[] segments)
+        {
+            var piece = CreateTransientPiece(pieceId, displayName, category, trackWidth, connectors, segments);
             var path = $"{PieceFolder}/{pieceId}.asset";
             AssetDatabase.CreateAsset(piece, path);
             EditorUtility.SetDirty(piece);
@@ -411,12 +458,17 @@ namespace GSP.TrackEditor.Editor
             };
         }
 
-        private static Rect BuildBounds(IEnumerable<TrackSegment> segments)
+        private static Rect BuildBounds(IEnumerable<TrackConnector> connectors, IEnumerable<TrackSegment> segments)
         {
             var minX = float.MaxValue;
             var minY = float.MaxValue;
             var maxX = float.MinValue;
             var maxY = float.MinValue;
+
+            foreach (var connector in connectors)
+            {
+                ExpandPoint(connector.localPos, ref minX, ref minY, ref maxX, ref maxY);
+            }
 
             foreach (var segment in segments)
             {
@@ -430,13 +482,23 @@ namespace GSP.TrackEditor.Editor
 
         private static void ExpandBounds(IEnumerable<Vector2> points, ref float minX, ref float minY, ref float maxX, ref float maxY)
         {
+            if (points == null)
+            {
+                return;
+            }
+
             foreach (var point in points)
             {
-                minX = Mathf.Min(minX, point.x);
-                minY = Mathf.Min(minY, point.y);
-                maxX = Mathf.Max(maxX, point.x);
-                maxY = Mathf.Max(maxY, point.y);
+                ExpandPoint(point, ref minX, ref minY, ref maxX, ref maxY);
             }
+        }
+
+        private static void ExpandPoint(Vector2 point, ref float minX, ref float minY, ref float maxX, ref float maxY)
+        {
+            minX = Mathf.Min(minX, point.x);
+            minY = Mathf.Min(minY, point.y);
+            maxX = Mathf.Max(maxX, point.x);
+            maxY = Mathf.Max(maxY, point.y);
         }
 
         private static void DeleteDefaultPieceAssets()
