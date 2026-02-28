@@ -43,6 +43,8 @@ namespace GSP.TrackEditor.Editor
             public int rotationSteps45;
             public Vector2 openWorldPos;
             public Dir8 openWorldDir;
+            public string movedPieceGuid;
+            public Vector2 deltaWorld;
         }
 
         private struct OpenConnectorTarget
@@ -85,6 +87,10 @@ namespace GSP.TrackEditor.Editor
         private bool _snapLocked;
         private OpenConnectorTarget _lockedOpen;
         private float _lockedDistPx;
+        private bool _moveSnapLocked;
+        private OpenConnectorTarget _moveLockedOpen;
+        private float _moveLockedDistPx;
+        private SnapPreview? _moveDragPreview;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -156,7 +162,16 @@ namespace GSP.TrackEditor.Editor
                 DrawTrackPreview(rect.size);
                 DrawStartGrid(rect.size);
                 DrawLinks(rect.size);
-                DrawConnectors(rect.size, null);
+                if (_isDragging)
+                {
+                    _moveDragPreview = ComputeMoveDragSnapPreview(rect.size);
+                }
+                else
+                {
+                    _moveDragPreview = null;
+                }
+
+                DrawConnectors(rect.size, _moveDragPreview.HasValue && _moveDragPreview.Value.valid ? _moveDragPreview : null);
 
                 var draggedPiece = DragAndDrop.GetGenericData("TrackPieceDef") as TrackPieceDef;
                 if (draggedPiece != null)
@@ -415,6 +430,8 @@ namespace GSP.TrackEditor.Editor
                 {
                     _isDragging = true;
                     _dragStartWorld = mouseWorld;
+                    _moveDragPreview = null;
+                    ClearMoveSnapLock();
 
                     var selectedGuid = layout.pieces[selectedPiece].guid;
                     _dragGroup = evt.shift ? new HashSet<string> { selectedGuid } : ConnectedComponentGuids(selectedGuid);
@@ -477,8 +494,34 @@ namespace GSP.TrackEditor.Editor
             {
                 if (_isDragging)
                 {
+                    _moveDragPreview = ComputeMoveDragSnapPreview(size);
                     PruneInvalidLinks(SnapEpsilonWorld);
-                    AutoSnapMovedPieces(_dragGroup, size);
+                    if (_moveDragPreview.HasValue && _moveDragPreview.Value.valid)
+                    {
+                        var preview = _moveDragPreview.Value;
+                        foreach (var piece in layout.pieces)
+                        {
+                            if (_dragGroup.Contains(piece.guid))
+                            {
+                                piece.position += preview.deltaWorld;
+                            }
+                        }
+
+                        layout.links.Add(new ConnectorLink
+                        {
+                            pieceGuidA = preview.openPiece.guid,
+                            connectorIndexA = preview.openConnectorIndex,
+                            pieceGuidB = preview.movedPieceGuid,
+                            connectorIndexB = preview.candidateConnectorIndex
+                        });
+
+                        status = "Snapped moved piece/group.";
+                        EditorUtility.SetDirty(layout);
+                    }
+                    else
+                    {
+                        AutoSnapMovedPieces(_dragGroup, size);
+                    }
                 }
 
                 _isDragging = false;
@@ -486,12 +529,16 @@ namespace GSP.TrackEditor.Editor
                 _dragGroup.Clear();
                 _startPositions.Clear();
                 _markerSlotStartPositions.Clear();
+                _moveDragPreview = null;
                 ClearSnapLock();
+                ClearMoveSnapLock();
             }
 
             if (evt.type == EventType.DragExited)
             {
                 ClearSnapLock();
+                ClearMoveSnapLock();
+                _moveDragPreview = null;
             }
         }
 
@@ -982,11 +1029,218 @@ namespace GSP.TrackEditor.Editor
                     candidateConnectorIndex = i,
                     rotationSteps45 = 0,
                     openWorldPos = open.worldPos,
-                    openWorldDir = open.worldDir
+                    openWorldDir = open.worldDir,
+                    movedPieceGuid = snapped.guid,
+                    deltaWorld = open.worldPos - TrackMathUtil.ToWorld(snapped, connector.localPos)
                 };
             }
 
             return preview.valid;
+        }
+
+        private SnapPreview ComputeMoveDragSnapPreview(Vector2 canvasSize)
+        {
+            var preview = new SnapPreview();
+            if (layout == null || _dragGroup == null || _dragGroup.Count == 0)
+            {
+                ClearMoveSnapLock();
+                return preview;
+            }
+
+            var movedPieces = layout.pieces.Where(p => _dragGroup.Contains(p.guid) && p?.piece?.connectors != null).ToList();
+            if (movedPieces.Count == 0)
+            {
+                ClearMoveSnapLock();
+                return preview;
+            }
+
+            var openConnectors = GetOpenConnectors().Where(o => !_dragGroup.Contains(o.placed.guid)).ToList();
+            if (openConnectors.Count == 0)
+            {
+                ClearMoveSnapLock();
+                return preview;
+            }
+
+            var used = GetUsedConnectorKeys();
+            var compatibleOpenConnectors = openConnectors
+                .Where(o => CanAnyMovedPieceSnapToOpenConnector(movedPieces, o, used))
+                .ToList();
+            if (compatibleOpenConnectors.Count == 0)
+            {
+                ClearMoveSnapLock();
+                return preview;
+            }
+
+            var mouseCanvas = Event.current.mousePosition;
+            var lockedOpen = UpdateMoveSnapLock(compatibleOpenConnectors, canvasSize, mouseCanvas);
+            if (!lockedOpen.HasValue)
+            {
+                return preview;
+            }
+
+            var open = lockedOpen.Value;
+            var bestDistPx = float.MaxValue;
+            var found = false;
+            var bestMovedGuid = string.Empty;
+            var bestMovedConnector = -1;
+            var bestMovedWorldPos = Vector2.zero;
+
+            foreach (var moved in movedPieces)
+            {
+                for (var i = 0; i < moved.piece.connectors.Length; i++)
+                {
+                    if (used.Contains($"{moved.guid}:{i}"))
+                    {
+                        continue;
+                    }
+
+                    var connector = moved.piece.connectors[i];
+                    if (!RolesCompatible(connector.role, open.connector.role))
+                    {
+                        continue;
+                    }
+
+                    if (Mathf.Abs(connector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
+                    {
+                        continue;
+                    }
+
+                    var movedWorldDir = TrackMathUtil.ToWorld(moved, connector.localDir);
+                    if (movedWorldDir != open.worldDir.Opposite())
+                    {
+                        continue;
+                    }
+
+                    var movedWorldPos = TrackMathUtil.ToWorld(moved, connector.localPos);
+                    var distPx = _moveLockedDistPx;
+                    if (distPx >= bestDistPx)
+                    {
+                        continue;
+                    }
+
+                    found = true;
+                    bestDistPx = distPx;
+                    bestMovedGuid = moved.guid;
+                    bestMovedConnector = i;
+                    bestMovedWorldPos = movedWorldPos;
+                }
+            }
+
+            if (!found)
+            {
+                return preview;
+            }
+
+            preview.valid = true;
+            preview.openPiece = open.placed;
+            preview.openConnectorIndex = open.index;
+            preview.openWorldPos = open.worldPos;
+            preview.openWorldDir = open.worldDir;
+            preview.candidateConnectorIndex = bestMovedConnector;
+            preview.movedPieceGuid = bestMovedGuid;
+            preview.rotationSteps45 = 0;
+            preview.distancePx = bestDistPx;
+            preview.deltaWorld = open.worldPos - bestMovedWorldPos;
+            return preview;
+        }
+
+        private bool CanAnyMovedPieceSnapToOpenConnector(
+            List<PlacedPiece> movedPieces,
+            (PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir) open,
+            HashSet<string> used)
+        {
+            foreach (var moved in movedPieces)
+            {
+                for (var i = 0; i < moved.piece.connectors.Length; i++)
+                {
+                    if (used.Contains($"{moved.guid}:{i}"))
+                    {
+                        continue;
+                    }
+
+                    var connector = moved.piece.connectors[i];
+                    if (!RolesCompatible(connector.role, open.connector.role))
+                    {
+                        continue;
+                    }
+
+                    if (Mathf.Abs(connector.trackWidth - open.connector.trackWidth) > SnapEpsilonWorld)
+                    {
+                        continue;
+                    }
+
+                    var movedWorldDir = TrackMathUtil.ToWorld(moved, connector.localDir);
+                    if (movedWorldDir == open.worldDir.Opposite())
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private OpenConnectorTarget? UpdateMoveSnapLock(
+            List<(PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir)> openConnectors,
+            Vector2 canvasSize,
+            Vector2 mouseCanvas)
+        {
+            if (_moveSnapLocked)
+            {
+                var existing = openConnectors.FirstOrDefault(o => o.placed.guid == _moveLockedOpen.placed.guid && o.index == _moveLockedOpen.index);
+                if (existing.placed != null)
+                {
+                    var dist = Vector2.Distance(WorldToCanvas(existing.worldPos, canvasSize), mouseCanvas);
+                    if (dist <= SnapLockRadiusPx)
+                    {
+                        _moveLockedOpen = new OpenConnectorTarget
+                        {
+                            placed = existing.placed,
+                            index = existing.index,
+                            connector = existing.connector,
+                            worldPos = existing.worldPos,
+                            worldDir = existing.worldDir
+                        };
+                        _moveLockedDistPx = dist;
+                        return _moveLockedOpen;
+                    }
+                }
+
+                ClearMoveSnapLock();
+            }
+
+            var nearestFound = false;
+            var nearestDist = float.MaxValue;
+            OpenConnectorTarget nearest = default;
+            foreach (var open in openConnectors)
+            {
+                var dist = Vector2.Distance(WorldToCanvas(open.worldPos, canvasSize), mouseCanvas);
+                if (dist >= nearestDist)
+                {
+                    continue;
+                }
+
+                nearestFound = true;
+                nearestDist = dist;
+                nearest = new OpenConnectorTarget
+                {
+                    placed = open.placed,
+                    index = open.index,
+                    connector = open.connector,
+                    worldPos = open.worldPos,
+                    worldDir = open.worldDir
+                };
+            }
+
+            if (!nearestFound || nearestDist > SnapRadiusPx)
+            {
+                return null;
+            }
+
+            _moveSnapLocked = true;
+            _moveLockedOpen = nearest;
+            _moveLockedDistPx = nearestDist;
+            return _moveLockedOpen;
         }
 
 
@@ -1023,6 +1277,13 @@ namespace GSP.TrackEditor.Editor
             _snapLocked = false;
             _lockedOpen = default;
             _lockedDistPx = float.MaxValue;
+        }
+
+        private void ClearMoveSnapLock()
+        {
+            _moveSnapLocked = false;
+            _moveLockedOpen = default;
+            _moveLockedDistPx = float.MaxValue;
         }
 
         private bool RolesCompatible(TrackConnectorRole aRole, TrackConnectorRole bRole)

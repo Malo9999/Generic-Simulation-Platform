@@ -35,6 +35,18 @@ namespace GSP.TrackEditor.Editor
             pieces.Add(CloneRotated(mainStraightBase, 1, "MainStraight45Slash", "MAIN — Straight 45 /"));
             pieces.Add(CloneRotated(mainStraightBase, 3, "MainStraight45Backslash", @"MAIN — Straight 45 \"));
 
+            var mainCorner45CcwBase = BuildCorner45BaseCcw("MainCorner45CcwBase", "MAIN — Corner 45 CCW (E+NE)", "Main", TrackConnectorRole.Main);
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 0, "MainCorner45CcwENE", "MAIN — Corner 45 CCW (E+NE)"));
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 2, "MainCorner45CcwNNW", "MAIN — Corner 45 CCW (N+NW)"));
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 4, "MainCorner45CcwWSW", "MAIN — Corner 45 CCW (W+SW)"));
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 6, "MainCorner45CcwSSE", "MAIN — Corner 45 CCW (S+SE)"));
+
+            var mainCorner45CwBase = BuildCorner45BaseCw("MainCorner45CwBase", "MAIN — Corner 45 CW (E+SE)", "Main", TrackConnectorRole.Main);
+            pieces.Add(CloneRotated(mainCorner45CwBase, 0, "MainCorner45CwESE", "MAIN — Corner 45 CW (E+SE)"));
+            pieces.Add(CloneRotated(mainCorner45CwBase, 2, "MainCorner45CwSSW", "MAIN — Corner 45 CW (S+SW)"));
+            pieces.Add(CloneRotated(mainCorner45CwBase, 4, "MainCorner45CwWNW", "MAIN — Corner 45 CW (W+NW)"));
+            pieces.Add(CloneRotated(mainCorner45CwBase, 6, "MainCorner45CwNNE", "MAIN — Corner 45 CW (N+NE)"));
+
             var mainCornerBase = BuildCorner90Base("MainCorner90ENBase", "MAIN — Corner 90 (E+N)", "Main", TrackConnectorRole.Main);
             pieces.Add(CloneRotated(mainCornerBase, 0, "MainCorner90EN", "MAIN — Corner 90 (E+N)"));
             pieces.Add(CloneRotated(mainCornerBase, 2, "MainCorner90NW", "MAIN — Corner 90 (N+W)"));
@@ -50,6 +62,18 @@ namespace GSP.TrackEditor.Editor
             pieces.Add(CloneRotated(pitStraightBase, 2, "PitLaneStraightV", "PIT — Straight V"));
             pieces.Add(CloneRotated(pitStraightBase, 1, "PitLaneStraight45Slash", "PIT — Straight 45 /"));
             pieces.Add(CloneRotated(pitStraightBase, 3, "PitLaneStraight45Backslash", @"PIT — Straight 45 \"));
+
+            var pitCorner45CcwBase = BuildCorner45BaseCcw("PitCorner45CcwBase", "PIT — Corner 45 CCW (E+NE)", "PitLane", TrackConnectorRole.Pit);
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 0, "PitLaneCorner45CcwENE", "PIT — Corner 45 CCW (E+NE)"));
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 2, "PitLaneCorner45CcwNNW", "PIT — Corner 45 CCW (N+NW)"));
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 4, "PitLaneCorner45CcwWSW", "PIT — Corner 45 CCW (W+SW)"));
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 6, "PitLaneCorner45CcwSSE", "PIT — Corner 45 CCW (S+SE)"));
+
+            var pitCorner45CwBase = BuildCorner45BaseCw("PitCorner45CwBase", "PIT — Corner 45 CW (E+SE)", "PitLane", TrackConnectorRole.Pit);
+            pieces.Add(CloneRotated(pitCorner45CwBase, 0, "PitLaneCorner45CwESE", "PIT — Corner 45 CW (E+SE)"));
+            pieces.Add(CloneRotated(pitCorner45CwBase, 2, "PitLaneCorner45CwSSW", "PIT — Corner 45 CW (S+SW)"));
+            pieces.Add(CloneRotated(pitCorner45CwBase, 4, "PitLaneCorner45CwWNW", "PIT — Corner 45 CW (W+NW)"));
+            pieces.Add(CloneRotated(pitCorner45CwBase, 6, "PitLaneCorner45CwNNE", "PIT — Corner 45 CW (N+NE)"));
 
             var pitCornerBase = BuildCorner90Base("PitCorner90ENBase", "PIT — Corner 90 (E+N)", "PitLane", TrackConnectorRole.Pit);
             pieces.Add(CloneRotated(pitCornerBase, 0, "PitLaneCorner90EN", "PIT — Corner 90 (E+N)"));
@@ -97,6 +121,52 @@ namespace GSP.TrackEditor.Editor
             var c0 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
             var c1 = Connector("N", new Vector2(0f, L), Dir8.N, role);
             var path = MakeCorner90QuarterArc(16);
+            var segments = new[]
+            {
+                Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
+                Segment(1, 0, role, Reverse(path), -c1.localDir.ToVector2(), c0.localDir.ToVector2())
+            };
+
+            return CreateTransientPiece(pieceId, displayName, category, TrackWidth, new[] { c0, c1 }, segments);
+        }
+
+        private static TrackPieceDef BuildCorner45BaseCcw(string pieceId, string displayName, string category, TrackConnectorRole role)
+        {
+            var c0 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
+            var c1 = Connector("NE", new Vector2(D, D), Dir8.NE, role);
+
+            var p0 = c0.localPos;
+            var p1 = c1.localPos;
+            var startTravelDir = -c0.localDir.ToVector2();
+            var endTravelDir = c1.localDir.ToVector2();
+            const float handleLength = 7.5f;
+            var c0h = p0 + startTravelDir.normalized * handleLength;
+            var c1h = p1 - endTravelDir.normalized * handleLength;
+            var path = MakeCubicBezier(p0, c0h, c1h, p1, 14);
+
+            var segments = new[]
+            {
+                Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
+                Segment(1, 0, role, Reverse(path), -c1.localDir.ToVector2(), c0.localDir.ToVector2())
+            };
+
+            return CreateTransientPiece(pieceId, displayName, category, TrackWidth, new[] { c0, c1 }, segments);
+        }
+
+        private static TrackPieceDef BuildCorner45BaseCw(string pieceId, string displayName, string category, TrackConnectorRole role)
+        {
+            var c0 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
+            var c1 = Connector("SE", new Vector2(D, -D), Dir8.SE, role);
+
+            var p0 = c0.localPos;
+            var p1 = c1.localPos;
+            var startTravelDir = -c0.localDir.ToVector2();
+            var endTravelDir = c1.localDir.ToVector2();
+            const float handleLength = 7.5f;
+            var c0h = p0 + startTravelDir.normalized * handleLength;
+            var c1h = p1 - endTravelDir.normalized * handleLength;
+            var path = MakeCubicBezier(p0, c0h, c1h, p1, 14);
+
             var segments = new[]
             {
                 Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
