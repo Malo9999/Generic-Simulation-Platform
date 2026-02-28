@@ -18,7 +18,7 @@ MonoBehaviour:
   trackWidth: 8
   connectors:
   - id: PitIn
-    localPos: {x: 0, y: -8}
+    localPos: {x: 0, y: -10}
     localDir: 4
     role: 1
     trackWidth: 8
@@ -61,20 +61,23 @@ MonoBehaviour:
     toConnectorIndex: 2
     pathRole: 1
     localCenterline:
-    - {x: 0, y: -8}
-    - {x: 4, y: -5}
+    - {x: 0, y: -10}
+    - {x: 3.5, y: -8}
+    - {x: 7.5, y: -4}
     - {x: 10, y: 0}
     localLeftBoundary:
-    - {x: -2.4987803, y: -4.876525}
-    - {x: 1.5012197, y: -1.8765249}
-    - {x: 7.5012197, y: 3.123475}
+    - {x: -1.9845557, y: -6.527027}
+    - {x: 1.00122, y: -4.876525}
+    - {x: 4.395544, y: -1.4776294}
+    - {x: 6.6080065, y: 2.1199958}
     localRightBoundary:
-    - {x: 2.4987803, y: -11.123475}
-    - {x: 6.4987803, y: -8.123475}
-    - {x: 12.49878, y: -3.123475}
+    - {x: 1.9845557, y: -13.472973}
+    - {x: 5.9987803, y: -11.123475}
+    - {x: 10.604456, y: -6.5223703}
+    - {x: 13.3919935, y: -2.1199958}
   localBounds:
     serializedVersion: 2
-    x: -10
-    y: -9
-    width: 20
-    height: 13
+    x: -14
+    y: -14
+    width: 28
+    height: 18

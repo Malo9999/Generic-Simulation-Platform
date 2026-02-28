@@ -14,6 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceLibrary
   pieces:
   - {fileID: 11400000, guid: 4d96846255c634a4facd0eaa50f72199, type: 2}
-  - {fileID: 11400000, guid: 383df6ad5c4108a499484b6a9f298654, type: 2}
+  - {fileID: 11400000, guid: d2bf665531e65ee4abfff5c3ae1963b6, type: 2}
+  - {fileID: 11400000, guid: 46852a795a2285e47b4bfffe7087a41c, type: 2}
+  - {fileID: 11400000, guid: 847475a18cac9ab4c941a1fc08014294, type: 2}
+  - {fileID: 11400000, guid: 5d2ee33dbb9c767499b2768389c9484a, type: 2}
   - {fileID: 11400000, guid: 72895edd5da7f224db76db02aae75772, type: 2}
   - {fileID: 11400000, guid: 603fc3e9cc1ea684e8477e25723dfd11, type: 2}

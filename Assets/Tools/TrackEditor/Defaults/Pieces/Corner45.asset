@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dbef79a7a07d4235a6f121ad67428ec3, type: 3}
-  m_Name: Straight
+  m_Name: Corner45
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
-  pieceId: Straight
-  displayName: Straight
-  category: Straight
+  pieceId: Corner45
+  displayName: Corner 45
+  category: Corner
   trackWidth: 8
   connectors:
   - id: W
@@ -22,9 +22,9 @@ MonoBehaviour:
     localDir: 6
     role: 2
     trackWidth: 8
-  - id: E
-    localPos: {x: 10, y: 0}
-    localDir: 2
+  - id: NW
+    localPos: {x: -7.071068, y: 7.071068}
+    localDir: 7
     role: 2
     trackWidth: 8
   segments:
@@ -33,28 +33,34 @@ MonoBehaviour:
     pathRole: 0
     localCenterline:
     - {x: -10, y: 0}
-    - {x: 10, y: 0}
+    - {x: -9, y: 3}
+    - {x: -7.071068, y: 7.071068}
     localLeftBoundary:
-    - {x: -10, y: 4}
-    - {x: 10, y: 4}
+    - {x: -13.794733, y: 1.264911}
+    - {x: -12.6955185, y: 4.5307336}
+    - {x: -10.685837, y: 8.783798}
     localRightBoundary:
-    - {x: -10, y: -4}
-    - {x: 10, y: -4}
+    - {x: -6.205267, y: -1.264911}
+    - {x: -5.304482, y: 1.4692663}
+    - {x: -3.456299, y: 5.358337}
   - fromConnectorIndex: 1
     toConnectorIndex: 0
     pathRole: 0
     localCenterline:
-    - {x: 10, y: 0}
+    - {x: -7.071068, y: 7.071068}
+    - {x: -9, y: 3}
     - {x: -10, y: 0}
     localLeftBoundary:
-    - {x: 10, y: -4}
-    - {x: -10, y: -4}
+    - {x: -3.456299, y: 5.358337}
+    - {x: -5.304482, y: 1.4692663}
+    - {x: -6.205267, y: -1.264911}
     localRightBoundary:
-    - {x: 10, y: 4}
-    - {x: -10, y: 4}
+    - {x: -10.685837, y: 8.783798}
+    - {x: -12.6955185, y: 4.5307336}
+    - {x: -13.794733, y: 1.264911}
   localBounds:
     serializedVersion: 2
-    x: -10
+    x: -14
     y: -4
-    width: 20
-    height: 8
+    width: 10.928932
+    height: 15.071068
