@@ -17,17 +17,34 @@ namespace GSP.TrackEditor.Editor
     */
     public class TrackEditorWindow : EditorWindow
     {
+        private struct SnapPreview
+        {
+            public bool valid;
+            public PlacedPiece snapped;
+            public ConnectorLink link;
+            public float distancePx;
+            public PlacedPiece openPiece;
+            public int openConnectorIndex;
+            public int candidateConnectorIndex;
+            public int rotationSteps45;
+            public Vector2 openWorldPos;
+            public Dir8 openWorldDir;
+        }
+
         private const float RightPanelWidth = 330f;
-        private const float SnapRadius = 16f;
+        private const float PixelsPerUnit = 24f;
+        private const float SnapRadiusPx = 28f;
 
         private TrackPieceLibrary library;
         private TrackLayout layout;
+        private TrackLayout previousLayout;
         private Vector2 paletteScroll;
         private Vector2 canvasPan;
         private float canvasZoom = 1f;
         private string search = string.Empty;
         private string status = "Ready.";
         private int selectedPiece = -1;
+        private int dragRotationOffset;
         private TrackBakeUtility.ValidationReport lastValidation;
         private TrackPieceDef _palettePressedPiece;
         private Vector2 _palettePressedPos;
@@ -42,6 +59,16 @@ namespace GSP.TrackEditor.Editor
         private void OnGUI()
         {
             DrawToolbar();
+
+            if (layout != previousLayout)
+            {
+                previousLayout = layout;
+                if (layout != null)
+                {
+                    canvasPan = layout.pan;
+                    canvasZoom = Mathf.Clamp(layout.zoom <= 0f ? 1f : layout.zoom, 0.2f, 3f);
+                }
+            }
 
             var contentRect = GUILayoutUtility.GetRect(position.width, position.height - 30f);
             var left = new Rect(contentRect.x, contentRect.y, contentRect.width - RightPanelWidth, contentRect.height);
@@ -90,12 +117,16 @@ namespace GSP.TrackEditor.Editor
             DrawGrid(rect.size);
             if (layout != null)
             {
-                for (var i = 0; i < layout.pieces.Count; i++)
-                {
-                    DrawPiece(layout.pieces[i], i == selectedPiece);
-                }
+                DrawTrackPreview(rect.size);
+                DrawStartGrid(rect.size);
+                DrawLinks(rect.size);
+                DrawConnectors(rect.size, null);
 
-                DrawLinks();
+                var draggedPiece = DragAndDrop.GetGenericData("TrackPieceDef") as TrackPieceDef;
+                if (draggedPiece != null)
+                {
+                    DrawDragGhost(draggedPiece, rect.size);
+                }
             }
 
             GUI.EndClip();
@@ -201,6 +232,7 @@ namespace GSP.TrackEditor.Editor
                     {
                         StartDragPiece(piece);
                         _paletteDragStarted = true;
+                        dragRotationOffset = 0;
                         evt.Use();
                     }
                 }
@@ -236,6 +268,7 @@ namespace GSP.TrackEditor.Editor
             {
                 canvasZoom = Mathf.Clamp(canvasZoom - evt.delta.y * 0.03f, 0.2f, 3f);
                 layout.zoom = canvasZoom;
+                EditorUtility.SetDirty(layout);
                 evt.Use();
             }
 
@@ -243,10 +276,27 @@ namespace GSP.TrackEditor.Editor
             {
                 canvasPan += evt.delta;
                 layout.pan = canvasPan;
+                EditorUtility.SetDirty(layout);
                 evt.Use();
             }
 
             var canvasRect = new Rect(Vector2.zero, size);
+            if (DragAndDrop.GetGenericData("TrackPieceDef") is TrackPieceDef)
+            {
+                if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Q)
+                {
+                    dragRotationOffset = (dragRotationOffset + 7) % 8;
+                    Repaint();
+                    evt.Use();
+                }
+                else if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.E)
+                {
+                    dragRotationOffset = (dragRotationOffset + 1) % 8;
+                    Repaint();
+                    evt.Use();
+                }
+            }
+
             if ((evt.type == EventType.DragUpdated || evt.type == EventType.DragPerform) && canvasRect.Contains(evt.mousePosition))
             {
                 var piece = DragAndDrop.GetGenericData("TrackPieceDef") as TrackPieceDef;
@@ -256,8 +306,10 @@ namespace GSP.TrackEditor.Editor
                     if (evt.type == EventType.DragPerform)
                     {
                         var world = CanvasToWorld(evt.mousePosition, size);
-                        TryPlacePiece(piece, world);
+                        TryPlacePiece(piece, world, size);
                         DragAndDrop.AcceptDrag();
+                        DragAndDrop.SetGenericData("TrackPieceDef", null);
+                        dragRotationOffset = 0;
                     }
 
                     evt.Use();
@@ -285,32 +337,78 @@ namespace GSP.TrackEditor.Editor
             }
         }
 
-        private void DrawPiece(PlacedPiece placed, bool isSelected)
+        private void DrawTrackPreview(Vector2 canvasSize)
         {
-            if (placed.piece == null)
+            for (var pieceIndex = 0; pieceIndex < layout.pieces.Count; pieceIndex++)
+            {
+                var placed = layout.pieces[pieceIndex];
+                if (placed.piece == null)
+                {
+                    continue;
+                }
+
+                DrawPieceGeometry(placed, canvasSize, new Color(0.22f, 0.22f, 0.22f, 0.95f), new Color(0.95f, 0.95f, 0.95f, 0.9f));
+
+                var shouldShowLabel = pieceIndex == selectedPiece || canvasZoom > 1.2f;
+                if (!shouldShowLabel)
+                {
+                    continue;
+                }
+
+                var center = WorldToCanvas(placed.position, canvasSize);
+                var labelRect = new Rect(center + new Vector2(6f, 6f), new Vector2(140f, 20f));
+                GUI.Label(labelRect, placed.piece.displayName, EditorStyles.miniBoldLabel);
+            }
+        }
+
+        private void DrawPieceGeometry(PlacedPiece placed, Vector2 canvasSize, Color asphaltColor, Color borderColor)
+        {
+            if (placed.piece?.segments == null)
             {
                 return;
             }
 
-            var center = WorldToCanvas(placed.position);
-            var size = new Vector2(30f, 16f) * canvasZoom;
-            var rect = new Rect(center - size * 0.5f, size);
-            EditorGUI.DrawRect(rect, isSelected ? new Color(0.2f, 0.7f, 1f) : new Color(0.4f, 0.4f, 0.4f));
-            GUI.Label(rect, placed.piece.displayName, EditorStyles.whiteMiniLabel);
-
-            Handles.color = Color.cyan;
-            for (var i = 0; i < placed.piece.connectors.Length; i++)
+            foreach (var segment in placed.piece.segments)
             {
-                var connector = placed.piece.connectors[i];
-                var p = WorldToCanvas(TrackMathUtil.ToWorld(placed, connector.localPos));
-                Handles.DrawSolidDisc(p, Vector3.forward, 4f);
-                Handles.Label(p + Vector2.one * 3f, i.ToString(), EditorStyles.miniLabel);
+                if (segment?.localCenterline == null || segment.localCenterline.Length < 2)
+                {
+                    continue;
+                }
+
+                var centerCanvas = TransformPolyline(placed, segment.localCenterline, canvasSize);
+                Handles.color = asphaltColor;
+                var asphaltWidthPx = Mathf.Max(1.5f, placed.piece.trackWidth * PixelsPerUnit * canvasZoom);
+                Handles.DrawAAPolyLine(asphaltWidthPx, centerCanvas);
+
+                if (segment.localLeftBoundary != null && segment.localLeftBoundary.Length >= 2)
+                {
+                    Handles.color = borderColor;
+                    Handles.DrawAAPolyLine(2f, TransformPolyline(placed, segment.localLeftBoundary, canvasSize));
+                }
+
+                if (segment.localRightBoundary != null && segment.localRightBoundary.Length >= 2)
+                {
+                    Handles.color = borderColor;
+                    Handles.DrawAAPolyLine(2f, TransformPolyline(placed, segment.localRightBoundary, canvasSize));
+                }
             }
         }
 
-        private void DrawLinks()
+        private Vector3[] TransformPolyline(PlacedPiece placed, Vector2[] localPoints, Vector2 canvasSize)
         {
-            Handles.color = Color.green;
+            var points = new Vector3[localPoints.Length];
+            for (var i = 0; i < localPoints.Length; i++)
+            {
+                var world = TrackMathUtil.ToWorld(placed, localPoints[i]);
+                points[i] = WorldToCanvas(world, canvasSize);
+            }
+
+            return points;
+        }
+
+        private void DrawLinks(Vector2 canvasSize)
+        {
+            Handles.color = new Color(0.4f, 1f, 0.4f, 0.8f);
             foreach (var link in layout.links)
             {
                 var a = layout.pieces.FirstOrDefault(p => p.guid == link.pieceGuidA);
@@ -320,20 +418,148 @@ namespace GSP.TrackEditor.Editor
                     continue;
                 }
 
-                var pa = WorldToCanvas(TrackMathUtil.ToWorld(a, a.piece.connectors[link.connectorIndexA].localPos));
-                var pb = WorldToCanvas(TrackMathUtil.ToWorld(b, b.piece.connectors[link.connectorIndexB].localPos));
-                Handles.DrawAAPolyLine(2f, pa, pb);
+                var pa = WorldToCanvas(TrackMathUtil.ToWorld(a, a.piece.connectors[link.connectorIndexA].localPos), canvasSize);
+                var pb = WorldToCanvas(TrackMathUtil.ToWorld(b, b.piece.connectors[link.connectorIndexB].localPos), canvasSize);
+                Handles.DrawAAPolyLine(1.5f, pa, pb);
             }
         }
 
-        private void TryPlacePiece(TrackPieceDef piece, Vector2 worldDrop)
+        private void DrawConnectors(Vector2 canvasSize, SnapPreview? highlight)
+        {
+            var used = GetUsedConnectorKeys();
+            foreach (var p in layout.pieces)
+            {
+                if (p?.piece?.connectors == null)
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < p.piece.connectors.Length; i++)
+                {
+                    var key = $"{p.guid}:{i}";
+                    var connector = p.piece.connectors[i];
+                    var pos = TrackMathUtil.ToWorld(p, connector.localPos);
+                    var worldDir = TrackMathUtil.ToWorld(p, connector.localDir).ToVector2();
+                    var canvas = WorldToCanvas(pos, canvasSize);
+                    var tip = WorldToCanvas(pos + worldDir.normalized * 1.2f, canvasSize);
+
+                    var isHighlighted = highlight.HasValue && highlight.Value.valid && highlight.Value.openPiece?.guid == p.guid && highlight.Value.openConnectorIndex == i;
+                    var baseColor = used.Contains(key)
+                        ? new Color(0.3f, 0.45f, 0.45f, 0.8f)
+                        : connector.role == TrackConnectorRole.Pit
+                            ? new Color(0.55f, 0.95f, 1f, 1f)
+                            : new Color(0.2f, 1f, 1f, 1f);
+
+                    Handles.color = isHighlighted ? Color.yellow : baseColor;
+                    Handles.DrawSolidDisc(canvas, Vector3.forward, isHighlighted ? 5f : 4f);
+                    Handles.DrawAAPolyLine(isHighlighted ? 3f : 2f, canvas, tip);
+                    Handles.Label(canvas + new Vector2(5f, -2f), i.ToString(), EditorStyles.miniLabel);
+                }
+            }
+        }
+
+        private HashSet<string> GetUsedConnectorKeys()
+        {
+            var used = new HashSet<string>();
+            foreach (var l in layout.links)
+            {
+                used.Add($"{l.pieceGuidA}:{l.connectorIndexA}");
+                used.Add($"{l.pieceGuidB}:{l.connectorIndexB}");
+            }
+
+            return used;
+        }
+
+        private void DrawDragGhost(TrackPieceDef draggedPiece, Vector2 canvasSize)
+        {
+            var mouse = Event.current.mousePosition;
+            var canvasRect = new Rect(Vector2.zero, canvasSize);
+            if (!canvasRect.Contains(mouse))
+            {
+                return;
+            }
+
+            var worldDrop = CanvasToWorld(mouse, canvasSize);
+            var fallback = new PlacedPiece
+            {
+                guid = Guid.NewGuid().ToString("N"),
+                piece = draggedPiece,
+                position = worldDrop,
+                rotationSteps45 = dragRotationOffset,
+                mirrored = false
+            };
+
+            TryFindSnap(draggedPiece, worldDrop, canvasSize, out var snapped, out _, out var bestDistPx, out var preview);
+            var ghost = preview.valid ? snapped : fallback;
+
+            DrawPieceGeometry(ghost, canvasSize, new Color(0.35f, 0.55f, 0.95f, 0.45f), new Color(0.95f, 0.95f, 1f, 0.9f));
+            DrawConnectors(canvasSize, preview.valid ? preview : null);
+
+            var statusRect = new Rect(10f, canvasSize.y - 24f, canvasSize.x - 20f, 20f);
+            if (preview.valid)
+            {
+                GUI.Label(statusRect, $"Snap: OK (dist {bestDistPx:F0}px) → connector A:{preview.openConnectorIndex} ↔ new:{preview.candidateConnectorIndex} rot={preview.rotationSteps45 * 45}°", EditorStyles.miniBoldLabel);
+            }
+            else
+            {
+                GUI.Label(statusRect, "No snap candidate (move closer to an open connector).", EditorStyles.miniBoldLabel);
+            }
+        }
+
+        private void DrawStartGrid(Vector2 canvasSize)
+        {
+            if (layout?.startGridSlots == null)
+            {
+                return;
+            }
+
+            Handles.color = new Color(1f, 0.9f, 0.25f, 0.95f);
+            foreach (var slot in layout.startGridSlots)
+            {
+                var forward = slot.dir.sqrMagnitude > 0.001f ? slot.dir.normalized : Vector2.right;
+                var right = new Vector2(-forward.y, forward.x);
+                const float len = 2f;
+                const float halfWidth = 0.9f;
+
+                var p0 = slot.pos + forward * len + right * halfWidth;
+                var p1 = slot.pos + forward * len - right * halfWidth;
+                var p2 = slot.pos - forward * len - right * halfWidth;
+                var p3 = slot.pos - forward * len + right * halfWidth;
+
+                var c0 = WorldToCanvas(p0, canvasSize);
+                var c1 = WorldToCanvas(p1, canvasSize);
+                var c2 = WorldToCanvas(p2, canvasSize);
+                var c3 = WorldToCanvas(p3, canvasSize);
+                Handles.DrawAAPolyLine(1.5f, c0, c1, c2, c3, c0);
+
+                var arrowStart = WorldToCanvas(slot.pos, canvasSize);
+                var arrowEnd = WorldToCanvas(slot.pos + forward * 2f, canvasSize);
+                Handles.DrawAAPolyLine(2f, arrowStart, arrowEnd);
+            }
+
+            if (layout.startFinish == null)
+            {
+                return;
+            }
+
+            var sf = layout.startFinish;
+            var sfDir = sf.worldDir.sqrMagnitude > 0.001f ? sf.worldDir.normalized : Vector2.right;
+            var sfRight = new Vector2(-sfDir.y, sfDir.x);
+            var width = (layout.pieces.Count > 0 && layout.pieces[0].piece != null) ? layout.pieces[0].piece.trackWidth * 0.5f : 4f;
+            var a = WorldToCanvas(sf.worldPos + sfRight * width, canvasSize);
+            var b = WorldToCanvas(sf.worldPos - sfRight * width, canvasSize);
+            Handles.color = new Color(1f, 0.35f, 0.15f, 0.95f);
+            Handles.DrawAAPolyLine(4f, a, b);
+        }
+
+        private void TryPlacePiece(TrackPieceDef piece, Vector2 worldDrop, Vector2 canvasSize)
         {
             var newPlaced = new PlacedPiece
             {
                 guid = Guid.NewGuid().ToString("N"),
                 piece = piece,
                 position = worldDrop,
-                rotationSteps45 = 0,
+                rotationSteps45 = dragRotationOffset,
                 mirrored = false
             };
 
@@ -345,66 +571,97 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            if (!TryFindSnap(newPlaced, out var snapped, out var link, out var distance))
+            if (!TryFindSnap(piece, worldDrop, canvasSize, out var snapped, out var link, out var distance, out _))
             {
                 status = "Drop rejected: no compatible open connector within snap radius.";
                 return;
             }
 
+            snapped.guid = newPlaced.guid;
+            link.pieceGuidB = snapped.guid;
+
             layout.pieces.Add(snapped);
             layout.links.Add(link);
-            status = $"Placed with snap distance {distance:F2}.";
+            status = $"Placed with snap distance {distance:F1}px.";
             EditorUtility.SetDirty(layout);
         }
 
-        private bool TryFindSnap(PlacedPiece candidate, out PlacedPiece snapped, out ConnectorLink link, out float bestDistance)
+        private bool TryFindSnap(
+            TrackPieceDef piece,
+            Vector2 worldDrop,
+            Vector2 canvasSize,
+            out PlacedPiece snapped,
+            out ConnectorLink link,
+            out float bestDistPx,
+            out SnapPreview preview)
         {
-            snapped = candidate;
+            snapped = null;
             link = null;
-            bestDistance = float.MaxValue;
-            var openConnectors = GetOpenConnectors();
+            bestDistPx = float.MaxValue;
+            preview = default;
 
+            var openConnectors = GetOpenConnectors();
             foreach (var open in openConnectors)
             {
-                for (var i = 0; i < candidate.piece.connectors.Length; i++)
+                for (var i = 0; i < piece.connectors.Length; i++)
                 {
+                    var connector = piece.connectors[i];
                     for (var rot = 0; rot < 8; rot++)
                     {
-                        var c = candidate.piece.connectors[i];
-                        var worldDir = c.localDir.RotateSteps45(rot);
-                        if (worldDir != open.worldDir.Opposite())
+                        var rotated = (rot + dragRotationOffset) % 8;
+                        var candidateDirWorld = connector.localDir.RotateSteps45(rotated);
+                        if (candidateDirWorld != open.worldDir.Opposite())
                         {
                             continue;
                         }
 
-                        if (Mathf.Abs(c.trackWidth - open.connector.trackWidth) > 0.01f)
+                        if (Mathf.Abs(connector.trackWidth - open.connector.trackWidth) > 0.01f)
                         {
                             continue;
                         }
 
-                        var rotatedLocal = TrackMathUtil.Rotate45(c.localPos, rot);
+                        var rotatedLocal = TrackMathUtil.Rotate45(connector.localPos, rotated);
+                        var candidateConnWorldAtDrop = worldDrop + rotatedLocal;
+                        var openCanvas = WorldToCanvas(open.worldPos, canvasSize);
+                        var candidateCanvas = WorldToCanvas(candidateConnWorldAtDrop, canvasSize);
+                        var distPx = Vector2.Distance(openCanvas, candidateCanvas);
+                        if (distPx > SnapRadiusPx || distPx >= bestDistPx)
+                        {
+                            continue;
+                        }
+
                         var snappedPos = open.worldPos - rotatedLocal;
-                        var dist = Vector2.Distance(snappedPos, candidate.position);
-                        if (dist > SnapRadius || dist > bestDistance)
-                        {
-                            continue;
-                        }
+                        bestDistPx = distPx;
 
-                        bestDistance = dist;
                         snapped = new PlacedPiece
                         {
-                            guid = candidate.guid,
-                            piece = candidate.piece,
+                            guid = Guid.NewGuid().ToString("N"),
+                            piece = piece,
                             position = snappedPos,
-                            rotationSteps45 = rot
+                            rotationSteps45 = rotated,
+                            mirrored = false
                         };
 
                         link = new ConnectorLink
                         {
                             pieceGuidA = open.placed.guid,
                             connectorIndexA = open.index,
-                            pieceGuidB = candidate.guid,
+                            pieceGuidB = snapped.guid,
                             connectorIndexB = i
+                        };
+
+                        preview = new SnapPreview
+                        {
+                            valid = true,
+                            snapped = snapped,
+                            link = link,
+                            distancePx = distPx,
+                            openPiece = open.placed,
+                            openConnectorIndex = open.index,
+                            candidateConnectorIndex = i,
+                            rotationSteps45 = rotated,
+                            openWorldPos = open.worldPos,
+                            openWorldDir = open.worldDir
                         };
                     }
                 }
@@ -415,13 +672,7 @@ namespace GSP.TrackEditor.Editor
 
         private List<(PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir)> GetOpenConnectors()
         {
-            var used = new HashSet<string>();
-            foreach (var l in layout.links)
-            {
-                used.Add($"{l.pieceGuidA}:{l.connectorIndexA}");
-                used.Add($"{l.pieceGuidB}:{l.connectorIndexB}");
-            }
-
+            var used = GetUsedConnectorKeys();
             var open = new List<(PlacedPiece, int, TrackConnector, Vector2, Dir8)>();
             foreach (var p in layout.pieces)
             {
@@ -530,6 +781,9 @@ namespace GSP.TrackEditor.Editor
             AssetDatabase.CreateAsset(newLayout, path);
             AssetDatabase.SaveAssets();
             layout = newLayout;
+            previousLayout = layout;
+            canvasPan = layout.pan;
+            canvasZoom = Mathf.Clamp(layout.zoom <= 0f ? 1f : layout.zoom, 0.2f, 3f);
             status = $"Created {path}";
         }
 
@@ -576,14 +830,14 @@ namespace GSP.TrackEditor.Editor
             EditorUtility.SetDirty(layout);
         }
 
-        private Vector2 WorldToCanvas(Vector2 world)
+        private Vector2 WorldToCanvas(Vector2 world, Vector2 size)
         {
-            return (world * 20f * canvasZoom) + canvasPan + new Vector2(250f, 220f);
+            return (world * PixelsPerUnit * canvasZoom) + canvasPan + size * 0.5f;
         }
 
         private Vector2 CanvasToWorld(Vector2 canvas, Vector2 size)
         {
-            return (canvas - canvasPan - new Vector2(250f, 220f)) / (20f * canvasZoom);
+            return (canvas - canvasPan - size * 0.5f) / (PixelsPerUnit * canvasZoom);
         }
     }
 }
