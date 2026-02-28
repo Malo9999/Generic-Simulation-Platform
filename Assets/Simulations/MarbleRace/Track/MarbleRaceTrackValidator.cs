@@ -162,7 +162,7 @@ public static class MarbleRaceTrackValidator
             }
         }
 
-        const int turnWindow = 2;
+        var turnWindow = Mathf.Clamp(n / 128, 2, 4);
         for (var i = 0; i < n; i++)
         {
             var prev = track.Center[(i - turnWindow + n) % n];

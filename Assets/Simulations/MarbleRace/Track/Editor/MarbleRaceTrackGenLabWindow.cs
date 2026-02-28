@@ -112,7 +112,7 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
             var color = GUI.color;
             GUI.color = BandColor(report.Band);
             var validity = report.ValidityPassed ? "VALID" : "INVALID";
-            if (GUILayout.Button($"[{validity}] score={report.QualityScore} seed={report.Seed} variant={report.Variant} maxTurn={report.Quality.MaxTurnAngleDeg:F1}° axisAligned={(report.Quality.AxisAlignedRatio * 100f):F0}% minRadius={report.Quality.MinRadius:F2}"))
+            if (GUILayout.Button($"[{validity}] score={report.QualityScore} seed={report.Seed} variant={report.Variant} maxTurnAngle={report.Quality.MaxTurnAngleDeg:F1}° axisAlignedPercent={(report.Quality.AxisAlignedRatio * 100f):F0}% minRadiusEstimate={report.Quality.MinRadius:F2}"))
             {
                 selectedIndex = i;
             }
@@ -217,7 +217,7 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         for (var i = 0; i < reports.Count; i++)
         {
             var r = reports[i];
-            metricLines.Add($"seed={r.Seed} score={r.QualityScore} maxTurn={r.Quality.MaxTurnAngleDeg:F1} axisAligned={(r.Quality.AxisAlignedRatio * 100f):F0}% minRadius={r.Quality.MinRadius:F2}");
+            metricLines.Add($"seed={r.Seed} score={r.QualityScore} maxTurnAngle={r.Quality.MaxTurnAngleDeg:F1} axisAlignedPercent={(r.Quality.AxisAlignedRatio * 100f):F0}% minRadiusEstimate={r.Quality.MinRadius:F2}");
         }
 
         Debug.Log($"[TrackGenLab] Completed {reports.Count} seeds. green={green} yellow={yellow} red={red} | {string.Join(" || ", metricLines)}");
