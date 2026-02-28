@@ -76,11 +76,20 @@ public static class PresentationBoundsSync
         }
 
         mainCamera.orthographic = true;
+        var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        var canRouteThroughPolicy = arenaCameraPolicy != null && arenaCameraPolicy.targetCamera == mainCamera;
 
         var position = mainCamera.transform.position;
         position.x = bounds.center.x;
         position.y = bounds.center.y;
-        mainCamera.transform.position = position;
+        if (canRouteThroughPolicy)
+        {
+            arenaCameraPolicy.transform.position = position;
+        }
+        else
+        {
+            mainCamera.transform.position = position;
+        }
 
         var halfH = bounds.height * 0.5f;
         var halfW = bounds.width * 0.5f;
@@ -88,7 +97,15 @@ public static class PresentationBoundsSync
         var sizeToFitWidth = halfW / Mathf.Max(0.01f, aspect);
         var baseSize = Mathf.Max(halfH, sizeToFitWidth);
         var pad = Mathf.Clamp(baseSize * 0.08f, 1.5f, 6f);
-        mainCamera.orthographicSize = baseSize + pad;
+        var framingOrtho = baseSize + pad;
+        if (canRouteThroughPolicy)
+        {
+            arenaCameraPolicy.SetOrthoFromExternal(framingOrtho, "PresentationBoundsSync.EnsureMainCameraFraming", syncZoomLevel: true);
+        }
+        else
+        {
+            mainCamera.orthographicSize = framingOrtho;
+        }
     }
 
     private static bool SetWorldBoundsFieldOrProperty(MonoBehaviour behaviour, Type type, Rect bounds)
