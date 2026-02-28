@@ -60,8 +60,8 @@ namespace GSP.TrackEditor.Editor
 
             var segments = new[]
             {
-                Segment(connectors, 0, 1, role, new[] { c0.localPos, c1.localPos }),
-                Segment(connectors, 1, 0, role, new[] { c1.localPos, c0.localPos })
+                Segment(0, 1, role, new[] { c0.localPos, c1.localPos }, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
+                Segment(1, 0, role, new[] { c1.localPos, c0.localPos }, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
             return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
@@ -75,8 +75,8 @@ namespace GSP.TrackEditor.Editor
 
             var segments = new[]
             {
-                Segment(connectors, 0, 1, role, new[] { c0.localPos, c1.localPos }),
-                Segment(connectors, 1, 0, role, new[] { c1.localPos, c0.localPos })
+                Segment(0, 1, role, new[] { c0.localPos, c1.localPos }, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
+                Segment(1, 0, role, new[] { c1.localPos, c0.localPos }, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
             return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
@@ -85,15 +85,17 @@ namespace GSP.TrackEditor.Editor
         private static TrackPieceDef CreateCorner45(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
             var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
-            var c1 = Connector("NW", new Vector2(-D, D), Dir8.NW, role);
+            var c1 = Connector("NE", new Vector2(D, D), Dir8.NE, role);
             var connectors = new[] { c0, c1 };
 
-            var path = MakeArcShort(c0.localPos, c1.localPos, L, true, 8);
+            const float h = 9f;
+            var endDir = new Vector2(1f, 1f).normalized;
+            var path = MakeCubicBezier(c0.localPos, c0.localPos + Vector2.right * h, c1.localPos - endDir * h, c1.localPos, 14);
             var reverse = Reverse(path);
             var segments = new[]
             {
-                Segment(connectors, 0, 1, role, path),
-                Segment(connectors, 1, 0, role, reverse)
+                Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
+                Segment(1, 0, role, reverse, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
             return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
@@ -109,8 +111,8 @@ namespace GSP.TrackEditor.Editor
             var reverse = Reverse(path);
             var segments = new[]
             {
-                Segment(connectors, 0, 1, role, path),
-                Segment(connectors, 1, 0, role, reverse)
+                Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
+                Segment(1, 0, role, reverse, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
             return CreatePiece(pieceId, displayName, category, connectors, segments, BuildBounds(segments));
@@ -130,18 +132,18 @@ namespace GSP.TrackEditor.Editor
                 new Vector2(L, 0f)
             };
 
-            var path = FilletPolyline(control, L * 0.6f, 10);
+            var path = FilletPolyline(control, 6f, 10);
             path[0] = c0.localPos;
             path[path.Length - 1] = c1.localPos;
 
             var reverse = Reverse(path);
             var segments = new[]
             {
-                Segment(connectors, 0, 1, TrackConnectorRole.Main, path),
-                Segment(connectors, 1, 0, TrackConnectorRole.Main, reverse)
+                Segment(0, 1, TrackConnectorRole.Main, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
+                Segment(1, 0, TrackConnectorRole.Main, reverse, -c1.localDir.ToVector2(), c0.localDir.ToVector2())
             };
 
-            return CreatePiece("Hairpin180", "MAIN — Hairpin 180", "Corner", connectors, segments, BuildBounds(segments));
+            return CreatePiece("Hairpin180", "Hairpin 180", "Corner", connectors, segments, BuildBounds(segments));
         }
 
         private static TrackPieceDef CreatePitEntry()
@@ -156,10 +158,10 @@ namespace GSP.TrackEditor.Editor
 
             var segments = new[]
             {
-                Segment(connectors, 0, 1, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }),
-                Segment(connectors, 1, 0, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }),
-                Segment(connectors, 0, 2, TrackConnectorRole.Pit, pitPath),
-                Segment(connectors, 2, 0, TrackConnectorRole.Pit, pitReverse)
+                Segment(0, 1, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }, -mainIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
+                Segment(1, 0, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }, -mainOut.localDir.ToVector2(), mainIn.localDir.ToVector2()),
+                Segment(0, 2, TrackConnectorRole.Pit, pitPath, -mainIn.localDir.ToVector2(), pitOut.localDir.ToVector2()),
+                Segment(2, 0, TrackConnectorRole.Pit, pitReverse, -pitOut.localDir.ToVector2(), mainIn.localDir.ToVector2())
             };
 
             return CreatePiece("PitEntry", "PIT — Entry", "PitLane", connectors, segments, BuildBounds(segments));
@@ -176,10 +178,10 @@ namespace GSP.TrackEditor.Editor
             var pitReverse = Reverse(pitPath);
             var segments = new[]
             {
-                Segment(connectors, 1, 2, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }),
-                Segment(connectors, 2, 1, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }),
-                Segment(connectors, 0, 2, TrackConnectorRole.Pit, pitPath),
-                Segment(connectors, 2, 0, TrackConnectorRole.Pit, pitReverse)
+                Segment(1, 2, TrackConnectorRole.Main, new[] { mainIn.localPos, mainOut.localPos }, -mainIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
+                Segment(2, 1, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }, -mainOut.localDir.ToVector2(), mainIn.localDir.ToVector2()),
+                Segment(0, 2, TrackConnectorRole.Pit, pitPath, -pitIn.localDir.ToVector2(), mainOut.localDir.ToVector2()),
+                Segment(2, 0, TrackConnectorRole.Pit, pitReverse, -mainOut.localDir.ToVector2(), pitIn.localDir.ToVector2())
             };
 
             return CreatePiece("PitExit", "PIT — Exit", "PitLane", connectors, segments, BuildBounds(segments));
@@ -230,6 +232,26 @@ namespace GSP.TrackEditor.Editor
                 var t = i / (float)count;
                 var angle = a0 + delta * t;
                 result[i] = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+            }
+
+            result[0] = p0;
+            result[count] = p1;
+            return result;
+        }
+
+        private static Vector2[] MakeCubicBezier(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 p1, int steps)
+        {
+            var count = Mathf.Max(1, steps);
+            var result = new Vector2[count + 1];
+            for (var i = 0; i <= count; i++)
+            {
+                var t = i / (float)count;
+                var omt = 1f - t;
+                result[i] =
+                    omt * omt * omt * p0 +
+                    3f * omt * omt * t * c0 +
+                    3f * omt * t * t * c1 +
+                    t * t * t * p1;
             }
 
             result[0] = p0;
@@ -298,23 +320,29 @@ namespace GSP.TrackEditor.Editor
             return result.ToArray();
         }
 
-        private static TrackSegment Segment(TrackConnector[] connectors, int from, int to, TrackConnectorRole role, Vector2[] center)
+        private static TrackSegment Segment(
+            int from,
+            int to,
+            TrackConnectorRole role,
+            Vector2[] center,
+            Vector2 startTravelDirWorldLocal,
+            Vector2 endTravelDirWorldLocal)
         {
             var left = new Vector2[center.Length];
             var right = new Vector2[center.Length];
-            var fromDir = -connectors[from].localDir.ToVector2().normalized;
-            var toDir = connectors[to].localDir.ToVector2().normalized;
+            var startDir = startTravelDirWorldLocal.normalized;
+            var endDir = endTravelDirWorldLocal.normalized;
 
             for (var i = 0; i < center.Length; i++)
             {
                 Vector2 tangent;
                 if (i == 0)
                 {
-                    tangent = fromDir;
+                    tangent = startDir;
                 }
                 else if (i == center.Length - 1)
                 {
-                    tangent = toDir;
+                    tangent = endDir;
                 }
                 else
                 {
@@ -326,7 +354,8 @@ namespace GSP.TrackEditor.Editor
                     tangent = i > 0 ? center[i] - center[i - 1] : Vector2.right;
                 }
 
-                var normal = Vector2.Perpendicular(tangent.normalized);
+                var tangentNormalized = tangent.normalized;
+                var normal = new Vector2(-tangentNormalized.y, tangentNormalized.x);
                 left[i] = center[i] + normal * HW;
                 right[i] = center[i] - normal * HW;
             }
