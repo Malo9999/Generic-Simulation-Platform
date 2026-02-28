@@ -42,7 +42,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float AthleteUnstickThresholdSeconds = 0.25f;
     private const float AthleteUnstickBoost = 2.4f;
     private const float BallMinSlideSpeed = 0.15f;
-    private const int BumperCount = 6;
+    private const int BumperCount = 8;
     private const int GoalCooldownTicks = 20;
     private const float StaminaDrainRun = 0.95f;
     private const float StaminaRecoverIdle = 0.8f;
@@ -64,7 +64,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float WingBonus = 2.5f;
     private const float WingOutletBonus = 3.2f;
     private const float WingSpring = 9f;
-    private const float EndzoneMouthMultiplier = 1.2f;
+    private const float EndzoneMouthMultiplier = 1.0f;
+    private const float DangerLaneBlockDistance = 2.2f;
+    private const float DangerLaneIntentSeconds = 1.2f;
+    private const float DangerLineDropDistance = 2f;
     private const float KickoffFreezeSeconds = 0.7f;
     private const float DefensiveMarkTtl = 1.6f;
     private const float FinishPlanDuration = 0.8f;
@@ -904,6 +907,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             athleteStates[i] = (i == press || i == supportPress) ? AthleteState.PressCarrier : AthleteState.MarkLane;
         }
 
+        ApplyDangerLaneDefense(0);
+        ApplyDangerLaneDefense(1);
+
         if (ballOwnerTeam >= 0)
         {
             UpdateSupportTriangle(ballOwnerTeam, ballOwnerIndex);
@@ -971,6 +977,209 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         return best;
+    }
+
+    private void ApplyDangerLaneDefense(int defendingTeam)
+    {
+        var dangerCarrier = GetDangerCarrierIndex(defendingTeam);
+        if (!IsValidAthleteIndex(dangerCarrier))
+        {
+            return;
+        }
+
+        var carrierPos = positions[dangerCarrier];
+        var ownGoalX = defendingTeam == 0 ? -halfWidth : halfWidth;
+        var goalPoint = new Vector2(ownGoalX, Mathf.Clamp(carrierPos.y, -GetEndzoneHalfHeight(), GetEndzoneHalfHeight()));
+        var segmentMidpoint = Vector2.Lerp(carrierPos, goalPoint, 0.5f);
+        var laneOpen = IsDangerLaneOpen(defendingTeam, carrierPos, goalPoint);
+        if (!laneOpen)
+        {
+            return;
+        }
+
+        defLineXByTeam[defendingTeam] = Mathf.Clamp(
+            defLineXByTeam[defendingTeam] - (TowardCenterSign(defendingTeam) * DangerLineDropDistance),
+            -halfWidth + 1.1f,
+            halfWidth - 1.1f);
+
+        var nearestDefender = FindClosestRoleToPoint(defendingTeam, RoleGroup.Defender, segmentMidpoint, -1);
+        if (!IsValidAthleteIndex(nearestDefender))
+        {
+            nearestDefender = FindClosestLaneBlockerToSegment(defendingTeam, carrierPos, goalPoint, -1);
+        }
+
+        var secondBlocker = FindClosestRoleToSegment(defendingTeam, RoleGroup.Midfielder, carrierPos, goalPoint, nearestDefender);
+        if (!IsValidAthleteIndex(secondBlocker))
+        {
+            secondBlocker = FindClosestLaneBlockerToSegment(defendingTeam, carrierPos, goalPoint, nearestDefender);
+        }
+
+        AssignLaneBlockIntent(nearestDefender, carrierPos, goalPoint, 0.42f, 0.9f);
+        AssignLaneBlockIntent(secondBlocker, carrierPos, goalPoint, 0.62f, -0.9f);
+    }
+
+    private int GetDangerCarrierIndex(int defendingTeam)
+    {
+        var attackingTeam = 1 - defendingTeam;
+        if (ballOwnerIndex >= 0)
+        {
+            return identities[ballOwnerIndex].teamId == attackingTeam ? ballOwnerIndex : -1;
+        }
+
+        var (start, end) = GetTeamSpan(attackingTeam);
+        var best = -1;
+        var bestDist = float.MaxValue;
+        for (var i = start; i < end; i++)
+        {
+            if (IsGoalkeeper(i) || roleByIndex[i] != RoleGroup.Attacker)
+            {
+                continue;
+            }
+
+            var dist = (positions[i] - ballPos).sqrMagnitude;
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private bool IsDangerLaneOpen(int defendingTeam, Vector2 laneStart, Vector2 laneEnd)
+    {
+        var (start, end) = GetTeamSpan(defendingTeam);
+        for (var i = start; i < end; i++)
+        {
+            if (IsGoalkeeper(i))
+            {
+                continue;
+            }
+
+            var role = roleByIndex[i];
+            if (role != RoleGroup.Defender && role != RoleGroup.Sweeper && role != RoleGroup.Midfielder)
+            {
+                continue;
+            }
+
+            var dist = DistancePointToSegment(positions[i], laneStart, laneEnd);
+            if (dist <= DangerLaneBlockDistance)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void AssignLaneBlockIntent(int athleteIndex, Vector2 laneStart, Vector2 laneEnd, float laneT, float perpendicularSign)
+    {
+        if (!IsValidAthleteIndex(athleteIndex) || IsGoalkeeper(athleteIndex))
+        {
+            return;
+        }
+
+        var laneDir = laneEnd - laneStart;
+        if (laneDir.sqrMagnitude < 0.001f)
+        {
+            return;
+        }
+
+        var normalized = laneDir.normalized;
+        var basePoint = Vector2.Lerp(laneStart, laneEnd, Mathf.Clamp01(laneT));
+        var offsetDir = new Vector2(-normalized.y, normalized.x) * perpendicularSign;
+        var blockPos = basePoint + (offsetDir.normalized * 0.65f);
+        SetIntent(athleteIndex, IntentType.MarkLane, blockPos, DangerLaneIntentSeconds);
+    }
+
+    private int FindClosestRoleToPoint(int teamId, RoleGroup role, Vector2 point, int exclude)
+    {
+        var best = -1;
+        var bestDist = float.MaxValue;
+        var (start, end) = GetTeamSpan(teamId);
+        for (var i = start; i < end; i++)
+        {
+            if (i == exclude || IsGoalkeeper(i) || roleByIndex[i] != role)
+            {
+                continue;
+            }
+
+            var dist = (positions[i] - point).sqrMagnitude;
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private int FindClosestRoleToSegment(int teamId, RoleGroup role, Vector2 segmentStart, Vector2 segmentEnd, int exclude)
+    {
+        var best = -1;
+        var bestDist = float.MaxValue;
+        var (start, end) = GetTeamSpan(teamId);
+        for (var i = start; i < end; i++)
+        {
+            if (i == exclude || IsGoalkeeper(i) || roleByIndex[i] != role)
+            {
+                continue;
+            }
+
+            var dist = DistancePointToSegment(positions[i], segmentStart, segmentEnd);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private int FindClosestLaneBlockerToSegment(int teamId, Vector2 segmentStart, Vector2 segmentEnd, int exclude)
+    {
+        var best = -1;
+        var bestDist = float.MaxValue;
+        var (start, end) = GetTeamSpan(teamId);
+        for (var i = start; i < end; i++)
+        {
+            if (i == exclude || IsGoalkeeper(i))
+            {
+                continue;
+            }
+
+            var role = roleByIndex[i];
+            if (role != RoleGroup.Defender && role != RoleGroup.Sweeper && role != RoleGroup.Midfielder)
+            {
+                continue;
+            }
+
+            var dist = DistancePointToSegment(positions[i], segmentStart, segmentEnd);
+            if (dist < bestDist)
+            {
+                bestDist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private float DistancePointToSegment(Vector2 point, Vector2 segmentStart, Vector2 segmentEnd)
+    {
+        var seg = segmentEnd - segmentStart;
+        var segSq = seg.sqrMagnitude;
+        if (segSq < 0.0001f)
+        {
+            return Vector2.Distance(point, segmentStart);
+        }
+
+        var t = Mathf.Clamp01(Vector2.Dot(point - segmentStart, seg) / segSq);
+        var closest = segmentStart + (seg * t);
+        return Vector2.Distance(point, closest);
     }
 
     private void ResolveBallCarrierDecision()
@@ -3893,7 +4102,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private float GetGoalMouthHalfHeight() => Mathf.Clamp(rules.goalHeight * 0.5f, 2.5f, halfHeight - 3f);
     private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
-    private float GetEndzoneDepth() => Mathf.Clamp(rules.goalDepth * 1.5f, 6f, 9f);
+    private float GetEndzoneDepth() => Mathf.Clamp(5.5f, 5f, 7f);
     private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * EndzoneMouthMultiplier, 2f, halfHeight - 2f);
 
     private float GetLaneWideY() => GetLaneWideY(ballOwnerTeam);
