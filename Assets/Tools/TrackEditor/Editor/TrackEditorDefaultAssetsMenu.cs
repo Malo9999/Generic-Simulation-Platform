@@ -9,7 +9,7 @@ namespace GSP.TrackEditor.Editor
     // 1) Unity: GSP -> TrackEditor -> Create Default Track Pieces
     // 2) Open: GSP -> TrackEditor -> TrackEditor
     // 3) New Layout
-    // 4) Drag Straight, then Corner90, Corner45, Corner180: corners are rounded and snap cleanly.
+    // 4) Drag Straight, then Corner90, Corner45, Hairpin180: corners are rounded and snap cleanly.
     // 5) Place PitEntry/PitExit: pit branch + merge are smooth; pit snaps only to pit.
     // 6) Click Generate Start Grid (10): visible yellow slots appear and follow track dragging.
     // 7) LMB drag moves connected group; Shift+drag moves selected only and prunes broken links.
@@ -37,15 +37,15 @@ namespace GSP.TrackEditor.Editor
 
             var pieces = new List<TrackPieceDef>
             {
-                CreateStraight("StraightMain", "Straight (Main)", "Straight (Main)", TrackConnectorRole.Main),
-                CreateStraight45("Straight45Main", "Straight 45 (Main)", "Straight 45 (Main)", TrackConnectorRole.Main),
-                CreateCorner45("Corner45Main", "Corner 45 (Main)", "Corner 45 (Main)", TrackConnectorRole.Main),
-                CreateCorner90("Corner90Main", "Corner 90 (Main)", "Corner 90 (Main)", TrackConnectorRole.Main),
-                CreateCorner180(),
-                CreateStraight("PitStraight", "Pit Straight (Pit)", "Pit Straight (Pit)", TrackConnectorRole.Pit),
-                CreateStraight45("PitStraight45", "Pit Straight 45 (Pit)", "Pit Straight 45 (Pit)", TrackConnectorRole.Pit),
-                CreateCorner45("PitCorner45", "Pit Corner 45 (Pit)", "Pit Corner 45 (Pit)", TrackConnectorRole.Pit),
-                CreateCorner90("PitCorner90", "Pit Corner 90 (Pit)", "Pit Corner 90 (Pit)", TrackConnectorRole.Pit),
+                CreateStraight("StraightMain", "Straight (Main)", "Main", TrackConnectorRole.Main),
+                CreateStraight45("Straight45Main", "Straight 45 (Main)", "Main", TrackConnectorRole.Main),
+                CreateCorner45("Corner45Main", "Corner 45 (Main)", "Corner", TrackConnectorRole.Main),
+                CreateCorner90("Corner90Main", "Corner 90 (Main)", "Corner", TrackConnectorRole.Main),
+                CreateHairpin180(),
+                CreateStraight("PitStraight", "Pit Straight (Pit)", "PitLane", TrackConnectorRole.Pit),
+                CreateStraight45("PitStraight45", "Pit Straight 45 (Pit)", "PitLane", TrackConnectorRole.Pit),
+                CreateCorner45("PitCorner45", "Pit Corner 45 (Pit)", "PitLane", TrackConnectorRole.Pit),
+                CreateCorner90("PitCorner90", "Pit Corner 90 (Pit)", "PitLane", TrackConnectorRole.Pit),
                 CreatePitEntry(),
                 CreatePitExit()
             };
@@ -132,21 +132,28 @@ namespace GSP.TrackEditor.Editor
             return CreatePiece(pieceId, displayName, category, new[] { c0, c1 }, segments, BuildBounds(segments));
         }
 
-        private static TrackPieceDef CreateCorner180()
+        private static TrackPieceDef CreateHairpin180()
         {
             var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
-            var p0 = new Vector2(-L, 0f);
-            var p1 = new Vector2(L, 0f);
-            var cp0 = p0 + Vector2.right * (L * 0.8f) + Vector2.up * (L * 1.2f);
-            var cp1 = p1 + Vector2.right * (L * 0.8f) + Vector2.up * (L * 1.2f);
-            var path = MakeCubicBezier(p0, cp0, cp1, p1, 18);
+            var control = new[]
+            {
+                new Vector2(-L, 0f),
+                new Vector2(-L, -L),
+                new Vector2(L, -L),
+                new Vector2(L, 0f)
+            };
+
+            var path = MakeRoundedPolyline(control, L * 0.6f, 6);
+            path[0] = new Vector2(-L, 0f);
+            path[path.Length - 1] = new Vector2(L, 0f);
+
             var segments = new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, path),
                 Segment(1, 0, TrackConnectorRole.Main, Reverse(path))
             };
-            return CreatePiece("Corner180", "Corner 180", "Corner", new[] { c0, c1 }, segments, BuildBounds(segments));
+            return CreatePiece("Hairpin180", "Hairpin 180 (Main)", "Corner", new[] { c0, c1 }, segments, BuildBounds(segments));
         }
 
         private static TrackPieceDef CreatePitEntry()
@@ -161,7 +168,7 @@ namespace GSP.TrackEditor.Editor
                 Segment(1, 0, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }),
                 Segment(0, 2, TrackConnectorRole.Pit, pitPath)
             };
-            return CreatePiece("PitEntry", "Pit Entry", "Pit", new[] { mainIn, mainOut, pitOut }, segments, BuildBounds(segments));
+            return CreatePiece("PitEntry", "Pit Entry (Main+Pit)", "PitLane", new[] { mainIn, mainOut, pitOut }, segments, BuildBounds(segments));
         }
 
         private static TrackPieceDef CreatePitExit()
@@ -176,7 +183,7 @@ namespace GSP.TrackEditor.Editor
                 Segment(2, 1, TrackConnectorRole.Main, new[] { mainOut.localPos, mainIn.localPos }),
                 Segment(0, 2, TrackConnectorRole.Pit, pitPath)
             };
-            return CreatePiece("PitExit", "Pit Exit", "Pit", new[] { pitIn, mainIn, mainOut }, segments, BuildBounds(segments));
+            return CreatePiece("PitExit", "Pit Exit (Main+Pit)", "PitLane", new[] { pitIn, mainIn, mainOut }, segments, BuildBounds(segments));
         }
 
         private static Vector2[] MakeArc(Vector2 p0, Vector2 p1, float radius, bool useUpperSide, int steps)
@@ -215,24 +222,46 @@ namespace GSP.TrackEditor.Editor
             return result;
         }
 
-        private static Vector2[] MakeCubicBezier(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 p1, int steps)
+        private static Vector2[] MakeRoundedPolyline(IReadOnlyList<Vector2> points, float radius, int stepsPerCorner)
         {
-            var count = Mathf.Max(2, steps);
-            var result = new Vector2[count + 1];
-            for (var i = 0; i <= count; i++)
+            if (points == null || points.Count < 2)
             {
-                var t = i / (float)count;
-                var omt = 1f - t;
-                result[i] =
-                    omt * omt * omt * p0 +
-                    3f * omt * omt * t * c0 +
-                    3f * omt * t * t * c1 +
-                    t * t * t * p1;
+                return points == null ? new Vector2[0] : new List<Vector2>(points).ToArray();
             }
 
-            result[0] = p0;
-            result[count] = p1;
-            return result;
+            var result = new List<Vector2> { points[0] };
+            for (var i = 1; i < points.Count - 1; i++)
+            {
+                var prev = points[i - 1];
+                var curr = points[i];
+                var next = points[i + 1];
+                var inDir = (curr - prev).normalized;
+                var outDir = (next - curr).normalized;
+                if (inDir.sqrMagnitude < 0.0001f || outDir.sqrMagnitude < 0.0001f || Vector2.Dot(inDir, outDir) > 0.999f)
+                {
+                    result.Add(curr);
+                    continue;
+                }
+
+                var maxRadius = Mathf.Min((curr - prev).magnitude, (next - curr).magnitude) * 0.45f;
+                var cornerRadius = Mathf.Min(radius, maxRadius);
+                var start = curr - inDir * cornerRadius;
+                var end = curr + outDir * cornerRadius;
+
+                result.Add(start);
+                for (var step = 1; step <= stepsPerCorner; step++)
+                {
+                    var t = step / (float)(stepsPerCorner + 1);
+                    var a = Vector2.Lerp(start, curr, t);
+                    var b = Vector2.Lerp(curr, end, t);
+                    result.Add(Vector2.Lerp(a, b, t));
+                }
+
+                result.Add(end);
+            }
+
+            result.Add(points[points.Count - 1]);
+            return result.ToArray();
         }
 
         private static Vector2[] Reverse(Vector2[] points)
