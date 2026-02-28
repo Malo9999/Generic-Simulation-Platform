@@ -1,0 +1,83 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dbef79a7a07d4235a6f121ad67428ec3, type: 3}
+  m_Name: PitEntry
+  m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
+  pieceId: PitEntry
+  displayName: Pit Entry
+  category: Pit
+  trackWidth: 8
+  connectors:
+  - id: MainIn
+    localPos: {x: -10, y: 0}
+    localDir: 6
+    role: 0
+    trackWidth: 8
+  - id: MainOut
+    localPos: {x: 10, y: 0}
+    localDir: 2
+    role: 0
+    trackWidth: 8
+  - id: PitOut
+    localPos: {x: 0, y: -10}
+    localDir: 4
+    role: 1
+    trackWidth: 8
+  segments:
+  - fromConnectorIndex: 0
+    toConnectorIndex: 1
+    pathRole: 0
+    localCenterline:
+    - {x: -10, y: 0}
+    - {x: 10, y: 0}
+    localLeftBoundary:
+    - {x: -10, y: 4}
+    - {x: 10, y: 4}
+    localRightBoundary:
+    - {x: -10, y: -4}
+    - {x: 10, y: -4}
+  - fromConnectorIndex: 1
+    toConnectorIndex: 0
+    pathRole: 0
+    localCenterline:
+    - {x: 10, y: 0}
+    - {x: -10, y: 0}
+    localLeftBoundary:
+    - {x: 10, y: -4}
+    - {x: -10, y: -4}
+    localRightBoundary:
+    - {x: 10, y: 4}
+    - {x: -10, y: 4}
+  - fromConnectorIndex: 0
+    toConnectorIndex: 2
+    pathRole: 1
+    localCenterline:
+    - {x: -10, y: 0}
+    - {x: -7.5, y: -4}
+    - {x: -3.5, y: -8}
+    - {x: 0, y: -10}
+    localLeftBoundary:
+    - {x: -6.6080065, y: 2.1199958}
+    - {x: -4.395544, y: -1.4776294}
+    - {x: -1.00122, y: -4.876525}
+    - {x: 1.9845557, y: -6.527027}
+    localRightBoundary:
+    - {x: -13.3919935, y: -2.1199958}
+    - {x: -10.604456, y: -6.5223703}
+    - {x: -5.9987803, y: -11.123475}
+    - {x: -1.9845557, y: -13.472973}
+  localBounds:
+    serializedVersion: 2
+    x: -14
+    y: -14
+    width: 28
+    height: 18

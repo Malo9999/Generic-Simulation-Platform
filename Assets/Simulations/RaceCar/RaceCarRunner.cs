@@ -1,11 +1,12 @@
 using UnityEngine;
 
+using GSP.TrackEditor;
 public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 {
-    private const int CarCount = 10;
     private const int SpawnDebugCount = 5;
 
     [SerializeField] private bool logSpawnIdentity = true;
+    [SerializeField] private TrackBakedData track;
 
     private Transform[] cars;
     private EntityIdentity[] identities;
@@ -20,10 +21,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private float halfWidth = 32f;
     private float halfHeight = 32f;
     private SimulationSceneGraph sceneGraph;
+    private TrackRuntime trackRuntime;
+    private Transform trackRoot;
 
     public void Initialize(ScenarioConfig config)
     {
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
+        SetupTrackRoot();
         EnsureMainCamera();
         BuildCars(config);
         Debug.Log($"{nameof(RaceCarRunner)} Initialize seed={config.seed}, scenario={config.scenarioName}");
@@ -47,7 +51,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             var oldPosition = positions[i];
             positions[i].x += velocities[i].x * dt;
 
-            if (positions[i].x < -halfWidth || positions[i].x > halfWidth)
+            if (trackRuntime == null && (positions[i].x < -halfWidth || positions[i].x > halfWidth))
             {
                 positions[i].x = Mathf.Clamp(positions[i].x, -halfWidth, halfWidth);
                 velocities[i].x *= -1f;
@@ -55,7 +59,19 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
             var targetY = laneTargets[i] + Mathf.Sin((tickIndex * 0.08f) + i) * 0.25f;
             positions[i].y = Mathf.MoveTowards(positions[i].y, targetY, dt * 2.5f);
-            positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
+            if (trackRuntime == null)
+            {
+                positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
+            }
+
+            if (trackRuntime != null && trackRuntime.IsOffTrack(positions[i]))
+            {
+                var clamped = trackRuntime.ClampToTrack(positions[i]);
+                var correction = clamped - positions[i];
+                positions[i] = clamped;
+                velocities[i] = Vector2.Reflect(velocities[i], correction.normalized);
+                velocities[i] *= 0.75f;
+            }
 
             car.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             if (Mathf.Abs(velocities[i].x) > 0.0001f)
@@ -92,6 +108,14 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         laneTargets = null;
         pipelineRenderers = null;
         visualKeys = null;
+
+        if (trackRoot != null)
+        {
+            Destroy(trackRoot.gameObject);
+            trackRoot = null;
+        }
+
+        trackRuntime = null;
         Debug.Log("RaceCarRunner Shutdown");
     }
 
@@ -103,19 +127,21 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64) * 0.5f);
 
-        cars = new Transform[CarCount];
-        identities = new EntityIdentity[CarCount];
-        positions = new Vector2[CarCount];
-        velocities = new Vector2[CarCount];
-        laneTargets = new float[CarCount];
-        pipelineRenderers = new GameObject[CarCount];
-        visualKeys = new VisualKey[CarCount];
+        var carCount = Mathf.Max(2, config?.raceCar?.carCount ?? 10);
+
+        cars = new Transform[carCount];
+        identities = new EntityIdentity[carCount];
+        positions = new Vector2[carCount];
+        velocities = new Vector2[carCount];
+        laneTargets = new float[carCount];
+        pipelineRenderers = new GameObject[carCount];
+        visualKeys = new VisualKey[carCount];
 
         ResolveArtPipeline();
 
         var rng = RngService.Fork("SIM:RaceCar:SPAWN");
 
-        for (var i = 0; i < CarCount; i++)
+        for (var i = 0; i < carCount; i++)
         {
             var identity = IdentityService.Create(
                 entityId: nextEntityId++,
@@ -154,7 +180,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             EntityIconFactory.BuildCar(iconRoot.transform, identity);
 
             var startX = rng.Range(-halfWidth, halfWidth);
-            var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / CarCount);
+            var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / carCount);
             var jitterY = rng.Range(-0.35f, 0.35f);
             var speed = rng.Range(10f, 17f);
             if (rng.Value() < 0.5f)
@@ -165,6 +191,15 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             positions[i] = new Vector2(startX, lane + jitterY);
             velocities[i] = new Vector2(speed, 0f);
             laneTargets[i] = lane;
+
+            if (track != null && track.startGridSlots != null && track.startGridSlots.Count > 0)
+            {
+                var slot = track.startGridSlots[i % track.startGridSlots.Count];
+                var dir = slot.dir.sqrMagnitude > 0.001f ? slot.dir.normalized : Vector2.right;
+                positions[i] = slot.pos;
+                velocities[i] = dir * Mathf.Abs(speed);
+                laneTargets[i] = slot.pos.y;
+            }
 
             car.transform.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
             if (Mathf.Abs(speed) > 0.001f)
@@ -180,6 +215,32 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                 Debug.Log($"{nameof(RaceCarRunner)} spawn[{i}] {identity}");
             }
         }
+    }
+
+    private void SetupTrackRoot()
+    {
+        if (trackRoot != null)
+        {
+            Destroy(trackRoot.gameObject);
+            trackRoot = null;
+        }
+
+        trackRuntime = null;
+
+        if (sceneGraph?.ArenaRoot == null || track == null)
+        {
+            return;
+        }
+
+        var root = new GameObject("TrackRoot");
+        root.transform.SetParent(sceneGraph.ArenaRoot, false);
+        trackRoot = root.transform;
+
+        var renderer = root.AddComponent<TrackRendererV1>();
+        renderer.Render(track);
+
+        trackRuntime = root.AddComponent<TrackRuntime>();
+        trackRuntime.Initialize(track);
     }
 
     private void ResolveArtPipeline()

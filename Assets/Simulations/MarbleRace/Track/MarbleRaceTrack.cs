@@ -7,6 +7,7 @@ public sealed class MarbleRaceTrack
     public readonly Vector2[] Normal;
     public readonly float[] HalfWidth;
     public readonly float[] Curvature;
+    public readonly sbyte[] Layer;
     public readonly int SampleCount;
 
     public MarbleRaceTrack(
@@ -14,7 +15,8 @@ public sealed class MarbleRaceTrack
         Vector2[] tangent,
         Vector2[] normal,
         float[] halfWidth,
-        float[] curvature)
+        float[] curvature,
+        sbyte[] layer = null)
     {
         Center = center;
         Tangent = tangent;
@@ -22,7 +24,10 @@ public sealed class MarbleRaceTrack
         HalfWidth = halfWidth;
         Curvature = curvature;
         SampleCount = center != null ? center.Length : 0;
+        Layer = layer != null && layer.Length == SampleCount ? layer : new sbyte[SampleCount];
     }
+
+    public sbyte GetLayer(int idx) => Layer[Wrap(idx)];
 
     public int Wrap(int i)
     {

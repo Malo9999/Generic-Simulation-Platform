@@ -22,8 +22,10 @@ public class MarbleRacePanelBinder : MonoBehaviour
     private Text statusText;
     private Text leaderboardText;
     private Text winnerText;
+    private Text helpText;
     private Button startButton;
     private Button restartButton;
+    private Button newTrackButton;
 
     private float nextRefreshTime;
 
@@ -93,18 +95,34 @@ public class MarbleRacePanelBinder : MonoBehaviour
             winnerText.text = string.Empty;
             startButton.gameObject.SetActive(false);
             restartButton.gameObject.SetActive(true);
+            newTrackButton.gameObject.SetActive(false);
+            helpText.text = string.Empty;
             return;
         }
 
         statusText.text = $"Status: {runner.CurrentPhase}";
 
         var final = runner.CurrentPhase == MarbleRaceRunner.RacePhase.Finished || runner.CurrentPhase == MarbleRaceRunner.RacePhase.Cooldown;
-        runner.FillLeaderboard(leaderboardBuilder, 12, final);
+        var max = Mathf.Min(12, runner.LiveMarbleCount);
+        if (max == 0)
+        {
+            leaderboardText.text = "No marbles.";
+            winnerText.text = final ? runner.GetWinnerLine() : string.Empty;
+            startButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
+            restartButton.gameObject.SetActive(final);
+            newTrackButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
+            helpText.text = "Seed + Restart = deterministic new track. New Track = increments seed and rebuilds everything.";
+            return;
+        }
+
+        runner.FillLeaderboard(leaderboardBuilder, max, final);
         leaderboardText.text = leaderboardBuilder.ToString();
         winnerText.text = final ? runner.GetWinnerLine() : string.Empty;
 
         startButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
         restartButton.gameObject.SetActive(final);
+        newTrackButton.gameObject.SetActive(runner.CurrentPhase == MarbleRaceRunner.RacePhase.Ready);
+        helpText.text = "Seed + Restart = deterministic new track. New Track = increments seed and rebuilds everything.";
     }
 
     private void EnsureReferences()
@@ -146,7 +164,7 @@ public class MarbleRacePanelBinder : MonoBehaviour
         panelRect.anchorMin = new Vector2(0f, 1f);
         panelRect.anchorMax = new Vector2(1f, 1f);
         panelRect.pivot = new Vector2(0.5f, 1f);
-        panelRect.sizeDelta = new Vector2(0f, 280f);
+        panelRect.sizeDelta = new Vector2(0f, 320f);
 
         var bg = panel.GetComponent<Image>();
         bg.color = new Color(0f, 0f, 0f, 0.45f);
@@ -166,6 +184,8 @@ public class MarbleRacePanelBinder : MonoBehaviour
         leaderboardText.alignment = TextAnchor.UpperLeft;
 
         winnerText = titleText(panel.transform, string.Empty, 14, FontStyle.Bold);
+        helpText = titleText(panel.transform, string.Empty, 12, FontStyle.Normal);
+        helpText.alignment = TextAnchor.UpperLeft;
 
         startButton = CreateButton(panel.transform, "Start", () =>
         {
@@ -180,6 +200,15 @@ public class MarbleRacePanelBinder : MonoBehaviour
             if (bootstrapper != null)
             {
                 bootstrapper.ResetSimulation();
+            }
+        });
+
+        newTrackButton = CreateButton(panel.transform, "New Track", () =>
+        {
+            Debug.Log("[UI] New Track clicked");
+            if (runner != null)
+            {
+                runner.ForceNewTrack();
             }
         });
 

@@ -12,11 +12,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 72049d3b1f71df8409d7dd79f1dd4ce0, type: 3}
   m_Name: BootstrapOptions
   m_EditorClassIdentifier: Assembly-CSharp::BootstrapOptions
-  simulationId: AntColonies
+  simulationId: FantasySport
   simulationCatalog: {fileID: 11400000, guid: d59dd5f11ea34adf9d4bc5f86f9e9497, type: 2}
   presetJson: {fileID: 11500000, guid: f50d466e4d902d04aa296e665392b7bd, type: 3}
+  antColoniesSettings: {fileID: 11400000, guid: b0fdf25c6aa5df041a9477c59d742c26, type: 2}
+  marbleRaceSettings: {fileID: 11400000, guid: 1c6730939cb52954eba537d562946080, type: 2}
+  fantasySportSettings: {fileID: 11400000, guid: 08b2508cb15a8c144b4c051ab00bc83b, type: 2}
+  raceCarSettings: {fileID: 11400000, guid: 42769bccb0d5c5c42ac75fbfd6895811, type: 2}
+  antColoniesVisual: {fileID: 11400000, guid: c52ecf158de54c328825ce37e7a89dfa, type: 2}
+  marbleRaceVisual: {fileID: 11400000, guid: b4d565de17924b02a6f2834b3b1927a2, type: 2}
+  fantasySportVisual: {fileID: 11400000, guid: 398f3e63742d4b7f93598eef69a4b6f0, type: 2}
+  raceCarVisual: {fileID: 11400000, guid: eb95ca42d1804cf29a98556b3e28023e, type: 2}
   seedPolicy: 1
-  fixedSeed: 12345
+  fixedSeed: 3232
   allowHotkeySwitch: 1
   showOverlay: 1
   persistSelectionToPreset: 0

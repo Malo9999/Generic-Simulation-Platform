@@ -7,7 +7,7 @@ using UnityEngine;
 
 public static class AntBlueprintFactory
 {
-    private const string MenuPath = "GSP/Tooling/Art/Ant Blueprints/Create Default Species Blueprints (in Pack Folder)";
+    private const string MenuPath = "GSP/Art/Create Default Species Blueprints";
 
     [MenuItem(MenuPath)]
     public static void CreateFromMenu()

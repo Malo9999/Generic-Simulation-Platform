@@ -1,0 +1,79 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d326ef2582144697b86af9770f03f856, type: 3}
+  m_Name: TrackLayout
+  m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
+  pieces:
+  - guid: f73238a880034d5e81a16c4436358926
+    piece: {fileID: 0}
+    position: {x: -16.99633, y: 0.37844127}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: b3bed59ba20e4b968eb2fc13bb2d7959
+    piece: {fileID: 0}
+    position: {x: -36.99633, y: 0.37844127}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 9eeec9b434f245a0ae70cdb90664b31e
+    piece: {fileID: 0}
+    position: {x: 3.0036688, y: 0.37844127}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 5821f554bba44ab691c1351a0309a9ce
+    piece: {fileID: 11400000, guid: 383df6ad5c4108a499484b6a9f298654, type: 2}
+    position: {x: 21.00367, y: 0.37844196}
+    rotationSteps45: 4
+    mirrored: 0
+  links:
+  - pieceGuidA: f73238a880034d5e81a16c4436358926
+    connectorIndexA: 0
+    pieceGuidB: b3bed59ba20e4b968eb2fc13bb2d7959
+    connectorIndexB: 1
+  - pieceGuidA: f73238a880034d5e81a16c4436358926
+    connectorIndexA: 1
+    pieceGuidB: 9eeec9b434f245a0ae70cdb90664b31e
+    connectorIndexB: 0
+  - pieceGuidA: 9eeec9b434f245a0ae70cdb90664b31e
+    connectorIndexA: 1
+    pieceGuidB: 5821f554bba44ab691c1351a0309a9ce
+    connectorIndexB: 0
+  startFinish:
+    pieceGuid: 
+    segmentIndex: 0
+    connectorIndex: 0
+    worldPos: {x: -123.73736, y: 5.8586025}
+    worldDir: {x: 1, y: 0}
+  startGridSlots:
+  - pos: {x: -123.73736, y: 4.6586027}
+    dir: {x: 1, y: 0}
+  - pos: {x: -123.73736, y: 7.0586023}
+    dir: {x: 1, y: 0}
+  - pos: {x: -128.73737, y: 4.6586027}
+    dir: {x: 1, y: 0}
+  - pos: {x: -128.73737, y: 7.0586023}
+    dir: {x: 1, y: 0}
+  - pos: {x: -133.73737, y: 4.6586027}
+    dir: {x: 1, y: 0}
+  - pos: {x: -133.73737, y: 7.0586023}
+    dir: {x: 1, y: 0}
+  - pos: {x: -138.73737, y: 4.6586027}
+    dir: {x: 1, y: 0}
+  - pos: {x: -138.73737, y: 7.0586023}
+    dir: {x: 1, y: 0}
+  - pos: {x: -143.73737, y: 4.6586027}
+    dir: {x: 1, y: 0}
+  - pos: {x: -143.73737, y: 7.0586023}
+    dir: {x: 1, y: 0}
+  pitEntryGuid: 
+  pitExitGuid: 
+  pan: {x: -2, y: 102.666626}
+  zoom: 0.2

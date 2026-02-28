@@ -10,6 +10,14 @@ public class BootstrapOptionsInspector : Editor
     private SerializedProperty simulationIdProp;
     private SerializedProperty simulationCatalogProp;
     private SerializedProperty presetJsonProp;
+    private SerializedProperty antColoniesSettingsProp;
+    private SerializedProperty marbleRaceSettingsProp;
+    private SerializedProperty fantasySportSettingsProp;
+    private SerializedProperty raceCarSettingsProp;
+    private SerializedProperty antColoniesVisualProp;
+    private SerializedProperty marbleRaceVisualProp;
+    private SerializedProperty fantasySportVisualProp;
+    private SerializedProperty raceCarVisualProp;
     private SerializedProperty seedPolicyProp;
     private SerializedProperty fixedSeedProp;
     private SerializedProperty allowHotkeySwitchProp;
@@ -21,6 +29,14 @@ public class BootstrapOptionsInspector : Editor
         simulationIdProp = serializedObject.FindProperty("simulationId");
         simulationCatalogProp = serializedObject.FindProperty("simulationCatalog");
         presetJsonProp = serializedObject.FindProperty("presetJson");
+        antColoniesSettingsProp = serializedObject.FindProperty("antColoniesSettings");
+        marbleRaceSettingsProp = serializedObject.FindProperty("marbleRaceSettings");
+        fantasySportSettingsProp = serializedObject.FindProperty("fantasySportSettings");
+        raceCarSettingsProp = serializedObject.FindProperty("raceCarSettings");
+        antColoniesVisualProp = serializedObject.FindProperty("antColoniesVisual");
+        marbleRaceVisualProp = serializedObject.FindProperty("marbleRaceVisual");
+        fantasySportVisualProp = serializedObject.FindProperty("fantasySportVisual");
+        raceCarVisualProp = serializedObject.FindProperty("raceCarVisual");
         seedPolicyProp = serializedObject.FindProperty("seedPolicy");
         fixedSeedProp = serializedObject.FindProperty("fixedSeed");
         allowHotkeySwitchProp = serializedObject.FindProperty("allowHotkeySwitch");
@@ -36,6 +52,19 @@ public class BootstrapOptionsInspector : Editor
         DrawSimulationIdField();
 
         EditorGUILayout.PropertyField(presetJsonProp);
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Per-Simulation Settings", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(antColoniesSettingsProp);
+        EditorGUILayout.PropertyField(marbleRaceSettingsProp);
+        EditorGUILayout.PropertyField(fantasySportSettingsProp);
+        EditorGUILayout.PropertyField(raceCarSettingsProp);
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Per-Simulation Visual Baseline", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(antColoniesVisualProp);
+        EditorGUILayout.PropertyField(marbleRaceVisualProp);
+        EditorGUILayout.PropertyField(fantasySportVisualProp);
+        EditorGUILayout.PropertyField(raceCarVisualProp);
+
         EditorGUILayout.PropertyField(seedPolicyProp);
         EditorGUILayout.PropertyField(fixedSeedProp);
         EditorGUILayout.PropertyField(allowHotkeySwitchProp);

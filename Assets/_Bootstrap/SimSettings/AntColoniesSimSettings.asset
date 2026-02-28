@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 24c2f743a844eb642a9c68e3c1344c2e, type: 3}
+  m_Name: AntColoniesSimSettings
+  m_EditorClassIdentifier: Assembly-CSharp::AntColoniesSimSettings
+  simulationId: AntColonies
+  seedPolicy: 0
+  fixedSeed: 12345
+  tickDeltaTime: 0.016666668
+  groups: []
+  artPolicy:
+    packSelectionMode: 0
+    preferredPacks: []
+    forcedPack: {fileID: 0}
+    basicShapes:
+      shape: 0
+      outline: 0
+      sizeScale: 0
+      stateStripe: 0
+      directionDot: 0
+      colorMode: 0
+      fixedColor: {r: 0, g: 0, b: 0, a: 0}
+  parameters:
+    nestCount: 2
+    antsPerNest: 12
+    maxAntsTotal: 50
+    foodCount: 10

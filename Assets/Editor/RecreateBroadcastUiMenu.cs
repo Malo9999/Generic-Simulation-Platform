@@ -407,7 +407,7 @@ public static class RecreateBroadcastUiMenu
         rect.anchorMin = new Vector2(0.5f, 1f);
         rect.anchorMax = new Vector2(0.5f, 1f);
         rect.pivot = new Vector2(0.5f, 1f);
-        rect.anchoredPosition = new Vector2(0f, -18f);
+        rect.anchoredPosition = new Vector2(0f, -28f);
         rect.sizeDelta = new Vector2(520f, 40f);
 
         var text = scoreboardText.GetComponent<Text>() ?? scoreboardText.AddComponent<Text>();
@@ -487,6 +487,7 @@ public static class RecreateBroadcastUiMenu
         camera.orthographic = true;
         camera.orthographicSize = ResolveOrthographicSize();
         camera.targetTexture = rt;
+        camera.allowMSAA = true;
         camera.clearFlags = CameraClearFlags.SolidColor;
         camera.backgroundColor = new Color(0.11f, 0.14f, 0.19f, 1f);
         camera.depth = 10f;
