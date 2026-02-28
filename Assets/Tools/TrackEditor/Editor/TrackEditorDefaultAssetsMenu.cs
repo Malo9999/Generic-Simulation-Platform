@@ -290,7 +290,7 @@ namespace GSP.TrackEditor.Editor
                 connectors[i] = new TrackConnector
                 {
                     id = c.id,
-                    localPos = Rot45(c.localPos, steps),
+                    localPos = RotatePointSteps45_CW(c.localPos, steps),
                     localDir = RotDir(c.localDir, steps),
                     role = c.role,
                     trackWidth = c.trackWidth
@@ -315,9 +315,15 @@ namespace GSP.TrackEditor.Editor
             return CreatePiece(newId, newName, category ?? baseDef.category, baseDef.trackWidth, connectors, segments);
         }
 
-        private static Vector2 Rot45(Vector2 p, int steps)
+        private static Vector2 RotatePointSteps45_CW(Vector2 p, int steps)
         {
-            return TrackMathUtil.Rotate45(p, steps);
+            var normalizedSteps = ((steps % 8) + 8) % 8;
+            var angleRad = -normalizedSteps * 45f * Mathf.Deg2Rad;
+            var cosA = Mathf.Cos(angleRad);
+            var sinA = Mathf.Sin(angleRad);
+            return new Vector2(
+                (p.x * cosA) - (p.y * sinA),
+                (p.x * sinA) + (p.y * cosA));
         }
 
         private static Dir8 RotDir(Dir8 d, int steps)
@@ -335,7 +341,7 @@ namespace GSP.TrackEditor.Editor
             var rotated = new Vector2[points.Length];
             for (var i = 0; i < points.Length; i++)
             {
-                rotated[i] = Rot45(points[i], steps);
+                rotated[i] = RotatePointSteps45_CW(points[i], steps);
             }
 
             return rotated;
