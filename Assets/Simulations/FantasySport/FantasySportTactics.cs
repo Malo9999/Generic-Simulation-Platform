@@ -76,7 +76,7 @@ public static class FantasySportTactics
 
     public static float LaneY(Lane lane, float halfHeight)
     {
-        var wingMax = halfHeight * 0.44f;
+        var wingMax = halfHeight * 0.46f;
         var halfSp = halfHeight * 0.22f;
         return lane switch
         {
