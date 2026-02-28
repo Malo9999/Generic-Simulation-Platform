@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: StraightMain
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
   pieceId: StraightMain
-  displayName: Straight (Main)
+  displayName: "MAIN \u2014 Straight"
   category: Main
   trackWidth: 8
   connectors:
