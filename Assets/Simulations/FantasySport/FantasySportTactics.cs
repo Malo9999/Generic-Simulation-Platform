@@ -89,12 +89,9 @@ public static class FantasySportTactics
         };
     }
 
-    public static float LineX(RoleGroup role, TeamPhase phase, float progress01, float endzoneDepth)
+    public static float PhasePush(TeamPhase phase, float progress01)
     {
-        var baseDef = endzoneDepth + 7f;
-        var baseMid = endzoneDepth + 15f;
-        var baseAtt = endzoneDepth + 23f;
-        var push = phase switch
+        return phase switch
         {
             TeamPhase.BuildUp => 1f + (progress01 * 3f),
             TeamPhase.Advance => 4f + (progress01 * 6f),
@@ -102,6 +99,14 @@ public static class FantasySportTactics
             TeamPhase.Transition => 2f,
             _ => 2f
         };
+    }
+
+    public static float LineX(RoleGroup role, TeamPhase phase, float progress01, float endzoneDepth)
+    {
+        var baseDef = endzoneDepth + 7f;
+        var baseMid = endzoneDepth + 15f;
+        var baseAtt = endzoneDepth + 23f;
+        var push = PhasePush(phase, progress01);
 
         return role switch
         {
