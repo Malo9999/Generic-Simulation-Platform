@@ -844,7 +844,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         var cameraComponent = cameraObject.AddComponent<Camera>();
         cameraComponent.orthographic = true;
         var initialOrtho = Mathf.Max(halfHeight + 2f, 10f);
-        var arenaCameraPolicy = Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
         if (arenaCameraPolicy != null && arenaCameraPolicy.targetCamera == cameraComponent)
         {
             arenaCameraPolicy.SetOrthoFromExternal(initialOrtho, "AntColoniesRunner.EnsureMainCamera", syncZoomLevel: true);
