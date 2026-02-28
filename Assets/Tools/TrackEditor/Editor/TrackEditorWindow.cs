@@ -12,11 +12,17 @@ namespace GSP.TrackEditor.Editor
     1) Unity: GSP -> TrackEditor -> Create Default Track Pieces
     2) Open: GSP -> TrackEditor -> TrackEditor
     3) New Layout
-    4) Drag Straight, then Corner90, Corner45, Corner180: corners are rounded and snap cleanly.
-    5) Place PitEntry/PitExit: pit branch + merge are smooth; pit snaps only to pit.
-    6) Click Generate Start Grid (10): visible yellow slots appear and follow track dragging.
-    7) LMB drag moves connected group; Shift+drag moves selected only and prunes broken links.
-    8) Delete selected via Delete/Backspace or Delete Selected button; links are removed.
+    4) Place: Straight -> Corner90 -> Straight
+       - Click on the asphalt: the piece must select (UI enables rotate/delete).
+    5) Drag the selected piece: it should move (connected group moves).
+       Shift+Drag: only that piece moves and links prune on release.
+    6) Press Q/E: rotates selected piece; links prune if invalid.
+    7) Press Delete: deletes selected piece; links removed.
+    8) Place Pit Entry, then connect:
+       Pit Entry (PitOut) -> Pit Straight -> Pit Corner90 -> Pit Exit (PitIn)
+       This must snap (Pit to Pit).
+    9) Place Corner180 between straights: it should look like a hairpin and snap cleanly.
+    10) Generate Start Grid (10): boxes should fit inside track (not too wide).
     */
     public class TrackEditorWindow : EditorWindow
     {
@@ -161,6 +167,7 @@ namespace GSP.TrackEditor.Editor
 
             EditorGUI.BeginDisabledGroup(selectedPiece < 0 || selectedPiece >= layout.pieces.Count);
             if (GUILayout.Button("Delete Selected")) DeleteSelectedPiece();
+            if (GUILayout.Button("Detach")) DetachSelectedPiece();
             EditorGUI.EndDisabledGroup();
 
             if (GUILayout.Button("Generate Start Grid (10)"))
@@ -336,9 +343,28 @@ namespace GSP.TrackEditor.Editor
                 evt.Use();
             }
 
+            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
+            {
+                selectedPiece = -1;
+                Repaint();
+                evt.Use();
+            }
+
+            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Q && selectedPiece >= 0)
+            {
+                RotateSelected(-1);
+                evt.Use();
+            }
+
+            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.E && selectedPiece >= 0)
+            {
+                RotateSelected(1);
+                evt.Use();
+            }
+
             if (evt.type == EventType.MouseDown && evt.button == 1)
             {
-                var clicked = PickPiece(CanvasToWorld(evt.mousePosition, size));
+                var clicked = PickPieceAtMouse(CanvasToWorld(evt.mousePosition, size));
                 if (clicked >= 0)
                 {
                     selectedPiece = clicked;
@@ -349,7 +375,7 @@ namespace GSP.TrackEditor.Editor
 
             if (evt.type == EventType.MouseDown && evt.button == 0)
             {
-                selectedPiece = PickPiece(CanvasToWorld(evt.mousePosition, size));
+                selectedPiece = PickPieceAtMouse(CanvasToWorld(evt.mousePosition, size));
                 Repaint();
 
                 if (selectedPiece >= 0)
@@ -622,9 +648,9 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            var slotLengthWorld = Mathf.Max(1.2f, 14f / (PixelsPerUnit * canvasZoom));
-            var slotHalfWidthWorld = Mathf.Max(0.6f, 8f / (PixelsPerUnit * canvasZoom));
-            var tickLengthWorld = Mathf.Max(1f, 12f / (PixelsPerUnit * canvasZoom));
+            const float slotLengthWorld = 1.6f;
+            const float slotHalfWidthWorld = 0.6f;
+            const float tickLengthWorld = 1.0f;
 
             Handles.color = new Color(1f, 0.9f, 0.25f, 0.95f);
             foreach (var slot in layout.startGridSlots)
@@ -881,12 +907,17 @@ namespace GSP.TrackEditor.Editor
 
                 for (var i = 0; i < p.piece.connectors.Length; i++)
                 {
+                    var connector = p.piece.connectors[i];
+                    if (connector.role != TrackConnectorRole.Main && connector.role != TrackConnectorRole.Pit && connector.role != TrackConnectorRole.Any)
+                    {
+                        continue;
+                    }
+
                     if (used.Contains($"{p.guid}:{i}"))
                     {
                         continue;
                     }
 
-                    var connector = p.piece.connectors[i];
                     open.Add((p, i, connector, TrackMathUtil.ToWorld(p, connector.localPos), TrackMathUtil.ToWorld(p, connector.localDir)));
                 }
             }
@@ -894,7 +925,7 @@ namespace GSP.TrackEditor.Editor
             return open;
         }
 
-        private int PickPiece(Vector2 world)
+        private int PickPieceAtMouse(Vector2 worldMouse)
         {
             if (layout?.pieces == null)
             {
@@ -902,15 +933,69 @@ namespace GSP.TrackEditor.Editor
             }
 
             var best = -1;
-            var bestDist = 3f;
+            var bestDist = float.MaxValue;
             for (var i = 0; i < layout.pieces.Count; i++)
             {
-                var dist = Vector2.Distance(layout.pieces[i].position, world);
-                if (dist < bestDist)
+                var placed = layout.pieces[i];
+                if (placed?.piece?.segments == null)
                 {
-                    bestDist = dist;
+                    continue;
+                }
+
+                var minDistForPiece = float.MaxValue;
+                foreach (var segment in placed.piece.segments)
+                {
+                    if (segment?.localCenterline == null || segment.localCenterline.Length < 2)
+                    {
+                        continue;
+                    }
+
+                    var worldPts = new Vector2[segment.localCenterline.Length];
+                    for (var ptIdx = 0; ptIdx < segment.localCenterline.Length; ptIdx++)
+                    {
+                        worldPts[ptIdx] = TrackMathUtil.ToWorld(placed, segment.localCenterline[ptIdx]);
+                    }
+
+                    var dist = DistancePointToPolyline(worldMouse, worldPts);
+                    if (dist < minDistForPiece)
+                    {
+                        minDistForPiece = dist;
+                    }
+                }
+
+                var pickThreshold = placed.piece.trackWidth * 0.55f;
+                if (minDistForPiece <= pickThreshold && minDistForPiece < bestDist)
+                {
+                    bestDist = minDistForPiece;
                     best = i;
                 }
+            }
+
+            return best;
+        }
+
+        private static float DistancePointToPolyline(Vector2 p, IReadOnlyList<Vector2> pts)
+        {
+            if (pts == null || pts.Count == 0)
+            {
+                return float.MaxValue;
+            }
+
+            if (pts.Count == 1)
+            {
+                return Vector2.Distance(p, pts[0]);
+            }
+
+            var best = float.MaxValue;
+            for (var i = 0; i < pts.Count - 1; i++)
+            {
+                var a = pts[i];
+                var b = pts[i + 1];
+                var ab = b - a;
+                var abLenSq = ab.sqrMagnitude;
+                var t = abLenSq > 0.000001f ? Mathf.Clamp01(Vector2.Dot(p - a, ab) / abLenSq) : 0f;
+                var closest = a + ab * t;
+                best = Mathf.Min(best, Vector2.Distance(p, closest));
             }
 
             return best;
@@ -924,6 +1009,7 @@ namespace GSP.TrackEditor.Editor
             }
 
             layout.pieces[selectedPiece].rotationSteps45 = (layout.pieces[selectedPiece].rotationSteps45 + delta + 8) % 8;
+            PruneInvalidLinks(0.05f);
             EditorUtility.SetDirty(layout);
         }
 
@@ -946,10 +1032,23 @@ namespace GSP.TrackEditor.Editor
             EditorUtility.SetDirty(layout);
         }
 
+        private void DetachSelectedPiece()
+        {
+            if (layout == null || selectedPiece < 0 || selectedPiece >= layout.pieces.Count)
+            {
+                return;
+            }
+
+            var guid = layout.pieces[selectedPiece].guid;
+            layout.links.RemoveAll(l => l.pieceGuidA == guid || l.pieceGuidB == guid);
+            EditorUtility.SetDirty(layout);
+        }
+
         private void ShowPieceContextMenu()
         {
             var menu = new GenericMenu();
             menu.AddItem(new GUIContent("Delete"), false, DeleteSelectedPiece);
+            menu.AddItem(new GUIContent("Detach"), false, DetachSelectedPiece);
             menu.AddItem(new GUIContent("Rotate +45"), false, () => RotateSelected(1));
             menu.AddItem(new GUIContent("Rotate -45"), false, () => RotateSelected(-1));
             menu.ShowAsContext();
@@ -1056,19 +1155,14 @@ namespace GSP.TrackEditor.Editor
                 layout.startFinish = start = new StartFinishMarker();
             }
 
-            if (selectedPiece >= 0 && selectedPiece < layout.pieces.Count)
+            var hasStoredStart = !string.IsNullOrWhiteSpace(start.pieceGuid) && start.worldDir.sqrMagnitude > 0.0001f;
+            if (!hasStoredStart)
             {
-                var p = layout.pieces[selectedPiece];
-                start.pieceGuid = p.guid;
-                start.worldPos = p.position;
-                start.worldDir = TrackMathUtil.ToWorld(p, Dir8.E).ToVector2();
-            }
-            else if (!TryGetFallbackStart(out var fallbackPos, out var fallbackDir, out var fallbackGuid))
-            {
-                return;
-            }
-            else
-            {
+                if (!TryGetFallbackStart(out var fallbackPos, out var fallbackDir, out var fallbackGuid))
+                {
+                    return;
+                }
+
                 start.pieceGuid = fallbackGuid;
                 start.worldPos = fallbackPos;
                 start.worldDir = fallbackDir;
@@ -1077,16 +1171,19 @@ namespace GSP.TrackEditor.Editor
             var width = layout.pieces[0].piece != null ? layout.pieces[0].piece.trackWidth : 8f;
             var forward = start.worldDir.sqrMagnitude > 0.001f ? start.worldDir.normalized : Vector2.right;
             var right = new Vector2(-forward.y, forward.x);
-            var lateralSpan = width * 0.8f;
+            const float rowSpacing = 2.2f;
+            var lateralHalf = width * 0.65f * 0.5f;
             layout.startGridSlots.Clear();
 
-            var rowCapacity = count <= 1 ? 1 : 2;
+            var rowCapacity = count > 6 ? 2 : 1;
             for (var i = 0; i < count; i++)
             {
                 var row = i / rowCapacity;
                 var col = i % rowCapacity;
-                var lateral = rowCapacity == 1 ? 0f : (col - (rowCapacity - 1) * 0.5f) * lateralSpan;
-                var back = row * 5f;
+                var lateral = rowCapacity == 1
+                    ? 0f
+                    : Mathf.Lerp(-lateralHalf, lateralHalf, col / (float)(rowCapacity - 1));
+                var back = row * rowSpacing;
                 layout.startGridSlots.Add(new TrackSlot
                 {
                     pos = start.worldPos - forward * back + right * lateral,
@@ -1110,11 +1207,13 @@ namespace GSP.TrackEditor.Editor
             }
 
             var segment = first.piece.segments.First(s => s.pathRole == TrackConnectorRole.Main && s.localCenterline != null && s.localCenterline.Length >= 2);
-            var c0 = TrackMathUtil.ToWorld(first, segment.localCenterline[0]);
-            var c1 = TrackMathUtil.ToWorld(first, segment.localCenterline[1]);
-            var midLocal = segment.localCenterline[segment.localCenterline.Length / 2];
-            startPos = TrackMathUtil.ToWorld(first, midLocal);
-            var dir = c1 - c0;
+            var midIndex = segment.localCenterline.Length / 2;
+            var prevIndex = Mathf.Max(0, midIndex - 1);
+            var nextIndex = Mathf.Min(segment.localCenterline.Length - 1, midIndex + 1);
+            startPos = TrackMathUtil.ToWorld(first, segment.localCenterline[midIndex]);
+            var prev = TrackMathUtil.ToWorld(first, segment.localCenterline[prevIndex]);
+            var next = TrackMathUtil.ToWorld(first, segment.localCenterline[nextIndex]);
+            var dir = next - prev;
             forwardDir = dir.sqrMagnitude > 0.0001f ? dir.normalized : Vector2.right;
             pieceGuid = first.guid;
             return true;

@@ -37,11 +37,15 @@ namespace GSP.TrackEditor.Editor
 
             var pieces = new List<TrackPieceDef>
             {
-                CreateStraight(),
-                CreateStraight45(),
-                CreateCorner45(),
-                CreateCorner90(),
+                CreateStraight("StraightMain", "Straight (Main)", "Straight (Main)", TrackConnectorRole.Main),
+                CreateStraight45("Straight45Main", "Straight 45 (Main)", "Straight 45 (Main)", TrackConnectorRole.Main),
+                CreateCorner45("Corner45Main", "Corner 45 (Main)", "Corner 45 (Main)", TrackConnectorRole.Main),
+                CreateCorner90("Corner90Main", "Corner 90 (Main)", "Corner 90 (Main)", TrackConnectorRole.Main),
                 CreateCorner180(),
+                CreateStraight("PitStraight", "Pit Straight (Pit)", "Pit Straight (Pit)", TrackConnectorRole.Pit),
+                CreateStraight45("PitStraight45", "Pit Straight 45 (Pit)", "Pit Straight 45 (Pit)", TrackConnectorRole.Pit),
+                CreateCorner45("PitCorner45", "Pit Corner 45 (Pit)", "Pit Corner 45 (Pit)", TrackConnectorRole.Pit),
+                CreateCorner90("PitCorner90", "Pit Corner 90 (Pit)", "Pit Corner 90 (Pit)", TrackConnectorRole.Pit),
                 CreatePitEntry(),
                 CreatePitExit()
             };
@@ -78,61 +82,65 @@ namespace GSP.TrackEditor.Editor
             }
         }
 
-        private static TrackPieceDef CreateStraight()
+        private static TrackPieceDef CreateStraight(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
-            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
-            var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
+            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
+            var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
             var segments = new[]
             {
-                Segment(0, 1, TrackConnectorRole.Main, new[] { c0.localPos, c1.localPos }),
-                Segment(1, 0, TrackConnectorRole.Main, new[] { c1.localPos, c0.localPos })
+                Segment(0, 1, role, new[] { c0.localPos, c1.localPos }),
+                Segment(1, 0, role, new[] { c1.localPos, c0.localPos })
             };
-            return CreatePiece("Straight", "Straight", "Straight", new[] { c0, c1 }, segments, BuildBounds(segments));
+            return CreatePiece(pieceId, displayName, category, new[] { c0, c1 }, segments, BuildBounds(segments));
         }
 
-        private static TrackPieceDef CreateStraight45()
+        private static TrackPieceDef CreateStraight45(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
-            var c0 = Connector("SW", new Vector2(-D, -D), Dir8.SW, TrackConnectorRole.Main);
-            var c1 = Connector("NE", new Vector2(D, D), Dir8.NE, TrackConnectorRole.Main);
+            var c0 = Connector("SW", new Vector2(-D, -D), Dir8.SW, role);
+            var c1 = Connector("NE", new Vector2(D, D), Dir8.NE, role);
             var segments = new[]
             {
-                Segment(0, 1, TrackConnectorRole.Main, new[] { c0.localPos, c1.localPos }),
-                Segment(1, 0, TrackConnectorRole.Main, new[] { c1.localPos, c0.localPos })
+                Segment(0, 1, role, new[] { c0.localPos, c1.localPos }),
+                Segment(1, 0, role, new[] { c1.localPos, c0.localPos })
             };
-            return CreatePiece("Straight45", "Straight 45", "Straight", new[] { c0, c1 }, segments, BuildBounds(segments));
+            return CreatePiece(pieceId, displayName, category, new[] { c0, c1 }, segments, BuildBounds(segments));
         }
 
-        private static TrackPieceDef CreateCorner45()
+        private static TrackPieceDef CreateCorner45(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
-            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
-            var c1 = Connector("NW", new Vector2(-D, D), Dir8.NW, TrackConnectorRole.Main);
+            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
+            var c1 = Connector("NW", new Vector2(-D, D), Dir8.NW, role);
             var path = MakeArc(c0.localPos, c1.localPos, L, true, 6);
             var segments = new[]
             {
-                Segment(0, 1, TrackConnectorRole.Main, path),
-                Segment(1, 0, TrackConnectorRole.Main, Reverse(path))
+                Segment(0, 1, role, path),
+                Segment(1, 0, role, Reverse(path))
             };
-            return CreatePiece("Corner45", "Corner 45", "Corner", new[] { c0, c1 }, segments, BuildBounds(segments));
+            return CreatePiece(pieceId, displayName, category, new[] { c0, c1 }, segments, BuildBounds(segments));
         }
 
-        private static TrackPieceDef CreateCorner90()
+        private static TrackPieceDef CreateCorner90(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
-            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
-            var c1 = Connector("N", new Vector2(0f, L), Dir8.N, TrackConnectorRole.Main);
+            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
+            var c1 = Connector("N", new Vector2(0f, L), Dir8.N, role);
             var path = MakeArc(c0.localPos, c1.localPos, L, true, 10);
             var segments = new[]
             {
-                Segment(0, 1, TrackConnectorRole.Main, path),
-                Segment(1, 0, TrackConnectorRole.Main, Reverse(path))
+                Segment(0, 1, role, path),
+                Segment(1, 0, role, Reverse(path))
             };
-            return CreatePiece("Corner90", "Corner 90", "Corner", new[] { c0, c1 }, segments, BuildBounds(segments));
+            return CreatePiece(pieceId, displayName, category, new[] { c0, c1 }, segments, BuildBounds(segments));
         }
 
         private static TrackPieceDef CreateCorner180()
         {
             var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
-            var path = MakeArc(c0.localPos, c1.localPos, L, true, 16);
+            var p0 = new Vector2(-L, 0f);
+            var p1 = new Vector2(L, 0f);
+            var cp0 = p0 + Vector2.right * (L * 0.8f) + Vector2.up * (L * 1.2f);
+            var cp1 = p1 + Vector2.right * (L * 0.8f) + Vector2.up * (L * 1.2f);
+            var path = MakeCubicBezier(p0, cp0, cp1, p1, 18);
             var segments = new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, path),
@@ -200,6 +208,26 @@ namespace GSP.TrackEditor.Editor
                 var t = i / (float)count;
                 var angle = a0 + delta * t;
                 result[i] = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+            }
+
+            result[0] = p0;
+            result[count] = p1;
+            return result;
+        }
+
+        private static Vector2[] MakeCubicBezier(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 p1, int steps)
+        {
+            var count = Mathf.Max(2, steps);
+            var result = new Vector2[count + 1];
+            for (var i = 0; i <= count; i++)
+            {
+                var t = i / (float)count;
+                var omt = 1f - t;
+                result[i] =
+                    omt * omt * omt * p0 +
+                    3f * omt * omt * t * c0 +
+                    3f * omt * t * t * c1 +
+                    t * t * t * p1;
             }
 
             result[0] = p0;
