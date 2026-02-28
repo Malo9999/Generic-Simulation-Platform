@@ -37,8 +37,8 @@ public class ArenaCameraPolicy : MonoBehaviour
     public int minPixelPerfectRefResolutionX = 16;
 
     [Header("Optional Soft Zoom-Out Limit")]
-    [Tooltip("If enabled, zoom-out is softly capped relative to the fit-to-bounds orthographic size.")]
-    public bool useSoftMaxOrthoLimit = true;
+    [Tooltip("Deprecated: zoom is no longer capped from world bounds. Kept for backward inspector compatibility.")]
+    public bool useSoftMaxOrthoLimit = false;
     [Min(1f)]
     public float softMaxOrthoFitMultiplier = 1.5f;
 
@@ -212,7 +212,7 @@ public class ArenaCameraPolicy : MonoBehaviour
         var pixelPerfectActive = IsPixelPerfectActive();
         var beforeOrtho = targetCamera != null ? targetCamera.orthographicSize : 0f;
         var desiredOrtho = Mathf.Max(0.01f, _baseOrthographicSize * factor);
-        var maxAllowedOrtho = ComputeMaxAllowedOrthoFromBoundsAndSoftLimit();
+        const float maxAllowedOrtho = -1f;
 
         _lastOrthoBeforeApply = beforeOrtho;
         _lastDesiredOrtho = desiredOrtho;
@@ -224,9 +224,7 @@ public class ArenaCameraPolicy : MonoBehaviour
             if (targetCamera != null)
             {
                 targetCamera.orthographic = true;
-                targetCamera.orthographicSize = maxAllowedOrtho > 0f
-                    ? Mathf.Min(desiredOrtho, maxAllowedOrtho)
-                    : desiredOrtho;
+                targetCamera.orthographicSize = desiredOrtho;
             }
 
             _lastOrthoAfterApply = targetCamera != null ? targetCamera.orthographicSize : beforeOrtho;
@@ -242,12 +240,6 @@ public class ArenaCameraPolicy : MonoBehaviour
         _warnedMissingPixelPerfect = false;
 
         ApplyFantasySportPixelPerfectOverrides();
-
-        if (maxAllowedOrtho > 0f)
-        {
-            var maxFactor = Mathf.Max(0.01f, maxAllowedOrtho / Mathf.Max(0.01f, _baseOrthographicSize));
-            factor = Mathf.Min(factor, maxFactor);
-        }
 
         int rx = Mathf.Max(minPixelPerfectRefResolutionX, Mathf.RoundToInt(baseRefResolution.x * factor));
         int ry = Mathf.RoundToInt(rx * 9f / 16f);
@@ -284,24 +276,6 @@ public class ArenaCameraPolicy : MonoBehaviour
     {
         var bootstrapper = UnityEngine.Object.FindAnyObjectByType<Bootstrapper>();
         return bootstrapper != null && string.Equals(bootstrapper.CurrentSimulationId, simulationId, System.StringComparison.OrdinalIgnoreCase);
-    }
-
-    private float ComputeMaxAllowedOrthoFromBoundsAndSoftLimit()
-    {
-        if (!useSoftMaxOrthoLimit || targetCamera == null)
-        {
-            return -1f;
-        }
-
-        GetWorldMinMax(out var minX, out var minY, out var maxX, out var maxY);
-        var width = Mathf.Max(0.01f, maxX - minX);
-        var height = Mathf.Max(0.01f, maxY - minY);
-        var pad = Mathf.Max(width, height) * Mathf.Clamp01(fitMarginPercent);
-        var paddedWidth = width + pad * 2f;
-        var paddedHeight = height + pad * 2f;
-        var aspect = Mathf.Max(0.01f, targetCamera.aspect);
-        var fitOrtho = Mathf.Max(paddedHeight * 0.5f, (paddedWidth * 0.5f) / aspect);
-        return fitOrtho * Mathf.Max(1f, softMaxOrthoFitMultiplier);
     }
 
     private void CacheBoundsForDebug()
