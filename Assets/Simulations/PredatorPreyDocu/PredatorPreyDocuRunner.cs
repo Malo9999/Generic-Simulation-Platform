@@ -486,7 +486,17 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
 
         var cam = cameraObject.AddComponent<Camera>();
         cam.orthographic = true;
-        cam.orthographicSize = Mathf.Max(halfHeight + 6f, 10f);
+        var initialOrtho = Mathf.Max(halfHeight + 6f, 10f);
+        var arenaCameraPolicy = Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        if (arenaCameraPolicy != null && arenaCameraPolicy.targetCamera == cam)
+        {
+            arenaCameraPolicy.SetOrthoFromExternal(initialOrtho, "PredatorPreyDocuRunner.EnsureMainCamera", syncZoomLevel: true);
+        }
+        else
+        {
+            cam.orthographicSize = initialOrtho;
+        }
+
         cameraObject.transform.position = new Vector3(0f, 0f, -10f);
     }
 }
