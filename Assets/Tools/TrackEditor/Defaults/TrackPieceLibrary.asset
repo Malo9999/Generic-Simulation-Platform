@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: TrackPieceLibrary
+  m_EditorClassIdentifier: Assembly-CSharp:GSP.TrackEditor:TrackPieceLibrary
+  pieces:
+  - {fileID: 11400000, guid: 8f3977e7b9444314aba8c7ea539a86f1, type: 2}
+  - {fileID: 11400000, guid: b463ed3d77a04ed4c8c9f7bff1327396, type: 2}
+  - {fileID: 11400000, guid: fbfbcacb222515b48b87de58347d1ca1, type: 2}
+  - {fileID: 11400000, guid: aa699caff9747a04e976743427532e27, type: 2}
+  - {fileID: 11400000, guid: a5edcd82a822a0841acc9971d24452f2, type: 2}
+  - {fileID: 11400000, guid: 108bca5c8b60c0c4a843b493b54a4251, type: 2}

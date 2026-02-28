@@ -1,0 +1,66 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: Corner_E_to_N
+  m_EditorClassIdentifier: Assembly-CSharp:GSP.TrackEditor:TrackPieceDef
+  pieceId: Corner_E_to_N
+  displayName: Corner 90
+  category: Corner
+  trackWidth: 8
+  connectors:
+  - id: E
+    localPos: {x: 8, y: 0}
+    localDir: 2
+    role: 2
+    trackWidth: 8
+  - id: N
+    localPos: {x: 0, y: 8}
+    localDir: 0
+    role: 2
+    trackWidth: 8
+  segments:
+  - fromConnectorIndex: 0
+    toConnectorIndex: 1
+    pathRole: 0
+    localCenterline:
+    - {x: 8, y: 0}
+    - {x: 6, y: 6}
+    - {x: 0, y: 8}
+    localLeftBoundary:
+    - {x: 5.1715727, y: -2.828427}
+    - {x: 3.171573, y: 3.171573}
+    - {x: -2.828427, y: 5.1715727}
+    localRightBoundary:
+    - {x: 10.828427, y: 2.828427}
+    - {x: 8.828427, y: 8.828427}
+    - {x: 2.828427, y: 10.828427}
+  - fromConnectorIndex: 1
+    toConnectorIndex: 0
+    pathRole: 0
+    localCenterline:
+    - {x: 0, y: 8}
+    - {x: 6, y: 6}
+    - {x: 8, y: 0}
+    localLeftBoundary:
+    - {x: 2.828427, y: 10.828427}
+    - {x: 8.828427, y: 8.828427}
+    - {x: 10.828427, y: 2.828427}
+    localRightBoundary:
+    - {x: -2.828427, y: 5.1715727}
+    - {x: 3.171573, y: 3.171573}
+    - {x: 5.1715727, y: -2.828427}
+  localBounds:
+    serializedVersion: 2
+    x: -1
+    y: -1
+    width: 10
+    height: 10
