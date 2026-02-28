@@ -231,6 +231,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private static Sprite cachedWhitePixelSprite;
     private bool arraysLogPending;
     private bool endzoneDebugLogged;
+    private bool goalRectsDebugLogged;
     private readonly int[] idxWingL = { -1, -1 };
     private readonly int[] idxWingR = { -1, -1 };
     private readonly int[] kickoffDuelIndexByTeam = { -1, -1 };
@@ -4525,9 +4526,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var zone = new GameObject(teamId == 0 ? "Endzone_Left" : "Endzone_Right");
         zone.transform.SetParent(parent, false);
         zone.transform.localPosition = rect.center;
-        zone.transform.localScale = new Vector3(rect.width, rect.height, 1f);
+        zone.transform.localScale = Vector3.one;
 
-        var fill = zone.AddComponent<SpriteRenderer>();
+        var fillGo = new GameObject("Fill");
+        fillGo.transform.SetParent(zone.transform, false);
+        fillGo.transform.localPosition = Vector3.zero;
+        fillGo.transform.localScale = new Vector3(rect.width, rect.height, 1f);
+
+        var fill = fillGo.AddComponent<SpriteRenderer>();
         fill.sprite = GetWhitePixelSprite();
         fill.color = teamId == 0
             ? new Color(0.36f, 0.42f, 0.95f, 0.12f)
@@ -4584,6 +4590,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     [System.Diagnostics.Conditional("DEVELOPMENT_BUILD")]
     private void LogGoalRectsForDebug()
     {
+        if (goalRectsDebugLogged)
+        {
+            return;
+        }
+
+        goalRectsDebugLogged = true;
         ComputeGoalRects(out var leftRect, out var rightRect);
         Debug.Log($"[FantasySport] GoalRects L={leftRect} R={rightRect}");
     }
@@ -4706,18 +4718,31 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private bool ShouldApplyWidthAnchor(int teamId, int athleteIndex)
     {
-        if (athleteIndex < 0 || athleteIndex >= TotalAthletes || IsGoalkeeper(athleteIndex) || ballOwnerTeam != teamId)
+        if (athleteIndex < 0 || athleteIndex >= TotalAthletes || IsGoalkeeper(athleteIndex) || athleteIndex == ballOwnerIndex)
         {
             return false;
         }
 
-        var phase = teamPhase[teamId];
-        if (phase != TeamPhase.Advance && phase != TeamPhase.FinalThird)
+        if (!IsBandAnchor(teamId, athleteIndex))
         {
             return false;
         }
 
-        return IsBandAnchor(teamId, athleteIndex);
+        var isAttacking = ballOwnerTeam == teamId;
+        var isFreeBallTransition = ballOwnerTeam == -1;
+        var isTransitionDefense = ballOwnerTeam >= 0 && ballOwnerTeam != teamId && teamPhase[teamId] == TeamPhase.Transition;
+        if (!isAttacking && !isFreeBallTransition && !isTransitionDefense)
+        {
+            return false;
+        }
+
+        var isImmediatePress = ballOwnerTeam >= 0 && ballOwnerTeam != teamId && IsActiveChaser(athleteIndex);
+        if (isImmediatePress)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private float GetWidthAnchorTargetY(int teamId, int athleteIndex)
