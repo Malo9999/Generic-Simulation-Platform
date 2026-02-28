@@ -46,7 +46,7 @@ public sealed class PackCreatorWindow : EditorWindow
     private string statusLine = "Ready.";
     private bool overwriteBuild = true;
 
-    [MenuItem("Tools/GSP/Pack Creator")]
+    [MenuItem("GSP/Pack Creator")]
     public static void Open()
     {
         var window = EditorWindow.GetWindow<PackCreatorWindow>("Pack Creator");
@@ -93,6 +93,11 @@ public sealed class PackCreatorWindow : EditorWindow
             if (GUILayout.Button("Build Pack", GUILayout.Width(120f)))
             {
                 BuildPack();
+            }
+
+            if (GUILayout.Button("Open TrackGen Lab", GUILayout.Width(150f)))
+            {
+                MarbleRaceTrackGenLabWindow.ShowWindow();
             }
         }
     }
