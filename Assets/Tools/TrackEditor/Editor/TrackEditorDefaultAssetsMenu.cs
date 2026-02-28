@@ -35,17 +35,17 @@ namespace GSP.TrackEditor.Editor
             pieces.Add(CloneRotated(mainStraight45Base, 0, "MainStraight45Slash", "MAIN — Straight 45 /"));
             pieces.Add(CloneRotated(mainStraight45Base, 2, "MainStraight45Backslash", @"MAIN — Straight 45 \"));
 
-            var mainCorner45CcwBase = BuildCorner45BaseCcw("MainCorner45CcwBase", "MAIN — Corner 45 CCW (E+NE)", "Main", TrackConnectorRole.Main);
-            pieces.Add(CloneRotated(mainCorner45CcwBase, 0, "MainCorner45CcwENE", "MAIN — Corner 45 CCW (E+NE)"));
-            pieces.Add(CloneRotated(mainCorner45CcwBase, 2, "MainCorner45CcwNNW", "MAIN — Corner 45 CCW (N+NW)"));
-            pieces.Add(CloneRotated(mainCorner45CcwBase, 4, "MainCorner45CcwWSW", "MAIN — Corner 45 CCW (W+SW)"));
-            pieces.Add(CloneRotated(mainCorner45CcwBase, 6, "MainCorner45CcwSSE", "MAIN — Corner 45 CCW (S+SE)"));
+            var mainCorner45CcwBase = BuildCorner45BaseCcw("MainCorner45CcwBase", "MAIN — Corner 45 CCW (W+NE)", "Main", TrackConnectorRole.Main);
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 0, "MainCorner45CcwWNE", "MAIN — Corner 45 CCW (W+NE)"));
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 2, "MainCorner45CcwNSE", "MAIN — Corner 45 CCW (N+SE)"));
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 4, "MainCorner45CcwESW", "MAIN — Corner 45 CCW (E+SW)"));
+            pieces.Add(CloneRotated(mainCorner45CcwBase, 6, "MainCorner45CcwSNW", "MAIN — Corner 45 CCW (S+NW)"));
 
-            var mainCorner45CwBase = BuildCorner45BaseCw("MainCorner45CwBase", "MAIN — Corner 45 CW (E+SE)", "Main", TrackConnectorRole.Main);
-            pieces.Add(CloneRotated(mainCorner45CwBase, 0, "MainCorner45CwESE", "MAIN — Corner 45 CW (E+SE)"));
-            pieces.Add(CloneRotated(mainCorner45CwBase, 2, "MainCorner45CwSSW", "MAIN — Corner 45 CW (S+SW)"));
-            pieces.Add(CloneRotated(mainCorner45CwBase, 4, "MainCorner45CwWNW", "MAIN — Corner 45 CW (W+NW)"));
-            pieces.Add(CloneRotated(mainCorner45CwBase, 6, "MainCorner45CwNNE", "MAIN — Corner 45 CW (N+NE)"));
+            var mainCorner45CwBase = BuildCorner45BaseCw("MainCorner45CwBase", "MAIN — Corner 45 CW (W+SE)", "Main", TrackConnectorRole.Main);
+            pieces.Add(CloneRotated(mainCorner45CwBase, 0, "MainCorner45CwWSE", "MAIN — Corner 45 CW (W+SE)"));
+            pieces.Add(CloneRotated(mainCorner45CwBase, 2, "MainCorner45CwNSW", "MAIN — Corner 45 CW (N+SW)"));
+            pieces.Add(CloneRotated(mainCorner45CwBase, 4, "MainCorner45CwENW", "MAIN — Corner 45 CW (E+NW)"));
+            pieces.Add(CloneRotated(mainCorner45CwBase, 6, "MainCorner45CwSNE", "MAIN — Corner 45 CW (S+NE)"));
 
             var mainCornerBase = BuildCorner90Base("MainCorner90ENBase", "MAIN — Corner 90 (E+N)", "Main", TrackConnectorRole.Main);
             pieces.Add(CloneRotated(mainCornerBase, 0, "MainCorner90EN", "MAIN — Corner 90 (E+N)"));
@@ -64,17 +64,17 @@ namespace GSP.TrackEditor.Editor
             pieces.Add(CloneRotated(pitStraight45Base, 0, "PitLaneStraight45Slash", "PIT — Straight 45 /"));
             pieces.Add(CloneRotated(pitStraight45Base, 2, "PitLaneStraight45Backslash", @"PIT — Straight 45 \"));
 
-            var pitCorner45CcwBase = BuildCorner45BaseCcw("PitCorner45CcwBase", "PIT — Corner 45 CCW (E+NE)", "PitLane", TrackConnectorRole.Pit);
-            pieces.Add(CloneRotated(pitCorner45CcwBase, 0, "PitLaneCorner45CcwENE", "PIT — Corner 45 CCW (E+NE)"));
-            pieces.Add(CloneRotated(pitCorner45CcwBase, 2, "PitLaneCorner45CcwNNW", "PIT — Corner 45 CCW (N+NW)"));
-            pieces.Add(CloneRotated(pitCorner45CcwBase, 4, "PitLaneCorner45CcwWSW", "PIT — Corner 45 CCW (W+SW)"));
-            pieces.Add(CloneRotated(pitCorner45CcwBase, 6, "PitLaneCorner45CcwSSE", "PIT — Corner 45 CCW (S+SE)"));
+            var pitCorner45CcwBase = BuildCorner45BaseCcw("PitCorner45CcwBase", "PIT — Corner 45 CCW (W+NE)", "PitLane", TrackConnectorRole.Pit);
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 0, "PitLaneCorner45CcwWNE", "PIT — Corner 45 CCW (W+NE)"));
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 2, "PitLaneCorner45CcwNSE", "PIT — Corner 45 CCW (N+SE)"));
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 4, "PitLaneCorner45CcwESW", "PIT — Corner 45 CCW (E+SW)"));
+            pieces.Add(CloneRotated(pitCorner45CcwBase, 6, "PitLaneCorner45CcwSNW", "PIT — Corner 45 CCW (S+NW)"));
 
-            var pitCorner45CwBase = BuildCorner45BaseCw("PitCorner45CwBase", "PIT — Corner 45 CW (E+SE)", "PitLane", TrackConnectorRole.Pit);
-            pieces.Add(CloneRotated(pitCorner45CwBase, 0, "PitLaneCorner45CwESE", "PIT — Corner 45 CW (E+SE)"));
-            pieces.Add(CloneRotated(pitCorner45CwBase, 2, "PitLaneCorner45CwSSW", "PIT — Corner 45 CW (S+SW)"));
-            pieces.Add(CloneRotated(pitCorner45CwBase, 4, "PitLaneCorner45CwWNW", "PIT — Corner 45 CW (W+NW)"));
-            pieces.Add(CloneRotated(pitCorner45CwBase, 6, "PitLaneCorner45CwNNE", "PIT — Corner 45 CW (N+NE)"));
+            var pitCorner45CwBase = BuildCorner45BaseCw("PitCorner45CwBase", "PIT — Corner 45 CW (W+SE)", "PitLane", TrackConnectorRole.Pit);
+            pieces.Add(CloneRotated(pitCorner45CwBase, 0, "PitLaneCorner45CwWSE", "PIT — Corner 45 CW (W+SE)"));
+            pieces.Add(CloneRotated(pitCorner45CwBase, 2, "PitLaneCorner45CwNSW", "PIT — Corner 45 CW (N+SW)"));
+            pieces.Add(CloneRotated(pitCorner45CwBase, 4, "PitLaneCorner45CwENW", "PIT — Corner 45 CW (E+NW)"));
+            pieces.Add(CloneRotated(pitCorner45CwBase, 6, "PitLaneCorner45CwSNE", "PIT — Corner 45 CW (S+NE)"));
 
             var pitCornerBase = BuildCorner90Base("PitCorner90ENBase", "PIT — Corner 90 (E+N)", "PitLane", TrackConnectorRole.Pit);
             pieces.Add(CloneRotated(pitCornerBase, 0, "PitLaneCorner90EN", "PIT — Corner 90 (E+N)"));
@@ -146,14 +146,14 @@ namespace GSP.TrackEditor.Editor
 
         private static TrackPieceDef BuildCorner45BaseCcw(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
-            var c0 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
+            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
             var c1 = Connector("NE", new Vector2(L, L), Dir8.NE, role);
 
             var p0 = c0.localPos;
             var p1 = c1.localPos;
             var startTravelDir = -c0.localDir.ToVector2();
             var endTravelDir = c1.localDir.ToVector2();
-            var path = BezierByHandleRule(p0, p1, startTravelDir, endTravelDir, 14);
+            var path = BezierWithHandleLength(p0, p1, startTravelDir, endTravelDir, 0.55f * L, 20);
 
             var segments = new[]
             {
@@ -166,14 +166,14 @@ namespace GSP.TrackEditor.Editor
 
         private static TrackPieceDef BuildCorner45BaseCw(string pieceId, string displayName, string category, TrackConnectorRole role)
         {
-            var c0 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
+            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, role);
             var c1 = Connector("SE", new Vector2(L, -L), Dir8.SE, role);
 
             var p0 = c0.localPos;
             var p1 = c1.localPos;
             var startTravelDir = -c0.localDir.ToVector2();
             var endTravelDir = c1.localDir.ToVector2();
-            var path = BezierByHandleRule(p0, p1, startTravelDir, endTravelDir, 14);
+            var path = BezierWithHandleLength(p0, p1, startTravelDir, endTravelDir, 0.55f * L, 20);
 
             var segments = new[]
             {
@@ -189,15 +189,13 @@ namespace GSP.TrackEditor.Editor
             var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
 
-            var p0 = new Vector2(-L, 0f);
-            var p1 = new Vector2(-L, -1.6f * L);
-            var p2 = new Vector2(L, -1.6f * L);
-            var p3 = new Vector2(L, 0f);
+            var depth = 2f * L;
+            var mid = new Vector2(0f, -depth);
+            var handleLen = 0.6f * L;
 
-            var travelDir = Vector2.right;
-            var seg1 = BezierByHandleRule(p0, p1, travelDir, travelDir, 14);
-            var seg2 = BezierByHandleRule(p2, p3, travelDir, travelDir, 14);
-            var path = CombineUnique(seg1, new[] { p1, p2 }, seg2);
+            var segA = BezierWithHandleLength(c0.localPos, mid, Vector2.right, Vector2.right, handleLen, 18);
+            var segB = BezierWithHandleLength(mid, c1.localPos, Vector2.right, Vector2.right, handleLen, 18);
+            var path = CombineUnique(segA, segB);
             var segments = new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
@@ -358,6 +356,13 @@ namespace GSP.TrackEditor.Editor
             var handleLength = Mathf.Clamp(chord * 0.55f, 4f, 14f);
             var c0 = p0 + startDir.normalized * handleLength;
             var c1 = p1 - endDir.normalized * handleLength;
+            return Bezier(p0, c0, c1, p1, steps);
+        }
+
+        private static Vector2[] BezierWithHandleLength(Vector2 p0, Vector2 p1, Vector2 startDir, Vector2 endDir, float handleLen, int steps)
+        {
+            var c0 = p0 + startDir.normalized * handleLen;
+            var c1 = p1 - endDir.normalized * handleLen;
             return Bezier(p0, c0, c1, p1, steps);
         }
 
