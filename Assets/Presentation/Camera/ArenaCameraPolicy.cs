@@ -41,6 +41,7 @@ public class ArenaCameraPolicy : MonoBehaviour
     public bool logZoomChanges = false;
 
     private bool _warnedMissingPixelPerfect;
+    private float _baseOrthographicSize = -1f;
 
     private void Reset() => AutoWire();
     private void OnValidate() => AutoWire();
@@ -48,6 +49,7 @@ public class ArenaCameraPolicy : MonoBehaviour
     private void Awake()
     {
         AutoWire();
+        CacheBaseOrthographicSize();
         ApplyZoom();
     }
 
@@ -170,18 +172,28 @@ public class ArenaCameraPolicy : MonoBehaviour
     private void ApplyZoom()
     {
         AutoWire();
+        CacheBaseOrthographicSize();
 
-        if (pixelPerfectComponent == null)
+        float factor = Mathf.Pow(zoomStep, zoomLevel);
+        var pixelPerfectActive = IsPixelPerfectActive();
+
+        if (!pixelPerfectActive)
         {
+            if (targetCamera != null)
+            {
+                targetCamera.orthographic = true;
+                targetCamera.orthographicSize = Mathf.Max(0.01f, _baseOrthographicSize * factor);
+            }
+
             if (!_warnedMissingPixelPerfect)
             {
                 _warnedMissingPixelPerfect = true;
-                UnityEngine.Debug.LogWarning("[GSP] PixelPerfectCamera component not found on the target camera. Zoom will not work.");
+                UnityEngine.Debug.LogWarning("[GSP] PixelPerfectCamera missing/disabled on target camera. Using Camera.orthographicSize fallback zoom.");
             }
             return;
         }
 
-        float factor = Mathf.Pow(zoomStep, zoomLevel);
+        _warnedMissingPixelPerfect = false;
 
         int rx = Mathf.Max(64, Mathf.RoundToInt(baseRefResolution.x * factor));
         int ry = Mathf.RoundToInt(rx * 9f / 16f);
@@ -197,6 +209,31 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         if (logZoomChanges)
             UnityEngine.Debug.Log($"[GSP] Zoom level={zoomLevel} -> refRes={rx}x{ry} (appliedTo={pixelPerfectComponent.GetType().FullName})");
+    }
+
+    private bool IsPixelPerfectActive()
+    {
+        if (pixelPerfectComponent == null)
+        {
+            return false;
+        }
+
+        if (pixelPerfectComponent is Behaviour behaviour)
+        {
+            return behaviour.isActiveAndEnabled;
+        }
+
+        return true;
+    }
+
+    private void CacheBaseOrthographicSize()
+    {
+        if (targetCamera == null || _baseOrthographicSize > 0f)
+        {
+            return;
+        }
+
+        _baseOrthographicSize = Mathf.Max(0.01f, targetCamera.orthographicSize);
     }
 
     private void AutoWire()
