@@ -9,6 +9,7 @@ public sealed class SimulationSceneGraph
     public Transform DebugRoot { get; private set; }
 
     public Transform ArenaRootParent { get; private set; }
+    public Transform ArenaRoot { get; private set; }
     public Transform DecorRoot { get; private set; }
     public Transform WorldObjectsRoot { get; private set; }
 
@@ -28,7 +29,7 @@ public sealed class SimulationSceneGraph
         };
 
         graph.ArenaRootParent = graph.WorldRoot;
-        EnsureChild(graph.WorldRoot, "ArenaRoot");
+        graph.ArenaRoot = EnsureChild(graph.WorldRoot, "ArenaRoot");
         graph.DecorRoot = EnsureChild(graph.WorldRoot, "DecorRoot");
         graph.WorldObjectsRoot = EnsureChild(graph.WorldRoot, "WorldObjects");
 
@@ -51,7 +52,7 @@ public sealed class SimulationSceneGraph
         };
 
         graph.ArenaRootParent = graph.WorldRoot;
-        RebuildChild(graph.WorldRoot, "ArenaRoot");
+        graph.ArenaRoot = RebuildChild(graph.WorldRoot, "ArenaRoot");
         graph.DecorRoot = RebuildChild(graph.WorldRoot, "DecorRoot");
         graph.WorldObjectsRoot = RebuildChild(graph.WorldRoot, "WorldObjects");
 
