@@ -2,47 +2,46 @@ using UnityEngine;
 
 public sealed class MarbleRaceTrackGenerator
 {
-    private const int MinAcceptQualityScore = 70;
-
-    public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int seed, int variant, int fixedTemplateId, out bool fallbackUsed)
+    public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int variant)
     {
-        fallbackUsed = false;
+        return BuildInternal(arenaHalfWidth, arenaHalfHeight, rng, variant, out _);
+    }
+
+    private MarbleRaceTrack BuildInternal(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int variant, out bool fallback)
+    {
         var safeHalfW = Mathf.Max(12f, arenaHalfWidth);
         var safeHalfH = Mathf.Max(12f, arenaHalfHeight);
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
-        var sourceSeed = rng != null ? rng.Seed : seed;
-        var mixedSeed = StableMix(sourceSeed, variant, fixedTemplateId, 0x71A3);
-        var trackRng = new SeededRng(mixedSeed);
-        var tileGen = new TileTrackGenerator();
-        var center = tileGen.BuildBestLoop(safeHalfW, safeHalfH, trackRng, variant);
 
-        MarbleRaceTrack bestTrack = null;
-        var bestScore = int.MinValue;
-        if (center != null && center.Length >= 120)
+        var snapped = new SnappedTrackGenerator();
+        var center = snapped.BuildCenterline(safeHalfW, safeHalfH, rng, variant);
+
+        fallback = false;
+        int segmentsCount;
+        int diagCount;
+        snapped.TryGetLoopStats(safeHalfW, safeHalfH, rng, variant, out segmentsCount, out diagCount);
+
+        MarbleRaceTrack track;
+        if (center != null && center.Length >= 120 && !HasSelfIntersections(center, 4, 10))
         {
-            var candidate = BuildTrackData(center, minDim);
-            if (ValidateStrict(candidate.Center, candidate.Tangent, candidate.Normal, candidate.HalfWidth, safeHalfW, safeHalfH))
-            {
-                RotateToBestStraight(candidate);
-                var quality = MarbleRaceTrackValidator.EvaluateQuality(candidate);
-                bestScore = quality.Score;
-                bestTrack = candidate;
-                if (quality.Score < MinAcceptQualityScore)
-                {
-                    Debug.Log($"[TrackGen] tile loop generated with lower quality score={quality.Score}; accepting since constraints pass.");
-                }
-            }
+            track = BuildTrackData(center, minDim);
+            RotateToBestStraight(track);
+        }
+        else
+        {
+            fallback = true;
+            track = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH, variant);
+            segmentsCount = 0;
+            diagCount = 0;
         }
 
-        if (bestTrack == null)
-        {
-            fallbackUsed = true;
-            bestTrack = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH, variant);
-            bestScore = MarbleRaceTrackValidator.EvaluateQuality(bestTrack).Score;
-        }
+        Debug.Log($"[TrackGenSnapped] variant={variant} fallback={(fallback ? 1 : 0)} segments={segmentsCount} diagonals={diagCount}");
+        return track;
+    }
 
-        Debug.Log($"[TrackGen] variant={variant} score={bestScore} fallback={(fallbackUsed ? 1 : 0)}");
-        return bestTrack;
+    public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int seed, int variant, int fixedTemplateId, out bool fallbackUsed)
+    {
+        return BuildInternal(arenaHalfWidth, arenaHalfHeight, rng, variant, out fallbackUsed);
     }
 
     public MarbleRaceTrack BuildFallbackRoundedRectangle(float arenaHalfWidth, float arenaHalfHeight, int variant)
@@ -50,98 +49,27 @@ public sealed class MarbleRaceTrackGenerator
         var safeHalfW = Mathf.Max(12f, arenaHalfWidth);
         var safeHalfH = Mathf.Max(12f, arenaHalfHeight);
         var minDim = Mathf.Min(safeHalfW, safeHalfH) * 2f;
-        var fallbackSeed = StableMix(unchecked((int)0x51EDBEEF), variant, 0x1234, 0);
-        var rng = new SeededRng(fallbackSeed);
+        var rng = new SeededRng(StableMix(variant, 0x1234, 0x55AA, 0x3141));
 
-        for (var retry = 0; retry < 6; retry++)
+        var sampleCount = 512;
+        var center = new Vector2[sampleCount];
+        var rx = safeHalfW * rng.Range(0.5f, 0.72f);
+        var ry = safeHalfH * rng.Range(0.5f, 0.72f);
+        var lobeX = rng.Range(0.05f, 0.13f);
+        var lobeY = rng.Range(0.04f, 0.11f);
+        var phase = rng.Range(0f, Mathf.PI * 2f);
+
+        for (var i = 0; i < sampleCount; i++)
         {
-            var tileGen = new TileTrackGenerator();
-            var center = tileGen.BuildBestLoop(safeHalfW, safeHalfH, rng, variant + retry);
-            if (center == null || center.Length < 120)
-            {
-                continue;
-            }
-
-            var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
-            var requiredMargin = baseHalfWidth * 1.6f + (minDim * 0.09f);
-            if (!FitToBounds(center, safeHalfW, safeHalfH, requiredMargin))
-            {
-                continue;
-            }
-
-            var candidate = BuildTrackData(center, minDim);
-            RotateToBestStraight(candidate);
-            return candidate;
+            var t = i / (float)sampleCount * Mathf.PI * 2f;
+            var x = Mathf.Cos(t) * rx * (1f + Mathf.Sin((2f * t) + phase) * lobeX);
+            var y = Mathf.Sin(t) * ry * (1f + Mathf.Cos((3f * t) - phase) * lobeY);
+            center[i] = new Vector2(x, y);
         }
 
-        var circle = new Vector2[320];
-        var radius = Mathf.Min(safeHalfW, safeHalfH) * 0.62f;
-        for (var i = 0; i < circle.Length; i++)
-        {
-            var a = i / (float)circle.Length * Mathf.PI * 2f;
-            circle[i] = new Vector2(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius);
-        }
-
-        var emergency = BuildTrackData(circle, minDim);
-        RotateToBestStraight(emergency);
-        return emergency;
-    }
-
-    private static int StableMix(int a, int b, int c, int d)
-    {
-        unchecked
-        {
-            var h = 17;
-            h = (h * 31) ^ a;
-            h = (h * 31) ^ (b * unchecked((int)0x9E3779B9));
-            h = (h * 31) ^ (c * unchecked((int)0x85EBCA6B));
-            h = (h * 31) ^ (d * unchecked((int)0xC2B2AE35));
-            h ^= h >> 16;
-            return h;
-        }
-    }
-
-    private static bool FitToBounds(Vector2[] points, float halfW, float halfH, float requiredMargin)
-    {
-        var min = points[0];
-        var max = points[0];
-        for (var i = 1; i < points.Length; i++)
-        {
-            min = Vector2.Min(min, points[i]);
-            max = Vector2.Max(max, points[i]);
-        }
-
-        var center = (min + max) * 0.5f;
-        var ext = (max - min) * 0.5f;
-        var usableX = halfW - requiredMargin;
-        var usableY = halfH - requiredMargin;
-        if (usableX <= 0.5f || usableY <= 0.5f)
-        {
-            return false;
-        }
-
-        var sx = usableX / Mathf.Max(0.001f, ext.x);
-        var sy = usableY / Mathf.Max(0.001f, ext.y);
-        var scale = Mathf.Min(sx, sy);
-        if (scale < 0.45f)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < points.Length; i++)
-        {
-            points[i] = (points[i] - center) * scale;
-        }
-
-        for (var i = 0; i < points.Length; i++)
-        {
-            if (Mathf.Abs(points[i].x) > usableX || Mathf.Abs(points[i].y) > usableY)
-            {
-                return false;
-            }
-        }
-
-        return true;
+        var track = BuildTrackData(center, minDim);
+        RotateToBestStraight(track);
+        return track;
     }
 
     private static MarbleRaceTrack BuildTrackData(Vector2[] center, float minDim)
@@ -172,95 +100,40 @@ public sealed class MarbleRaceTrackGenerator
         }
 
         var baseHalfWidth = Mathf.Clamp(minDim * 0.035f, 0.9f, 2.2f);
-        var halfWidth = BuildWidths(curvature, baseHalfWidth);
-        var layer = new sbyte[n];
-        return new MarbleRaceTrack(center, tangent, normal, halfWidth, curvature, layer);
+        var halfWidth = BuildWidths(curvature, tangent, baseHalfWidth);
+        return new MarbleRaceTrack(center, tangent, normal, halfWidth, curvature, new sbyte[n]);
     }
 
-    private static float[] BuildWidths(float[] curvature, float baseHalfWidth)
+    private static float[] BuildWidths(float[] curvature, Vector2[] tangent, float baseHalfWidth)
     {
         var n = curvature.Length;
         var widths = new float[n];
-        var minW = baseHalfWidth * 0.85f;
-        var maxW = baseHalfWidth * 1.45f;
+        var minW = baseHalfWidth * 0.82f;
+        var maxW = baseHalfWidth * 1.6f;
 
         for (var i = 0; i < n; i++)
         {
             var c = Mathf.Clamp01(curvature[i] * 6f);
-            var widenOnStraights = Mathf.Clamp01((0.05f - curvature[i]) / 0.05f) * 0.22f;
-            var narrowOnCorners = c * 0.24f;
-            var w = baseHalfWidth * (1f + widenOnStraights - narrowOnCorners);
+            var straightBoost = Mathf.Clamp01((0.04f - curvature[i]) / 0.04f) * 0.2f;
+            var turnPenalty = c * 0.24f;
+
+            var run = 0;
+            for (var k = -6; k <= 6; k++)
+            {
+                var idx = (i + k + n) % n;
+                if (curvature[idx] < 0.03f)
+                {
+                    run++;
+                }
+            }
+
+            var overtakeBoost = run >= 10 ? 0.18f : 0f;
+            var wobble = Mathf.Abs(Mathf.Sin((tangent[i].x + tangent[i].y) * 3.2f)) * 0.04f;
+            var w = baseHalfWidth * (1f + straightBoost + overtakeBoost + wobble - turnPenalty);
             widths[i] = Mathf.Clamp(w, minW, maxW);
         }
 
         return widths;
-    }
-
-    private static bool ValidateStrict(Vector2[] center, Vector2[] tangent, Vector2[] normal, float[] halfWidth, float halfW, float halfH)
-    {
-        if (center == null || tangent == null || normal == null || halfWidth == null)
-        {
-            return false;
-        }
-
-        var n = center.Length;
-        if (n < 120 || tangent.Length != n || normal.Length != n || halfWidth.Length != n)
-        {
-            return false;
-        }
-
-        var minDim = Mathf.Min(halfW, halfH) * 2f;
-        var maxHalfWidth = 0f;
-        for (var i = 0; i < n; i++)
-        {
-            maxHalfWidth = Mathf.Max(maxHalfWidth, halfWidth[i]);
-        }
-
-        var requiredMargin = maxHalfWidth + (minDim * 0.08f);
-        for (var i = 0; i < n; i++)
-        {
-            if (Mathf.Abs(center[i].x) > halfW - requiredMargin || Mathf.Abs(center[i].y) > halfH - requiredMargin)
-            {
-                return false;
-            }
-        }
-
-        var minStep = Mathf.Max(0.45f, minDim * 0.008f);
-        var maxStep = Mathf.Min(1.5f, minDim * 0.04f);
-        for (var i = 0; i < n; i++)
-        {
-            var prevI = (i - 1 + n) % n;
-            if (Vector2.Dot(tangent[i], tangent[prevI]) < 0.22f)
-            {
-                return false;
-            }
-
-            var d = Vector2.Distance(center[i], center[prevI]);
-            if (d < minStep || d > maxStep)
-            {
-                return false;
-            }
-        }
-
-        if (HasSelfIntersections(center, 4, 10))
-        {
-            return false;
-        }
-
-        var left = new Vector2[n];
-        var right = new Vector2[n];
-        for (var i = 0; i < n; i++)
-        {
-            left[i] = center[i] + (normal[i] * halfWidth[i]);
-            right[i] = center[i] - (normal[i] * halfWidth[i]);
-        }
-
-        if (HasSelfIntersections(left, 4, 10) || HasSelfIntersections(right, 4, 10))
-        {
-            return false;
-        }
-
-        return true;
     }
 
     private static bool HasSelfIntersections(Vector2[] points, int stride, int neighborIgnore)
@@ -270,7 +143,6 @@ public sealed class MarbleRaceTrackGenerator
         {
             var a1 = points[i];
             var a2 = points[(i + stride) % n];
-
             for (var j = i + stride; j < n; j += stride)
             {
                 if (AreNeighborSegments(i, j, n, neighborIgnore, stride))
@@ -320,14 +192,23 @@ public sealed class MarbleRaceTrackGenerator
         return (a.x * b.y) - (a.y * b.x);
     }
 
+    private static int StableMix(int a, int b, int c, int d)
+    {
+        unchecked
+        {
+            var h = 17;
+            h = (h * 31) ^ a;
+            h = (h * 31) ^ (b * unchecked((int)0x9E3779B9));
+            h = (h * 31) ^ (c * unchecked((int)0x85EBCA6B));
+            h = (h * 31) ^ (d * unchecked((int)0xC2B2AE35));
+            h ^= h >> 16;
+            return h;
+        }
+    }
+
     private static void RotateToBestStraight(MarbleRaceTrack track)
     {
         var n = track.SampleCount;
-        if (n <= 0)
-        {
-            return;
-        }
-
         var window = Mathf.Clamp(n / 28, 6, 24);
         var bestStart = 0;
         var bestScore = float.MaxValue;
@@ -349,11 +230,6 @@ public sealed class MarbleRaceTrackGenerator
                 bestScore = score;
                 bestStart = i;
             }
-        }
-
-        if (bestStart == 0)
-        {
-            return;
         }
 
         Rotate(track.Center, bestStart);
