@@ -3,6 +3,16 @@ using UnityEngine;
 
 public sealed class PredatorPreyDocuMapBuilder
 {
+    private const string SortingLayerDefault = "Default";
+    private const int BackgroundOrder = -50;
+    private const int FloodplainOrder = -40;
+    private const int RiverOrder = -30;
+    private const int RiverEdgeOrder = -29;
+    private const int CreekOrder = -25;
+    private const int GrassOrder = -22;
+    private const int TreeOrder = -20;
+    private const int DebugOrder = -10;
+
     private readonly List<SpriteRenderer> creekRenderers = new();
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
@@ -24,9 +34,11 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(parent, false);
 
         BuildBackground(halfWidth, halfHeight);
+        BuildGrassDots(docu.map, halfWidth, halfHeight);
         BuildRiverAndFloodplain(halfWidth, halfHeight, docu.map);
         BuildCreeks(docu.map, halfWidth, halfHeight);
         BuildTrees(docu, halfWidth, halfHeight);
+        BuildDebugMarker();
     }
 
     public void UpdateSeasonVisuals(float dryness01)
@@ -48,7 +60,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
         if (floodplainRenderer != null)
         {
-            floodplainRenderer.color = Color.Lerp(new Color(0.56f, 0.67f, 0.39f, 0.75f), new Color(0.61f, 0.57f, 0.31f, 0.65f), dry);
+            floodplainRenderer.color = Color.Lerp(new Color(0.5f, 0.72f, 0.37f, 1f), new Color(0.56f, 0.66f, 0.35f, 1f), dry);
         }
     }
 
@@ -68,18 +80,57 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private void BuildBackground(float halfWidth, float halfHeight)
     {
-        var sr = CreateSprite("SavannaBg", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.74f, 0.67f, 0.41f, 1f), Vector2.zero, new Vector2(halfWidth * 2f, halfHeight * 2f), 0f, -200);
+        var sr = CreateSprite("SavannaBg", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.76f, 0.7f, 0.45f, 1f), Vector2.zero, new Vector2(halfWidth * 2f, halfHeight * 2f), 0f, BackgroundOrder);
         sr.drawMode = SpriteDrawMode.Sliced;
+    }
+
+    private void BuildGrassDots(Map mapConfig, float halfWidth, float halfHeight)
+    {
+        var rng = RngService.Fork("SIM:PredatorPreyDocu:GRASS");
+        var grassRoot = new GameObject("GrassDots").transform;
+        grassRoot.SetParent(mapRoot, false);
+
+        var area = halfWidth * halfHeight * 4f;
+        var targetCount = Mathf.Clamp(Mathf.RoundToInt(area * 0.22f), 600, 1200);
+        var floodWidth = Mathf.Max(1f, mapConfig.floodplainWidth * 1.2f);
+
+        for (var i = 0; i < targetCount; i++)
+        {
+            var position = new Vector2(rng.Range(-halfWidth, halfWidth), rng.Range(-halfHeight, halfHeight));
+            var nearFloodplain01 = 1f - Mathf.Clamp01(Mathf.Abs(position.x) / floodWidth);
+            var spawnChance = Mathf.Lerp(0.25f, 1f, nearFloodplain01);
+            if (rng.Value() > spawnChance)
+            {
+                continue;
+            }
+
+            var scale = rng.Range(0.08f, 0.16f);
+            var baseColor = new Color(0.41f, 0.62f, 0.3f, 1f);
+            var variance = rng.Range(-0.045f, 0.045f);
+            var color = new Color(
+                Mathf.Clamp01(baseColor.r + variance * 0.7f),
+                Mathf.Clamp01(baseColor.g + variance),
+                Mathf.Clamp01(baseColor.b + variance * 0.55f),
+                0.95f);
+
+            var dot = CreateSprite("GrassDot", PrimitiveSpriteLibrary.CircleFill(), color, position, new Vector2(scale, scale), 0f, GrassOrder);
+            dot.transform.SetParent(grassRoot, true);
+        }
     }
 
     private void BuildRiverAndFloodplain(float halfWidth, float halfHeight, Map mapConfig)
     {
         var floodWidth = Mathf.Max(mapConfig.floodplainWidth, mapConfig.riverWidth + 1f);
-        floodplainRenderer = CreateSprite("Floodplain", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.56f, 0.67f, 0.39f, 0.75f), Vector2.zero, new Vector2(floodWidth, halfHeight * 2.08f), 0f, -190);
+        floodplainRenderer = CreateSprite("Floodplain", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.5f, 0.72f, 0.37f, 1f), Vector2.zero, new Vector2(floodWidth, halfHeight * 2.08f), 0f, FloodplainOrder);
         floodplainRenderer.drawMode = SpriteDrawMode.Sliced;
 
-        var river = CreateSprite("River", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.24f, 0.53f, 0.78f, 0.93f), Vector2.zero, new Vector2(mapConfig.riverWidth, halfHeight * 2.1f), 0f, -180);
+        var river = CreateSprite("River", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.14f, 0.47f, 0.92f, 1f), Vector2.zero, new Vector2(mapConfig.riverWidth, halfHeight * 2.1f), 0f, RiverOrder);
         river.drawMode = SpriteDrawMode.Sliced;
+
+        var edgeWidth = Mathf.Max(0.08f, mapConfig.riverWidth * 0.055f);
+        var edgeOffset = (mapConfig.riverWidth * 0.5f) + (edgeWidth * 0.5f);
+        CreateSprite("RiverEdgeLeft", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.06f, 0.26f, 0.55f, 1f), new Vector2(-edgeOffset, 0f), new Vector2(edgeWidth, halfHeight * 2.1f), 0f, RiverEdgeOrder).drawMode = SpriteDrawMode.Sliced;
+        CreateSprite("RiverEdgeRight", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.06f, 0.26f, 0.55f, 1f), new Vector2(edgeOffset, 0f), new Vector2(edgeWidth, halfHeight * 2.1f), 0f, RiverEdgeOrder).drawMode = SpriteDrawMode.Sliced;
 
         const int sampleCount = 18;
         for (var i = 0; i <= sampleCount; i++)
@@ -120,7 +171,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
                 var mid = (current + next) * 0.5f;
                 var angle = Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg;
-                var creek = CreateSprite("CreekSeg", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.64f, 0.9f, 1f), mid, new Vector2(delta.magnitude + 0.1f, mapConfig.creekWidth), angle, -170);
+                var creek = CreateSprite("CreekSeg", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.24f, 0.6f, 0.9f, 1f), mid, new Vector2(delta.magnitude + 0.1f, mapConfig.creekWidth), angle, CreekOrder);
                 creekRenderers.Add(creek);
 
                 current = next;
@@ -147,9 +198,14 @@ public sealed class PredatorPreyDocuMapBuilder
                 shadeNodes.Add(pos);
 
                 var radius = rng.Range(0.55f, 1.1f) * treeScale;
-                CreateSprite("Tree", PrimitiveSpriteLibrary.CircleFill(), new Color(0.16f, 0.38f, 0.17f, 0.92f), pos, new Vector2(radius, radius), 0f, -160);
+                CreateSprite("Tree", PrimitiveSpriteLibrary.CircleFill(), new Color(0.14f, 0.36f, 0.15f, 1f), pos, new Vector2(radius, radius), 0f, TreeOrder);
             }
         }
+    }
+
+    private void BuildDebugMarker()
+    {
+        CreateSprite("MapBuildMarker", PrimitiveSpriteLibrary.CircleFill(), Color.white, Vector2.zero, new Vector2(0.22f, 0.22f), 0f, DebugOrder);
     }
 
     private SpriteRenderer CreateSprite(string name, Sprite sprite, Color color, Vector2 localPosition, Vector2 localScale, float localRotationDeg, int sortingOrder)
@@ -163,7 +219,9 @@ public sealed class PredatorPreyDocuMapBuilder
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         sr.color = color;
+        sr.sortingLayerName = SortingLayerDefault;
         sr.sortingOrder = sortingOrder;
+        sr.enabled = true;
         return sr;
     }
 }

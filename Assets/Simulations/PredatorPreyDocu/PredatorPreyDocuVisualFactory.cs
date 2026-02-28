@@ -2,6 +2,8 @@ using UnityEngine;
 
 public static class PredatorPreyDocuVisualFactory
 {
+    private const string SortingLayerDefault = "Default";
+
     private static readonly Color[] HerdPalette =
     {
         new(0.88f, 0.95f, 0.34f, 1f),
@@ -36,7 +38,7 @@ public static class PredatorPreyDocuVisualFactory
         root.transform.SetParent(parent, false);
         root.transform.localScale = Vector3.one * scale;
 
-        AddSprite(root.transform, "Body", PrimitiveSpriteLibrary.CapsuleFill(), new Color(0.39f, 0.78f, 0.32f, 1f), Vector3.zero, new Vector3(1f, 0.62f, 1f), 0);
+        AddSprite(root.transform, "Body", PrimitiveSpriteLibrary.CapsuleFill(), new Color(0.28f, 0.74f, 0.22f, 1f), Vector3.zero, new Vector3(1f, 0.62f, 1f), 0);
         AddSprite(root.transform, "Outline", PrimitiveSpriteLibrary.CapsuleOutline(), new Color(0.12f, 0.28f, 0.1f, 1f), Vector3.zero, new Vector3(1.06f, 0.68f, 1f), 1);
 
         if (showAccent)
@@ -55,18 +57,18 @@ public static class PredatorPreyDocuVisualFactory
         var ageScale = isYoung ? 0.85f : 1f;
         root.transform.localScale = Vector3.one * (scale * ageScale);
 
-        var bodyColor = isRoaming ? new Color(0.82f, 0.22f, 0.2f, 1f) : new Color(0.88f, 0.3f, 0.24f, 1f);
+        var bodyColor = isRoaming ? new Color(0.82f, 0.2f, 0.16f, 1f) : new Color(0.9f, 0.28f, 0.2f, 1f);
         AddSprite(root.transform, "Body", PrimitiveSpriteLibrary.CircleFill(), bodyColor, Vector3.zero, Vector3.one, 0);
         AddSprite(root.transform, "Outline", PrimitiveSpriteLibrary.CircleOutline(), new Color(0.34f, 0.08f, 0.08f, 1f), Vector3.zero, new Vector3(1.06f, 1.06f, 1f), 1);
 
         if (showAccent)
         {
-            AddSprite(root.transform, "AccentRing", PrimitiveSpriteLibrary.CircleOutline(), prideAccent, Vector3.zero, new Vector3(1.05f, 1.05f, 1f), 2);
+            AddSprite(root.transform, "AccentRing", PrimitiveSpriteLibrary.CircleOutline(), prideAccent, Vector3.zero, new Vector3(1.18f, 1.18f, 1f), 2);
         }
 
         if (isMale && showMaleRing)
         {
-            AddSprite(root.transform, "ManeRing", PrimitiveSpriteLibrary.CircleOutline(), new Color(0.42f, 0.14f, 0.08f, 1f), Vector3.zero, new Vector3(1.15f, 1.15f, 1f), 3);
+            AddSprite(root.transform, "ManeRing", PrimitiveSpriteLibrary.CircleOutline(), new Color(0.58f, 0.2f, 0.08f, 1f), Vector3.zero, new Vector3(1.3f, 1.3f, 1f), 3);
         }
 
         if (isLeader)
@@ -87,6 +89,8 @@ public static class PredatorPreyDocuVisualFactory
         var renderer = go.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.color = color;
+        renderer.sortingLayerName = SortingLayerDefault;
         renderer.sortingOrder = sortingOrder;
+        renderer.enabled = true;
     }
 }

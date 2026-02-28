@@ -50,8 +50,13 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         EnsureMainCamera();
 
         map = new PredatorPreyDocuMapBuilder();
-        map.Build(sceneGraph.WorldObjectsRoot, activeConfig, halfWidth, halfHeight);
+        var mapParent = sceneGraph.WorldObjectsRoot != null ? sceneGraph.WorldObjectsRoot : sceneGraph.ArenaRoot;
+        if (mapParent != null && !mapParent.gameObject.activeSelf)
+        {
+            mapParent.gameObject.SetActive(true);
+        }
 
+        map.Build(mapParent != null ? mapParent : transform, activeConfig, halfWidth, halfHeight);
         SpawnEntities();
 
         lastSeasonName = null;
