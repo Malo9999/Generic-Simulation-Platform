@@ -884,7 +884,9 @@ namespace GSP.TrackEditor.Editor
             var mouseCanvas = Event.current.mousePosition;
             var openConnectors = GetOpenConnectors();
             var lockedConnector = ResolveLockedOpenConnector(openConnectors, canvasSize, mouseCanvas);
-            var candidates = lockedConnector.HasValue ? new[] { lockedConnector.Value } : openConnectors;
+            var candidates = lockedConnector.HasValue
+                ? new List<(PlacedPiece placed, int index, TrackConnector connector, Vector2 worldPos, Dir8 worldDir)> { lockedConnector.Value }
+                : openConnectors;
 
             foreach (var open in candidates)
             {
