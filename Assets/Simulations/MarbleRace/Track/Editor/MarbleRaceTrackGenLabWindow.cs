@@ -5,6 +5,7 @@ using UnityEngine;
 public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
 {
     private const string PreviewRootName = "__TrackGenPreview";
+    private const string MinimapRenderTexturePath = "Assets/Presentation/Minimap/RT_Minimap.renderTexture";
 
     private sealed class SeedReport
     {
@@ -33,6 +34,7 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
     private int selectedIndex = -1;
     private Vector2 scroll;
     private GameObject previewRoot;
+    private string lastPreviewDebugInfo = "No preview stats yet.";
 
     [MenuItem("GSP/TrackGen Lab")]
     private static void OpenFromMenu()
@@ -102,6 +104,10 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         {
             PackCreatorWindow.Open();
         }
+
+        EditorGUILayout.Space(8f);
+        EditorGUILayout.LabelField("Preview Diagnostics", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(lastPreviewDebugInfo, MessageType.Info);
 
         EditorGUILayout.Space(8f);
         EditorGUILayout.LabelField($"Results ({filteredReports.Count}/{reports.Count})", EditorStyles.boldLabel);
@@ -266,7 +272,20 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         overlay.Assign(track, report.Quality);
         ApplyPreviewHideFlags(root);
         Selection.activeGameObject = root;
+        lastPreviewDebugInfo = BuildPreviewDebugInfo(renderer.LastDebugStats);
+        Debug.Log($"[TrackGenLab] {lastPreviewDebugInfo}");
         Debug.Log($"[TrackGenLab] Previewed seed={seed} variant={variant} score={report.QualityScore}");
+    }
+
+    private static string BuildPreviewDebugInfo(MarbleRaceTrackRenderer.RenderDebugStats stats)
+    {
+        var rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(MinimapRenderTexturePath);
+        if (rt == null)
+        {
+            return $"centerline points={stats.CenterPointCount} | border edge points L/R={stats.LeftEdgePointCount}/{stats.RightEdgePointCount} | rounded border points L/R={stats.RoundedLeftBorderPointCount}/{stats.RoundedRightBorderPointCount} | minimap RT missing at {MinimapRenderTexturePath}";
+        }
+
+        return $"centerline points={stats.CenterPointCount} | border edge points L/R={stats.LeftEdgePointCount}/{stats.RightEdgePointCount} | rounded border points L/R={stats.RoundedLeftBorderPointCount}/{stats.RoundedRightBorderPointCount} | minimap RT={rt.width}x{rt.height} MSAAx{rt.antiAliasing}";
     }
 
     private GameObject EnsurePreviewRoot()
