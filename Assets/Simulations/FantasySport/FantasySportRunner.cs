@@ -79,6 +79,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private static readonly Vector2 PadSize = new Vector2(4.2f, 2.7f);
     private static readonly Color Team0Color = new Color(0.2f, 0.78f, 1f, 1f);
     private static readonly Color Team1Color = new Color(1f, 0.45f, 0.25f, 1f);
+    private const float ArenaBoundsMargin = 2f;
 
     private enum AthleteState { BallCarrier, ChaseFreeBall, SupportAttack, PressCarrier, MarkLane, GoalkeeperHome }
     private enum AttackSide { Left, Right }
@@ -244,6 +245,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         BuildAthletes(config);
         EnsureBall();
         BuildHazards();
+        EnsureArenaBoundsAndCameraFit();
         FindHudText();
         FindScoreboardText();
         ResetMatchState();
@@ -4681,5 +4683,46 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         cameraComponent.orthographic = true;
         cameraComponent.orthographicSize = Mathf.Max(halfHeight + 2f, 10f);
         cameraObject.transform.position = new Vector3(0f, 0f, -10f);
+    }
+
+    private void EnsureArenaBoundsAndCameraFit()
+    {
+        if (sceneGraph?.WorldRoot == null)
+        {
+            return;
+        }
+
+        var boundsTransform = sceneGraph.WorldRoot.Find("ArenaBounds");
+        if (boundsTransform == null)
+        {
+            var boundsObject = new GameObject("ArenaBounds");
+            boundsObject.transform.SetParent(sceneGraph.WorldRoot, false);
+            boundsObject.transform.localPosition = Vector3.zero;
+            boundsTransform = boundsObject.transform;
+        }
+
+        var boundsCollider = boundsTransform.GetComponent<BoxCollider2D>();
+        if (boundsCollider == null)
+        {
+            boundsCollider = boundsTransform.gameObject.AddComponent<BoxCollider2D>();
+        }
+
+        boundsCollider.isTrigger = true;
+        boundsCollider.offset = Vector2.zero;
+        boundsCollider.size = new Vector2(
+            (halfWidth + ArenaBoundsMargin) * 2f,
+            (halfHeight + ArenaBoundsMargin) * 2f);
+
+        var policy = Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        if (policy != null)
+        {
+            policy.BindArenaBounds(boundsCollider, fitToBounds: true);
+        }
+
+        var followController = Object.FindAnyObjectByType<CameraFollowController>();
+        if (followController != null)
+        {
+            followController.arenaCameraPolicy = policy;
+        }
     }
 }
