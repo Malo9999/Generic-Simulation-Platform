@@ -4,26 +4,59 @@ public static class FantasySportTactics
 {
     public enum TeamPhase
     {
+        Transition,
         BuildUp,
         Advance,
-        FinalThird,
-        Transition
+        FinalThird
     }
 
     public enum RoleGroup
     {
+        Keeper,
         Sweeper,
         Defender,
         Midfielder,
-        Attacker,
-        Keeper
+        Attacker
     }
 
-    private static readonly float[] LaneFractions = { -0.44f, -0.22f, 0f, 0.22f, 0.44f };
-
-    public static TeamPhase ComputeTeamPhase(bool hasPossession, bool ballFree, float progress01)
+    public enum Lane
     {
-        if (ballFree || !hasPossession)
+        Left,
+        LeftCenter,
+        Center,
+        RightCenter,
+        Right
+    }
+
+    public enum IntentType
+    {
+        None,
+        HoldWidth,
+        SupportShort,
+        OverlapRun,
+        UnderlapRun,
+        RunInBehind,
+        SwitchOutlet,
+        ResetBehindBall,
+        MarkLane
+    }
+
+    public static float Progress01(Vector2 ballPos, int teamId, float halfWidth)
+    {
+        var progress = teamId == 0
+            ? (ballPos.x + halfWidth) / (2f * halfWidth)
+            : (-ballPos.x + halfWidth) / (2f * halfWidth);
+        return Mathf.Clamp01(progress);
+    }
+
+    public static TeamPhase ComputePhase(bool hasPossession, bool ballFree, float progress01)
+    {
+        if (ballFree)
+        {
+            return TeamPhase.Transition;
+        }
+
+        if (!hasPossession)
         {
             return TeamPhase.Transition;
         }
@@ -33,7 +66,7 @@ public static class FantasySportTactics
             return TeamPhase.BuildUp;
         }
 
-        if (progress01 <= 0.66f)
+        if (progress01 < 0.66f)
         {
             return TeamPhase.Advance;
         }
@@ -41,57 +74,65 @@ public static class FantasySportTactics
         return TeamPhase.FinalThird;
     }
 
-    public static Vector2 GetHomeTarget(RoleGroup role, int lane, int teamId, TeamPhase phase, Vector2 ballPos, float halfWidth, float halfHeight, float endzoneDepth, float progress01)
+    public static float LaneY(Lane lane, float halfHeight)
     {
-        lane = Mathf.Clamp(lane, 0, LaneFractions.Length - 1);
-        var laneFrac = LaneFractions[lane];
-        var attacking = phase == TeamPhase.Advance || phase == TeamPhase.FinalThird;
-        var defensive = phase == TeamPhase.Transition || phase == TeamPhase.BuildUp;
-
-        var wingWidth = halfHeight * (attacking ? 0.42f : 0.34f);
-        var centerWidth = halfHeight * 0.18f;
-        var laneY = Mathf.Lerp(centerWidth * Mathf.Sign(laneFrac), laneFrac * wingWidth, Mathf.Abs(laneFrac) * 1.6f);
-
-        var ballSlideY = Mathf.Clamp(ballPos.y * 0.20f, -halfHeight * 0.12f, halfHeight * 0.12f);
-        laneY += ballSlideY;
-        if (defensive)
+        var wingMax = halfHeight * 0.44f;
+        var halfSp = halfHeight * 0.22f;
+        return lane switch
         {
-            laneY *= 0.88f;
-        }
-
-        var towardCenter = teamId == 0 ? 1f : -1f;
-        var ownGoalX = teamId == 0 ? -halfWidth : halfWidth;
-        var defDepth = endzoneDepth + 7f;
-        var midDepth = endzoneDepth + 16f;
-        var attDepth = endzoneDepth + 25f;
-        var boxDepth = endzoneDepth + 30f;
-
-        var pushByPhase = phase switch
-        {
-            TeamPhase.BuildUp => Mathf.Lerp(-0.5f, 3.5f, progress01),
-            TeamPhase.Advance => Mathf.Lerp(2f, 8f, progress01),
-            TeamPhase.FinalThird => Mathf.Lerp(7f, 11f, progress01),
+            Lane.Left => -wingMax,
+            Lane.LeftCenter => -halfSp,
+            Lane.Center => 0f,
+            Lane.RightCenter => halfSp,
+            Lane.Right => wingMax,
             _ => 0f
         };
+    }
 
-        var depthFromGoal = role switch
+    public static float LineX(RoleGroup role, TeamPhase phase, float progress01, float endzoneDepth)
+    {
+        var baseDef = endzoneDepth + 7f;
+        var baseMid = endzoneDepth + 15f;
+        var baseAtt = endzoneDepth + 23f;
+        var push = phase switch
         {
-            RoleGroup.Keeper => endzoneDepth * 0.56f,
-            RoleGroup.Sweeper => defDepth - 2.5f,
-            RoleGroup.Defender => defDepth,
-            RoleGroup.Midfielder => midDepth,
-            RoleGroup.Attacker => phase == TeamPhase.FinalThird ? boxDepth : attDepth,
-            _ => midDepth
+            TeamPhase.BuildUp => 1f + (progress01 * 3f),
+            TeamPhase.Advance => 4f + (progress01 * 6f),
+            TeamPhase.FinalThird => 8f + (progress01 * 9f),
+            TeamPhase.Transition => 2f,
+            _ => 2f
         };
 
-        if (role == RoleGroup.Attacker && lane == 2)
+        return role switch
         {
-            laneY *= 0.65f;
-        }
+            RoleGroup.Defender => baseDef + (push * 0.7f),
+            RoleGroup.Midfielder => baseMid + (push * 0.95f),
+            RoleGroup.Attacker => baseAtt + (push * 1.1f),
+            RoleGroup.Sweeper => endzoneDepth + 4f,
+            RoleGroup.Keeper => endzoneDepth * 0.5f,
+            _ => baseMid
+        };
+    }
 
-        var homeX = ownGoalX + (towardCenter * (depthFromGoal + pushByPhase));
-        homeX = Mathf.Clamp(homeX, -halfWidth + 1.1f, halfWidth - 1.1f);
-        laneY = Mathf.Clamp(laneY, -halfHeight + 2f, halfHeight - 2f);
-        return new Vector2(homeX, laneY);
+    public static Vector2 HomeTarget(RoleGroup role, Lane lane, int teamId, TeamPhase phase, float progress01, float halfWidth, float halfHeight, float endzoneDepth, Vector2 ballPos)
+    {
+        var ownGoalX = teamId == 0 ? -halfWidth : halfWidth;
+        var towardCenter = teamId == 0 ? 1f : -1f;
+        var depth = LineX(role, phase, progress01, endzoneDepth);
+        var x = ownGoalX + (towardCenter * depth);
+        var y = LaneY(lane, halfHeight);
+        y += Mathf.Clamp(ballPos.y * 0.12f, -halfHeight * 0.06f, halfHeight * 0.06f);
+
+        return new Vector2(
+            Mathf.Clamp(x, -halfWidth + 1.1f, halfWidth - 1.1f),
+            Mathf.Clamp(y, -halfHeight + 2f, halfHeight - 2f));
+    }
+
+    // Compatibility wrappers used by existing runner.
+    public static TeamPhase ComputeTeamPhase(bool hasPossession, bool ballFree, float progress01) => ComputePhase(hasPossession, ballFree, progress01);
+
+    public static Vector2 GetHomeTarget(RoleGroup role, int lane, int teamId, TeamPhase phase, Vector2 ballPos, float halfWidth, float halfHeight, float endzoneDepth, float progress01)
+    {
+        return HomeTarget(role, (Lane)Mathf.Clamp(lane, 0, 4), teamId, phase, progress01, halfWidth, halfHeight, endzoneDepth, ballPos);
     }
 }
