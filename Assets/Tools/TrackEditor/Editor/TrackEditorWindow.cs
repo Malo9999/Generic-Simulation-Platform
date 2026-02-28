@@ -12,13 +12,11 @@ namespace GSP.TrackEditor.Editor
     1) Unity: GSP -> TrackEditor -> Create Default Track Pieces
     2) Open: GSP -> TrackEditor -> TrackEditor
     3) New Layout
-    4) Drag Straight, then drag Corner90 near its open connector:
-       - It should snap cleanly (endpoints line up) with no skew.
-    5) Try Corner45 and Straight45 to build diagonals.
-    6) Drag with LMB on a piece:
-       - By default, the whole connected chunk moves.
-       - Hold SHIFT while dragging to move only the selected piece.
-    7) Confirm Pit connectors only snap to Pit connectors (no accidental Main<->Pit snaps).
+    4) Drag Straight, then Corner90, Corner45, Corner180: corners are rounded and snap cleanly.
+    5) Place PitEntry/PitExit: pit branch + merge are smooth; pit snaps only to pit.
+    6) Click Generate Start Grid (10): visible yellow slots appear and follow track dragging.
+    7) LMB drag moves connected group; Shift+drag moves selected only and prunes broken links.
+    8) Delete selected via Delete/Backspace or Delete Selected button; links are removed.
     */
     public class TrackEditorWindow : EditorWindow
     {
@@ -55,10 +53,13 @@ namespace GSP.TrackEditor.Editor
         private TrackPieceDef _palettePressedPiece;
         private Vector2 _palettePressedPos;
         private bool _paletteDragStarted;
-        private bool _isDraggingPiece;
+        private bool _isDragging;
         private Vector2 _dragStartWorld;
-        private Dictionary<string, Vector2> _dragStartPositions = new();
-        private HashSet<string> _dragGuids = new();
+        private Dictionary<string, Vector2> _startPositions = new();
+        private HashSet<string> _dragGroup = new();
+        private List<Vector2> _startGridStartPositions = new();
+        private Vector2 _startFinishStartPos;
+        private bool _translateStartMarkers;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -156,8 +157,11 @@ namespace GSP.TrackEditor.Editor
                 if (GUILayout.Button("Rotate -45")) RotateSelected(-1);
                 if (GUILayout.Button("Rotate +45")) RotateSelected(1);
                 EditorGUILayout.EndHorizontal();
-                if (GUILayout.Button("Delete")) DeleteSelected();
             }
+
+            EditorGUI.BeginDisabledGroup(selectedPiece < 0 || selectedPiece >= layout.pieces.Count);
+            if (GUILayout.Button("Delete Selected")) DeleteSelectedPiece();
+            EditorGUI.EndDisabledGroup();
 
             if (GUILayout.Button("Generate Start Grid (10)"))
             {
@@ -326,6 +330,23 @@ namespace GSP.TrackEditor.Editor
                 }
             }
 
+            if (evt.type == EventType.KeyDown && (evt.keyCode == KeyCode.Delete || evt.keyCode == KeyCode.Backspace))
+            {
+                DeleteSelectedPiece();
+                evt.Use();
+            }
+
+            if (evt.type == EventType.MouseDown && evt.button == 1)
+            {
+                var clicked = PickPiece(CanvasToWorld(evt.mousePosition, size));
+                if (clicked >= 0)
+                {
+                    selectedPiece = clicked;
+                    ShowPieceContextMenu();
+                    evt.Use();
+                }
+            }
+
             if (evt.type == EventType.MouseDown && evt.button == 0)
             {
                 selectedPiece = PickPiece(CanvasToWorld(evt.mousePosition, size));
@@ -333,18 +354,32 @@ namespace GSP.TrackEditor.Editor
 
                 if (selectedPiece >= 0)
                 {
-                    _isDraggingPiece = true;
+                    _isDragging = true;
                     _dragStartWorld = CanvasToWorld(evt.mousePosition, size);
 
                     var selectedGuid = layout.pieces[selectedPiece].guid;
-                    _dragGuids = evt.shift ? new HashSet<string> { selectedGuid } : ConnectedComponentGuids(selectedGuid);
-                    _dragStartPositions.Clear();
+                    _dragGroup = evt.shift ? new HashSet<string> { selectedGuid } : ConnectedComponentGuids(selectedGuid);
+                    _startPositions.Clear();
+                    _translateStartMarkers = !evt.shift;
+                    _startGridStartPositions.Clear();
 
                     foreach (var piece in layout.pieces)
                     {
-                        if (_dragGuids.Contains(piece.guid))
+                        if (_dragGroup.Contains(piece.guid))
                         {
-                            _dragStartPositions[piece.guid] = piece.position;
+                            _startPositions[piece.guid] = piece.position;
+                        }
+                    }
+
+                    if (_translateStartMarkers)
+                    {
+                        _startFinishStartPos = layout.startFinish?.worldPos ?? Vector2.zero;
+                        if (layout.startGridSlots != null)
+                        {
+                            foreach (var slot in layout.startGridSlots)
+                            {
+                                _startGridStartPositions.Add(slot.pos);
+                            }
                         }
                     }
 
@@ -352,29 +387,29 @@ namespace GSP.TrackEditor.Editor
                 }
             }
 
-            if (evt.type == EventType.MouseDrag && evt.button == 0 && _isDraggingPiece)
+            if (evt.type == EventType.MouseDrag && evt.button == 0 && _isDragging)
             {
                 var currentWorld = CanvasToWorld(evt.mousePosition, size);
                 var delta = currentWorld - _dragStartWorld;
 
                 foreach (var piece in layout.pieces)
                 {
-                    if (_dragStartPositions.TryGetValue(piece.guid, out var startPos))
+                    if (_startPositions.TryGetValue(piece.guid, out var startPos))
                     {
                         piece.position = startPos + delta;
                     }
                 }
 
-                if (layout.startFinish != null)
+                if (_translateStartMarkers && layout.startFinish != null)
                 {
-                    layout.startFinish.worldPos += delta;
+                    layout.startFinish.worldPos = _startFinishStartPos + delta;
                 }
 
-                if (layout.startGridSlots != null)
+                if (_translateStartMarkers && layout.startGridSlots != null)
                 {
-                    foreach (var slot in layout.startGridSlots)
+                    for (var i = 0; i < layout.startGridSlots.Count && i < _startGridStartPositions.Count; i++)
                     {
-                        slot.pos += delta;
+                        layout.startGridSlots[i].pos = _startGridStartPositions[i] + delta;
                     }
                 }
 
@@ -385,9 +420,15 @@ namespace GSP.TrackEditor.Editor
 
             if (evt.type == EventType.MouseUp && evt.button == 0)
             {
-                _isDraggingPiece = false;
-                _dragGuids.Clear();
-                _dragStartPositions.Clear();
+                if (_isDragging)
+                {
+                    PruneInvalidLinks(0.05f);
+                }
+
+                _isDragging = false;
+                _dragGroup.Clear();
+                _startPositions.Clear();
+                _startGridStartPositions.Clear();
             }
         }
 
@@ -581,28 +622,30 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
+            var slotLengthWorld = Mathf.Max(1.2f, 14f / (PixelsPerUnit * canvasZoom));
+            var slotHalfWidthWorld = Mathf.Max(0.6f, 8f / (PixelsPerUnit * canvasZoom));
+            var tickLengthWorld = Mathf.Max(1f, 12f / (PixelsPerUnit * canvasZoom));
+
             Handles.color = new Color(1f, 0.9f, 0.25f, 0.95f);
             foreach (var slot in layout.startGridSlots)
             {
                 var forward = slot.dir.sqrMagnitude > 0.001f ? slot.dir.normalized : Vector2.right;
                 var right = new Vector2(-forward.y, forward.x);
-                const float len = 2f;
-                const float halfWidth = 0.9f;
 
-                var p0 = slot.pos + forward * len + right * halfWidth;
-                var p1 = slot.pos + forward * len - right * halfWidth;
-                var p2 = slot.pos - forward * len - right * halfWidth;
-                var p3 = slot.pos - forward * len + right * halfWidth;
+                var p0 = slot.pos + forward * slotLengthWorld + right * slotHalfWidthWorld;
+                var p1 = slot.pos + forward * slotLengthWorld - right * slotHalfWidthWorld;
+                var p2 = slot.pos - forward * slotLengthWorld - right * slotHalfWidthWorld;
+                var p3 = slot.pos - forward * slotLengthWorld + right * slotHalfWidthWorld;
 
                 var c0 = WorldToCanvas(p0, canvasSize);
                 var c1 = WorldToCanvas(p1, canvasSize);
                 var c2 = WorldToCanvas(p2, canvasSize);
                 var c3 = WorldToCanvas(p3, canvasSize);
-                Handles.DrawAAPolyLine(1.5f, c0, c1, c2, c3, c0);
+                Handles.DrawAAPolyLine(1.8f, c0, c1, c2, c3, c0);
 
-                var arrowStart = WorldToCanvas(slot.pos, canvasSize);
-                var arrowEnd = WorldToCanvas(slot.pos + forward * 2f, canvasSize);
-                Handles.DrawAAPolyLine(2f, arrowStart, arrowEnd);
+                var tickStart = WorldToCanvas(slot.pos - forward * tickLengthWorld * 0.5f, canvasSize);
+                var tickEnd = WorldToCanvas(slot.pos + forward * tickLengthWorld * 0.5f, canvasSize);
+                Handles.DrawAAPolyLine(2.2f, tickStart, tickEnd);
             }
 
             if (layout.startFinish == null)
@@ -884,8 +927,13 @@ namespace GSP.TrackEditor.Editor
             EditorUtility.SetDirty(layout);
         }
 
-        private void DeleteSelected()
+        private void DeleteSelectedPiece()
         {
+            if (layout == null)
+            {
+                return;
+            }
+
             if (selectedPiece < 0 || selectedPiece >= layout.pieces.Count)
             {
                 return;
@@ -896,6 +944,59 @@ namespace GSP.TrackEditor.Editor
             layout.links.RemoveAll(l => l.pieceGuidA == guid || l.pieceGuidB == guid);
             selectedPiece = -1;
             EditorUtility.SetDirty(layout);
+        }
+
+        private void ShowPieceContextMenu()
+        {
+            var menu = new GenericMenu();
+            menu.AddItem(new GUIContent("Delete"), false, DeleteSelectedPiece);
+            menu.AddItem(new GUIContent("Rotate +45"), false, () => RotateSelected(1));
+            menu.AddItem(new GUIContent("Rotate -45"), false, () => RotateSelected(-1));
+            menu.ShowAsContext();
+        }
+
+        private void PruneInvalidLinks(float epsilonWorld)
+        {
+            if (layout == null)
+            {
+                return;
+            }
+
+            layout.links.RemoveAll(link => !IsValidLink(link, epsilonWorld));
+            EditorUtility.SetDirty(layout);
+        }
+
+        private bool IsValidLink(ConnectorLink link, float epsilonWorld)
+        {
+            var a = layout.pieces.FirstOrDefault(p => p.guid == link.pieceGuidA);
+            var b = layout.pieces.FirstOrDefault(p => p.guid == link.pieceGuidB);
+            if (a?.piece == null || b?.piece == null)
+            {
+                return false;
+            }
+
+            if (link.connectorIndexA < 0 || link.connectorIndexA >= a.piece.connectors.Length || link.connectorIndexB < 0 || link.connectorIndexB >= b.piece.connectors.Length)
+            {
+                return false;
+            }
+
+            var connectorA = a.piece.connectors[link.connectorIndexA];
+            var connectorB = b.piece.connectors[link.connectorIndexB];
+            if (!RolesCompatible(connectorA.role, connectorB.role))
+            {
+                return false;
+            }
+
+            var worldPosA = TrackMathUtil.ToWorld(a, connectorA.localPos);
+            var worldPosB = TrackMathUtil.ToWorld(b, connectorB.localPos);
+            if (Vector2.Distance(worldPosA, worldPosB) > epsilonWorld)
+            {
+                return false;
+            }
+
+            var worldDirA = TrackMathUtil.ToWorld(a, connectorA.localDir);
+            var worldDirB = TrackMathUtil.ToWorld(b, connectorB.localDir);
+            return worldDirA == worldDirB.Opposite();
         }
 
         private void Validate()
@@ -944,7 +1045,7 @@ namespace GSP.TrackEditor.Editor
 
         private void GenerateStartGrid(int count)
         {
-            if (layout.pieces.Count == 0)
+            if (layout == null || layout.pieces.Count == 0)
             {
                 return;
             }
@@ -962,18 +1063,29 @@ namespace GSP.TrackEditor.Editor
                 start.worldPos = p.position;
                 start.worldDir = TrackMathUtil.ToWorld(p, Dir8.E).ToVector2();
             }
+            else if (!TryGetFallbackStart(out var fallbackPos, out var fallbackDir, out var fallbackGuid))
+            {
+                return;
+            }
+            else
+            {
+                start.pieceGuid = fallbackGuid;
+                start.worldPos = fallbackPos;
+                start.worldDir = fallbackDir;
+            }
 
-            var width = layout.pieces[0].piece.trackWidth;
+            var width = layout.pieces[0].piece != null ? layout.pieces[0].piece.trackWidth : 8f;
             var forward = start.worldDir.sqrMagnitude > 0.001f ? start.worldDir.normalized : Vector2.right;
             var right = new Vector2(-forward.y, forward.x);
+            var lateralSpan = width * 0.8f;
             layout.startGridSlots.Clear();
 
-            var rowCapacity = Mathf.Max(1, Mathf.FloorToInt(width / 3f));
+            var rowCapacity = count <= 1 ? 1 : 2;
             for (var i = 0; i < count; i++)
             {
                 var row = i / rowCapacity;
                 var col = i % rowCapacity;
-                var lateral = (col - (rowCapacity - 1) * 0.5f) * 2.4f;
+                var lateral = rowCapacity == 1 ? 0f : (col - (rowCapacity - 1) * 0.5f) * lateralSpan;
                 var back = row * 5f;
                 layout.startGridSlots.Add(new TrackSlot
                 {
@@ -983,6 +1095,29 @@ namespace GSP.TrackEditor.Editor
             }
 
             EditorUtility.SetDirty(layout);
+        }
+
+        private bool TryGetFallbackStart(out Vector2 startPos, out Vector2 forwardDir, out string pieceGuid)
+        {
+            startPos = Vector2.zero;
+            forwardDir = Vector2.right;
+            pieceGuid = string.Empty;
+
+            var first = layout.pieces.FirstOrDefault(p => p?.piece?.segments != null && p.piece.segments.Any(s => s.pathRole == TrackConnectorRole.Main && s.localCenterline != null && s.localCenterline.Length >= 2));
+            if (first?.piece == null)
+            {
+                return false;
+            }
+
+            var segment = first.piece.segments.First(s => s.pathRole == TrackConnectorRole.Main && s.localCenterline != null && s.localCenterline.Length >= 2);
+            var c0 = TrackMathUtil.ToWorld(first, segment.localCenterline[0]);
+            var c1 = TrackMathUtil.ToWorld(first, segment.localCenterline[1]);
+            var midLocal = segment.localCenterline[segment.localCenterline.Length / 2];
+            startPos = TrackMathUtil.ToWorld(first, midLocal);
+            var dir = c1 - c0;
+            forwardDir = dir.sqrMagnitude > 0.0001f ? dir.normalized : Vector2.right;
+            pieceGuid = first.guid;
+            return true;
         }
 
         private Vector2 WorldToCanvas(Vector2 world, Vector2 size)
