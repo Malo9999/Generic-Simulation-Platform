@@ -34,22 +34,15 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
     private Vector2 scroll;
     private GameObject previewRoot;
 
-    [MenuItem("Tools/MarbleRace/TrackGen Lab")]
-    private static void Open()
+    [MenuItem("GSP/TrackGen Lab")]
+    private static void OpenFromMenu()
     {
-        GetWindow<MarbleRaceTrackGenLabWindow>("TrackGen Lab");
+        ShowWindow();
     }
 
-    [MenuItem("MarbleRace/TrackGen/Clear Preview")]
-    private static void ClearTrackPreviewMenu()
+    public static MarbleRaceTrackGenLabWindow ShowWindow()
     {
-        CleanupPreviewGlobal(force: true);
-    }
-
-    [MenuItem("Tools/MarbleRace/Clear Track Preview")]
-    private static void ClearTrackPreviewLegacyMenu()
-    {
-        CleanupPreviewGlobal(force: true);
+        return GetWindow<MarbleRaceTrackGenLabWindow>("TrackGen Lab");
     }
 
     private void OnEnable()
@@ -103,6 +96,11 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         if (GUILayout.Button("Clear Track Preview"))
         {
             CleanupPreview(force: true);
+        }
+
+        if (GUILayout.Button("Open Pack Creator"))
+        {
+            PackCreatorWindow.Open();
         }
 
         EditorGUILayout.Space(8f);
