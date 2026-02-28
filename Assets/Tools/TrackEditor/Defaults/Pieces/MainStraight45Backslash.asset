@@ -18,12 +18,12 @@ MonoBehaviour:
   trackWidth: 8
   connectors:
   - id: SW
-    localPos: {x: 10, y: -10}
+    localPos: {x: -10, y: 10}
     localDir: 7
     role: 0
     trackWidth: 8
   - id: NE
-    localPos: {x: -10, y: 10}
+    localPos: {x: 10, y: -10}
     localDir: 3
     role: 0
     trackWidth: 8
@@ -32,26 +32,26 @@ MonoBehaviour:
     toConnectorIndex: 1
     pathRole: 0
     localCenterline:
-    - {x: 10, y: -10}
     - {x: -10, y: 10}
+    - {x: 10, y: -10}
     localLeftBoundary:
-    - {x: 7.171573, y: -12.828427}
-    - {x: -12.828427, y: 7.171572}
+    - {x: -7.171572, y: 12.828427}
+    - {x: 12.828427, y: -7.171573}
     localRightBoundary:
-    - {x: 12.828427, y: -7.171572}
-    - {x: -7.171573, y: 12.828427}
+    - {x: -12.828427, y: 7.171573}
+    - {x: 7.171572, y: -12.828427}
   - fromConnectorIndex: 1
     toConnectorIndex: 0
     pathRole: 0
     localCenterline:
-    - {x: -10, y: 10}
     - {x: 10, y: -10}
+    - {x: -10, y: 10}
     localLeftBoundary:
-    - {x: -7.171573, y: 12.828427}
-    - {x: 12.828427, y: -7.171572}
+    - {x: 7.171572, y: -12.828427}
+    - {x: -12.828427, y: 7.171573}
     localRightBoundary:
-    - {x: -12.828427, y: 7.171572}
-    - {x: 7.171573, y: -12.828427}
+    - {x: 12.828427, y: -7.171573}
+    - {x: -7.171572, y: 12.828427}
   localBounds:
     serializedVersion: 2
     x: -13.028427
