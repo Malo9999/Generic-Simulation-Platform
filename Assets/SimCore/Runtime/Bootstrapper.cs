@@ -1082,6 +1082,7 @@ public class Bootstrapper : MonoBehaviour
 
     private void ShutdownCurrentRunner()
     {
+        SetScoreboardVisible(false);
         activeRunner?.Shutdown();
         activeRunner = null;
         activeRunnerObject = null;

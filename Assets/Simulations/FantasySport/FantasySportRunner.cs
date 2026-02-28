@@ -16,7 +16,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float TeamSeparationRadius = 2.8f;
     private const float BoundaryAvoidanceDistance = 3f;
     private const float VerticalWallSoftMargin = 4.5f;
-    private const float CenterYBias = 0.22f;
+    private const float CenterYBias = 0.12f;
     private const float PressureRadius = 2.2f;
     private const float OpenThreshold = 2.6f;
     private const float PassLeadTime = 0.3f;
@@ -43,7 +43,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float AthleteUnstickBoost = 2.4f;
     private const float BallMinSlideSpeed = 0.15f;
     private const int BumperCount = 6;
-    private const int GoalCooldownTicks = 18;
+    private const int GoalCooldownTicks = 20;
     private const float StaminaDrainRun = 0.95f;
     private const float StaminaRecoverIdle = 0.8f;
     private const float StaminaRecoverShape = 0.48f;
@@ -183,6 +183,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private string possessionPlan = "None";
     private readonly TeamPhase[] teamPhase = { TeamPhase.Transition, TeamPhase.Transition };
     private readonly PlayPlan[] activePlayPlans = new PlayPlan[Teams];
+    private readonly int[] triangleShortSupportByTeam = { -1, -1 };
+    private readonly int[] triangleWideOutletByTeam = { -1, -1 };
+    private readonly int[] triangleForwardRunByTeam = { -1, -1 };
     private int lastPasserIndex = -1;
     private int lastReceiverIndex = -1;
     private float lastPassTime = -999f;
@@ -548,6 +551,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         attackPlanUntilTime[1] = 0f;
         activePlayPlans[0].untilTime = 0f;
         activePlayPlans[1].untilTime = 0f;
+        triangleShortSupportByTeam[0] = -1;
+        triangleShortSupportByTeam[1] = -1;
+        triangleWideOutletByTeam[0] = -1;
+        triangleWideOutletByTeam[1] = -1;
+        triangleForwardRunByTeam[0] = -1;
+        triangleForwardRunByTeam[1] = -1;
         attackPressure[0] = 0.5f;
         attackPressure[1] = 0.5f;
         if (returnToShapeUntilByAthlete != null && leftShapeByAthlete != null)
@@ -599,6 +608,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         attackPlanUntilTime[1] = 0f;
         activePlayPlans[0].untilTime = 0f;
         activePlayPlans[1].untilTime = 0f;
+        triangleShortSupportByTeam[0] = -1;
+        triangleShortSupportByTeam[1] = -1;
+        triangleWideOutletByTeam[0] = -1;
+        triangleWideOutletByTeam[1] = -1;
+        triangleForwardRunByTeam[0] = -1;
+        triangleForwardRunByTeam[1] = -1;
         attackPressure[0] = 0.5f;
         attackPressure[1] = 0.5f;
         if (returnToShapeUntilByAthlete != null && leftShapeByAthlete != null)
@@ -714,7 +729,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (ballOwnerTeam >= 0)
         {
+            UpdateSupportTriangle(ballOwnerTeam, ballOwnerIndex);
             ApplyPlayPlanIntents(ballOwnerTeam);
+            ApplySupportTriangleIntents(ballOwnerTeam);
         }
     }
 
@@ -758,6 +775,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var centralBlocked = IsCentralLaneBlocked(carrier);
         var stagnant = noProgressTime;
         var shotClockHot = possessionTime >= Mathf.Max(6f, shotClockSeconds);
+        var forceFinishAttempt = possessionTime > 6f;
         var progress01 = GetTeamProgress(teamId, carrierPos);
         var finishBias = GetFinishBias(teamId, progress01);
         var inScoringRange = progress01 > 0.72f;
@@ -786,6 +804,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             var forceWing = possessionCongested || stagnant > 1.2f || centralBlocked || finishBias > 0f;
             var forceSwitch = stagnant > 2.2f;
+            if (forceFinishAttempt)
+            {
+                forceWing = true;
+            }
             var progressClockHot = stagnant > 2.6f;
             if (progressClockHot)
             {
@@ -807,7 +829,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
                 if (forceSwitch)
                 {
-                    ThrowBall(carrier, GetFarWingDumpTarget(carrier), -1, false);
+                    var switchCornerTarget = GetCornerTargetForTeam(teamId, GetAttackWingSign(teamId) * -1f);
+                    ThrowBall(carrier, switchCornerTarget, -1, false);
                     passCooldowns[carrier] = PassCooldownSeconds;
                     return;
                 }
@@ -1196,6 +1219,154 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
     }
 
+    private void UpdateSupportTriangle(int teamId, int carrierIndex)
+    {
+        if (teamId < 0 || teamId >= Teams || carrierIndex < 0)
+        {
+            return;
+        }
+
+        var carrierPos = positions[carrierIndex];
+        var towardGoal = (GetOpponentGoalCenter(teamId) - carrierPos).normalized;
+        var shortIdx = FindShortSupportNode(teamId, carrierIndex, towardGoal);
+        var wideIdx = FindWideOutletNode(teamId, carrierIndex);
+        var forwardIdx = FindForwardRunNode(teamId, carrierIndex, towardGoal);
+
+        triangleShortSupportByTeam[teamId] = shortIdx;
+        triangleWideOutletByTeam[teamId] = wideIdx;
+        triangleForwardRunByTeam[teamId] = forwardIdx;
+    }
+
+    private void ApplySupportTriangleIntents(int teamId)
+    {
+        if (teamId < 0 || teamId >= Teams || ballOwnerIndex < 0)
+        {
+            return;
+        }
+
+        var carrierPos = positions[ballOwnerIndex];
+        var towardGoal = (GetOpponentGoalCenter(teamId) - carrierPos).normalized;
+        var shortIdx = triangleShortSupportByTeam[teamId];
+        var wideIdx = triangleWideOutletByTeam[teamId];
+        var forwardIdx = triangleForwardRunByTeam[teamId];
+
+        if (shortIdx >= 0)
+        {
+            var shortTarget = carrierPos - (towardGoal * 3f) + new Vector2(0f, Mathf.Sign(carrierPos.y == 0f ? GetAttackWingSign(teamId) : carrierPos.y) * 1.4f);
+            SetIntent(shortIdx, IntentType.SupportShort, shortTarget, 2f);
+        }
+
+        if (wideIdx >= 0)
+        {
+            var wingY = Mathf.Sign(positions[wideIdx].y == 0f ? -carrierPos.y : positions[wideIdx].y);
+            if (Mathf.Abs(wingY) < 0.001f)
+            {
+                wingY = -GetAttackWingSign(teamId);
+            }
+
+            var target = new Vector2(Mathf.Clamp(carrierPos.x + towardGoal.x * 5.5f, -halfWidth + 1.2f, halfWidth - 1.2f), wingY * GetLaneWideY(teamId));
+            SetIntent(wideIdx, IntentType.HoldWidth, target, 2f);
+        }
+
+        if (forwardIdx >= 0)
+        {
+            var laneY = Mathf.Lerp(0f, GetLaneNarrowY(teamId), 0.8f) * Mathf.Sign(carrierPos.y == 0f ? GetAttackWingSign(teamId) : carrierPos.y);
+            var target = carrierPos + (towardGoal * RunDepth) + new Vector2(0f, laneY * 0.65f);
+            SetIntent(forwardIdx, IntentType.RunInBehind, target, 2f);
+        }
+    }
+
+    private int FindShortSupportNode(int teamId, int carrierIndex, Vector2 towardGoal)
+    {
+        var carrierPos = positions[carrierIndex];
+        var best = -1;
+        var bestScore = float.MinValue;
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if (i == carrierIndex || identities[i].teamId != teamId || IsGoalkeeper(i))
+            {
+                continue;
+            }
+
+            var behind = Vector2.Dot(positions[i] - carrierPos, towardGoal) <= 1f;
+            if (!behind)
+            {
+                continue;
+            }
+
+            var roleScore = roleByIndex[i] == RoleGroup.Midfielder ? 4.5f : (roleByIndex[i] == RoleGroup.Defender || roleByIndex[i] == RoleGroup.Sweeper ? 3f : 0f);
+            var distScore = -Vector2.Distance(positions[i], carrierPos);
+            var openness = FindNearestOpponentDistance(i) * 0.5f;
+            var score = roleScore + distScore + openness;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private int FindWideOutletNode(int teamId, int carrierIndex)
+    {
+        var carrierPos = positions[carrierIndex];
+        var desiredSign = Mathf.Sign(carrierPos.y == 0f ? GetAttackWingSign(teamId) : carrierPos.y) * -1f;
+        var best = -1;
+        var bestScore = float.MinValue;
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if (i == carrierIndex || identities[i].teamId != teamId || IsGoalkeeper(i))
+            {
+                continue;
+            }
+
+            var sign = Mathf.Sign(positions[i].y);
+            var signMatch = sign == desiredSign;
+            var widthScore = Mathf.Abs(positions[i].y);
+            var roleScore = roleByIndex[i] == RoleGroup.Attacker ? 4f : (roleByIndex[i] == RoleGroup.Midfielder ? 2.6f : 1.2f);
+            var score = roleScore + (widthScore * 0.3f) + (signMatch ? 4.5f : 0f) + (FindNearestOpponentDistance(i) * 0.4f);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    private int FindForwardRunNode(int teamId, int carrierIndex, Vector2 towardGoal)
+    {
+        var carrierPos = positions[carrierIndex];
+        var best = -1;
+        var bestScore = float.MinValue;
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if (i == carrierIndex || identities[i].teamId != teamId || IsGoalkeeper(i))
+            {
+                continue;
+            }
+
+            var ahead = Vector2.Dot(positions[i] - carrierPos, towardGoal) > 1f;
+            if (!ahead)
+            {
+                continue;
+            }
+
+            var roleScore = roleByIndex[i] == RoleGroup.Attacker ? 4.8f : (roleByIndex[i] == RoleGroup.Midfielder ? 2.8f : 0.8f);
+            var depth = Vector2.Dot(positions[i] - carrierPos, towardGoal);
+            var score = roleScore + (depth * 0.9f) + (FindNearestOpponentDistance(i) * 0.5f);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
     private float EvaluateWingOpenness(int teamId, AttackSide side)
     {
         var desiredSign = side == AttackSide.Left ? -1f : 1f;
@@ -1420,28 +1591,28 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var receiverPos = positions[receiverIndex];
         var towardGoal = (GetOpponentGoalCenter(teamId) - receiverPos).normalized;
         var support = receiverPos - (towardGoal * 3.4f);
-        SetIntent(passerIndex, IntentType.SupportShort, support, 1.8f);
+        SetIntent(passerIndex, IntentType.SupportShort, support, 2f);
 
-        var attackSide = Mathf.Abs(receiverPos.y) > 0.2f ? Mathf.Sign(receiverPos.y) : GetAttackWingSign(teamId);
-        var nearWing = FindNearestByRoleAndSide(teamId, RoleGroup.Attacker, attackSide, passerIndex, receiverIndex, receiverPos);
-        if (nearWing >= 0)
+        var wideOutlet = triangleWideOutletByTeam[teamId];
+        if (wideOutlet >= 0 && wideOutlet != receiverIndex)
         {
-            var runTarget = receiverPos + (towardGoal * 8f) + new Vector2(0f, attackSide * 2.2f);
-            SetIntent(nearWing, IntentType.RunInBehind, runTarget, 2.4f);
+            var wingSign = Mathf.Sign(positions[wideOutlet].y == 0f ? GetAttackWingSign(teamId) : positions[wideOutlet].y);
+            var outlet = new Vector2(receiverPos.x + (towardGoal.x * 3.2f), Mathf.Clamp(wingSign * GetLaneWideY(teamId), -halfHeight + 1.4f, halfHeight - 1.4f));
+            SetIntent(wideOutlet, IntentType.HoldWidth, outlet, 2f);
         }
 
-        var overlapMid = FindNearestByRoleAndSide(teamId, RoleGroup.Midfielder, attackSide, passerIndex, receiverIndex, receiverPos);
-        if (overlapMid >= 0)
+        var forwardRun = triangleForwardRunByTeam[teamId];
+        if (forwardRun >= 0 && forwardRun != receiverIndex)
         {
-            var channelTarget = receiverPos + (towardGoal * 6.2f) + new Vector2(0f, attackSide * 3.0f);
-            SetIntent(overlapMid, IntentType.OverlapRun, channelTarget, 2.1f);
+            var runTarget = receiverPos + (towardGoal * 8f) + new Vector2(0f, Mathf.Sign(receiverPos.y == 0f ? GetAttackWingSign(teamId) : receiverPos.y) * 2f);
+            SetIntent(forwardRun, IntentType.RunInBehind, runTarget, 2f);
         }
 
-        var farWing = FindNearestByRoleAndSide(teamId, RoleGroup.Attacker, -attackSide, passerIndex, receiverIndex, receiverPos);
-        if (farWing >= 0)
+        var shortSupport = triangleShortSupportByTeam[teamId];
+        if (shortSupport >= 0 && shortSupport != passerIndex && shortSupport != receiverIndex)
         {
-            var outlet = new Vector2(receiverPos.x + (towardGoal.x * 2.5f), Mathf.Clamp(-attackSide * GetWingLaneAbs(), -halfHeight + 1.5f, halfHeight - 1.5f));
-            SetIntent(farWing, IntentType.SwitchOutlet, outlet, 2.5f);
+            var shortTarget = receiverPos - (towardGoal * 3f);
+            SetIntent(shortSupport, IntentType.SupportShort, shortTarget, 2f);
         }
     }
 
@@ -1853,7 +2024,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var centerBiasScale = (!isEngagedRole && !IsGoalkeeper(athleteIndex)) ? 1.25f : 1f;
-        var centerBias = IsGoalkeeper(athleteIndex) ? Vector2.zero : (Vector2.up * (-athletePos.y) * CenterYBias * centerBiasScale);
+        var lane = laneByIndex[athleteIndex];
+        var allowCenterBias = lane == Lane.Center || lane == Lane.LeftCenter || lane == Lane.RightCenter;
+        var centerBias = (IsGoalkeeper(athleteIndex) || !allowCenterBias) ? Vector2.zero : (Vector2.up * (-athletePos.y) * CenterYBias * centerBiasScale);
 
         var homeWeight = BaseHomePullWeight * GetRoleShapeWeight(roleByIndex[athleteIndex]) * GetOpportunityTetherScale(athleteIndex);
         if (!isEngagedRole && !IsGoalkeeper(athleteIndex))
@@ -2275,7 +2448,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (currentSecond != lastTacticsDebugSecond)
         {
             lastTacticsDebugSecond = currentSecond;
-            Debug.Log($"[FantasySport:Tactics] t={matchTimeSeconds:F1} phase0={teamPhase[0]} phase1={teamPhase[1]} possTime={possessionTime:F1} noProg={noProgressTime:F1} lastPass={lastPasserIndex}->{lastReceiverIndex} passT={lastPassTime:F2}");
+            var team = possessingTeam >= 0 ? possessingTeam : 0;
+            Debug.Log($"[FantasySport:Tactics] t={matchTimeSeconds:F1} phase0={teamPhase[0]} phase1={teamPhase[1]} possTime={possessionTime:F1} noProg={noProgressTime:F1} tri={triangleShortSupportByTeam[team]}/{triangleWideOutletByTeam[team]}/{triangleForwardRunByTeam[team]} lastPass={lastPasserIndex}->{lastReceiverIndex} passT={lastPassTime:F2}");
         }
 
         if (ballOwnerIndex >= 0)
@@ -2315,7 +2489,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var seconds = remainingWhole % 60;
         var possession = possessingTeam >= 0 ? $"Team{possessingTeam}" : "Free";
         var congested = possessionCongested ? "Y" : "N";
-        hudText.text = $"FantasySport  Team0 {scoreTeam0} : {scoreTeam1} Team1   Time: {minutes:00}:{seconds:00}   Possession: {possession}\nPossTeam={possessingTeam} possTime={possessionTime:F1} noProg={noProgressTime:F1} progress={lastProgress:F2} congested={congested} plan={possessionPlan}";
+        var triShort = possessingTeam >= 0 ? triangleShortSupportByTeam[possessingTeam] : -1;
+        var triWide = possessingTeam >= 0 ? triangleWideOutletByTeam[possessingTeam] : -1;
+        var triForward = possessingTeam >= 0 ? triangleForwardRunByTeam[possessingTeam] : -1;
+        hudText.text = $"FantasySport  Team0 {scoreTeam0} : {scoreTeam1} Team1   Time: {minutes:00}:{seconds:00}   Possession: {possession}\nPossTeam={possessingTeam} possTime={possessionTime:F1} noProg={noProgressTime:F1} progress={lastProgress:F2} congested={congested} plan={possessionPlan} tri={triShort}/{triWide}/{triForward}";
     }
 
 
@@ -2661,6 +2838,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var plan = activePlayPlans[teamId];
         var planActive = plan.untilTime > matchTimeSeconds;
         var isFinalThird = teamPhase[teamId] == TeamPhase.FinalThird;
+        var shortNode = triangleShortSupportByTeam[teamId];
+        var wideNode = triangleWideOutletByTeam[teamId];
+        var forwardNode = triangleForwardRunByTeam[teamId];
 
         for (var i = 0; i < TotalAthletes; i++)
         {
@@ -2791,6 +2971,26 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 score -= 2f;
             }
 
+            if (i == shortNode)
+            {
+                score += 4.4f;
+            }
+
+            if (i == wideNode)
+            {
+                score += (noProgressTime > 1.2f || forceSwitch || preferWing) ? 10.5f : 6.3f;
+            }
+
+            if (i == forwardNode)
+            {
+                score += (progressGain > 0f ? 9.4f : 4.2f);
+            }
+
+            if (possessionTime > 6f && i != wideNode && i != forwardNode && progressGain < 0.02f)
+            {
+                score -= 8f;
+            }
+
             if (planActive)
             {
                 var sideWing = plan.side < 0 ? plan.leftWingIdx : plan.rightWingIdx;
@@ -2907,6 +3107,15 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var towardGoal = (GetOpponentGoalCenter(teamId) - carrierPos).normalized;
         var targetX = Mathf.Clamp(carrierPos.x + towardGoal.x * 10f, -halfWidth + 2f, halfWidth - 2f);
         return new Vector2(targetX, Mathf.Clamp(targetWingY, -halfHeight + 1f, halfHeight - 1f));
+    }
+
+    private Vector2 GetCornerTargetForTeam(int teamId, float wingSign)
+    {
+        var cornerX = teamId == 0
+            ? halfWidth - (GetEndzoneDepth() * 0.5f)
+            : -halfWidth + (GetEndzoneDepth() * 0.5f);
+        var cornerY = Mathf.Clamp(wingSign * GetLaneWideY(teamId), -halfHeight + 1f, halfHeight - 1f);
+        return new Vector2(cornerX, cornerY);
     }
 
     private Vector2 GetEndzoneBandTarget(int carrier, int teamId)
@@ -3157,7 +3366,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        wingFrac = 0.42f;
+        wingFrac = phase == TeamPhase.Transition ? 0.40f : 0.42f;
         halfFrac = 0.22f;
     }
 
@@ -3336,7 +3545,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private float GetGoalMouthHalfHeight() => Mathf.Clamp(rules.goalHeight * 0.5f, 2.5f, halfHeight - 3f);
     private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
     private float GetEndzoneDepth() => Mathf.Clamp(rules.goalDepth * 1.5f, 5f, 10f);
-    private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * 2f, 4f, halfHeight - 2f);
+    private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * 1.5f, 3f, halfHeight - 2f);
 
     private float GetLaneWideY() => GetLaneWideY(ballOwnerTeam);
     private float GetLaneNarrowY() => GetLaneNarrowY(ballOwnerTeam);
