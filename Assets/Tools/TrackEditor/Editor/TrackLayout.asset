@@ -13,36 +13,57 @@ MonoBehaviour:
   m_Name: TrackLayout
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
   pieces:
-  - guid: 09aa0f54c2b44b41b2944f575535a1d1
-    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
-    position: {x: 42.58042, y: -38.98026}
+  - guid: 12dc08e1aceb47bb9e6081de14bf957a
+    piece: {fileID: 11400000, guid: 0f5a7fd42cc907f4a8cd07500ddd5153, type: 2}
+    position: {x: 37.15277, y: -57.118046}
     rotationSteps45: 0
     mirrored: 0
-  - guid: 688a2932081141d1a9a4d544915434ea
-    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
-    position: {x: -3.033638, y: -34.740505}
+  - guid: 321edf65245f4b7ab056a39caa3a5ea6
+    piece: {fileID: 11400000, guid: e7f50dacaf174bc419e0a2d7d14d3439, type: 2}
+    position: {x: 23.125011, y: -73.92361}
     rotationSteps45: 0
     mirrored: 0
-  - guid: c1d1a8d6b9cf48ddb02885f17c96cf0d
-    piece: {fileID: 11400000, guid: bce1824f6ee541a439d9ca2b36202096, type: 2}
-    position: {x: 35.197376, y: -59.228798}
+  - guid: af256cc1e0d941a18d1d33c7e98d54ef
+    piece: {fileID: 11400000, guid: f75c1fafaf150cc4f93717cdef8d080a, type: 2}
+    position: {x: 73.95834, y: -63.923603}
     rotationSteps45: 0
     mirrored: 0
-  - guid: f9624b912b494d6c82b58927599d91b8
-    piece: {fileID: 11400000, guid: 5c94987241b1a2641a121950fec6d694, type: 2}
-    position: {x: 27.887424, y: -18.658619}
+  - guid: ae70a653feb94914beda482f3dcef55c
+    piece: {fileID: 11400000, guid: 720496afd6239334989830944ded8e3d, type: 2}
+    position: {x: 2.1527734, y: -47.39582}
     rotationSteps45: 0
     mirrored: 0
-  - guid: ce318459065f4c52af124a51acae9a3c
-    piece: {fileID: 11400000, guid: bce1824f6ee541a439d9ca2b36202096, type: 2}
-    position: {x: 21.05524, y: -45.086662}
+  - guid: 5dedaaedd6924e49ab5b55e3c5bb18ec
+    piece: {fileID: 11400000, guid: 0be3e84e1bbb68c4f9477971f20a479d, type: 2}
+    position: {x: 40.90277, y: -22.118046}
     rotationSteps45: 0
     mirrored: 0
-  links:
-  - pieceGuidA: c1d1a8d6b9cf48ddb02885f17c96cf0d
-    connectorIndexA: 1
-    pieceGuidB: ce318459065f4c52af124a51acae9a3c
-    connectorIndexB: 0
+  - guid: c4a75a0995564fa3954b74ecf548d5d7
+    piece: {fileID: 11400000, guid: 245b625a5b323bf4b92eb981ac3d364d, type: 2}
+    position: {x: 3.958346, y: -18.64582}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 805a2bb54e3142508d5ab77cf1cbe4cd
+    piece: {fileID: 11400000, guid: 6bbc38fd7696ea1469b7155f346061d1, type: 2}
+    position: {x: 61.180557, y: -16.562487}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: c4e41c4b2a8840888da1d1524b921aee
+    piece: {fileID: 11400000, guid: b17927f69421aa94caa2afe8c6d97e23, type: 2}
+    position: {x: 24.93056, y: 3.2986195}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: e06ece231b6e4574a0860fff91f18c1d
+    piece: {fileID: 11400000, guid: 72ecfa08e67b7e247825fcece6dac5b1, type: 2}
+    position: {x: 88.12501, y: -1.2847137}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: f8c96eec87964e3ba551ae627963f768
+    piece: {fileID: 11400000, guid: aa0a18888c88d3f42b6d526408adaaf1, type: 2}
+    position: {x: 46.736107, y: 7.7430596}
+    rotationSteps45: 0
+    mirrored: 0
+  links: []
   startFinish:
     pieceGuid: 
     segmentIndex: 0
@@ -73,4 +94,4 @@ MonoBehaviour:
   pitEntryGuid: 
   pitExitGuid: 
   pan: {x: 111.33334, y: 219.33331}
-  zoom: 0.38
+  zoom: 0.2
