@@ -9,7 +9,7 @@ namespace GSP.TrackEditor.Editor
 {
     /*
     HOW TO USE
-    - Open from Tools/GSP/Track Editor.
+    - Open from GSP/TrackEditor/TrackEditor.
     - Create/assign a TrackPieceLibrary and create a TrackLayout asset from this window.
     - Drag pieces from the right palette to the left canvas; first piece can be dropped anywhere, later pieces must snap to open connectors.
     - Build the layout, set start/finish + generate grid, then run Validate and Bake.
@@ -30,7 +30,7 @@ namespace GSP.TrackEditor.Editor
         private int selectedPiece = -1;
         private TrackBakeUtility.ValidationReport lastValidation;
 
-        [MenuItem("Tools/GSP/Track Editor")]
+        [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
         {
             GetWindow<TrackEditorWindow>("Track Editor");
@@ -160,7 +160,7 @@ namespace GSP.TrackEditor.Editor
 
             if (GUILayout.Button("Refresh Library"))
             {
-                library.RefreshFromAssets();
+                TrackPieceLibraryEditorUtility.RefreshFromAssets(library);
             }
 
             paletteScroll = EditorGUILayout.BeginScrollView(paletteScroll);
