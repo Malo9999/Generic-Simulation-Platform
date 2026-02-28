@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dbef79a7a07d4235a6f121ad67428ec3, type: 3}
+  m_Name: PitLaneStraight45Slash
+  m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
+  pieceId: PitLaneStraight45Slash
+  displayName: "PIT \u2014 Straight 45 /"
+  category: PitLane
+  trackWidth: 8
+  connectors:
+  - id: W
+    localPos: {x: -7.071068, y: -7.071068}
+    localDir: 7
+    role: 1
+    trackWidth: 8
+  - id: E
+    localPos: {x: 7.071068, y: 7.071068}
+    localDir: 3
+    role: 1
+    trackWidth: 8
+  segments:
+  - fromConnectorIndex: 0
+    toConnectorIndex: 1
+    pathRole: 1
+    localCenterline:
+    - {x: -7.071068, y: -7.071068}
+    - {x: 7.071068, y: 7.071068}
+    localLeftBoundary:
+    - {x: -9.899495, y: -4.2426405}
+    - {x: 4.2426405, y: 9.899495}
+    localRightBoundary:
+    - {x: -4.2426405, y: -9.899495}
+    - {x: 9.899495, y: 4.2426405}
+  - fromConnectorIndex: 1
+    toConnectorIndex: 0
+    pathRole: 1
+    localCenterline:
+    - {x: 7.071068, y: 7.071068}
+    - {x: -7.071068, y: -7.071068}
+    localLeftBoundary:
+    - {x: 9.899495, y: 4.2426405}
+    - {x: -4.2426405, y: -9.899495}
+    localRightBoundary:
+    - {x: 4.2426405, y: 9.899495}
+    - {x: -9.899495, y: -4.2426405}
+  localBounds:
+    serializedVersion: 2
+    x: -10.099495
+    y: -10.099495
+    width: 20.19899
+    height: 20.19899

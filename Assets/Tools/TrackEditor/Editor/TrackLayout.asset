@@ -12,8 +12,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d326ef2582144697b86af9770f03f856, type: 3}
   m_Name: TrackLayout
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
-  pieces: []
-  links: []
+  pieces:
+  - guid: 09aa0f54c2b44b41b2944f575535a1d1
+    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
+    position: {x: 42.58042, y: -38.98026}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 688a2932081141d1a9a4d544915434ea
+    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
+    position: {x: -3.033638, y: -34.740505}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: c1d1a8d6b9cf48ddb02885f17c96cf0d
+    piece: {fileID: 11400000, guid: bce1824f6ee541a439d9ca2b36202096, type: 2}
+    position: {x: 35.197376, y: -59.228798}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: f9624b912b494d6c82b58927599d91b8
+    piece: {fileID: 11400000, guid: 5c94987241b1a2641a121950fec6d694, type: 2}
+    position: {x: 27.887424, y: -18.658619}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: ce318459065f4c52af124a51acae9a3c
+    piece: {fileID: 11400000, guid: bce1824f6ee541a439d9ca2b36202096, type: 2}
+    position: {x: 21.05524, y: -45.086662}
+    rotationSteps45: 0
+    mirrored: 0
+  links:
+  - pieceGuidA: c1d1a8d6b9cf48ddb02885f17c96cf0d
+    connectorIndexA: 1
+    pieceGuidB: ce318459065f4c52af124a51acae9a3c
+    connectorIndexB: 0
   startFinish:
     pieceGuid: 
     segmentIndex: 0
