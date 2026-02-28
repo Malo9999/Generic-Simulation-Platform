@@ -1,5 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public sealed class MarbleRaceTrackRenderer
 {
@@ -68,9 +71,35 @@ public sealed class MarbleRaceTrackRenderer
     {
         if (trackRoot != null)
         {
-            Object.Destroy(trackRoot.gameObject);
+            DestroyTrackObject(trackRoot.gameObject);
             trackRoot = null;
         }
+    }
+
+    private static void DestroyTrackObject(GameObject target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        if (Application.isPlaying)
+        {
+            Object.Destroy(target);
+            return;
+        }
+
+#if UNITY_EDITOR
+        EditorApplication.delayCall += () =>
+        {
+            if (target != null)
+            {
+                Object.DestroyImmediate(target);
+            }
+        };
+#else
+        Object.Destroy(target);
+#endif
     }
 
     private void BuildLayeredLines(MarbleRaceTrack track, float roadWidth, float borderWidth)
@@ -202,7 +231,7 @@ public sealed class MarbleRaceTrackRenderer
             var child = trackRoot.GetChild(i);
             if (!child.name.StartsWith("Track") && child.name != "StartFinishLine")
             {
-                Object.Destroy(child.gameObject);
+                DestroyTrackObject(child.gameObject);
             }
         }
     }
