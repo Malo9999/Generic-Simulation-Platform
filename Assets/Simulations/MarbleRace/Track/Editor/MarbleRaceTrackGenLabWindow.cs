@@ -4,6 +4,8 @@ using UnityEngine;
 
 public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
 {
+    private const string PreviewRootName = "__TrackGenPreview";
+
     private sealed class SeedReport
     {
         public int Seed;
@@ -27,13 +29,39 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
     private int trackVariant;
     private int minQualityScore = 0;
     private bool sortDescending = true;
+    private bool pinPreview;
     private int selectedIndex = -1;
     private Vector2 scroll;
+    private GameObject previewRoot;
 
     [MenuItem("Tools/MarbleRace/TrackGen Lab")]
     private static void Open()
     {
         GetWindow<MarbleRaceTrackGenLabWindow>("TrackGen Lab");
+    }
+
+    [MenuItem("Tools/MarbleRace/Clear Track Preview")]
+    private static void ClearTrackPreviewMenu()
+    {
+        CleanupPreviewGlobal(force: true);
+    }
+
+    private void OnEnable()
+    {
+        EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+        AssemblyReloadEvents.beforeAssemblyReload += OnBeforeAssemblyReload;
+    }
+
+    private void OnDisable()
+    {
+        EditorApplication.playModeStateChanged -= OnPlayModeStateChanged;
+        AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeAssemblyReload;
+        CleanupPreview();
+    }
+
+    private void OnDestroy()
+    {
+        CleanupPreview();
     }
 
     private void OnGUI()
@@ -49,6 +77,7 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         EditorGUILayout.Space(6f);
         minQualityScore = EditorGUILayout.IntSlider("Min Quality Score", minQualityScore, 0, 100);
         sortDescending = EditorGUILayout.ToggleLeft("Sort by quality score (desc)", sortDescending);
+        pinPreview = EditorGUILayout.ToggleLeft("Pin Preview", pinPreview);
 
         if (GUILayout.Button("Generate + Validate Seeds"))
         {
@@ -63,6 +92,11 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
             {
                 PreviewSelected();
             }
+        }
+
+        if (GUILayout.Button("Clear Track Preview"))
+        {
+            CleanupPreview(force: true);
         }
 
         EditorGUILayout.Space(8f);
@@ -214,11 +248,7 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         var generator = new MarbleRaceTrackGenerator();
         var track = generator.Build(arenaWidth * 0.5f, arenaHeight * 0.5f, rng, seed, variant, -1, out _);
 
-        var root = GameObject.Find("TrackGenLabPreview");
-        if (root == null)
-        {
-            root = new GameObject("TrackGenLabPreview");
-        }
+        var root = EnsurePreviewRoot();
 
         var renderer = new MarbleRaceTrackRenderer();
         renderer.Apply(root.transform, track);
@@ -230,7 +260,89 @@ public sealed class MarbleRaceTrackGenLabWindow : EditorWindow
         }
 
         overlay.Assign(track, report.Quality);
+        ApplyPreviewHideFlags(root);
         Selection.activeGameObject = root;
         Debug.Log($"[TrackGenLab] Previewed seed={seed} variant={variant} score={report.QualityScore}");
+    }
+
+    private GameObject EnsurePreviewRoot()
+    {
+        if (previewRoot == null)
+        {
+            previewRoot = GameObject.Find(PreviewRootName);
+        }
+
+        if (previewRoot == null)
+        {
+            previewRoot = new GameObject(PreviewRootName);
+        }
+
+        previewRoot.transform.SetParent(null);
+        ApplyPreviewHideFlags(previewRoot);
+        return previewRoot;
+    }
+
+    private static void ApplyPreviewHideFlags(GameObject root)
+    {
+        root.hideFlags = HideFlags.DontSaveInEditor;
+        for (var i = 0; i < root.transform.childCount; i++)
+        {
+            root.transform.GetChild(i).gameObject.hideFlags = HideFlags.DontSaveInEditor;
+        }
+    }
+
+    private void OnPlayModeStateChanged(PlayModeStateChange state)
+    {
+        if (state == PlayModeStateChange.ExitingEditMode || state == PlayModeStateChange.EnteredPlayMode)
+        {
+            CleanupPreview();
+        }
+    }
+
+    private void OnBeforeAssemblyReload()
+    {
+        CleanupPreview();
+    }
+
+    private void CleanupPreview(bool force = false)
+    {
+        if (pinPreview && !force)
+        {
+            return;
+        }
+
+        CleanupPreview(force, ref previewRoot);
+    }
+
+    private static void CleanupPreview(bool force, ref GameObject cachedRoot)
+    {
+        if (!force)
+        {
+            var openWindows = Resources.FindObjectsOfTypeAll<MarbleRaceTrackGenLabWindow>();
+            for (var i = 0; i < openWindows.Length; i++)
+            {
+                if (openWindows[i] != null && openWindows[i].pinPreview)
+                {
+                    return;
+                }
+            }
+        }
+
+        if (cachedRoot == null)
+        {
+            cachedRoot = GameObject.Find(PreviewRootName);
+        }
+
+        if (cachedRoot != null)
+        {
+            DestroyImmediate(cachedRoot);
+            cachedRoot = null;
+        }
+    }
+
+    private static void CleanupPreviewGlobal(bool force = false)
+    {
+        GameObject cachedRoot = null;
+        CleanupPreview(force, ref cachedRoot);
     }
 }
