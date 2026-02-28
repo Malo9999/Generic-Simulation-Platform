@@ -134,7 +134,7 @@ namespace GSP.TrackEditor.Editor
         {
             var c0 = Connector("E", new Vector2(L, 0f), Dir8.E, role);
             var c1 = Connector("N", new Vector2(0f, L), Dir8.N, role);
-            var path = MakeCorner90QuarterArc(16);
+            var path = BezierFromConnectors(c0, c1, 18);
             var segments = new[]
             {
                 Segment(0, 1, role, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
@@ -153,10 +153,7 @@ namespace GSP.TrackEditor.Editor
             var p1 = c1.localPos;
             var startTravelDir = -c0.localDir.ToVector2();
             var endTravelDir = c1.localDir.ToVector2();
-            const float handleLength = 8.5f;
-            var c0h = p0 + startTravelDir.normalized * handleLength;
-            var c1h = p1 - endTravelDir.normalized * handleLength;
-            var path = MakeCubicBezier(p0, c0h, c1h, p1, 14);
+            var path = BezierByHandleRule(p0, p1, startTravelDir, endTravelDir, 14);
 
             var segments = new[]
             {
@@ -176,10 +173,7 @@ namespace GSP.TrackEditor.Editor
             var p1 = c1.localPos;
             var startTravelDir = -c0.localDir.ToVector2();
             var endTravelDir = c1.localDir.ToVector2();
-            const float handleLength = 8.5f;
-            var c0h = p0 + startTravelDir.normalized * handleLength;
-            var c1h = p1 - endTravelDir.normalized * handleLength;
-            var path = MakeCubicBezier(p0, c0h, c1h, p1, 14);
+            var path = BezierByHandleRule(p0, p1, startTravelDir, endTravelDir, 14);
 
             var segments = new[]
             {
@@ -199,13 +193,11 @@ namespace GSP.TrackEditor.Editor
             var p1 = new Vector2(-L, -1.6f * L);
             var p2 = new Vector2(L, -1.6f * L);
             var p3 = new Vector2(L, 0f);
-            var control = new[] { p0, p1, p2, p3 };
-            var path = FilletPolyline(control, 0.65f * L, 12);
-            if (path.Length > 0)
-            {
-                path[0] = p0;
-                path[path.Length - 1] = p3;
-            }
+
+            var travelDir = Vector2.right;
+            var seg1 = BezierByHandleRule(p0, p1, travelDir, travelDir, 14);
+            var seg2 = BezierByHandleRule(p2, p3, travelDir, travelDir, 14);
+            var path = CombineUnique(seg1, new[] { p1, p2 }, seg2);
             var segments = new[]
             {
                 Segment(0, 1, TrackConnectorRole.Main, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
@@ -220,7 +212,7 @@ namespace GSP.TrackEditor.Editor
             var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
             var pitOut = Connector("PitOut", new Vector2(0f, -L), Dir8.S, TrackConnectorRole.Pit);
-            var pitPath = MakeCubicBezier(mainIn.localPos, mainIn.localPos + Vector2.right * 7f, pitOut.localPos + Vector2.up * 7f, pitOut.localPos, 14);
+            var pitPath = BezierByHandleRule(mainIn.localPos, pitOut.localPos, -mainIn.localDir.ToVector2(), pitOut.localDir.ToVector2(), 14);
 
             var segments = new[]
             {
@@ -238,7 +230,7 @@ namespace GSP.TrackEditor.Editor
             var pitIn = Connector("PitIn", new Vector2(0f, -L), Dir8.S, TrackConnectorRole.Pit);
             var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
-            var pitPath = MakeCubicBezier(pitIn.localPos, pitIn.localPos + Vector2.up * 7f, mainOut.localPos + Vector2.left * 7f, mainOut.localPos, 14);
+            var pitPath = BezierByHandleRule(pitIn.localPos, mainOut.localPos, -pitIn.localDir.ToVector2(), mainOut.localDir.ToVector2(), 14);
 
             var segments = new[]
             {
@@ -257,7 +249,7 @@ namespace GSP.TrackEditor.Editor
             var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
             var pitOut = Connector("PitOut", new Vector2(L, -offset), Dir8.E, TrackConnectorRole.Pit);
-            var pitPath = MakeCubicBezier(mainIn.localPos, mainIn.localPos + Vector2.right * 8f, pitOut.localPos + Vector2.left * 8f, pitOut.localPos, 14);
+            var pitPath = BezierByHandleRule(mainIn.localPos, pitOut.localPos, -mainIn.localDir.ToVector2(), pitOut.localDir.ToVector2(), 14);
 
             var segments = new[]
             {
@@ -276,7 +268,7 @@ namespace GSP.TrackEditor.Editor
             var pitIn = Connector("PitIn", new Vector2(-L, -offset), Dir8.W, TrackConnectorRole.Pit);
             var mainIn = Connector("MainIn", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
             var mainOut = Connector("MainOut", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
-            var pitPath = MakeCubicBezier(pitIn.localPos, pitIn.localPos + Vector2.right * 8f, mainOut.localPos + Vector2.left * 8f, mainOut.localPos, 14);
+            var pitPath = BezierByHandleRule(pitIn.localPos, mainOut.localPos, -pitIn.localDir.ToVector2(), mainOut.localDir.ToVector2(), 14);
 
             var segments = new[]
             {
@@ -349,24 +341,21 @@ namespace GSP.TrackEditor.Editor
             return rotated;
         }
 
-        private static Vector2[] MakeCorner90QuarterArc(int steps)
+        private static Vector2[] BezierFromConnectors(TrackConnector from, TrackConnector to, int steps)
         {
-            var center = new Vector2(L, L);
-            var samples = Mathf.Max(1, steps);
-            var path = new Vector2[samples + 1];
-            for (var i = 0; i <= samples; i++)
-            {
-                var t = i / (float)samples;
-                var angle = Mathf.Lerp(-Mathf.PI * 0.5f, -Mathf.PI, t);
-                path[i] = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * L;
-            }
-
-            path[0] = new Vector2(L, 0f);
-            path[samples] = new Vector2(0f, L);
-            return path;
+            return BezierByHandleRule(from.localPos, to.localPos, -from.localDir.ToVector2(), to.localDir.ToVector2(), steps);
         }
 
-        private static Vector2[] MakeCubicBezier(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 p1, int steps)
+        private static Vector2[] BezierByHandleRule(Vector2 p0, Vector2 p1, Vector2 startDir, Vector2 endDir, int steps)
+        {
+            var chord = (p1 - p0).magnitude;
+            var handleLength = Mathf.Clamp(chord * 0.55f, 4f, 14f);
+            var c0 = p0 + startDir.normalized * handleLength;
+            var c1 = p1 - endDir.normalized * handleLength;
+            return Bezier(p0, c0, c1, p1, steps);
+        }
+
+        private static Vector2[] Bezier(Vector2 p0, Vector2 c0, Vector2 c1, Vector2 p1, int steps)
         {
             var count = Mathf.Max(1, steps);
             var result = new Vector2[count + 1];
@@ -386,64 +375,25 @@ namespace GSP.TrackEditor.Editor
             return result;
         }
 
-        private static Vector2[] FilletPolyline(Vector2[] pts, float r, int stepsPerCorner)
+        private static Vector2[] CombineUnique(params Vector2[][] arrays)
         {
-            if (pts == null || pts.Length < 2)
+            var result = new List<Vector2>();
+            foreach (var array in arrays)
             {
-                return pts ?? new Vector2[0];
-            }
-
-            var result = new List<Vector2> { pts[0] };
-            for (var i = 1; i < pts.Length - 1; i++)
-            {
-                var prev = pts[i - 1];
-                var curr = pts[i];
-                var next = pts[i + 1];
-
-                var inDir = (curr - prev).normalized;
-                var outDir = (next - curr).normalized;
-                var turn = Vector2.SignedAngle(inDir, outDir);
-                if (Mathf.Abs(turn) < 1f)
+                if (array == null)
                 {
-                    result.Add(curr);
                     continue;
                 }
 
-                var theta = Mathf.Abs(turn) * Mathf.Deg2Rad;
-                var maxRadius = Mathf.Min((curr - prev).magnitude, (next - curr).magnitude) * 0.49f;
-                var cornerRadius = Mathf.Min(r, maxRadius);
-                if (cornerRadius <= 0.001f)
+                foreach (var point in array)
                 {
-                    result.Add(curr);
-                    continue;
+                    if (result.Count == 0 || !Approximately(result[result.Count - 1], point))
+                    {
+                        result.Add(point);
+                    }
                 }
-
-                var tangentOffset = cornerRadius / Mathf.Tan(theta * 0.5f);
-                var start = curr - inDir * tangentOffset;
-                var end = curr + outDir * tangentOffset;
-
-                var sign = Mathf.Sign(turn);
-                var nIn = sign > 0f ? new Vector2(-inDir.y, inDir.x) : new Vector2(inDir.y, -inDir.x);
-                var center = start + nIn * cornerRadius;
-
-                var startAngle = Mathf.Atan2(start.y - center.y, start.x - center.x);
-                var endAngle = Mathf.Atan2(end.y - center.y, end.x - center.x);
-                var ccw = Mathf.Repeat(endAngle - startAngle, Mathf.PI * 2f);
-                var cw = ccw - Mathf.PI * 2f;
-                var delta = sign > 0f ? ccw : cw;
-
-                result.Add(start);
-                for (var step = 1; step <= stepsPerCorner; step++)
-                {
-                    var t = step / (float)(stepsPerCorner + 1);
-                    var angle = startAngle + delta * t;
-                    result.Add(center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * cornerRadius);
-                }
-
-                result.Add(end);
             }
 
-            result.Add(pts[pts.Length - 1]);
             return result.ToArray();
         }
 
@@ -487,6 +437,15 @@ namespace GSP.TrackEditor.Editor
                 right[i] = center[i] - normal * HW;
             }
 
+            // Defensive endcap correction: force boundary points to match exact endpoint tangent planes.
+            var startCapNormal = new Vector2(-startDir.y, startDir.x);
+            left[0] = center[0] + startCapNormal * HW;
+            right[0] = center[0] - startCapNormal * HW;
+
+            var endCapNormal = new Vector2(-endDir.y, endDir.x);
+            left[center.Length - 1] = center[center.Length - 1] + endCapNormal * HW;
+            right[center.Length - 1] = center[center.Length - 1] - endCapNormal * HW;
+
             return new TrackSegment
             {
                 fromConnectorIndex = from,
@@ -519,7 +478,84 @@ namespace GSP.TrackEditor.Editor
             piece.connectors = connectors;
             piece.segments = segments;
             piece.localBounds = BuildBounds(connectors, segments);
+            ValidatePieceGeometryContract(piece);
             return piece;
+        }
+
+        private static void ValidatePieceGeometryContract(TrackPieceDef piece)
+        {
+            if (piece.category != "Main" && piece.category != "PitLane")
+            {
+                return;
+            }
+
+            const float epsilon = 0.01f;
+            for (var i = 0; i < piece.connectors.Length; i++)
+            {
+                var c = piece.connectors[i];
+                if (!IsOnContractLattice(c.localPos, epsilon))
+                {
+                    Debug.LogError($"[{piece.pieceId}] Connector '{c.id}' is off lattice at {c.localPos}.");
+                }
+            }
+
+            for (var i = 0; i < piece.segments.Length; i++)
+            {
+                var segment = piece.segments[i];
+                var from = piece.connectors[segment.fromConnectorIndex];
+                var to = piece.connectors[segment.toConnectorIndex];
+                var center = segment.localCenterline;
+                if (center == null || center.Length < 2)
+                {
+                    Debug.LogError($"[{piece.pieceId}] Segment {i} has invalid centerline.");
+                    continue;
+                }
+
+                if (!Approximately(center[0], from.localPos, epsilon) || !Approximately(center[center.Length - 1], to.localPos, epsilon))
+                {
+                    Debug.LogError($"[{piece.pieceId}] Segment {i} centerline endpoints do not match connectors exactly.");
+                }
+
+                var startDir = (-from.localDir.ToVector2()).normalized;
+                var endDir = to.localDir.ToVector2().normalized;
+                var startTangent = (center[1] - center[0]).normalized;
+                var endTangent = (center[center.Length - 1] - center[center.Length - 2]).normalized;
+
+                if (Vector2.Dot(startTangent, startDir) <= 0.95f)
+                {
+                    Debug.LogError($"[{piece.pieceId}] Segment {i} start tangent misaligned. dot={Vector2.Dot(startTangent, startDir):0.###}");
+                }
+
+                if (Vector2.Dot(endTangent, endDir) <= 0.95f)
+                {
+                    Debug.LogError($"[{piece.pieceId}] Segment {i} end tangent misaligned. dot={Vector2.Dot(endTangent, endDir):0.###}");
+                }
+
+                Debug.Assert(Vector2.Dot(startTangent, startDir) > 0.95f, $"[{piece.pieceId}] Segment {i} start tangent contract failed.");
+                Debug.Assert(Vector2.Dot(endTangent, endDir) > 0.95f, $"[{piece.pieceId}] Segment {i} end tangent contract failed.");
+            }
+        }
+
+        private static bool IsOnContractLattice(Vector2 p, float epsilon)
+        {
+            return IsNear(p.x, -L, epsilon) && IsNear(p.y, 0f, epsilon)
+                   || IsNear(p.x, L, epsilon) && IsNear(p.y, 0f, epsilon)
+                   || IsNear(p.x, 0f, epsilon) && IsNear(p.y, L, epsilon)
+                   || IsNear(p.x, 0f, epsilon) && IsNear(p.y, -L, epsilon)
+                   || IsNear(p.x, L, epsilon) && IsNear(p.y, L, epsilon)
+                   || IsNear(p.x, -L, epsilon) && IsNear(p.y, L, epsilon)
+                   || IsNear(p.x, L, epsilon) && IsNear(p.y, -L, epsilon)
+                   || IsNear(p.x, -L, epsilon) && IsNear(p.y, -L, epsilon);
+        }
+
+        private static bool IsNear(float value, float target, float epsilon)
+        {
+            return Mathf.Abs(value - target) <= epsilon;
+        }
+
+        private static bool Approximately(Vector2 a, Vector2 b, float epsilon = 0.0001f)
+        {
+            return (a - b).sqrMagnitude <= epsilon * epsilon;
         }
 
         private static TrackPieceDef CreatePiece(string pieceId, string displayName, string category, float trackWidth, TrackConnector[] connectors, TrackSegment[] segments)
