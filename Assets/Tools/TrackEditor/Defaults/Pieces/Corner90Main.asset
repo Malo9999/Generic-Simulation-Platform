@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
   pieceId: Corner90Main
   displayName: Corner 90 (Main)
-  category: Corner 90 (Main)
+  category: Corner
   trackWidth: 8
   connectors:
   - id: W

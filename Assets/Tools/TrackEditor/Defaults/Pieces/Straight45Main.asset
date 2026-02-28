@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
   pieceId: Straight45Main
   displayName: Straight 45 (Main)
-  category: Straight 45 (Main)
+  category: Main
   trackWidth: 8
   connectors:
   - id: SW

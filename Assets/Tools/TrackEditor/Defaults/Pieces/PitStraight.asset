@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
   pieceId: PitStraight
   displayName: Pit Straight (Pit)
-  category: Pit Straight (Pit)
+  category: PitLane
   trackWidth: 8
   connectors:
   - id: W

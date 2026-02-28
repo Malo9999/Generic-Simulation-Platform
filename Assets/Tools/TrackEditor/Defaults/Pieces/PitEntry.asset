@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: PitEntry
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceDef
   pieceId: PitEntry
-  displayName: Pit Entry
-  category: Pit
+  displayName: Pit Entry (Main+Pit)
+  category: PitLane
   trackWidth: 8
   connectors:
   - id: MainIn
