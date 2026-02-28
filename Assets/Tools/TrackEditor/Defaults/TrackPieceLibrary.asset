@@ -9,13 +9,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 0}
+  m_Script: {fileID: 11500000, guid: b0ad94e298594be89e66ab0afefc22d5, type: 3}
   m_Name: TrackPieceLibrary
-  m_EditorClassIdentifier: Assembly-CSharp:GSP.TrackEditor:TrackPieceLibrary
+  m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackPieceLibrary
   pieces:
-  - {fileID: 11400000, guid: 8f3977e7b9444314aba8c7ea539a86f1, type: 2}
-  - {fileID: 11400000, guid: b463ed3d77a04ed4c8c9f7bff1327396, type: 2}
-  - {fileID: 11400000, guid: fbfbcacb222515b48b87de58347d1ca1, type: 2}
-  - {fileID: 11400000, guid: aa699caff9747a04e976743427532e27, type: 2}
-  - {fileID: 11400000, guid: a5edcd82a822a0841acc9971d24452f2, type: 2}
-  - {fileID: 11400000, guid: 108bca5c8b60c0c4a843b493b54a4251, type: 2}
+  - {fileID: 11400000, guid: 4d96846255c634a4facd0eaa50f72199, type: 2}
+  - {fileID: 11400000, guid: 383df6ad5c4108a499484b6a9f298654, type: 2}
+  - {fileID: 11400000, guid: 72895edd5da7f224db76db02aae75772, type: 2}
+  - {fileID: 11400000, guid: 603fc3e9cc1ea684e8477e25723dfd11, type: 2}
