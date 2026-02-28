@@ -285,7 +285,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
 
         simulationSeed = GenerateNextTrackSeed(simulationSeed);
         trackVariant++;
-        Debug.Log($"[MarbleRace] ForceNewTrack seed={simulationSeed} trackVariant={trackVariant}");
+        Debug.Log($"[MarbleRace] ForceNewTrack variant={trackVariant}");
         RebuildTrackAndResetToReady();
     }
 

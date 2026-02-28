@@ -278,7 +278,7 @@ public sealed class MarbleRaceTrackRenderer
             lr = go.AddComponent<LineRenderer>();
         }
 
-        lr.material = GetSharedMaterial();
+        lr.sharedMaterial = GetSharedMaterial();
         lr.loop = loop;
         lr.useWorldSpace = true;
         lr.alignment = LineAlignment.View;
