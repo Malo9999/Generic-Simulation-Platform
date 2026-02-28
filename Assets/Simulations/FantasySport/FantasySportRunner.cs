@@ -209,11 +209,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private readonly SpriteRenderer[,] lineDebugRenderers = new SpriteRenderer[2, 3];
     private static Sprite cachedWhitePixelSprite;
     private bool arraysLogPending;
+    private bool endzoneDebugLogged;
 
     public void Initialize(ScenarioConfig config)
     {
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "FantasySport");
         EnsureMainCamera();
+        EnsureScoreboardText();
         SetScoreboardVisible(true);
         ApplySimulationConfig(config);
         BuildAthletes(config);
@@ -446,6 +448,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var rng = RngService.Fork("SIM:FantasySport:HAZARDS");
         var endzoneDepth = GetEndzoneDepth();
         var endzoneHalfHeight = GetEndzoneHalfHeight();
+        if (!endzoneDebugLogged)
+        {
+            endzoneDebugLogged = true;
+            Debug.Log($"[FantasySport] goalMouthHalfH={GetGoalMouthHalfHeight():F2} endzoneHalfH={endzoneHalfHeight:F2} depth={endzoneDepth:F2}");
+        }
         speedPads = FantasySportHazards.GenerateSymmetricPads(halfWidth, halfHeight, PadSize, rules.goalDepth);
         var keepouts = FantasySportHazards.GetPadKeepouts(speedPads, 1.2f);
         bumpers = FantasySportHazards.GenerateBumpers(rng, BumperCount, halfWidth, halfHeight, BumperRadius, BumperMinDistance, endzoneDepth, endzoneHalfHeight, keepouts);
@@ -827,9 +834,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                     return;
                 }
 
-                if (forceSwitch)
+                if (forceSwitch || centralBlocked || stagnant > 1.2f)
                 {
-                    var switchCornerTarget = GetCornerTargetForTeam(teamId, GetAttackWingSign(teamId) * -1f);
+                    var wingSign = forceSwitch ? GetAttackWingSign(teamId) * -1f : GetAttackWingSign(teamId);
+                    var switchCornerTarget = GetCornerTargetForTeam(teamId, wingSign);
                     ThrowBall(carrier, switchCornerTarget, -1, false);
                     passCooldowns[carrier] = PassCooldownSeconds;
                     return;
@@ -1253,7 +1261,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (shortIdx >= 0)
         {
             var shortTarget = carrierPos - (towardGoal * 3f) + new Vector2(0f, Mathf.Sign(carrierPos.y == 0f ? GetAttackWingSign(teamId) : carrierPos.y) * 1.4f);
-            SetIntent(shortIdx, IntentType.SupportShort, shortTarget, 2f);
+            SetIntent(shortIdx, IntentType.SupportShort, shortTarget, 1.8f);
         }
 
         if (wideIdx >= 0)
@@ -1265,14 +1273,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             var target = new Vector2(Mathf.Clamp(carrierPos.x + towardGoal.x * 5.5f, -halfWidth + 1.2f, halfWidth - 1.2f), wingY * GetLaneWideY(teamId));
-            SetIntent(wideIdx, IntentType.HoldWidth, target, 2f);
+            SetIntent(wideIdx, IntentType.HoldWidth, target, 2.2f);
         }
 
         if (forwardIdx >= 0)
         {
             var laneY = Mathf.Lerp(0f, GetLaneNarrowY(teamId), 0.8f) * Mathf.Sign(carrierPos.y == 0f ? GetAttackWingSign(teamId) : carrierPos.y);
             var target = carrierPos + (towardGoal * RunDepth) + new Vector2(0f, laneY * 0.65f);
-            SetIntent(forwardIdx, IntentType.RunInBehind, target, 2f);
+            SetIntent(forwardIdx, IntentType.RunInBehind, target, 2.3f);
         }
     }
 
@@ -1939,6 +1947,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         home.y = GetLaneY(laneByIndex[athleteIndex], halfHeight, 0f, teamId);
 
+        if (ShouldApplyWidthAnchor(teamId, athleteIndex))
+        {
+            home.y = GetWidthAnchorTargetY(teamId, athleteIndex);
+        }
+
         if (athleteIndex < intentUntilTime.Length && matchTimeSeconds < intentUntilTime[athleteIndex])
         {
             var intentBlend = Mathf.InverseLerp(intentUntilTime[athleteIndex], intentUntilTime[athleteIndex] - 0.55f, matchTimeSeconds);
@@ -2498,18 +2511,24 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void UpdateScoreboardUI(bool force)
     {
+        var scoreboardObject = EnsureScoreboardText();
         if (scoreboardText == null)
         {
-            FindScoreboardText();
+            scoreboardText = scoreboardObject != null ? scoreboardObject.GetComponent<Text>() : null;
             if (scoreboardText == null)
             {
                 if (!scoreboardMissingLogged)
                 {
                     scoreboardMissingLogged = true;
-                    Debug.LogWarning("[FantasySport] ScoreboardText not found. Run 'GSP/Dev/Recreate Broadcast UI (Minimap + HUD)' to create it.");
+                    Debug.LogWarning("[FantasySport] BroadcastCanvas missing; scoreboard unavailable.");
                 }
                 return;
             }
+        }
+
+        if (scoreboardObject != null && !scoreboardObject.activeSelf)
+        {
+            scoreboardObject.SetActive(true);
         }
 
         var remainingWhole = Mathf.CeilToInt(Mathf.Max(0f, rules.matchSeconds - elapsedMatchTime));
@@ -2523,7 +2542,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastScoreboardTeam1 = scoreTeam1;
         var minutes = remainingWhole / 60;
         var seconds = remainingWhole % 60;
-        scoreboardText.text = $"BLUE {scoreTeam0}  —  {scoreTeam1} ORANGE   {minutes:00}:{seconds:00}";
+        scoreboardText.text = $"BLUE {scoreTeam0} — {scoreTeam1} ORANGE   {minutes:00}:{seconds:00}";
     }
 
     private void ResolveArtPipeline()
@@ -3111,9 +3130,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private Vector2 GetCornerTargetForTeam(int teamId, float wingSign)
     {
+        var padding = 1.4f;
         var cornerX = teamId == 0
-            ? halfWidth - (GetEndzoneDepth() * 0.5f)
-            : -halfWidth + (GetEndzoneDepth() * 0.5f);
+            ? halfWidth - padding
+            : -halfWidth + padding;
         var cornerY = Mathf.Clamp(wingSign * GetLaneWideY(teamId), -halfHeight + 1f, halfHeight - 1f);
         return new Vector2(cornerX, cornerY);
     }
@@ -3352,22 +3372,15 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         var hasPossession = ballOwnerTeam == teamId;
         var phase = teamId >= 0 && teamId < teamPhase.Length ? teamPhase[teamId] : TeamPhase.Transition;
+        halfFrac = 0.24f;
+
         if (hasPossession && (phase == TeamPhase.Advance || phase == TeamPhase.FinalThird))
         {
             wingFrac = 0.46f;
-            halfFrac = 0.22f;
             return;
         }
 
-        if (!hasPossession)
-        {
-            wingFrac = 0.38f;
-            halfFrac = 0.22f;
-            return;
-        }
-
-        wingFrac = phase == TeamPhase.Transition ? 0.40f : 0.42f;
-        halfFrac = 0.22f;
+        wingFrac = hasPossession ? 0.42f : 0.38f;
     }
 
     private float GetLaneY(Lane lane, float arenaHalfHeight, float bonus = 0f, int teamId = -1)
@@ -3544,8 +3557,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private float GetGoalMouthHalfHeight() => Mathf.Clamp(rules.goalHeight * 0.5f, 2.5f, halfHeight - 3f);
     private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
-    private float GetEndzoneDepth() => Mathf.Clamp(rules.goalDepth * 1.5f, 5f, 10f);
-    private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * 1.5f, 3f, halfHeight - 2f);
+    private float GetEndzoneDepth() => Mathf.Clamp(rules.goalDepth * 1.5f, 6f, 9f);
+    private float GetEndzoneHalfHeight() => Mathf.Clamp(GetGoalMouthHalfHeight() * 1.5f, 2f, halfHeight - 2f);
 
     private float GetLaneWideY() => GetLaneWideY(ballOwnerTeam);
     private float GetLaneNarrowY() => GetLaneNarrowY(ballOwnerTeam);
@@ -3598,6 +3611,18 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                     p.x = Mathf.Max(p.x, centerLimit + 0.6f);
                 }
             }
+        }
+
+        if (ShouldApplyWidthAnchor(identities[athleteIndex].teamId, athleteIndex) && athleteIndex != ballOwnerIndex)
+        {
+            var minWideY = GetLaneNarrowY(identities[athleteIndex].teamId);
+            var sign = Mathf.Sign(GetWidthAnchorTargetY(identities[athleteIndex].teamId, athleteIndex));
+            if (Mathf.Abs(sign) < 0.001f)
+            {
+                sign = 1f;
+            }
+
+            p.y = sign > 0f ? Mathf.Max(p.y, minWideY) : Mathf.Min(p.y, -minWideY);
         }
 
         if (p.x < -halfWidth || p.x > halfWidth)
@@ -3713,8 +3738,39 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void FindScoreboardText()
     {
-        var scoreboardObject = GameObject.Find("ScoreboardText");
-        scoreboardText = scoreboardObject != null ? scoreboardObject.GetComponent<Text>() : null;
+        scoreboardText = EnsureScoreboardText()?.GetComponent<Text>();
+    }
+
+    private GameObject EnsureScoreboardText()
+    {
+        var canvasObject = GameObject.Find("BroadcastCanvas");
+        if (canvasObject == null)
+        {
+            return null;
+        }
+
+        var scoreboard = canvasObject.transform.Find("ScoreboardText")?.gameObject;
+        if (scoreboard == null)
+        {
+            scoreboard = new GameObject("ScoreboardText", typeof(RectTransform), typeof(Text));
+            scoreboard.transform.SetParent(canvasObject.transform, false);
+
+            var rect = scoreboard.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0.5f, 1f);
+            rect.anchorMax = new Vector2(0.5f, 1f);
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition = new Vector2(0f, -18f);
+            rect.sizeDelta = new Vector2(760f, 58f);
+
+            var text = scoreboard.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            text.fontSize = 30;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.color = Color.white;
+            text.raycastTarget = false;
+        }
+
+        return scoreboard;
     }
 
     private void CreateLineDebugVisuals(Transform parent)
@@ -3788,8 +3844,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var fill = zone.AddComponent<SpriteRenderer>();
         fill.sprite = GetWhitePixelSprite();
         fill.color = teamId == 0
-            ? new Color(0.36f, 0.42f, 0.95f, 0.14f)
-            : new Color(0.58f, 0.33f, 0.92f, 0.14f);
+            ? new Color(0.36f, 0.42f, 0.95f, 0.12f)
+            : new Color(0.58f, 0.33f, 0.92f, 0.12f);
         RenderOrder.Apply(fill, RenderOrder.WorldDeco - 1);
     }
 
@@ -3887,6 +3943,45 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         {
             scoreboardObject.SetActive(visible);
         }
+    }
+
+    private bool ShouldApplyWidthAnchor(int teamId, int athleteIndex)
+    {
+        if (athleteIndex < 0 || athleteIndex >= TotalAthletes || IsGoalkeeper(athleteIndex) || ballOwnerTeam != teamId)
+        {
+            return false;
+        }
+
+        var phase = teamPhase[teamId];
+        if (phase != TeamPhase.Advance && phase != TeamPhase.FinalThird)
+        {
+            return false;
+        }
+
+        var localIndex = teamLocalIndexByIndex[athleteIndex];
+        if (localIndex == 11 || localIndex == 13)
+        {
+            return true;
+        }
+
+        return GetAttackWingSign(teamId) < 0f ? localIndex == 7 : localIndex == 10;
+    }
+
+    private float GetWidthAnchorTargetY(int teamId, int athleteIndex)
+    {
+        var wingY = Mathf.Min(halfHeight * 0.46f, halfHeight - 1.4f);
+        var localIndex = teamLocalIndexByIndex[athleteIndex];
+        if (localIndex == 11)
+        {
+            return -wingY;
+        }
+
+        if (localIndex == 13)
+        {
+            return wingY;
+        }
+
+        return GetAttackWingSign(teamId) < 0f ? -wingY : wingY;
     }
 
     private void EnsureMainCamera()
