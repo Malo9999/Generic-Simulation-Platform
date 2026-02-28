@@ -53,16 +53,19 @@ public class ArenaCameraPolicy : MonoBehaviour
     [Header("Debug")]
     public bool logAutoWire = false;
     public bool logZoomChanges = false;
-    public bool debugCameraHud = false;
+    public bool debugHud = false;
 
     private bool _warnedMissingPixelPerfect;
     private float _baseOrthographicSize = -1f;
-    private float _nextDebugHudTime;
     private float _lastOrthoBeforeApply;
     private float _lastOrthoAfterApply;
     private float _lastDesiredOrtho;
     private float _lastMaxAllowedOrtho;
     private Rect _lastBoundsRect;
+    private string _lastOrthoWriter = "(none)";
+    private int _lastOrthoWriteFrame = -1;
+    private float _lastFitToBoundsTime = -1f;
+    private int _lastFitToBoundsFrame = -1;
 
     private void Reset() => AutoWire();
     private void OnValidate() => AutoWire();
@@ -118,9 +121,9 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         transform.position = p;
 
-        if (debugCameraHud)
+        if (debugHud)
         {
-            LogDebugCameraHud();
+            CacheDebugState();
         }
     }
 
@@ -152,35 +155,10 @@ public class ArenaCameraPolicy : MonoBehaviour
         var center = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, transform.position.z);
         transform.position = center;
 
-        if (pixelPerfectComponent == null)
-        {
-            targetCamera.orthographicSize = requiredOrthographicSize;
-            return;
-        }
-
-        var bestLevel = minZoomLevel;
-        var foundFit = false;
-
-        for (var level = maxZoomLevel; level >= minZoomLevel; level--)
-        {
-            zoomLevel = level;
-            ApplyZoom();
-
-            if (targetCamera.orthographicSize + 0.001f >= requiredOrthographicSize)
-            {
-                bestLevel = level;
-                foundFit = true;
-                break;
-            }
-        }
-
-        if (!foundFit)
-        {
-            bestLevel = minZoomLevel;
-        }
-
-        zoomLevel = Mathf.Clamp(bestLevel, minZoomLevel, maxZoomLevel);
-        ApplyZoom();
+        SyncZoomLevelToOrtho(requiredOrthographicSize);
+        _lastFitToBoundsTime = Time.unscaledTime;
+        _lastFitToBoundsFrame = Time.frameCount;
+        ApplyZoom("FitToBounds");
     }
 
     public void BindArenaBounds(Collider2D boundsCollider, bool fitToBounds)
@@ -203,7 +181,17 @@ public class ArenaCameraPolicy : MonoBehaviour
         return boundsRect.width > 0f && boundsRect.height > 0f;
     }
 
-    private void ApplyZoom()
+    public void SetOrthoFromExternal(float value, string writer, bool syncZoomLevel)
+    {
+        if (syncZoomLevel)
+        {
+            SyncZoomLevelToOrtho(value);
+        }
+
+        SetOrtho(value, writer);
+    }
+
+    private void ApplyZoom(string writer = "ApplyZoom")
     {
         AutoWire();
         CacheBaseOrthographicSize();
@@ -219,14 +207,10 @@ public class ArenaCameraPolicy : MonoBehaviour
         _lastMaxAllowedOrtho = maxAllowedOrtho;
         CacheBoundsForDebug();
 
+        SetOrtho(desiredOrtho, writer);
+
         if (!pixelPerfectActive)
         {
-            if (targetCamera != null)
-            {
-                targetCamera.orthographic = true;
-                targetCamera.orthographicSize = desiredOrtho;
-            }
-
             _lastOrthoAfterApply = targetCamera != null ? targetCamera.orthographicSize : beforeOrtho;
 
             if (!_warnedMissingPixelPerfect)
@@ -241,8 +225,13 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         ApplyFantasySportPixelPerfectOverrides();
 
-        int rx = Mathf.Max(minPixelPerfectRefResolutionX, Mathf.RoundToInt(baseRefResolution.x * factor));
-        int ry = Mathf.RoundToInt(rx * 9f / 16f);
+        var useFantasySportRefResolution = IsCurrentSimulation("FantasySport");
+        int rx = useFantasySportRefResolution
+            ? Mathf.Max(minPixelPerfectRefResolutionX, baseRefResolution.x)
+            : Mathf.Max(minPixelPerfectRefResolutionX, Mathf.RoundToInt(baseRefResolution.x * factor));
+        int ry = useFantasySportRefResolution
+            ? Mathf.Max(1, baseRefResolution.y)
+            : Mathf.RoundToInt(rx * 9f / 16f);
 
         bool okX = TrySetMember(pixelPerfectComponent, "refResolutionX", rx);
         bool okY = TrySetMember(pixelPerfectComponent, "refResolutionY", ry);
@@ -284,14 +273,19 @@ public class ArenaCameraPolicy : MonoBehaviour
         _lastBoundsRect = Rect.MinMaxRect(minX, minY, maxX, maxY);
     }
 
-    private void LogDebugCameraHud()
+    private void CacheDebugState()
     {
-        if (Time.unscaledTime < _nextDebugHudTime)
+        var after = targetCamera != null ? targetCamera.orthographicSize : 0f;
+        _lastOrthoAfterApply = after;
+        CacheBoundsForDebug();
+    }
+
+    private void OnGUI()
+    {
+        if (!debugHud)
         {
             return;
         }
-
-        _nextDebugHudTime = Time.unscaledTime + 1f;
 
         var pixelPerfectPresent = pixelPerfectComponent != null;
         var pixelPerfectEnabled = IsPixelPerfectActive();
@@ -303,9 +297,51 @@ public class ArenaCameraPolicy : MonoBehaviour
         var refY = TryGetPixelPerfectMember("refResolutionY", out int ry) ? ry : -1;
         var ppu = GetPPU();
 
-        UnityEngine.Debug.Log(
-            $"[GSP][CameraHUD] zoom={zoomLevel} range=[{minZoomLevel},{maxZoomLevel}] orthoBefore={_lastOrthoBeforeApply:F3} desiredOrtho={_lastDesiredOrtho:F3} orthoAfter={_lastOrthoAfterApply:F3} maxAllowedOrthoFromBounds={_lastMaxAllowedOrtho:F3} bounds=({_lastBoundsRect.xMin:F2},{_lastBoundsRect.yMin:F2},{_lastBoundsRect.width:F2},{_lastBoundsRect.height:F2}) pp[present={pixelPerfectPresent} enabled={pixelPerfectEnabled} upscaleRT={upscaleRT} cropX={cropX} cropY={cropY} stretchFill={stretchFill} ref={refX}x{refY} assetsPPU={ppu:F2}]"
-        );
+        var appliedOrtho = targetCamera != null ? targetCamera.orthographicSize : 0f;
+        var fitToBoundsInfo = _lastFitToBoundsFrame == Time.frameCount
+            ? $"yes (frame {Time.frameCount})"
+            : _lastFitToBoundsTime >= 0f
+                ? $"no (last t={_lastFitToBoundsTime:F2}s frame={_lastFitToBoundsFrame})"
+                : "no";
+
+        const int x = 10;
+        const int y = 10;
+        const int width = 760;
+        const int height = 250;
+
+        GUI.Box(new Rect(x, y, width, height), "Arena Camera Debug HUD");
+        GUILayout.BeginArea(new Rect(x + 10, y + 24, width - 20, height - 34));
+        GUILayout.Label($"Screen: {Screen.width}x{Screen.height}");
+        GUILayout.Label($"PixelPerfect: present={pixelPerfectPresent} active={pixelPerfectEnabled} ref={refX}x{refY} assetsPPU={ppu:F2} cropX={cropX} cropY={cropY} upscaleRT={upscaleRT} stretchFill={stretchFill}");
+        GUILayout.Label($"Zoom: level={zoomLevel} min={minZoomLevel} max={maxZoomLevel} step={zoomStep:F3}");
+        GUILayout.Label($"Ortho: desired={_lastDesiredOrtho:F3} applied={appliedOrtho:F3} before={_lastOrthoBeforeApply:F3} maxAllowed={_lastMaxAllowedOrtho:F3}");
+        GUILayout.Label($"Bounds rect: x={_lastBoundsRect.xMin:F2} y={_lastBoundsRect.yMin:F2} w={_lastBoundsRect.width:F2} h={_lastBoundsRect.height:F2}");
+        GUILayout.Label($"FitToBounds ran this frame: {fitToBoundsInfo}");
+        GUILayout.Label($"lastWriter(frame): {_lastOrthoWriter} ({_lastOrthoWriteFrame})");
+        GUILayout.EndArea();
+    }
+
+    private void SyncZoomLevelToOrtho(float orthographicSize)
+    {
+        CacheBaseOrthographicSize();
+        var baseOrtho = Mathf.Max(0.01f, _baseOrthographicSize);
+        var safeZoomStep = Mathf.Max(1.0001f, zoomStep);
+        var normalized = Mathf.Max(0.01f, orthographicSize) / baseOrtho;
+        var level = Mathf.RoundToInt(Mathf.Log(normalized) / Mathf.Log(safeZoomStep));
+        zoomLevel = Mathf.Clamp(level, minZoomLevel, maxZoomLevel);
+    }
+
+    private void SetOrtho(float value, string writer)
+    {
+        if (targetCamera == null)
+        {
+            return;
+        }
+
+        targetCamera.orthographic = true;
+        targetCamera.orthographicSize = Mathf.Max(0.01f, value);
+        _lastOrthoWriter = string.IsNullOrWhiteSpace(writer) ? "(unknown)" : writer;
+        _lastOrthoWriteFrame = Time.frameCount;
     }
 
     private bool IsPixelPerfectActive()

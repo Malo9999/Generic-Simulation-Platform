@@ -4859,7 +4859,17 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         cameraObject.tag = "MainCamera";
         var cameraComponent = cameraObject.AddComponent<Camera>();
         cameraComponent.orthographic = true;
-        cameraComponent.orthographicSize = Mathf.Max(halfHeight + 2f, 10f);
+        var initialOrtho = Mathf.Max(halfHeight + 2f, 10f);
+        var arenaCameraPolicy = Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        if (arenaCameraPolicy != null && arenaCameraPolicy.targetCamera == cameraComponent)
+        {
+            arenaCameraPolicy.SetOrthoFromExternal(initialOrtho, "FantasySportRunner.EnsureMainCamera", syncZoomLevel: true);
+        }
+        else
+        {
+            cameraComponent.orthographicSize = initialOrtho;
+        }
+
         cameraObject.transform.position = new Vector3(0f, 0f, -10f);
     }
 
