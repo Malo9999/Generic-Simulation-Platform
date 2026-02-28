@@ -50,19 +50,21 @@ public sealed class MarbleRaceTrackGenerator
 
         if (fallback)
         {
-            Debug.LogWarning($"[TrackGen] FALLBACK variant={variant} template={v}");
             track = BuildFallbackRoundedRectangle(safeHalfW, safeHalfH, variant);
         }
-        else
-        {
-            Debug.Log($"[TrackGen] OK variant={variant} template={v}");
-        }
+
+        Debug.Log($"[TrackGen] variant={variant} template={v} usedFallback={(fallback ? 1 : 0)}");
 
         return track;
     }
 
     public MarbleRaceTrack Build(float arenaHalfWidth, float arenaHalfHeight, IRng rng, int seed, int variant, int fixedTemplateId, out bool fallbackUsed)
     {
+        if (fixedTemplateId >= 0)
+        {
+            variant = fixedTemplateId;
+        }
+
         return BuildInternal(arenaHalfWidth, arenaHalfHeight, rng, variant, out fallbackUsed);
     }
 
