@@ -64,7 +64,7 @@ namespace GSP.TrackEditor.Editor
         private TrackPieceLibrary library;
         private TrackLayout layout;
         private TrackLayout previousLayout;
-        private Vector2 paletteScroll;
+        private Vector2 _paletteScroll;
         private Vector2 _leftScroll;
         private Vector2 canvasPan;
         private float canvasZoom = 1f;
@@ -93,6 +93,13 @@ namespace GSP.TrackEditor.Editor
         private OpenConnectorTarget _moveLockedOpen;
         private float _moveLockedDistPx;
         private SnapPreview? _moveDragPreview;
+        private Vector2 _mouseDownCanvas;
+        private Vector2 _mouseDownWorld;
+        private int _mouseDownHitPiece = -1;
+        private bool _dragThresholdPassed;
+        private bool _mouseDownOnAlreadySelectedPiece;
+        private const float DragThresholdPx = 6f;
+        private bool _isPanningWithSpace;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -259,28 +266,58 @@ namespace GSP.TrackEditor.Editor
                 {
                     GUILayout.Label($"Error: {error}", EditorStyles.wordWrappedMiniLabel);
                 }
+                const int maxOverlapWarnings = 8;
+                var overlapWarnings = new List<(string warning, string aGuid, string bGuid)>();
+                var otherWarnings = new List<string>();
+                var dedupedOverlapKeys = new HashSet<string>();
                 foreach (var warning in _lastValidation.Warnings)
                 {
                     if (TryParseOverlapWarning(warning, out var overlap))
                     {
-                        EditorGUILayout.BeginHorizontal();
-                        GUILayout.Label($"Warn: {warning}", EditorStyles.wordWrappedMiniLabel);
-                        if (GUILayout.Button("Select", GUILayout.Width(56f)))
+                        var overlapKey = NormalizeOverlapPairKey(overlap.aGuid, overlap.bGuid);
+                        if (dedupedOverlapKeys.Add(overlapKey))
                         {
-                            var selectedIdx = layout.pieces.FindIndex(p => p.guid == overlap.aGuid);
-                            if (selectedIdx >= 0)
-                            {
-                                selectedPiece = selectedIdx;
-                                Repaint();
-                            }
+                            overlapWarnings.Add((warning, overlap.aGuid, overlap.bGuid));
                         }
-
-                        EditorGUILayout.EndHorizontal();
                     }
                     else
                     {
-                        GUILayout.Label($"Warn: {warning}", EditorStyles.wordWrappedMiniLabel);
+                        otherWarnings.Add(warning);
                     }
+                }
+
+                var hiddenOverlapWarningCount = Mathf.Max(0, overlapWarnings.Count - maxOverlapWarnings);
+                if (hiddenOverlapWarningCount > 0)
+                {
+                    GUILayout.Label($"+ {hiddenOverlapWarningCount} more overlap warnings…", EditorStyles.wordWrappedMiniLabel);
+                }
+
+                for (var overlapIndex = 0; overlapIndex < Mathf.Min(maxOverlapWarnings, overlapWarnings.Count); overlapIndex++)
+                {
+                    var overlapWarning = overlapWarnings[overlapIndex];
+                    EditorGUILayout.BeginHorizontal();
+                    GUILayout.Label($"Warn: {overlapWarning.warning}", EditorStyles.wordWrappedMiniLabel);
+                    if (GUILayout.Button("Select", GUILayout.Width(56f)))
+                    {
+                        _overlapHighlightedGuids.Clear();
+                        _overlapHighlightedGuids.Add(overlapWarning.aGuid);
+                        _overlapHighlightedGuids.Add(overlapWarning.bGuid);
+
+                        var selectedIdx = layout.pieces.FindIndex(p => p.guid == overlapWarning.aGuid);
+                        if (selectedIdx >= 0)
+                        {
+                            selectedPiece = selectedIdx;
+                        }
+
+                        Repaint();
+                    }
+
+                    EditorGUILayout.EndHorizontal();
+                }
+
+                foreach (var warning in otherWarnings)
+                {
+                    GUILayout.Label($"Warn: {warning}", EditorStyles.wordWrappedMiniLabel);
                 }
             }
 
@@ -341,6 +378,13 @@ namespace GSP.TrackEditor.Editor
                 ? $"{left}|{right}"
                 : $"{right}|{left}";
         }
+
+        private static string NormalizeOverlapPairKey(string aGuid, string bGuid)
+        {
+            return string.CompareOrdinal(aGuid, bGuid) <= 0
+                ? $"{aGuid}|{bGuid}"
+                : $"{bGuid}|{aGuid}";
+        }
         private void DrawPalette(Rect rect)
         {
             GUILayout.BeginArea(rect, EditorStyles.helpBox);
@@ -371,10 +415,27 @@ namespace GSP.TrackEditor.Editor
                 _paletteDragStarted = false;
             }
 
-            paletteScroll = EditorGUILayout.BeginScrollView(paletteScroll);
-            foreach (var piece in library.pieces.Where(p => p != null && (string.IsNullOrWhiteSpace(search) || p.displayName.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 || p.pieceId.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)))
+            var scrollTop = 94f;
+            var scrollRect = new Rect(8f, scrollTop, rect.width - 16f, rect.height - scrollTop - 8f);
+            if (evt.type == EventType.ScrollWheel && scrollRect.Contains(evt.mousePosition))
             {
-                var rowRect = GUILayoutUtility.GetRect(280f, 24f);
+                _paletteScroll.y += evt.delta.y * 20f;
+                evt.Use();
+                Repaint();
+            }
+
+            var filteredPieces = library.pieces
+                .Where(p => p != null && (string.IsNullOrWhiteSpace(search) || p.displayName.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 || p.pieceId.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0))
+                .ToList();
+            var rowHeight = 28f;
+            var contentHeight = Mathf.Max(scrollRect.height, filteredPieces.Count * rowHeight + 6f);
+            var contentRect = new Rect(0f, 0f, scrollRect.width - 16f, contentHeight);
+
+            _paletteScroll = GUI.BeginScrollView(scrollRect, _paletteScroll, contentRect);
+            var rowY = 4f;
+            foreach (var piece in filteredPieces)
+            {
+                var rowRect = new Rect(0f, rowY, contentRect.width, 24f);
                 GUI.Box(rowRect, GUIContent.none);
                 GUI.Label(rowRect, $"{piece.displayName} ({piece.category})", EditorStyles.label);
                 EditorGUIUtility.AddCursorRect(rowRect, MouseCursor.MoveArrow);
@@ -397,8 +458,10 @@ namespace GSP.TrackEditor.Editor
                         evt.Use();
                     }
                 }
+
+                rowY += rowHeight;
             }
-            EditorGUILayout.EndScrollView();
+            GUI.EndScrollView();
 
             GUILayout.EndArea();
         }
@@ -472,10 +535,10 @@ namespace GSP.TrackEditor.Editor
             {
                 selectedPiece = -1;
                 _isDragging = false;
-                _dragGroup.Clear();
-                _isPlacingStartFinish = false;
-                Repaint();
+                _dragGroup?.Clear();
                 evt.Use();
+                Repaint();
+                return;
             }
 
             if (evt.type == EventType.MouseDown && evt.button == 1)
@@ -492,6 +555,18 @@ namespace GSP.TrackEditor.Editor
             if (evt.type == EventType.MouseDown && evt.button == 0)
             {
                 var mouseWorld = CanvasToWorld(evt.mousePosition, size);
+                _mouseDownCanvas = evt.mousePosition;
+                _mouseDownWorld = mouseWorld;
+                _mouseDownHitPiece = PickPieceAtMouse(_mouseDownWorld);
+                _mouseDownOnAlreadySelectedPiece = _mouseDownHitPiece >= 0 && _mouseDownHitPiece == selectedPiece;
+                _dragThresholdPassed = false;
+
+                if (Input.GetKey(KeyCode.Space))
+                {
+                    _isPanningWithSpace = true;
+                    evt.Use();
+                    return;
+                }
 
                 if (_isPlacingStartFinish)
                 {
@@ -527,8 +602,7 @@ namespace GSP.TrackEditor.Editor
                     return;
                 }
 
-                var hit = PickPieceAtMouse(mouseWorld);
-                if (hit < 0)
+                if (_mouseDownHitPiece < 0)
                 {
                     selectedPiece = -1;
                     _isDragging = false;
@@ -538,29 +612,35 @@ namespace GSP.TrackEditor.Editor
                     return;
                 }
 
-                selectedPiece = hit;
+                selectedPiece = _mouseDownHitPiece;
                 Repaint();
+                evt.Use();
+            }
 
-                if (selectedPiece >= 0)
+            if (evt.type == EventType.MouseDrag && evt.button == 0 && _isPanningWithSpace)
+            {
+                canvasPan += evt.delta;
+                layout.pan = canvasPan;
+                EditorUtility.SetDirty(layout);
+                evt.Use();
+                Repaint();
+                return;
+            }
+
+            if (evt.type == EventType.MouseDrag && evt.button == 0 && selectedPiece >= 0 && _mouseDownHitPiece == selectedPiece)
+            {
+                if (!_dragThresholdPassed && Vector2.Distance(evt.mousePosition, _mouseDownCanvas) >= DragThresholdPx)
                 {
-                    _isDragging = true;
-                    _dragStartWorld = mouseWorld;
-                    _moveDragPreview = null;
-                    ClearMoveSnapLock();
+                    _dragThresholdPassed = true;
+                    BeginPieceDrag(selectedPiece, evt.shift, _mouseDownWorld);
+                }
 
-                    var selectedGuid = layout.pieces[selectedPiece].guid;
-                    _dragGroup = evt.shift ? new HashSet<string> { selectedGuid } : ConnectedComponentGuids(selectedGuid);
-                    _startPositions.Clear();
-
-                    foreach (var piece in layout.pieces)
-                    {
-                        if (_dragGroup.Contains(piece.guid))
-                        {
-                            _startPositions[piece.guid] = piece.position;
-                        }
-                    }
-
+                if (_dragThresholdPassed && _isDragging)
+                {
+                    ContinuePieceDrag(evt, size);
                     evt.Use();
+                    Repaint();
+                    return;
                 }
             }
 
@@ -587,26 +667,23 @@ namespace GSP.TrackEditor.Editor
                 evt.Use();
             }
 
-            if (evt.type == EventType.MouseDrag && evt.button == 0 && _isDragging)
+            if (evt.type == EventType.MouseUp && evt.button == 0)
             {
-                var currentWorld = CanvasToWorld(evt.mousePosition, size);
-                var delta = currentWorld - _dragStartWorld;
-
-                foreach (var piece in layout.pieces)
+                if (!_isPanningWithSpace && !_dragThresholdPassed)
                 {
-                    if (_startPositions.TryGetValue(piece.guid, out var startPos))
+                    if (_mouseDownOnAlreadySelectedPiece && _mouseDownHitPiece >= 0 && _mouseDownHitPiece == selectedPiece)
                     {
-                        piece.position = startPos + delta;
+                        selectedPiece = -1;
+                        evt.Use();
+                        Repaint();
+                        _mouseDownHitPiece = -1;
+                        _mouseDownOnAlreadySelectedPiece = false;
+                        _dragThresholdPassed = false;
+                        _isPanningWithSpace = false;
+                        return;
                     }
                 }
 
-                EditorUtility.SetDirty(layout);
-                Repaint();
-                evt.Use();
-            }
-
-            if (evt.type == EventType.MouseUp && evt.button == 0)
-            {
                 if (_isDragging)
                 {
                     _moveDragPreview = ComputeMoveDragSnapPreview(size);
@@ -647,6 +724,10 @@ namespace GSP.TrackEditor.Editor
                 _moveDragPreview = null;
                 ClearSnapLock();
                 ClearMoveSnapLock();
+                _mouseDownHitPiece = -1;
+                _mouseDownOnAlreadySelectedPiece = false;
+                _dragThresholdPassed = false;
+                _isPanningWithSpace = false;
             }
 
             if (evt.type == EventType.DragExited)
@@ -655,6 +736,48 @@ namespace GSP.TrackEditor.Editor
                 ClearMoveSnapLock();
                 _moveDragPreview = null;
             }
+        }
+
+
+        private void BeginPieceDrag(int pieceIndex, bool singlePieceOnly, Vector2 dragStartWorld)
+        {
+            if (pieceIndex < 0 || pieceIndex >= layout.pieces.Count)
+            {
+                return;
+            }
+
+            _isDragging = true;
+            _dragStartWorld = dragStartWorld;
+            _moveDragPreview = null;
+            ClearMoveSnapLock();
+
+            var selectedGuid = layout.pieces[pieceIndex].guid;
+            _dragGroup = singlePieceOnly ? new HashSet<string> { selectedGuid } : ConnectedComponentGuids(selectedGuid);
+            _startPositions.Clear();
+
+            foreach (var piece in layout.pieces)
+            {
+                if (_dragGroup.Contains(piece.guid))
+                {
+                    _startPositions[piece.guid] = piece.position;
+                }
+            }
+        }
+
+        private void ContinuePieceDrag(Event evt, Vector2 size)
+        {
+            var currentWorld = CanvasToWorld(evt.mousePosition, size);
+            var delta = currentWorld - _dragStartWorld;
+
+            foreach (var piece in layout.pieces)
+            {
+                if (_startPositions.TryGetValue(piece.guid, out var startPos))
+                {
+                    piece.position = startPos + delta;
+                }
+            }
+
+            EditorUtility.SetDirty(layout);
         }
 
         private void DrawGrid(Vector2 size)
@@ -1910,12 +2033,6 @@ namespace GSP.TrackEditor.Editor
                 .ToArray() ?? Array.Empty<(string aGuid, string bGuid)>();
 
             _overlapHighlightedGuids.Clear();
-            foreach (var overlap in _lastOverlaps)
-            {
-                _overlapHighlightedGuids.Add(overlap.aGuid);
-                _overlapHighlightedGuids.Add(overlap.bGuid);
-            }
-
             status = _lastValidation.IsValid ? "Validation passed." : $"Validation failed: {_lastValidation.Errors.Count} errors.";
         }
 
