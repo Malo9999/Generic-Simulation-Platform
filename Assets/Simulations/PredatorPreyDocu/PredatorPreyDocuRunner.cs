@@ -44,6 +44,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         activeConfig.NormalizeAliases();
 
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "PredatorPreyDocu");
+        ForceArenaRootBackgroundBehindEverything();
         halfWidth = Mathf.Max(1f, activeConfig.world.arenaWidth * 0.5f);
         halfHeight = Mathf.Max(1f, activeConfig.world.arenaHeight * 0.5f);
 
@@ -137,6 +138,40 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         activeConfig = null;
         lastSeasonName = null;
         Debug.Log("PredatorPreyDocuRunner Shutdown");
+    }
+
+    private void ForceArenaRootBackgroundBehindEverything()
+    {
+        if (sceneGraph == null)
+        {
+            return;
+        }
+
+        var root = sceneGraph.ArenaRoot != null ? sceneGraph.ArenaRoot : sceneGraph.Root;
+        if (root == null)
+        {
+            return;
+        }
+
+        var renderers = root.GetComponentsInChildren<SpriteRenderer>(true);
+        for (var i = 0; i < renderers.Length; i++)
+        {
+            var sr = renderers[i];
+            if (sr == null)
+            {
+                continue;
+            }
+
+            var nameLooksLikeBackground = sr.name.IndexOf("Background", System.StringComparison.OrdinalIgnoreCase) >= 0;
+            var broadBackgroundCandidate = sr.sprite != null && sr.sortingOrder >= -500;
+            if (!nameLooksLikeBackground && !broadBackgroundCandidate)
+            {
+                continue;
+            }
+
+            sr.sortingLayerName = "Default";
+            sr.sortingOrder = -1000;
+        }
     }
 
     private void SpawnEntities()
