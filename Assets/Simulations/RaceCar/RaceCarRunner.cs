@@ -23,10 +23,12 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private SimulationSceneGraph sceneGraph;
     private TrackRuntime trackRuntime;
     private Transform trackRoot;
+    private bool trackRootAttempted;
 
     public void Initialize(ScenarioConfig config)
     {
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
+        trackRootAttempted = false;
         SetupTrackRoot();
         EnsureMainCamera();
         BuildCars(config);
@@ -35,6 +37,12 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
     public void Tick(int tickIndex, float dt)
     {
+        if (track != null && trackRoot == null && !trackRootAttempted)
+        {
+            trackRootAttempted = true;
+            SetupTrackRoot();
+        }
+
         if (cars == null)
         {
             return;
@@ -99,6 +107,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         trackRuntime = null;
+        trackRootAttempted = false;
         Debug.Log("RaceCarRunner Shutdown");
     }
 
@@ -234,17 +243,27 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (track == null)
         {
-            Debug.LogWarning("RaceCarRunner: Track is NULL (not assigned).");
+            Debug.LogWarning($"RaceCarRunner[{name}]: SetupTrackRoot skipped because track is null.");
             return;
         }
 
-        if (sceneGraph?.ArenaRoot == null)
+        if (sceneGraph == null)
         {
+            Debug.LogWarning($"RaceCarRunner[{name}]: SetupTrackRoot skipped because sceneGraph is null.");
             return;
+        }
+
+        Transform parent = sceneGraph.ArenaRoot;
+        var parentPath = "ArenaRoot";
+        if (parent == null)
+        {
+            parent = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot : transform;
+            parentPath = sceneGraph.WorldRoot != null ? "WorldRoot (ArenaRoot missing)" : "Runner transform (ArenaRoot/WorldRoot missing)";
+            Debug.LogWarning($"RaceCarRunner[{name}]: sceneGraph.ArenaRoot is null. Falling back to {parentPath}.");
         }
 
         var root = new GameObject("TrackRoot");
-        root.transform.SetParent(sceneGraph.ArenaRoot, false);
+        root.transform.SetParent(parent, false);
         trackRoot = root.transform;
 
         var renderer = root.AddComponent<TrackRendererV1>();
@@ -252,7 +271,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         trackRuntime = root.AddComponent<TrackRuntime>();
         trackRuntime.Initialize(track);
-        Debug.Log($"RaceCarRunner: TrackRoot created for '{track.name}' (centerline={track.mainCenterline?.Length ?? 0}).");
+        Debug.Log(
+            $"RaceCarRunner[{name}]: TrackRoot created for '{track.name}' " +
+            $"(centerline={track.mainCenterline?.Length ?? 0}, parent={parentPath}, position={trackRoot.position}).");
     }
 
     private void ResolveArtPipeline()
