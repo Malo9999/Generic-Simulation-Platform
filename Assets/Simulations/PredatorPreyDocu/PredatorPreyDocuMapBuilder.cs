@@ -80,6 +80,39 @@ public sealed class PredatorPreyDocuMapBuilder
             new Vector2(arenaW + 2f, arenaH + 2f),
             new Color(0.79f, 0.69f, 0.42f, 1f),
             SavannaOrder);
+
+        BuildSavannaNoiseOverlay(arenaW, arenaH);
+    }
+
+    private void BuildSavannaNoiseOverlay(float arenaW, float arenaH)
+    {
+        var texW = Mathf.Max(64, Mathf.RoundToInt(arenaW * WaterPixelsPerUnit));
+        var texH = Mathf.Max(64, Mathf.RoundToInt(arenaH * WaterPixelsPerUnit));
+        var overlayTex = CreateWaterTexture(texW, texH);
+        var pixels = new Color32[texW * texH];
+        var rng = RngService.Fork("SIM:PredatorPreyDocu:SAVANNA:OVERLAY");
+        var floodplainBandPx = Mathf.Max(3f, texW * 0.10f);
+        var centerX = texW * 0.5f;
+        var speckleCount = Mathf.Clamp(Mathf.RoundToInt((texW * texH) * 0.07f), 5000, 12000);
+
+        for (var i = 0; i < speckleCount; i++)
+        {
+            var x = rng.NextInt(0, texW);
+            var y = rng.NextInt(0, texH);
+            var offsetToCenter = Mathf.Abs(x - centerX);
+            var floodplainBoost = Mathf.Clamp01(1f - (offsetToCenter / floodplainBandPx));
+            var radius = rng.Value() < (0.35f + (floodplainBoost * 0.35f)) ? 2 : 1;
+            var c = rng.Value() < (0.5f + (floodplainBoost * 0.2f))
+                ? new Color32((byte)rng.NextInt(113, 132), (byte)rng.NextInt(122, 148), (byte)rng.NextInt(78, 100), (byte)rng.NextInt(18, 40))
+                : new Color32((byte)rng.NextInt(140, 162), (byte)rng.NextInt(117, 139), (byte)rng.NextInt(69, 92), (byte)rng.NextInt(14, 34));
+            PaintDiscAlphaBlend(pixels, texW, texH, x, y, radius, c);
+        }
+
+        overlayTex.SetPixels32(pixels);
+        overlayTex.Apply(false, false);
+
+        var overlaySprite = Sprite.Create(overlayTex, new Rect(0f, 0f, texW, texH), new Vector2(0.5f, 0.5f), WaterPixelsPerUnit);
+        CreateSprite(mapRoot, "SavannaNoiseOverlay", overlaySprite, Vector2.zero, Vector2.one, Color.white, SavannaOrder + 1);
     }
 
     private void BuildWaterOverlays(float halfWidth, float halfHeight, Map mapCfg)
@@ -142,7 +175,7 @@ public sealed class PredatorPreyDocuMapBuilder
     {
         var seasonalRng = RngService.Fork("SIM:PredatorPreyDocu:WATER:SEASONAL");
         var creekCount = Mathf.Clamp(mapCfg.creekCount, 0, 12);
-        var creekWidth = Mathf.Max(0.8f, mapCfg.creekWidth);
+        var creekWidth = Mathf.Clamp(mapCfg.creekWidth, 1.4f, 2.2f);
         var creekColor = new Color32(62, 145, 242, 255);
 
         for (var k = 0; k < creekCount; k++)
@@ -151,6 +184,10 @@ public sealed class PredatorPreyDocuMapBuilder
             var x = side * seasonalRng.Range(halfWidth * 0.35f, halfWidth * 0.90f);
             var y = seasonalRng.Range(-halfHeight * 0.80f, halfHeight * 0.80f);
             var steps = seasonalRng.NextInt(140, 221);
+            var baseCreekRadiusPx = Mathf.Max(1, Mathf.RoundToInt((creekWidth * 0.5f) * WaterPixelsPerUnit));
+            var creekRadiusPx = baseCreekRadiusPx;
+            var variationStepInterval = seasonalRng.NextInt(10, 21);
+            var (prevPx, prevPy) = WorldToPixel(x, y, halfWidth, halfHeight, texW, texH);
 
             for (var step = 0; step < steps; step++)
             {
@@ -169,8 +206,16 @@ public sealed class PredatorPreyDocuMapBuilder
                 y = Mathf.Clamp(y, -halfHeight, halfHeight);
 
                 var (px, py) = WorldToPixel(x, y, halfWidth, halfHeight, texW, texH);
-                var rPx = Mathf.Max(1, Mathf.RoundToInt((creekWidth * 0.5f) * WaterPixelsPerUnit));
-                PaintDisc(pixels, texW, texH, px, py, rPx, creekColor);
+
+                if ((step > 0) && (step % variationStepInterval == 0))
+                {
+                    creekRadiusPx = Mathf.Max(1, baseCreekRadiusPx + seasonalRng.NextInt(-1, 2));
+                    variationStepInterval = seasonalRng.NextInt(10, 21);
+                }
+
+                PaintStroke(pixels, texW, texH, prevPx, prevPy, px, py, creekRadiusPx, creekColor);
+                prevPx = px;
+                prevPy = py;
             }
 
             var pondCount = seasonalRng.NextInt(1, 3);
@@ -262,6 +307,44 @@ public sealed class PredatorPreyDocuMapBuilder
                 var clampedX = Mathf.Clamp(x, 0, texW - 1);
                 var clampedY = Mathf.Clamp(y, 0, texH - 1);
                 pixels[(clampedY * texW) + clampedX] = color;
+            }
+        }
+    }
+
+    private static void PaintStroke(Color32[] pixels, int texW, int texH, int x0, int y0, int x1, int y1, int radius, Color32 color)
+    {
+        var dx = x1 - x0;
+        var dy = y1 - y0;
+        var dist = Mathf.Sqrt((dx * dx) + (dy * dy));
+        var steps = Mathf.Max(1, Mathf.CeilToInt(dist / Mathf.Max(1f, radius * 0.5f)));
+
+        for (var i = 0; i <= steps; i++)
+        {
+            var a = i / (float)steps;
+            var x = Mathf.RoundToInt(Mathf.Lerp(x0, x1, a));
+            var y = Mathf.RoundToInt(Mathf.Lerp(y0, y1, a));
+            PaintDisc(pixels, texW, texH, x, y, radius, color);
+        }
+    }
+
+    private static void PaintDiscAlphaBlend(Color32[] pixels, int texW, int texH, int cx, int cy, int radius, Color32 color)
+    {
+        var r2 = radius * radius;
+        for (var y = cy - radius; y <= cy + radius; y++)
+        {
+            for (var x = cx - radius; x <= cx + radius; x++)
+            {
+                var dx = x - cx;
+                var dy = y - cy;
+                if ((dx * dx) + (dy * dy) > r2)
+                {
+                    continue;
+                }
+
+                var clampedX = Mathf.Clamp(x, 0, texW - 1);
+                var clampedY = Mathf.Clamp(y, 0, texH - 1);
+                var idx = (clampedY * texW) + clampedX;
+                pixels[idx] = Color32.Lerp(pixels[idx], color, color.a / 255f);
             }
         }
     }
