@@ -128,7 +128,7 @@ public sealed class PredatorPreyDocuMapBuilder
         sr.sortingOrder = BackgroundOrder;
         sr.color = Color.white;
 
-        var overlay = CreateSprite("SavannaBackgroundOverlay", PrimitiveSpriteLibrary.Square(), new Color(0.95f, 0.97f, 0.9f, 0.09f), Vector2.zero, new Vector2(arenaWidth, arenaHeight), 0f, BiomeOverlayOrder);
+        var overlay = CreateSprite("SavannaBackgroundOverlay", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.95f, 0.97f, 0.9f, 0.09f), Vector2.zero, new Vector2(arenaWidth, arenaHeight), 0f, BiomeOverlayOrder);
         overlay.sortingLayerName = SortingLayerDefault;
         overlay.sortingOrder = BiomeOverlayOrder;
     }
