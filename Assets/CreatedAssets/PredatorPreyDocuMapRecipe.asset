@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ca7e0858f2334f548a2ced163a4bd7e5, type: 3}
+  m_Name: PredatorPreyDocuMapRecipe
+  m_EditorClassIdentifier: Assembly-CSharp::PredatorPreyDocuMapRecipe
+  arenaWidth: 320
+  arenaHeight: 200
+  riverPoints:
+  - {x: 0.5, y: 1}
+  - {x: 0.5751116, y: 0.92857146}
+  - {x: 0.6502232, y: 0.85714287}
+  - {x: 0.665515, y: 0.71428573}
+  - {x: 0.5321402, y: 0.57142854}
+  - {x: 0.4510185, y: 0.49999997}
+  - {x: 0.36989686, y: 0.4285714}
+  - {x: 0.324513, y: 0.28571427}
+  - {x: 0.43675262, y: 0.14285713}
+  - {x: 0.6058014, y: 0}
+  riverWidthNorth: 10
+  riverWidthSouth: 6
+  floodplainExtra: 26
+  bankExtra: 2.5
+  creekCount: 6
+  treeClusterCount: 55
+  grassDotCount: 1500
