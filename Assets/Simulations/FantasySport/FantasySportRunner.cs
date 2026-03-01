@@ -167,6 +167,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private float[] markUntil;
     private Vector2[] prevPosByAthlete;
     private float[] lastTeleportLogTimeByAthlete;
+    private float[] lastYInfoLogTimeByAthlete;
+    private bool[] safetyGuardLogByAthlete;
 
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
@@ -408,6 +410,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (markUntil == null || markUntil.Length != total) markUntil = new float[total];
         if (prevPosByAthlete == null || prevPosByAthlete.Length != total) prevPosByAthlete = new Vector2[total];
         if (lastTeleportLogTimeByAthlete == null || lastTeleportLogTimeByAthlete.Length != total) lastTeleportLogTimeByAthlete = new float[total];
+        if (lastYInfoLogTimeByAthlete == null || lastYInfoLogTimeByAthlete.Length != total) lastYInfoLogTimeByAthlete = new float[total];
+        if (safetyGuardLogByAthlete == null || safetyGuardLogByAthlete.Length != total) safetyGuardLogByAthlete = new bool[total];
         if (returnToShapeUntilByAthlete == null || returnToShapeUntilByAthlete.Length != total) returnToShapeUntilByAthlete = new float[total];
         if (leftShapeByAthlete == null || leftShapeByAthlete.Length != total) leftShapeByAthlete = new bool[total];
 
@@ -425,6 +429,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         EnsureArrays(TotalPlayers);
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64f) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64f) * 0.5f);
+        Debug.Log($"[FS] Arena bounds init halfWidth={halfWidth:F2} halfHeight={halfHeight:F2} inset={AthleteBoundsMargin:F2} yMin={(-halfHeight + AthleteBoundsMargin):F2} yMax={(halfHeight - AthleteBoundsMargin):F2}");
 
         ResolveArtPipeline();
 
@@ -885,6 +890,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             facingDir[i] = identities[i].teamId == 0 ? Vector2.right : Vector2.left;
             prevPosByAthlete[i] = positions[i];
             lastTeleportLogTimeByAthlete[i] = -999f;
+            lastYInfoLogTimeByAthlete[i] = -999f;
+            safetyGuardLogByAthlete[i] = false;
         }
     }
 
@@ -901,6 +908,21 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             if (delta.magnitude > 6f && matchTimeSeconds - lastTeleportLogTimeByAthlete[i] > 0.5f)
             {
                 Debug.LogWarning($"[FS] TELEPORT i={i} team={identities[i].teamId} role={roleByIndex[i]} lane={laneByIndex[i]} delta={delta} pos={positions[i]} prev={prevPosByAthlete[i]} vel={velocities[i]} state={athleteStates[i]}");
+                if (Mathf.Abs(positions[i].y - (-11.0f)) < 0.05f)
+                {
+                    Debug.LogWarning($"[FS] TELEPORT_TO_MINUS11 i={i} team={identities[i].teamId} role={roleByIndex[i]} lane={laneByIndex[i]} delta={delta} pos={positions[i]} prev={prevPosByAthlete[i]} vel={velocities[i]} state={athleteStates[i]}");
+                }
+
+                if (matchTimeSeconds - lastYInfoLogTimeByAthlete[i] > 1f)
+                {
+                    var yMin = -halfHeight + AthleteBoundsMargin;
+                    var yMax = halfHeight - AthleteBoundsMargin;
+                    var bandY = ShouldApplyWidthAnchor(identities[i].teamId, i) ? GetWidthAnchorTargetY(identities[i].teamId, i) : 0f;
+                    var homeY = ComputeHomePosition(i).y;
+                    Debug.LogWarning($"[FS] YINFO i={i} yMin={yMin:F2} yMax={yMax:F2} bandY={bandY:F2} homeY={homeY:F2} halfH={halfHeight:F2}");
+                    lastYInfoLogTimeByAthlete[i] = matchTimeSeconds;
+                }
+
                 lastTeleportLogTimeByAthlete[i] = matchTimeSeconds;
             }
 
@@ -2608,8 +2630,21 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var effectiveAccel = Mathf.Lerp(6f, 14f, profiles[i].accel) * (0.55f + (0.45f * fatigue));
             velocities[i] = Vector2.MoveTowards(velocities[i], desired, effectiveAccel * dt);
             positions[i] += velocities[i] * dt;
-            ClampAthlete(i);
             ResolveAthleteBumperCollision(i, dt);
+            ClampAthlete(i);
+
+            var deltaY = Mathf.Abs(positions[i].y - prevPosByAthlete[i].y);
+            if (matchTimeSeconds >= kickoffFreezeUntilTime && deltaY > 8f)
+            {
+                positions[i] = prevPosByAthlete[i];
+                velocities[i] = Vector2.zero;
+                if (!safetyGuardLogByAthlete[i])
+                {
+                    Debug.LogWarning($"[FS] SAFETY_REVERT_Y i={i} deltaY={deltaY:F2} prev={prevPosByAthlete[i]} revertedPos={positions[i]} tick={currentTickIndex}");
+                    safetyGuardLogByAthlete[i] = true;
+                }
+            }
+
             UpdateStamina(i, desired, dt);
         }
     }
@@ -4648,7 +4683,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 sign = 1f;
             }
 
-            p.y = sign > 0f ? Mathf.Max(p.y, minWideY) : Mathf.Min(p.y, -minWideY);
+            var bandFloorY = sign > 0f ? minWideY : -minWideY;
+            if (Mathf.Abs(p.y) < Mathf.Abs(bandFloorY))
+            {
+                var vel = velocities[athleteIndex];
+                var bandY = GetWidthAnchorTargetY(identities[athleteIndex].teamId, athleteIndex);
+                vel.y += (bandY - p.y) * 2.0f;
+                velocities[athleteIndex] = vel;
+            }
         }
 
         var minX = -halfWidth + AthleteBoundsMargin;

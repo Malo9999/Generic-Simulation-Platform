@@ -34,6 +34,31 @@ public sealed class PredatorPreyDocuMapBuilder
         BuildObjectMap(halfWidth, halfHeight, docu, mapRecipe, mapRng);
     }
 
+    public void BuildFromRecipe(Transform root, PredatorPreyDocuMapRecipe recipe)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        if (recipe != null)
+        {
+            recipe.NormalizeAndValidate();
+        }
+
+        var halfWidth = Mathf.Max(0.5f, (recipe != null ? recipe.arenaWidth : 20f) * 0.5f);
+        var halfHeight = Mathf.Max(0.5f, (recipe != null ? recipe.arenaHeight : 12f) * 0.5f);
+
+        var cfg = new PredatorPreyDocuConfig();
+        cfg.Normalize();
+
+        Clear();
+        mapRoot = root;
+
+        var mapRng = RngService.Fork("SIM:PredatorPreyDocu:MAP");
+        BuildObjectMap(halfWidth, halfHeight, cfg, recipe, mapRng);
+    }
+
     public void UpdateSeasonVisuals(float dryness01)
     {
         var dry = Mathf.Clamp01(dryness01);
