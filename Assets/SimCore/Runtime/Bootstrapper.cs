@@ -418,7 +418,7 @@ public class Bootstrapper : MonoBehaviour
 
             ArenaBuilder.Build(simulationRoot.transform, currentConfig);
             var runnerSpawned = SpawnRunner(currentConfig);
-            SyncCameraBoundsAndFit();
+            SyncCameraBoundsAndFit(simulationId);
 
             if (IsReplayMode)
             {
@@ -490,7 +490,7 @@ public class Bootstrapper : MonoBehaviour
         }
     }
 
-    private static void SyncCameraBoundsAndFit()
+    private static void SyncCameraBoundsAndFit(string simulationId)
     {
         var arenaBoundsObject = GameObject.Find("ArenaBounds");
         var arenaBoundsCollider = arenaBoundsObject != null ? arenaBoundsObject.GetComponent<Collider2D>() : null;
@@ -498,6 +498,8 @@ public class Bootstrapper : MonoBehaviour
 
         if (arenaCameraPolicy != null)
         {
+            arenaCameraPolicy.ApplySimCameraProfile(simulationId);
+
             if (arenaBoundsCollider != null)
             {
                 arenaCameraPolicy.BindArenaBounds(arenaBoundsCollider, fitToBounds: true);

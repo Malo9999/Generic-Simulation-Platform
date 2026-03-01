@@ -1,10 +1,19 @@
 using System.ComponentModel;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 using Component = UnityEngine.Component;
 
 public class ArenaCameraPolicy : MonoBehaviour
 {
+    [System.Serializable]
+    public class SimCameraProfile
+    {
+        public string simulationId;
+        [Min(1)] public int assetsPPU = 16;
+        public Vector2Int referenceResolution;
+    }
+
     [Header("Auto-wired (can be empty)")]
     public Camera targetCamera;
 
@@ -46,6 +55,11 @@ public class ArenaCameraPolicy : MonoBehaviour
     [Tooltip("FantasySport broadcast mode: reduce letterboxing while keeping PixelPerfect camera active.")]
     public bool applyFantasySportPixelPerfectOverrides = true;
 
+    [Header("Simulation Camera Profiles")]
+    [Tooltip("Per-simulation PixelPerfect settings. If a simulation has no profile entry, a safe default Assets PPU is used.")]
+    public List<SimCameraProfile> simulationCameraProfiles = new List<SimCameraProfile>();
+    [Min(1)] public int fallbackAssetsPPU = 16;
+
     [Header("Pan Quality")]
     public bool snapRigToPixelGrid = false;
     public float fallbackPPU = 32f;
@@ -71,6 +85,8 @@ public class ArenaCameraPolicy : MonoBehaviour
     private int _lastMaxPpcZoom;
     private bool _lastRequestedRefExceedsScreen;
     private bool _isUsingPixelPerfectZoom = true;
+    private string _lastAppliedSimulationId = "<none>";
+    private int _lastAppliedAssetsPpu = -1;
 
     private void Reset() => AutoWire();
     private void OnValidate() => AutoWire();
@@ -203,6 +219,33 @@ public class ArenaCameraPolicy : MonoBehaviour
         }
 
         SetOrtho(value, writer);
+    }
+
+    public void ApplySimCameraProfile(string simulationId)
+    {
+        AutoWire();
+
+        _lastAppliedSimulationId = string.IsNullOrWhiteSpace(simulationId) ? "<none>" : simulationId;
+
+        if (pixelPerfectComponent == null)
+        {
+            _lastAppliedAssetsPpu = -1;
+            return;
+        }
+
+        var profile = FindProfile(simulationId);
+        var assetsPpuToApply = profile != null ? Mathf.Max(1, profile.assetsPPU) : GetDefaultAssetsPpuForSimulation(simulationId);
+        _lastAppliedAssetsPpu = assetsPpuToApply;
+
+        TrySetMember(pixelPerfectComponent, "assetsPPU", assetsPpuToApply);
+        TrySetMember(pixelPerfectComponent, "assetsPixelsPerUnit", assetsPpuToApply);
+
+        if (profile != null && profile.referenceResolution.x > 0 && profile.referenceResolution.y > 0)
+        {
+            TrySetMember(pixelPerfectComponent, "refResolutionX", profile.referenceResolution.x);
+            TrySetMember(pixelPerfectComponent, "refResolutionY", profile.referenceResolution.y);
+            TrySetMember(pixelPerfectComponent, "refResolution", profile.referenceResolution);
+        }
     }
 
     private void ApplyZoom(string writer = "ApplyZoom")
@@ -344,6 +387,7 @@ public class ArenaCameraPolicy : MonoBehaviour
         GUI.Box(new Rect(x, y, width, height), "Arena Camera Debug HUD");
         GUILayout.BeginArea(new Rect(x + 10, y + 24, width - 20, height - 34));
         GUILayout.Label($"Screen: {Screen.width}x{Screen.height}");
+        GUILayout.Label($"SimProfile: simId={_lastAppliedSimulationId} appliedAssetsPPU={_lastAppliedAssetsPpu}");
         GUILayout.Label($"PixelPerfect: present={pixelPerfectPresent} active={pixelPerfectEnabled} ref={refX}x{refY} assetsPPU={ppu:F2} cropX={cropX} cropY={cropY} upscaleRT={upscaleRT} stretchFill={stretchFill}");
         GUILayout.Label($"Zoom: level={zoomLevel} min={minZoomLevel} max={maxZoomLevel} step={zoomStep:F3}");
         GUILayout.Label($"PPC Mode: mode={(_isUsingPixelPerfectZoom ? "PPC" : "Fallback")} maxPpcZoom={_lastMaxPpcZoom} requestedRef={_lastRequestedRefX}x{_lastRequestedRefY} exceedsScreen={_lastRequestedRefExceedsScreen}");
@@ -495,6 +539,55 @@ public class ArenaCameraPolicy : MonoBehaviour
         if (TryGetMember<int>(pixelPerfectComponent, "assetsPixelsPerUnit", out ppuI)) return ppuI;
 
         return fallbackPPU;
+    }
+
+    private SimCameraProfile FindProfile(string simulationId)
+    {
+        if (string.IsNullOrWhiteSpace(simulationId) || simulationCameraProfiles == null)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < simulationCameraProfiles.Count; i++)
+        {
+            var profile = simulationCameraProfiles[i];
+            if (profile == null || string.IsNullOrWhiteSpace(profile.simulationId))
+            {
+                continue;
+            }
+
+            if (string.Equals(profile.simulationId, simulationId, System.StringComparison.OrdinalIgnoreCase))
+            {
+                return profile;
+            }
+        }
+
+        return null;
+    }
+
+    private int GetDefaultAssetsPpuForSimulation(string simulationId)
+    {
+        if (string.Equals(simulationId, "FantasySport", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return 8;
+        }
+
+        if (string.Equals(simulationId, "PredatorPreyDocu", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return 8;
+        }
+
+        if (string.Equals(simulationId, "MarbleRace", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return 16;
+        }
+
+        if (string.Equals(simulationId, "AntColonies", System.StringComparison.OrdinalIgnoreCase))
+        {
+            return 32;
+        }
+
+        return Mathf.Max(1, fallbackAssetsPPU);
     }
 
     private void GetWorldMinMax(out float minX, out float minY, out float maxX, out float maxY)
