@@ -1,8 +1,11 @@
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 
 public sealed class PredatorPreyDocuMapEditorWindow : EditorWindow
 {
+    private const string PreviewRootName = "PredatorPreyDocuMapPreview";
+
     private PredatorPreyDocuMapRecipe recipe;
     private int selectedPoint = -1;
 
@@ -14,12 +17,12 @@ public sealed class PredatorPreyDocuMapEditorWindow : EditorWindow
 
     private void OnEnable()
     {
-        SceneView.duringSceneGui += OnSceneGui;
+        SceneView.duringSceneGui += OnSceneGUI;
     }
 
     private void OnDisable()
     {
-        SceneView.duringSceneGui -= OnSceneGui;
+        SceneView.duringSceneGui -= OnSceneGUI;
     }
 
     private void OnGUI()
@@ -74,6 +77,11 @@ public sealed class PredatorPreyDocuMapEditorWindow : EditorWindow
             ApplyToPreview();
         }
 
+        if (GUILayout.Button("Frame Preview"))
+        {
+            FramePreview();
+        }
+
         EditorGUILayout.Space();
         DrawDefaultInspectorLikeFields();
     }
@@ -120,7 +128,7 @@ public sealed class PredatorPreyDocuMapEditorWindow : EditorWindow
         EditorGUILayout.LabelField($"Control Points: {recipe.riverPoints.Count}");
     }
 
-    private void OnSceneGui(SceneView sceneView)
+    private void OnSceneGUI(SceneView sceneView)
     {
         if (recipe == null)
         {
@@ -172,8 +180,11 @@ public sealed class PredatorPreyDocuMapEditorWindow : EditorWindow
                 recipe.NormalizeAndValidate();
                 EditorUtility.SetDirty(recipe);
                 Repaint();
+                SceneView.RepaintAll();
             }
         }
+
+        Repaint();
     }
 
     private void AddPoint()
@@ -230,20 +241,87 @@ public sealed class PredatorPreyDocuMapEditorWindow : EditorWindow
         EditorUtility.SetDirty(recipe);
         AssetDatabase.SaveAssets();
 
-        if (!Application.isPlaying)
+        var previewRoot = GetOrCreatePreviewRoot();
+        ClearChildren(previewRoot);
+
+        var mapBuilder = new PredatorPreyDocuMapBuilder();
+        mapBuilder.BuildFromRecipe(previewRoot, recipe);
+
+        if (Application.isPlaying)
         {
-            SceneView.RepaintAll();
-            Debug.Log("[PredatorPreyDocuMapEditor] Recipe saved. Enter play mode to preview runtime map generation.");
+            var runners = UnityEngine.Object.FindObjectsByType<PredatorPreyDocuRunner>(FindObjectsSortMode.None);
+            for (var i = 0; i < runners.Length; i++)
+            {
+                runners[i].RebuildMapPreview();
+            }
+
+            Debug.Log($"[PredatorPreyDocuMapEditor] Updated scene preview and applied recipe to {runners.Length} runner(s).");
+        }
+        else
+        {
+            Debug.Log("[PredatorPreyDocuMapEditor] Updated edit-mode scene preview.");
+        }
+
+        EditorSceneManager.MarkSceneDirty(previewRoot.gameObject.scene);
+        Selection.activeGameObject = previewRoot.gameObject;
+        SceneView.RepaintAll();
+    }
+
+    private void FramePreview()
+    {
+        var previewRoot = FindPreviewRoot();
+        if (previewRoot == null)
+        {
+            Debug.LogWarning("[PredatorPreyDocuMapEditor] No preview root found to frame. Click 'Apply to Preview' first.");
             return;
         }
 
-        var runners = UnityEngine.Object.FindObjectsByType<PredatorPreyDocuRunner>(FindObjectsSortMode.None);
-        for (var i = 0; i < runners.Length; i++)
+        Selection.activeGameObject = previewRoot.gameObject;
+        if (SceneView.lastActiveSceneView != null)
         {
-            runners[i].RebuildMapPreview();
+            SceneView.lastActiveSceneView.FrameSelected();
+        }
+    }
+
+    private static Transform FindPreviewRoot()
+    {
+        var roots = UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects();
+        for (var i = 0; i < roots.Length; i++)
+        {
+            if (roots[i].name == PreviewRootName)
+            {
+                return roots[i].transform;
+            }
         }
 
-        Debug.Log($"[PredatorPreyDocuMapEditor] Applied recipe to {runners.Length} runner(s).");
+        return null;
+    }
+
+    private static Transform GetOrCreatePreviewRoot()
+    {
+        var existing = FindPreviewRoot();
+        if (existing != null)
+        {
+            return existing;
+        }
+
+        return new GameObject(PreviewRootName).transform;
+    }
+
+    private static void ClearChildren(Transform root)
+    {
+        for (var i = root.childCount - 1; i >= 0; i--)
+        {
+            var child = root.GetChild(i).gameObject;
+            if (Application.isPlaying)
+            {
+                Object.Destroy(child);
+            }
+            else
+            {
+                Object.DestroyImmediate(child);
+            }
+        }
     }
 
     private void CreateRecipeAsset()
