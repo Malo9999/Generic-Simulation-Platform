@@ -15,12 +15,11 @@ public sealed class PredatorPreyDocuMapBuilder
     private const int TreeOrder = -160;
 
     private readonly List<SpriteRenderer> creekRenderers = new();
+    private readonly List<SpriteRenderer> floodplainRenderers = new();
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
 
     private Transform mapRoot;
-    private SpriteRenderer floodplainRenderer;
-
     public IReadOnlyList<Vector2> WaterNodes => waterNodes;
     public IReadOnlyList<Vector2> ShadeNodes => shadeNodes;
 
@@ -35,7 +34,7 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(parent, false);
 
         BuildBackground(halfWidth, halfHeight);
-        BuildRiverAndFloodplain(halfWidth, halfHeight, docu.map);
+        BuildRiverRibbon(mapRoot, config, halfWidth, halfHeight, RngService.Fork("SIM:PredatorPreyDocu:RIVER"));
         BuildCreeks(docu.map, halfWidth, halfHeight);
         BuildGrassDots(docu.map, halfWidth, halfHeight);
         BuildTrees(docu, halfWidth, halfHeight);
@@ -58,9 +57,15 @@ public sealed class PredatorPreyDocuMapBuilder
             creekRenderers[i].color = color;
         }
 
-        if (floodplainRenderer != null)
+        var floodplainColor = Color.Lerp(new Color(0.5f, 0.72f, 0.37f, 1f), new Color(0.56f, 0.66f, 0.35f, 1f), dry);
+        for (var i = 0; i < floodplainRenderers.Count; i++)
         {
-            floodplainRenderer.color = Color.Lerp(new Color(0.5f, 0.72f, 0.37f, 1f), new Color(0.56f, 0.66f, 0.35f, 1f), dry);
+            if (floodplainRenderers[i] == null)
+            {
+                continue;
+            }
+
+            floodplainRenderers[i].color = floodplainColor;
         }
     }
 
@@ -72,10 +77,10 @@ public sealed class PredatorPreyDocuMapBuilder
             mapRoot = null;
         }
 
+        floodplainRenderers.Clear();
         creekRenderers.Clear();
         waterNodes.Clear();
         shadeNodes.Clear();
-        floodplainRenderer = null;
     }
 
     private void BuildBackground(float halfWidth, float halfHeight)
@@ -167,31 +172,94 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-    private void BuildRiverAndFloodplain(float halfWidth, float halfHeight, Map mapConfig)
+    private void BuildRiverRibbon(Transform parent, ScenarioConfig cfg, float halfWidth, float halfHeight, IRng rng)
     {
-        var arenaHeight = halfHeight * 2f;
-        var riverHeight = arenaHeight + 1f;
-        var riverCenterY = 0f;
-        var floodWidth = Mathf.Max(mapConfig.floodplainWidth, mapConfig.riverWidth + 1f);
-        var floodplainHeight = arenaHeight + 1f;
-        floodplainRenderer = CreateSprite("Floodplain", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.5f, 0.72f, 0.37f, 1f), new Vector2(0f, riverCenterY), new Vector2(floodWidth, floodplainHeight), 0f, FloodplainOrder);
-        floodplainRenderer.drawMode = SpriteDrawMode.Sliced;
-
-        var riverBody = CreateSprite("RiverBody", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.14f, 0.47f, 0.92f, 1f), new Vector2(0f, riverCenterY), new Vector2(mapConfig.riverWidth, riverHeight), 0f, RiverOrder);
-        riverBody.drawMode = SpriteDrawMode.Sliced;
-
-        var bankWidth = Mathf.Max(0.16f, mapConfig.riverWidth * 0.14f);
-        var bankOffset = (mapConfig.riverWidth * 0.5f) + (bankWidth * 0.5f);
-        CreateSprite("RiverBankLeft", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.49f, 0.24f, 1f), new Vector2(-bankOffset, riverCenterY), new Vector2(bankWidth, riverHeight), 0f, RiverBankOrder).drawMode = SpriteDrawMode.Sliced;
-        CreateSprite("RiverBankRight", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.49f, 0.24f, 1f), new Vector2(bankOffset, riverCenterY), new Vector2(bankWidth, riverHeight), 0f, RiverBankOrder).drawMode = SpriteDrawMode.Sliced;
-
-        const int sampleCount = 18;
-        var riverStartY = -(riverHeight * 0.5f);
-        var riverEndY = riverHeight * 0.5f;
-        for (var i = 0; i <= sampleCount; i++)
+        if (parent == null)
         {
-            var y = Mathf.Lerp(riverStartY, riverEndY, i / (float)sampleCount);
-            waterNodes.Add(new Vector2(0f, y));
+            return;
+        }
+
+        var mapConfig = cfg?.predatorPreyDocu?.map ?? new Map();
+        var riverRoot = new GameObject("RiverRibbon").transform;
+        riverRoot.SetParent(parent, false);
+
+        const int segmentCount = 56;
+        const float xMargin = 10f;
+        const float bankWidth = 1.25f;
+
+        var widthNorth = mapConfig.riverWidth * 1.10f;
+        var widthMid = mapConfig.riverWidth;
+        var widthSouth = mapConfig.riverWidth * 0.55f;
+
+        var y0 = halfHeight + 2f;
+        var yN = -halfHeight - 2f;
+
+        var points = new Vector2[segmentCount + 1];
+        var f1 = rng.Range(0.6f, 1.1f);
+        var f2 = rng.Range(1.2f, 2.0f);
+        var f3 = rng.Range(3.0f, 5.0f);
+        var phase1 = rng.Value();
+        var phase2 = rng.Value();
+        var phase3 = rng.Value();
+
+        for (var i = 0; i <= segmentCount; i++)
+        {
+            var t = i / (float)segmentCount;
+            var y = Mathf.Lerp(y0, yN, t);
+            var smoothT = Mathf.SmoothStep(0f, 1f, t);
+            var ampBase = Mathf.Lerp(6f, 3f, smoothT);
+            var ampDelta = 5f * Mathf.SmoothStep(0.8f, 1f, t);
+
+            var x = (ampBase * Mathf.Sin(2f * Mathf.PI * ((f1 * t) + phase1)))
+                + ((ampBase * 0.6f) * Mathf.Sin(2f * Mathf.PI * ((f2 * t) + phase2)))
+                + (ampDelta * Mathf.Sin(2f * Mathf.PI * ((f3 * t * t) + phase3)));
+
+            x = Mathf.Clamp(x, -halfWidth + xMargin, halfWidth - xMargin);
+            points[i] = new Vector2(x, y);
+        }
+
+        var floodExtra = Mathf.Max(1f, mapConfig.floodplainWidth);
+        var floodplainColor = new Color(0.5f, 0.72f, 0.37f, 1f);
+        var bankColor = new Color(0.33f, 0.49f, 0.24f, 1f);
+        var riverColor = new Color(0.14f, 0.47f, 0.92f, 1f);
+
+        for (var i = 0; i < segmentCount; i++)
+        {
+            var a = points[i];
+            var b = points[i + 1];
+            var segment = b - a;
+            var len = segment.magnitude;
+            if (len <= 0.001f)
+            {
+                continue;
+            }
+
+            var mid = (a + b) * 0.5f;
+            var angle = Mathf.Atan2(segment.y, segment.x) * Mathf.Rad2Deg;
+            var tMid = (i + 0.5f) / segmentCount;
+            var taper = Mathf.SmoothStep(0.1f, 1f, tMid);
+            var wMid = Mathf.Lerp(widthNorth, widthSouth, taper);
+            wMid += 0.25f * widthMid * Mathf.Sin(Mathf.PI * tMid) * 0.35f;
+
+            var floodplain = CreateSprite($"FloodplainSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), floodplainColor, mid, new Vector2(wMid + floodExtra, len + 0.35f), angle, FloodplainOrder);
+            floodplain.transform.SetParent(riverRoot, true);
+            floodplainRenderers.Add(floodplain);
+
+            var bank = CreateSprite($"RiverBankSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), bankColor, mid, new Vector2(wMid + (bankWidth * 2f), len + 0.35f), angle, RiverBankOrder);
+            bank.transform.SetParent(riverRoot, true);
+
+            var river = CreateSprite($"RiverSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), riverColor, mid, new Vector2(wMid, len + 0.35f), angle, RiverOrder);
+            river.transform.SetParent(riverRoot, true);
+
+            if (i % rng.NextInt(4, 7) == 0)
+            {
+                waterNodes.Add(mid);
+            }
+        }
+
+        if (waterNodes.Count == 0)
+        {
+            waterNodes.Add(points[segmentCount / 2]);
         }
     }
 
