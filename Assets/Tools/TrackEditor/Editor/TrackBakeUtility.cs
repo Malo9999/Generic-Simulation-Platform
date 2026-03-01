@@ -38,7 +38,7 @@ namespace GSP.TrackEditor.Editor
             var implicitPitLinks = BuildImplicitLinks(pieceMap, TrackConnectorRole.Pit, 0.06f);
 
             ValidateMainLoop(layout, pieceMap, report, implicitMainLinks);
-            ValidateOverlaps(layout, pieceMap.Values.ToList(), report);
+            ValidateOverlaps(layout, pieceMap.Values.ToList(), report, implicitMainLinks, implicitPitLinks);
             ValidatePit(layout, pieceMap, report, implicitPitLinks);
 
             if (layout.startFinish == null)
@@ -221,20 +221,59 @@ namespace GSP.TrackEditor.Editor
             }
         }
 
-        private static void ValidateOverlaps(TrackLayout layout, List<PlacedPiece> pieces, ValidationReport report)
+        private static void ValidateOverlaps(
+            TrackLayout layout,
+            List<PlacedPiece> pieces,
+            ValidationReport report,
+            List<(string aGuid, int aIdx, string bGuid, int bIdx)> implicitMainLinks,
+            List<(string aGuid, int aIdx, string bGuid, int bIdx)> implicitPitLinks)
         {
+            var neighborPairs = new HashSet<string>();
+            foreach (var link in layout.links)
+            {
+                neighborPairs.Add(PairKey(link.pieceGuidA, link.pieceGuidB));
+            }
+
+            foreach (var link in implicitMainLinks)
+            {
+                neighborPairs.Add(PairKey(link.aGuid, link.bGuid));
+            }
+
+            foreach (var link in implicitPitLinks)
+            {
+                neighborPairs.Add(PairKey(link.aGuid, link.bGuid));
+            }
+
             for (var i = 0; i < pieces.Count; i++)
             {
                 for (var j = i + 1; j < pieces.Count; j++)
                 {
                     var a = TransformBounds(pieces[i]);
                     var b = TransformBounds(pieces[j]);
-                    if (a.Overlaps(b))
+                    if (!a.Overlaps(b))
                     {
-                        report.Warnings.Add($"Piece overlap detected between {pieces[i].guid} and {pieces[j].guid}.");
+                        continue;
                     }
+
+                    var pairKey = PairKey(pieces[i].guid, pieces[j].guid);
+                    if (neighborPairs.Contains(pairKey))
+                    {
+                        continue;
+                    }
+
+                    var ixMin = Mathf.Max(a.min.x, b.min.x);
+                    var iyMin = Mathf.Max(a.min.y, b.min.y);
+                    var ixMax = Mathf.Min(a.max.x, b.max.x);
+                    var iyMax = Mathf.Min(a.max.y, b.max.y);
+                    var area = Mathf.Max(0f, ixMax - ixMin) * Mathf.Max(0f, iyMax - iyMin);
+                    report.Warnings.Add($"Piece overlap detected between {pieces[i].guid} and {pieces[j].guid} (area={area:F1}).");
                 }
             }
+        }
+
+        private static string PairKey(string a, string b)
+        {
+            return string.CompareOrdinal(a, b) <= 0 ? $"{a}|{b}" : $"{b}|{a}";
         }
 
         private static void ValidatePit(

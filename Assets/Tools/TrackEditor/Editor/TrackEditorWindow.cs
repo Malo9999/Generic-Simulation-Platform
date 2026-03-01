@@ -101,6 +101,7 @@ namespace GSP.TrackEditor.Editor
         private const float DragThresholdPx = 6f;
         private bool _isPanningWithSpace;
         private bool _spaceHeld;
+        private string _pendingFocusGuid;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -169,6 +170,18 @@ namespace GSP.TrackEditor.Editor
             DrawGrid(rect.size);
             if (layout != null)
             {
+                if (!string.IsNullOrEmpty(_pendingFocusGuid))
+                {
+                    var focusPiece = layout.pieces.FirstOrDefault(p => p.guid == _pendingFocusGuid);
+                    if (focusPiece != null)
+                    {
+                        canvasPan = -(focusPiece.position * PixelsPerUnit * canvasZoom);
+                    }
+
+                    _pendingFocusGuid = null;
+                    Repaint();
+                }
+
                 DrawTrackPreview(rect.size);
                 DrawStartGrid(rect.size);
                 DrawLinks(rect.size);
@@ -279,7 +292,10 @@ namespace GSP.TrackEditor.Editor
                 GUILayout.Label("Validation", EditorStyles.boldLabel);
                 foreach (var error in _lastValidation.Errors)
                 {
+                    EditorGUILayout.BeginHorizontal();
                     GUILayout.Label($"Error: {error}", EditorStyles.wordWrappedMiniLabel);
+                    DrawValidationErrorActions(error);
+                    EditorGUILayout.EndHorizontal();
                 }
                 const int maxOverlapWarnings = 8;
                 var overlapWarnings = new List<(string warning, string aGuid, string bGuid)>();
@@ -322,9 +338,15 @@ namespace GSP.TrackEditor.Editor
                         if (selectedIdx >= 0)
                         {
                             selectedPiece = selectedIdx;
+                            RequestFocusOnGuid(overlapWarning.aGuid);
                         }
 
                         Repaint();
+                    }
+
+                    if (GUILayout.Button("Nudge", GUILayout.Width(56f)))
+                    {
+                        NudgeOverlapWarningPair(overlapWarning.aGuid, overlapWarning.bGuid);
                     }
 
                     EditorGUILayout.EndHorizontal();
@@ -376,13 +398,178 @@ namespace GSP.TrackEditor.Editor
             {
                 EditorUtility.SetDirty(layout);
                 status = $"Added {added} missing link(s) from snapped geometry.";
+                EditorUtility.DisplayDialog("Fix Links", $"Added {added} missing link(s).", "OK");
             }
             else
             {
-                status = "No missing links were found.";
+                status = "No missing links found (track may still be invalid for another reason).";
             }
 
+            Validate();
             Repaint();
+        }
+
+        private void RequestFocusOnGuid(string guid)
+        {
+            _pendingFocusGuid = guid;
+        }
+
+        private void DrawValidationErrorActions(string error)
+        {
+            if (error.StartsWith("Main track must form exactly one closed loop", StringComparison.Ordinal))
+            {
+                if (GUILayout.Button("Fix Links", GUILayout.Width(70f)))
+                {
+                    FixLinksFromSnappedGeometry();
+                }
+
+                return;
+            }
+
+            if (error.IndexOf("Start/Finish is not set", StringComparison.Ordinal) >= 0)
+            {
+                if (GUILayout.Button("Place", GUILayout.Width(56f)))
+                {
+                    _isPlacingStartFinish = true;
+                    status = "Click on main track to place start/finish.";
+                    Repaint();
+                }
+
+                return;
+            }
+
+            if (error.IndexOf("Start/Finish is not on the main track", StringComparison.Ordinal) >= 0
+                || error.IndexOf("Start/Finish direction is invalid", StringComparison.Ordinal) >= 0)
+            {
+                if (GUILayout.Button("Snap", GUILayout.Width(56f)))
+                {
+                    if (SnapStartFinishToMainLoop())
+                    {
+                        status = "Start/Finish snapped to main track.";
+                        Validate();
+                        Repaint();
+                    }
+                    else
+                    {
+                        status = "Unable to snap start/finish: main loop is invalid.";
+                    }
+                }
+
+                return;
+            }
+
+            if (error.IndexOf("Pit pieces present", StringComparison.Ordinal) >= 0)
+            {
+                if (GUILayout.Button("Select Pit", GUILayout.Width(72f)))
+                {
+                    SelectPitPieces();
+                }
+
+                if (GUILayout.Button("Remove Pit", GUILayout.Width(78f)))
+                {
+                    RemovePitPieces();
+                }
+            }
+        }
+
+        private void SelectPitPieces()
+        {
+            var pitPieces = layout.pieces.Where(p => p?.piece != null && (p.piece.category == "Pit" || p.piece.category == "PitLane")).ToList();
+            if (pitPieces.Count == 0)
+            {
+                return;
+            }
+
+            _overlapHighlightedGuids.Clear();
+            foreach (var pitPiece in pitPieces)
+            {
+                _overlapHighlightedGuids.Add(pitPiece.guid);
+            }
+
+            selectedPiece = layout.pieces.FindIndex(p => p.guid == pitPieces[0].guid);
+            RequestFocusOnGuid(pitPieces[0].guid);
+            status = "Selected pit pieces.";
+            Repaint();
+        }
+
+        private void RemovePitPieces()
+        {
+            var pitGuids = layout.pieces
+                .Where(p => p?.piece != null && (p.piece.category == "Pit" || p.piece.category == "PitLane"))
+                .Select(p => p.guid)
+                .ToHashSet();
+            if (pitGuids.Count == 0)
+            {
+                return;
+            }
+
+            if (!EditorUtility.DisplayDialog("Remove Pit Pieces", "Remove all pit and pit-lane pieces from the layout?", "Remove", "Cancel"))
+            {
+                return;
+            }
+
+            layout.pieces.RemoveAll(p => pitGuids.Contains(p.guid));
+            layout.links.RemoveAll(l => pitGuids.Contains(l.pieceGuidA) || pitGuids.Contains(l.pieceGuidB));
+            selectedPiece = -1;
+            _overlapHighlightedGuids.RemoveWhere(guid => pitGuids.Contains(guid));
+            EditorUtility.SetDirty(layout);
+            status = "Removed pit pieces and related links.";
+            Validate();
+            Repaint();
+        }
+
+        private void NudgeOverlapWarningPair(string aGuid, string bGuid)
+        {
+            var pieceA = layout.pieces.FirstOrDefault(p => p.guid == aGuid);
+            var pieceB = layout.pieces.FirstOrDefault(p => p.guid == bGuid);
+            if (pieceA == null || pieceB == null)
+            {
+                status = "Cannot nudge: one or both pieces are missing.";
+                return;
+            }
+
+            var neighborPairs = BuildNeighborPairs();
+            if (neighborPairs.Contains(NormalizeOverlapPairKey(aGuid, bGuid)))
+            {
+                status = "Cannot nudge connected neighbors.";
+                return;
+            }
+
+            var direction = pieceB.position - pieceA.position;
+            if (direction.sqrMagnitude < 0.0001f)
+            {
+                direction = Vector2.right;
+            }
+
+            var referencePiece = layout.pieces.FirstOrDefault(p => p?.piece != null);
+            var trackWidth = referencePiece?.piece?.trackWidth ?? 8f;
+            var delta = direction.normalized * (trackWidth * 1.1f);
+            pieceB.position += delta;
+            EditorUtility.SetDirty(layout);
+            status = "Nudged overlapping piece.";
+            Validate();
+            Repaint();
+        }
+
+        private HashSet<string> BuildNeighborPairs()
+        {
+            var neighborPairs = new HashSet<string>();
+            foreach (var link in layout.links)
+            {
+                neighborPairs.Add(NormalizeOverlapPairKey(link.pieceGuidA, link.pieceGuidB));
+            }
+
+            foreach (var link in TrackBakeUtility.GetImplicitLinks(layout, TrackConnectorRole.Main))
+            {
+                neighborPairs.Add(NormalizeOverlapPairKey(link.aGuid, link.bGuid));
+            }
+
+            foreach (var link in TrackBakeUtility.GetImplicitLinks(layout, TrackConnectorRole.Pit))
+            {
+                neighborPairs.Add(NormalizeOverlapPairKey(link.aGuid, link.bGuid));
+            }
+
+            return neighborPairs;
         }
 
         private static string NormalizeLinkKey(string aGuid, int aIdx, string bGuid, int bIdx)
