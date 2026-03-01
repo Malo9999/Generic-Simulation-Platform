@@ -100,6 +100,7 @@ namespace GSP.TrackEditor.Editor
         private bool _mouseDownOnAlreadySelectedPiece;
         private const float DragThresholdPx = 6f;
         private bool _isPanningWithSpace;
+        private bool _spaceHeld;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -231,6 +232,20 @@ namespace GSP.TrackEditor.Editor
             if (GUILayout.Button("Generate Start Grid (10)"))
             {
                 GenerateStartGrid(10);
+            }
+
+            if (GUILayout.Button("Snap Start/Finish to Track"))
+            {
+                if (SnapStartFinishToMainLoop())
+                {
+                    var gridCount = layout.startGridSlots != null && layout.startGridSlots.Count > 0 ? layout.startGridSlots.Count : 10;
+                    GenerateStartGrid(gridCount);
+                    status = "Start/Finish snapped to main loop and start grid regenerated.";
+                }
+                else
+                {
+                    status = "Main loop not valid yet.";
+                }
             }
 
             if (GUILayout.Button("Fix Links (from snapped geometry)"))
@@ -488,7 +503,12 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            if (evt.type == EventType.ScrollWheel)
+            var canvasRect = new Rect(Vector2.zero, size);
+            var leftOverlayRect = new Rect(8f, 8f, 260f, size.y - 16f);
+
+            if (evt.type == EventType.ScrollWheel
+                && canvasRect.Contains(evt.mousePosition)
+                && !leftOverlayRect.Contains(evt.mousePosition))
             {
                 canvasZoom = Mathf.Clamp(canvasZoom - evt.delta.y * 0.03f, 0.2f, 3f);
                 layout.zoom = canvasZoom;
@@ -496,15 +516,16 @@ namespace GSP.TrackEditor.Editor
                 evt.Use();
             }
 
-            if (evt.type == EventType.MouseDrag && evt.button == 2)
+            if (evt.type == EventType.MouseDrag
+                && evt.button == 2
+                && canvasRect.Contains(evt.mousePosition)
+                && !leftOverlayRect.Contains(evt.mousePosition))
             {
                 canvasPan += evt.delta;
                 layout.pan = canvasPan;
                 EditorUtility.SetDirty(layout);
                 evt.Use();
             }
-
-            var canvasRect = new Rect(Vector2.zero, size);
 
             if ((evt.type == EventType.DragUpdated || evt.type == EventType.DragPerform) && canvasRect.Contains(evt.mousePosition))
             {
@@ -541,6 +562,20 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
+            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Space)
+            {
+                _spaceHeld = true;
+                evt.Use();
+                Repaint();
+            }
+
+            if (evt.type == EventType.KeyUp && evt.keyCode == KeyCode.Space)
+            {
+                _spaceHeld = false;
+                evt.Use();
+                Repaint();
+            }
+
             if (evt.type == EventType.MouseDown && evt.button == 1)
             {
                 var clicked = PickPieceAtMouse(CanvasToWorld(evt.mousePosition, size));
@@ -561,7 +596,7 @@ namespace GSP.TrackEditor.Editor
                 _mouseDownOnAlreadySelectedPiece = _mouseDownHitPiece >= 0 && _mouseDownHitPiece == selectedPiece;
                 _dragThresholdPassed = false;
 
-                if (Input.GetKey(KeyCode.Space))
+                if (_spaceHeld)
                 {
                     _isPanningWithSpace = true;
                     evt.Use();
@@ -728,6 +763,7 @@ namespace GSP.TrackEditor.Editor
                 _mouseDownOnAlreadySelectedPiece = false;
                 _dragThresholdPassed = false;
                 _isPanningWithSpace = false;
+                _spaceHeld = false;
             }
 
             if (evt.type == EventType.DragExited)
@@ -1766,8 +1802,15 @@ namespace GSP.TrackEditor.Editor
 
         private bool TryPlaceStartFinishAtMouse(Vector2 mouseWorld)
         {
-            if (!FindNearestPointOnMainSegments(mouseWorld, out var closest, out var tangent))
+            if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out var mainCenterline, out _))
             {
+                status = "Main loop not valid yet.";
+                return false;
+            }
+
+            if (!TrackBakeUtility.TryFindClosestPointOnPolyline(mainCenterline, mouseWorld, out var closest, out var tangent, out _, out _))
+            {
+                status = "Main loop not valid yet.";
                 return false;
             }
 
@@ -1788,57 +1831,6 @@ namespace GSP.TrackEditor.Editor
             EditorUtility.SetDirty(layout);
             Repaint();
             return true;
-        }
-
-        private bool FindNearestPointOnMainSegments(Vector2 mouseWorld, out Vector2 closestPoint, out Vector2 tangentDir)
-        {
-            closestPoint = Vector2.zero;
-            tangentDir = Vector2.right;
-            var found = false;
-            var bestDistSq = float.MaxValue;
-
-            foreach (var placed in layout.pieces)
-            {
-                if (placed?.piece?.segments == null)
-                {
-                    continue;
-                }
-
-                foreach (var segment in placed.piece.segments)
-                {
-                    if (segment == null || segment.pathRole != TrackConnectorRole.Main || segment.localCenterline == null || segment.localCenterline.Length < 2)
-                    {
-                        continue;
-                    }
-
-                    for (var i = 0; i < segment.localCenterline.Length - 1; i++)
-                    {
-                        var a = TrackMathUtil.ToWorld(placed, segment.localCenterline[i]);
-                        var b = TrackMathUtil.ToWorld(placed, segment.localCenterline[i + 1]);
-                        var ab = b - a;
-                        var abLenSq = ab.sqrMagnitude;
-                        if (abLenSq < 0.000001f)
-                        {
-                            continue;
-                        }
-
-                        var t = Mathf.Clamp01(Vector2.Dot(mouseWorld - a, ab) / abLenSq);
-                        var c = a + ab * t;
-                        var d = (mouseWorld - c).sqrMagnitude;
-                        if (d >= bestDistSq)
-                        {
-                            continue;
-                        }
-
-                        bestDistSq = d;
-                        closestPoint = c;
-                        tangentDir = ab.normalized;
-                        found = true;
-                    }
-                }
-            }
-
-            return found;
         }
 
         private void AutoSnapMovedPieces(HashSet<string> movedGuids, Vector2 canvasSize)
@@ -2103,6 +2095,7 @@ namespace GSP.TrackEditor.Editor
             Vector2 forward;
             if (IsStartFinishSet())
             {
+                SnapStartFinishToMainLoop();
                 startPos = layout.startFinish.worldPos;
                 forward = layout.startFinish.worldDir.sqrMagnitude > 0.001f ? layout.startFinish.worldDir.normalized : Vector2.right;
             }
@@ -2145,6 +2138,30 @@ namespace GSP.TrackEditor.Editor
             }
 
             EditorUtility.SetDirty(layout);
+        }
+
+        private bool SnapStartFinishToMainLoop()
+        {
+            if (layout?.startFinish == null)
+            {
+                return false;
+            }
+
+            if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out var mainCenterline, out _))
+            {
+                return false;
+            }
+
+            if (!TrackBakeUtility.TryFindClosestPointOnPolyline(mainCenterline, layout.startFinish.worldPos, out var closest, out var tangent, out _, out _))
+            {
+                return false;
+            }
+
+            layout.startFinish.worldPos = closest;
+            layout.startFinish.worldDir = tangent.sqrMagnitude > 0.001f ? tangent.normalized : Vector2.right;
+            layout.startFinish.pieceGuid = string.Empty;
+            EditorUtility.SetDirty(layout);
+            return true;
         }
 
         private bool TryGetFallbackStart(out Vector2 startPos, out Vector2 forwardDir, out string pieceGuid)

@@ -35,6 +35,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     private int[] prideShadeIndex;
 
     private string lastSeasonName;
+    private bool loggedArenaBackgroundOverride;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -154,6 +155,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var renderers = root.GetComponentsInChildren<SpriteRenderer>(true);
+        var forcedAny = false;
         for (var i = 0; i < renderers.Length; i++)
         {
             var sr = renderers[i];
@@ -162,15 +164,21 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
                 continue;
             }
 
-            var nameLooksLikeBackground = sr.name.IndexOf("Background", System.StringComparison.OrdinalIgnoreCase) >= 0;
-            var broadBackgroundCandidate = sr.sprite != null && sr.sortingOrder >= -500;
-            if (!nameLooksLikeBackground && !broadBackgroundCandidate)
+            if (sr.gameObject.name != "Background")
             {
                 continue;
             }
 
             sr.sortingLayerName = "Default";
             sr.sortingOrder = -1000;
+            sr.color = Color.white;
+            forcedAny = true;
+        }
+
+        if (forcedAny && !loggedArenaBackgroundOverride)
+        {
+            Debug.Log("[PredatorPreyDocu] Forced Arena Background behind (sortingOrder=-1000).");
+            loggedArenaBackgroundOverride = true;
         }
     }
 
