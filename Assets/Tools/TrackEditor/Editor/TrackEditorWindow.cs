@@ -55,6 +55,14 @@ namespace GSP.TrackEditor.Editor
             public Dir8 worldDir;
         }
 
+        private struct DebugOverlayData
+        {
+            public Rect bounds;
+            public Vector2 startFinishPos;
+            public Vector2 startFinishDir;
+            public List<TrackSlot> slots;
+        }
+
         private const float RightPanelWidth = 330f;
         private const float PixelsPerUnit = 24f;
         private const float SnapRadiusPx = 120f;
@@ -102,6 +110,8 @@ namespace GSP.TrackEditor.Editor
         private bool _isPanningWithSpace;
         private bool _spaceHeld;
         private string _pendingFocusGuid;
+        private string _lastBakedPath;
+        private DebugOverlayData? _debugOverlay;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -154,6 +164,13 @@ namespace GSP.TrackEditor.Editor
             }
             EditorGUI.EndDisabledGroup();
 
+            EditorGUI.BeginDisabledGroup(layout == null);
+            if (GUILayout.Button("Debug Report", EditorStyles.toolbarButton, GUILayout.Width(95f)))
+            {
+                DebugReport();
+            }
+            EditorGUI.EndDisabledGroup();
+
             GUILayout.FlexibleSpace();
             GUILayout.Label(status, EditorStyles.miniLabel);
             EditorGUILayout.EndHorizontal();
@@ -195,6 +212,15 @@ namespace GSP.TrackEditor.Editor
                 }
 
                 DrawConnectors(rect.size, _moveDragPreview.HasValue && _moveDragPreview.Value.valid ? _moveDragPreview : null);
+
+                if (_debugOverlay.HasValue)
+                {
+                    DrawDebugOverlay(rect.size, _debugOverlay.Value);
+                    if (eventCurrent.type == EventType.Repaint)
+                    {
+                        _debugOverlay = null;
+                    }
+                }
 
                 var draggedPiece = DragAndDrop.GetGenericData("TrackPieceDef") as TrackPieceDef;
                 if (draggedPiece != null)
@@ -2272,7 +2298,111 @@ namespace GSP.TrackEditor.Editor
 
             var bakedPath = $"{bakedFolder}/{layout.name}_Baked.asset";
             TrackBakeUtility.Bake(layout, bakedPath);
+            _lastBakedPath = bakedPath;
             status = $"Baked track data: {bakedPath}";
+        }
+
+        private void DebugReport()
+        {
+            if (layout == null)
+            {
+                status = "Debug report failed: no layout selected.";
+                return;
+            }
+
+            var baked = LoadBakedDataForDebug();
+            if (baked == null)
+            {
+                status = "Debug report failed: no baked TrackBakedData found.";
+                return;
+            }
+
+            Debug.Log(baked.BuildDebugReport());
+            _debugOverlay = new DebugOverlayData
+            {
+                bounds = TrackBakedData.ComputeDebugMainBounds(baked),
+                startFinishPos = baked.startFinishPos,
+                startFinishDir = baked.startFinishDir,
+                slots = baked.startGridSlots
+            };
+            status = $"Debug report logged for {baked.name}.";
+            Repaint();
+        }
+
+        private TrackBakedData LoadBakedDataForDebug()
+        {
+            TrackBakedData baked = null;
+            if (!string.IsNullOrWhiteSpace(_lastBakedPath))
+            {
+                baked = AssetDatabase.LoadAssetAtPath<TrackBakedData>(_lastBakedPath);
+            }
+
+            if (baked != null)
+            {
+                return baked;
+            }
+
+            var layoutPath = AssetDatabase.GetAssetPath(layout);
+            if (string.IsNullOrWhiteSpace(layoutPath))
+            {
+                return null;
+            }
+
+            var folder = System.IO.Path.GetDirectoryName(layoutPath);
+            var expectedBakedPath = $"{folder}/Baked/{layout.name}_Baked.asset";
+            baked = AssetDatabase.LoadAssetAtPath<TrackBakedData>(expectedBakedPath);
+            if (baked != null)
+            {
+                _lastBakedPath = expectedBakedPath;
+            }
+
+            return baked;
+        }
+
+        private void DrawDebugOverlay(Vector2 canvasSize, DebugOverlayData data)
+        {
+            var rectMin = WorldToCanvas(data.bounds.min, canvasSize);
+            var rectMax = WorldToCanvas(data.bounds.max, canvasSize);
+            var xMin = Mathf.Min(rectMin.x, rectMax.x);
+            var xMax = Mathf.Max(rectMin.x, rectMax.x);
+            var yMin = Mathf.Min(rectMin.y, rectMax.y);
+            var yMax = Mathf.Max(rectMin.y, rectMax.y);
+            var c0 = new Vector2(xMin, yMin);
+            var c1 = new Vector2(xMax, yMin);
+            var c2 = new Vector2(xMax, yMax);
+            var c3 = new Vector2(xMin, yMax);
+
+            Handles.color = new Color(0.2f, 0.9f, 1f, 0.95f);
+            Handles.DrawAAPolyLine(2.5f, c0, c1, c2, c3, c0);
+
+            var sfDir = data.startFinishDir.sqrMagnitude > 0.001f ? data.startFinishDir.normalized : Vector2.right;
+            var arrowStartWorld = data.startFinishPos;
+            var arrowEndWorld = data.startFinishPos + sfDir * 6f;
+            var arrowLeftWorld = arrowEndWorld - sfDir * 1.5f + new Vector2(-sfDir.y, sfDir.x) * 1.2f;
+            var arrowRightWorld = arrowEndWorld - sfDir * 1.5f - new Vector2(-sfDir.y, sfDir.x) * 1.2f;
+
+            var arrowStart = WorldToCanvas(arrowStartWorld, canvasSize);
+            var arrowEnd = WorldToCanvas(arrowEndWorld, canvasSize);
+            var arrowLeft = WorldToCanvas(arrowLeftWorld, canvasSize);
+            var arrowRight = WorldToCanvas(arrowRightWorld, canvasSize);
+            Handles.color = new Color(1f, 0.4f, 0.2f, 0.95f);
+            Handles.DrawAAPolyLine(3f, arrowStart, arrowEnd);
+            Handles.DrawAAPolyLine(2f, arrowEnd, arrowLeft);
+            Handles.DrawAAPolyLine(2f, arrowEnd, arrowRight);
+
+            var slotCount = Mathf.Min(5, data.slots?.Count ?? 0);
+            for (var i = 0; i < slotCount; i++)
+            {
+                var slot = data.slots[i];
+                var slotDir = slot.dir.sqrMagnitude > 0.001f ? slot.dir.normalized : Vector2.right;
+                var slotRight = new Vector2(-slotDir.y, slotDir.x);
+                var p0 = WorldToCanvas(slot.pos + slotDir * 1.2f + slotRight * 0.5f, canvasSize);
+                var p1 = WorldToCanvas(slot.pos + slotDir * 1.2f - slotRight * 0.5f, canvasSize);
+                var p2 = WorldToCanvas(slot.pos - slotDir * 1.2f - slotRight * 0.5f, canvasSize);
+                var p3 = WorldToCanvas(slot.pos - slotDir * 1.2f + slotRight * 0.5f, canvasSize);
+                Handles.color = Color.HSVToRGB(i / 5f, 0.8f, 1f);
+                Handles.DrawAAPolyLine(2f, p0, p1, p2, p3, p0);
+            }
         }
 
         private void CreateLayoutAsset()
