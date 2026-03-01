@@ -191,8 +191,8 @@ public sealed class PredatorPreyDocuMapBuilder
         var widthMid = mapConfig.riverWidth;
         var widthSouth = mapConfig.riverWidth * 0.55f;
 
-        var y0 = halfHeight + 2f;
-        var yN = -halfHeight - 2f;
+        var y0 = halfHeight;
+        var yN = -halfHeight;
 
         var points = new Vector2[segmentCount + 1];
         var f1 = rng.Range(0.6f, 1.1f);
@@ -206,6 +206,7 @@ public sealed class PredatorPreyDocuMapBuilder
         {
             var t = i / (float)segmentCount;
             var y = Mathf.Lerp(y0, yN, t);
+            y = Mathf.Clamp(y, -halfHeight, halfHeight);
             var smoothT = Mathf.SmoothStep(0f, 1f, t);
             var ampBase = Mathf.Lerp(6f, 3f, smoothT);
             var ampDelta = 5f * Mathf.SmoothStep(0.8f, 1f, t);
@@ -241,14 +242,21 @@ public sealed class PredatorPreyDocuMapBuilder
             var wMid = Mathf.Lerp(widthNorth, widthSouth, taper);
             wMid += 0.25f * widthMid * Mathf.Sin(Mathf.PI * tMid) * 0.35f;
 
-            var floodplain = CreateSprite($"FloodplainSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), floodplainColor, mid, new Vector2(wMid + floodExtra, len + 0.35f), angle, FloodplainOrder);
+            var segLen = len;
+            const float overlap = 0.35f;
+            if (i > 0 && i < segmentCount - 1)
+            {
+                segLen += overlap;
+            }
+
+            var floodplain = CreateSprite($"FloodplainSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), floodplainColor, mid, new Vector2(wMid + floodExtra, segLen), angle, FloodplainOrder);
             floodplain.transform.SetParent(riverRoot, true);
             floodplainRenderers.Add(floodplain);
 
-            var bank = CreateSprite($"RiverBankSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), bankColor, mid, new Vector2(wMid + (bankWidth * 2f), len + 0.35f), angle, RiverBankOrder);
+            var bank = CreateSprite($"RiverBankSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), bankColor, mid, new Vector2(wMid + (bankWidth * 2f), segLen), angle, RiverBankOrder);
             bank.transform.SetParent(riverRoot, true);
 
-            var river = CreateSprite($"RiverSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), riverColor, mid, new Vector2(wMid, len + 0.35f), angle, RiverOrder);
+            var river = CreateSprite($"RiverSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), riverColor, mid, new Vector2(wMid, segLen), angle, RiverOrder);
             river.transform.SetParent(riverRoot, true);
 
             if (i % rng.NextInt(4, 7) == 0)
