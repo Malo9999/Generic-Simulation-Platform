@@ -37,6 +37,8 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     private string lastSeasonName;
     private bool loggedArenaBackgroundOverride;
 
+    [SerializeField] private PredatorPreyDocuMapRecipe mapRecipe;
+
     public void Initialize(ScenarioConfig config)
     {
         Shutdown();
@@ -58,7 +60,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             mapParent.gameObject.SetActive(true);
         }
 
-        map.Build(mapParent != null ? mapParent : transform, activeConfig, halfWidth, halfHeight);
+        map.Build(mapParent != null ? mapParent : transform, activeConfig, halfWidth, halfHeight, mapRecipe);
         SpawnEntities();
 
         lastSeasonName = null;
@@ -139,6 +141,17 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         activeConfig = null;
         lastSeasonName = null;
         Debug.Log("PredatorPreyDocuRunner Shutdown");
+    }
+
+    public void RebuildMapPreview()
+    {
+        if (map == null || activeConfig == null)
+        {
+            return;
+        }
+
+        var mapParent = sceneGraph != null && sceneGraph.WorldObjectsRoot != null ? sceneGraph.WorldObjectsRoot : transform;
+        map.Build(mapParent, activeConfig, halfWidth, halfHeight, mapRecipe);
     }
 
     private void ForceArenaRootBackgroundBehindEverything()

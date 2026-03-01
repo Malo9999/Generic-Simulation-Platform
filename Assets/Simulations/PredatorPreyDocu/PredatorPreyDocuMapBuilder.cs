@@ -20,7 +20,7 @@ public sealed class PredatorPreyDocuMapBuilder
     public IReadOnlyList<Vector2> WaterNodes => waterNodes;
     public IReadOnlyList<Vector2> ShadeNodes => shadeNodes;
 
-    public void Build(Transform parent, ScenarioConfig config, float halfWidth, float halfHeight)
+    public void Build(Transform parent, ScenarioConfig config, float halfWidth, float halfHeight, PredatorPreyDocuMapRecipe mapRecipe = null)
     {
         Clear();
 
@@ -31,7 +31,7 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(parent, false);
 
         var mapRng = RngService.Fork("SIM:PredatorPreyDocu:MAP");
-        BuildObjectMap(halfWidth, halfHeight, docu, mapRng);
+        BuildObjectMap(halfWidth, halfHeight, docu, mapRecipe, mapRng);
     }
 
     public void UpdateSeasonVisuals(float dryness01)
@@ -65,7 +65,7 @@ public sealed class PredatorPreyDocuMapBuilder
         creekRenderers.Clear();
     }
 
-    private void BuildObjectMap(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, IRng rng)
+    private void BuildObjectMap(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, PredatorPreyDocuMapRecipe mapRecipe, IRng rng)
     {
         var arenaW = halfWidth * 2f;
         var arenaH = halfHeight * 2f;
@@ -74,10 +74,10 @@ public sealed class PredatorPreyDocuMapBuilder
         BuildSavannaBackground(arenaW, arenaH);
         BuildBiomeGradientBands(halfWidth, halfHeight, rng);
 
-        BuildRiverRibbon(halfWidth, halfHeight, mapCfg, rng, out var riverPoints, out var widths);
-        BuildCreeks(halfWidth, halfHeight, mapCfg, riverPoints, rng);
-        BuildGrass(halfWidth, halfHeight, rng);
-        BuildTrees(halfWidth, halfHeight, cfg, rng);
+        BuildRiverRibbon(halfWidth, halfHeight, mapCfg, mapRecipe, rng, out var riverPoints, out var widths);
+        BuildCreeks(halfWidth, halfHeight, mapCfg, mapRecipe, riverPoints, rng);
+        BuildGrass(halfWidth, halfHeight, mapRecipe, rng);
+        BuildTrees(halfWidth, halfHeight, cfg, mapRecipe, rng);
 
         if (waterNodes.Count == 0 && riverPoints.Count > 0)
         {
@@ -129,6 +129,7 @@ public sealed class PredatorPreyDocuMapBuilder
         float halfWidth,
         float halfHeight,
         Map mapCfg,
+        PredatorPreyDocuMapRecipe mapRecipe,
         IRng rng,
         out List<Vector2> points,
         out List<float> widths)
@@ -137,9 +138,16 @@ public sealed class PredatorPreyDocuMapBuilder
         const float xMargin = 3f;
         const float overlap = 0.75f;
 
-        var baseRiverWidth = Mathf.Max(0.8f, mapCfg.riverWidth);
-        var floodplainExtra = Mathf.Max(0.8f, mapCfg.floodplainWidth);
-        var bankExtra = Mathf.Max(0.8f, Mathf.Min(mapCfg.floodplainWidth * 0.25f, 5.5f));
+        var authored = mapRecipe != null && mapRecipe.riverPoints != null && mapRecipe.riverPoints.Count >= 2;
+        if (authored)
+        {
+            mapRecipe.NormalizeAndValidate();
+        }
+
+        var northWidth = authored ? mapRecipe.riverWidthNorth : Mathf.Max(0.8f, mapCfg.riverWidth * 1.10f);
+        var southWidth = authored ? mapRecipe.riverWidthSouth : Mathf.Max(0.8f, mapCfg.riverWidth * 0.55f);
+        var floodplainExtra = authored ? mapRecipe.floodplainExtra : Mathf.Max(0.8f, mapCfg.floodplainWidth);
+        var bankExtra = authored ? mapRecipe.bankExtra : Mathf.Max(0.8f, Mathf.Min(mapCfg.floodplainWidth * 0.25f, 5.5f));
 
         var f1 = rng.Range(0.6f, 1.05f);
         var f2 = rng.Range(1.2f, 1.9f);
@@ -150,22 +158,42 @@ public sealed class PredatorPreyDocuMapBuilder
         points = new List<Vector2>(segmentCount + 1);
         widths = new List<float>(segmentCount + 1);
 
-        for (var i = 0; i <= segmentCount; i++)
+        if (authored)
         {
-            var t = i / (float)segmentCount;
-            var y = Mathf.Lerp(halfHeight, -halfHeight, t);
+            for (var i = 0; i <= segmentCount; i++)
+            {
+                var t = i / (float)segmentCount;
+                var p = EvaluateCatmullRom(mapRecipe.riverPoints, t);
+                var x = Mathf.Lerp(-halfWidth, halfWidth, p.x);
+                var y = Mathf.Lerp(-halfHeight, halfHeight, p.y);
+                var riverW = Mathf.Lerp(northWidth, southWidth, t);
 
-            var amp = Mathf.Lerp(Mathf.Min(halfWidth * 0.32f, 8f), Mathf.Min(halfWidth * 0.22f, 4f), t);
-            var meander = (amp * Mathf.Sin((2f * Mathf.PI * f1 * t) + (p1 * Mathf.PI * 2f)))
-                          + ((amp * 0.62f) * Mathf.Sin((2f * Mathf.PI * f2 * t) + (p2 * Mathf.PI * 2f)));
-            var swirlT = Mathf.SmoothStep(0.70f, 1f, t);
-            var swirl = swirlT * Mathf.Min(halfWidth * 0.2f, 2.5f) * Mathf.Sin((6f * Mathf.PI * t * t) + (southSwirlPhase * Mathf.PI * 2f));
+                x = Mathf.Clamp(x, -halfWidth + xMargin, halfWidth - xMargin);
+                y = Mathf.Clamp(y, -halfHeight, halfHeight);
 
-            var x = Mathf.Clamp(meander + swirl, -halfWidth + xMargin, halfWidth - xMargin);
-            var riverW = Mathf.Lerp(baseRiverWidth * 1.10f, baseRiverWidth * 0.55f, Mathf.SmoothStep(0.10f, 1f, t));
+                points.Add(new Vector2(x, y));
+                widths.Add(riverW);
+            }
+        }
+        else
+        {
+            for (var i = 0; i <= segmentCount; i++)
+            {
+                var t = i / (float)segmentCount;
+                var y = Mathf.Lerp(halfHeight, -halfHeight, t);
 
-            points.Add(new Vector2(x, y));
-            widths.Add(riverW);
+                var amp = Mathf.Lerp(Mathf.Min(halfWidth * 0.32f, 8f), Mathf.Min(halfWidth * 0.22f, 4f), t);
+                var meander = (amp * Mathf.Sin((2f * Mathf.PI * f1 * t) + (p1 * Mathf.PI * 2f)))
+                              + ((amp * 0.62f) * Mathf.Sin((2f * Mathf.PI * f2 * t) + (p2 * Mathf.PI * 2f)));
+                var swirlT = Mathf.SmoothStep(0.70f, 1f, t);
+                var swirl = swirlT * Mathf.Min(halfWidth * 0.2f, 2.5f) * Mathf.Sin((6f * Mathf.PI * t * t) + (southSwirlPhase * Mathf.PI * 2f));
+
+                var x = Mathf.Clamp(meander + swirl, -halfWidth + xMargin, halfWidth - xMargin);
+                var riverW = Mathf.Lerp(northWidth, southWidth, Mathf.SmoothStep(0.10f, 1f, t));
+
+                points.Add(new Vector2(x, y));
+                widths.Add(riverW);
+            }
         }
 
         for (var i = 0; i < segmentCount; i++)
@@ -216,9 +244,9 @@ public sealed class PredatorPreyDocuMapBuilder
         CreateSprite(mapRoot, name, PrimitiveSpriteLibrary.CircleFill(64), new Vector2(x, y), new Vector2(width, width), 0f, new Color(0.14f, 0.47f, 0.92f, 1f), RiverOrder);
     }
 
-    private void BuildCreeks(float halfWidth, float halfHeight, Map mapCfg, IReadOnlyList<Vector2> riverPoints, IRng rng)
+    private void BuildCreeks(float halfWidth, float halfHeight, Map mapCfg, PredatorPreyDocuMapRecipe mapRecipe, IReadOnlyList<Vector2> riverPoints, IRng rng)
     {
-        var creekCount = Mathf.Clamp(mapCfg.creekCount, 0, 12);
+        var creekCount = mapRecipe != null ? Mathf.Clamp(mapRecipe.creekCount, 0, 12) : Mathf.Clamp(mapCfg.creekCount, 0, 12);
         if (creekCount <= 0 || riverPoints.Count == 0)
         {
             return;
@@ -261,9 +289,11 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-    private void BuildGrass(float halfWidth, float halfHeight, IRng rng)
+    private void BuildGrass(float halfWidth, float halfHeight, PredatorPreyDocuMapRecipe mapRecipe, IRng rng)
     {
-        var count = Mathf.Clamp(Mathf.RoundToInt(halfWidth * halfHeight * 0.5f), 180, 850);
+        var count = mapRecipe != null
+            ? Mathf.Clamp(mapRecipe.grassDotCount, 0, 20000)
+            : Mathf.Clamp(Mathf.RoundToInt(halfWidth * halfHeight * 0.5f), 180, 850);
         for (var i = 0; i < count; i++)
         {
             var pos = new Vector2(rng.Range(-halfWidth, halfWidth), rng.Range(-halfHeight, halfHeight));
@@ -274,11 +304,11 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-    private void BuildTrees(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, IRng rng)
+    private void BuildTrees(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, PredatorPreyDocuMapRecipe mapRecipe, IRng rng)
     {
         var mapCfg = cfg.map ?? new Map();
         var visuals = cfg.visuals ?? new Visuals();
-        var clusterCount = Mathf.Max(1, mapCfg.treeClusterCount);
+        var clusterCount = mapRecipe != null ? Mathf.Max(1, mapRecipe.treeClusterCount) : Mathf.Max(1, mapCfg.treeClusterCount);
         var treeScale = Mathf.Max(0.5f, visuals.treeScale);
 
         for (var c = 0; c < clusterCount; c++)
@@ -381,5 +411,39 @@ public sealed class PredatorPreyDocuMapBuilder
         }
 
         return nearest;
+    }
+
+    private static Vector2 EvaluateCatmullRom(IReadOnlyList<Vector2> points, float t)
+    {
+        if (points == null || points.Count == 0)
+        {
+            return new Vector2(0.5f, 0.5f);
+        }
+
+        if (points.Count == 1)
+        {
+            return points[0];
+        }
+
+        t = Mathf.Clamp01(t);
+        var scaled = t * (points.Count - 1);
+        var i1 = Mathf.Clamp(Mathf.FloorToInt(scaled), 0, points.Count - 1);
+        var i2 = Mathf.Clamp(i1 + 1, 0, points.Count - 1);
+        var i0 = Mathf.Clamp(i1 - 1, 0, points.Count - 1);
+        var i3 = Mathf.Clamp(i2 + 1, 0, points.Count - 1);
+        var u = scaled - i1;
+
+        var p0 = points[i0];
+        var p1 = points[i1];
+        var p2 = points[i2];
+        var p3 = points[i3];
+
+        var u2 = u * u;
+        var u3 = u2 * u;
+
+        return 0.5f * ((2f * p1)
+            + (-p0 + p2) * u
+            + ((2f * p0) - (5f * p1) + (4f * p2) - p3) * u2
+            + (-p0 + (3f * p1) - (3f * p2) + p3) * u3);
     }
 }
