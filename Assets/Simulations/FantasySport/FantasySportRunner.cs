@@ -388,7 +388,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void ApplySimulationConfig(ScenarioConfig config)
     {
-        PlayersPerTeam = 14;
         arraysLogPending = true;
         simulationSeed = config?.seed ?? 0;
 
