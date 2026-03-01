@@ -4,12 +4,11 @@ using UnityEngine;
 public sealed class PredatorPreyDocuMapBuilder
 {
     private const string SortingLayerDefault = "Default";
+    private const float BackgroundPixelsPerUnit = 8f;
     private const int BackgroundOrder = -200;
-    private const int BiomeGradientOrder = -195;
     private const int FloodplainOrder = -190;
     private const int RiverOrder = -180;
     private const int RiverBankOrder = -181;
-    private const int RiverCapOrder = -179;
     private const int CreekOrder = -170;
     private const int GrassOrder = -165;
     private const int TreeOrder = -160;
@@ -35,7 +34,6 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(parent, false);
 
         BuildBackground(halfWidth, halfHeight);
-        BuildBiomeGradient(halfWidth, halfHeight);
         BuildRiverAndFloodplain(halfWidth, halfHeight, docu.map);
         BuildCreeks(docu.map, halfWidth, halfHeight);
         BuildGrassDots(docu.map, halfWidth, halfHeight);
@@ -83,28 +81,58 @@ public sealed class PredatorPreyDocuMapBuilder
     {
         var arenaWidth = halfWidth * 2f;
         var arenaHeight = halfHeight * 2f;
-        var sr = CreateSprite("SavannaBackground", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.76f, 0.7f, 0.45f, 1f), Vector2.zero, new Vector2(arenaWidth, arenaHeight), 0f, BackgroundOrder);
-        sr.drawMode = SpriteDrawMode.Sliced;
-    }
 
-    private void BuildBiomeGradient(float halfWidth, float halfHeight)
-    {
-        const int stripCount = 12;
-        var gradientRoot = new GameObject("BiomeGradient").transform;
-        gradientRoot.SetParent(mapRoot, false);
+        var texWidth = Mathf.Max(8, Mathf.RoundToInt(arenaWidth * BackgroundPixelsPerUnit));
+        var texHeight = Mathf.Max(8, Mathf.RoundToInt(arenaHeight * BackgroundPixelsPerUnit));
 
-        var stripWidth = (halfWidth * 2f) / stripCount;
-        var leftColor = new Color(0.84f, 0.76f, 0.43f, 1f);
-        var rightColor = new Color(0.68f, 0.74f, 0.4f, 1f);
-
-        for (var i = 0; i < stripCount; i++)
+        var texture = new Texture2D(texWidth, texHeight, TextureFormat.RGBA32, false)
         {
-            var t = stripCount <= 1 ? 0f : i / (float)(stripCount - 1);
-            var x = -halfWidth + (stripWidth * (i + 0.5f));
-            var strip = CreateSprite("BiomeStrip", PrimitiveSpriteLibrary.RoundedRectFill(), Color.Lerp(leftColor, rightColor, t), new Vector2(x, 0f), new Vector2(stripWidth + 0.02f, halfHeight * 2f), 0f, BiomeGradientOrder);
-            strip.drawMode = SpriteDrawMode.Sliced;
-            strip.transform.SetParent(gradientRoot, true);
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        var dryWest = new Color(0.82f, 0.74f, 0.46f, 1f);
+        var greenEast = new Color(0.62f, 0.72f, 0.42f, 1f);
+        var southTint = new Color(0.96f, 0.95f, 0.92f, 1f);
+        var northTint = new Color(0.92f, 1f, 0.94f, 1f);
+
+        for (var y = 0; y < texHeight; y++)
+        {
+            var v = texHeight <= 1 ? 0f : y / (float)(texHeight - 1);
+            var latTint = Color.Lerp(southTint, northTint, v);
+
+            for (var x = 0; x < texWidth; x++)
+            {
+                var u = texWidth <= 1 ? 0f : x / (float)(texWidth - 1);
+                var baseColor = Color.Lerp(dryWest, greenEast, u);
+                var biomeColor = new Color(baseColor.r * latTint.r, baseColor.g * latTint.g, baseColor.b * latTint.b, 1f);
+
+                var grain = Frac01(Hash01((uint)x, (uint)y, 0xA531E7D1u) * 2f - 1f);
+                var macro = Frac01(Hash01((uint)(x / 5), (uint)(y / 5), 0x4D98AB11u) * 2f - 1f);
+                var noise = (grain * 0.018f) + (macro * 0.028f);
+
+                texture.SetPixel(x, y, new Color(
+                    Mathf.Clamp01(biomeColor.r + noise * 0.8f),
+                    Mathf.Clamp01(biomeColor.g + noise),
+                    Mathf.Clamp01(biomeColor.b + noise * 0.65f),
+                    1f));
+            }
         }
+
+        texture.Apply(false, false);
+
+        var sprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, texWidth, texHeight),
+            new Vector2(0.5f, 0.5f),
+            BackgroundPixelsPerUnit,
+            0,
+            SpriteMeshType.FullRect);
+
+        var sr = CreateSprite("SavannaBackground", sprite, Color.white, Vector2.zero, Vector2.one, 0f, BackgroundOrder);
+        sr.sortingLayerName = SortingLayerDefault;
+        sr.sortingOrder = BackgroundOrder;
+        sr.color = Color.white;
     }
 
     private void BuildGrassDots(Map mapConfig, float halfWidth, float halfHeight)
@@ -143,18 +171,8 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private void BuildRiverAndFloodplain(float halfWidth, float halfHeight, Map mapConfig)
     {
-        const float riverMarginTop = 18f;
-        const float riverMarginBottom = 10f;
-
-        var riverStartY = (-halfHeight) + riverMarginBottom;
-        var riverEndY = halfHeight - riverMarginTop;
-        if (riverEndY <= riverStartY)
-        {
-            riverEndY = riverStartY + Mathf.Max(1f, halfHeight * 0.5f);
-        }
-
-        var riverHeight = riverEndY - riverStartY;
-        var riverCenterY = (riverStartY + riverEndY) * 0.5f;
+        var riverHeight = halfHeight * 2f;
+        var riverCenterY = 0f;
         var floodWidth = Mathf.Max(mapConfig.floodplainWidth, mapConfig.riverWidth + 1f);
         floodplainRenderer = CreateSprite("Floodplain", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.5f, 0.72f, 0.37f, 1f), new Vector2(0f, riverCenterY), new Vector2(floodWidth, riverHeight), 0f, FloodplainOrder);
         floodplainRenderer.drawMode = SpriteDrawMode.Sliced;
@@ -162,20 +180,32 @@ public sealed class PredatorPreyDocuMapBuilder
         var riverBody = CreateSprite("RiverBody", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.14f, 0.47f, 0.92f, 1f), new Vector2(0f, riverCenterY), new Vector2(mapConfig.riverWidth, riverHeight), 0f, RiverOrder);
         riverBody.drawMode = SpriteDrawMode.Sliced;
 
-        CreateSprite("RiverCapBottom", PrimitiveSpriteLibrary.CircleFill(), new Color(0.14f, 0.47f, 0.92f, 1f), new Vector2(0f, riverStartY), new Vector2(mapConfig.riverWidth, mapConfig.riverWidth), 0f, RiverCapOrder);
-        CreateSprite("RiverCapTop", PrimitiveSpriteLibrary.CircleFill(), new Color(0.14f, 0.47f, 0.92f, 1f), new Vector2(0f, riverEndY), new Vector2(mapConfig.riverWidth, mapConfig.riverWidth), 0f, RiverCapOrder);
-
         var bankWidth = Mathf.Max(0.16f, mapConfig.riverWidth * 0.14f);
         var bankOffset = (mapConfig.riverWidth * 0.5f) + (bankWidth * 0.5f);
         CreateSprite("RiverBankLeft", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.49f, 0.24f, 1f), new Vector2(-bankOffset, riverCenterY), new Vector2(bankWidth, riverHeight), 0f, RiverBankOrder).drawMode = SpriteDrawMode.Sliced;
         CreateSprite("RiverBankRight", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.49f, 0.24f, 1f), new Vector2(bankOffset, riverCenterY), new Vector2(bankWidth, riverHeight), 0f, RiverBankOrder).drawMode = SpriteDrawMode.Sliced;
 
         const int sampleCount = 18;
+        var riverStartY = -halfHeight;
+        var riverEndY = halfHeight;
         for (var i = 0; i <= sampleCount; i++)
         {
             var y = Mathf.Lerp(riverStartY, riverEndY, i / (float)sampleCount);
             waterNodes.Add(new Vector2(0f, y));
         }
+    }
+
+    private static float Hash01(uint x, uint y, uint seed)
+    {
+        var h = x * 374761393u + y * 668265263u + seed * 700001u;
+        h = (h ^ (h >> 13)) * 1274126177u;
+        h ^= h >> 16;
+        return (h & 0x00FFFFFFu) / 16777215f;
+    }
+
+    private static float Frac01(float value)
+    {
+        return Mathf.Clamp(value, -1f, 1f);
     }
 
     private void BuildCreeks(Map mapConfig, float halfWidth, float halfHeight)
