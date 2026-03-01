@@ -275,56 +275,15 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         var overlay = root.AddComponent<TrackStartFinishOverlay>();
         overlay.Render(track);
 
-        var bounds = ComputeTrackBounds(track);
+        var bounds = TrackBakedDataUtil.ComputeBounds(track);
         PresentationBoundsSync.Apply(bounds);
         halfWidth = bounds.width * 0.5f;
         halfHeight = bounds.height * 0.5f;
 
-        Debug.Log($"RaceCarRunner: Applied track bounds {bounds} from '{track.name}'");
+        Debug.Log($"RaceCarRunner[{name}]: using track bounds center={bounds.center}, size={bounds.size}.");
         Debug.Log(
             $"RaceCarRunner[{name}]: TrackRoot created for '{track.name}' " +
             $"(centerline={track.mainCenterline?.Length ?? 0}, parent={parentPath}, position={trackRoot.position}).");
-    }
-
-    private static Rect ComputeTrackBounds(TrackBakedData t)
-    {
-        var min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
-        var max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
-
-        void Enc(Vector2 p)
-        {
-            min = Vector2.Min(min, p);
-            max = Vector2.Max(max, p);
-        }
-
-        void EncAll(Vector2[] arr)
-        {
-            if (arr == null)
-            {
-                return;
-            }
-
-            for (var i = 0; i < arr.Length; i++)
-            {
-                Enc(arr[i]);
-            }
-        }
-
-        EncAll(t.mainLeftBoundary);
-        EncAll(t.mainRightBoundary);
-
-        if (!float.IsFinite(min.x))
-        {
-            EncAll(t.mainCenterline);
-            var pad = Mathf.Max(2f, t.trackWidth * 0.5f);
-            min -= Vector2.one * pad;
-            max += Vector2.one * pad;
-        }
-
-        var width = Mathf.Max(1f, max.x - min.x);
-        var height = Mathf.Max(1f, max.y - min.y);
-        var margin = Mathf.Clamp(Mathf.Max(width, height) * 0.08f, 4f, 16f);
-        return new Rect(min.x - margin, min.y - margin, width + margin * 2f, height + margin * 2f);
     }
 
     private void ResolveArtPipeline()
