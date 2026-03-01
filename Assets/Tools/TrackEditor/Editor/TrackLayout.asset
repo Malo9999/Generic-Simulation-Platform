@@ -263,5 +263,5 @@ MonoBehaviour:
     dir: {x: 1, y: 0}
   pitEntryGuid: 
   pitExitGuid: 
-  pan: {x: 305.3333, y: 423.33325}
-  zoom: 0.29
+  pan: {x: 299.99994, y: 423.9999}
+  zoom: 0.2

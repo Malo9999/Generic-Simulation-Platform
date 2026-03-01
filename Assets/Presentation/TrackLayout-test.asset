@@ -1,0 +1,95 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d326ef2582144697b86af9770f03f856, type: 3}
+  m_Name: TrackLayout-test
+  m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
+  pieces:
+  - guid: eac80c8079e6417690ff0f254ca64cd3
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -2.2916641, y: -0.006942749}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 58c54ade79cf4545b42eae856f311e1c
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 17.708336, y: -0.006942749}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 6bbfd3f19e4f4f618c308d02a6210202
+    piece: {fileID: 11400000, guid: ed1dfb0d89eaff9458e1a56bbe8b0c4e, type: 2}
+    position: {x: -22.291664, y: -0.006942749}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: ee5e599d3a62413ba41af398aa947bc2
+    piece: {fileID: 11400000, guid: 69ddd97a83254a64fa5f36eabe42addd, type: 2}
+    position: {x: -22.291664, y: 19.993057}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 0216be69d05142059aa7f6ff441ed36a
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -2.2916641, y: 19.993057}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 7ccf009bb0af47bea05e3f3f130f37cd
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 17.708336, y: 19.993057}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 5f8ca38f5869417fbe062308672b55ea
+    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
+    position: {x: 37.708336, y: -0.006942868}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 9fdfd58ef224430db9099b4cd493a423
+    piece: {fileID: 11400000, guid: 209f5d0e7f7c4b24f83eba66de36265b, type: 2}
+    position: {x: 37.708336, y: 19.993057}
+    rotationSteps45: 0
+    mirrored: 0
+  links:
+  - pieceGuidA: eac80c8079e6417690ff0f254ca64cd3
+    connectorIndexA: 1
+    pieceGuidB: 58c54ade79cf4545b42eae856f311e1c
+    connectorIndexB: 0
+  - pieceGuidA: eac80c8079e6417690ff0f254ca64cd3
+    connectorIndexA: 0
+    pieceGuidB: 6bbfd3f19e4f4f618c308d02a6210202
+    connectorIndexB: 0
+  - pieceGuidA: 6bbfd3f19e4f4f618c308d02a6210202
+    connectorIndexA: 1
+    pieceGuidB: ee5e599d3a62413ba41af398aa947bc2
+    connectorIndexB: 0
+  - pieceGuidA: ee5e599d3a62413ba41af398aa947bc2
+    connectorIndexA: 1
+    pieceGuidB: 0216be69d05142059aa7f6ff441ed36a
+    connectorIndexB: 0
+  - pieceGuidA: 0216be69d05142059aa7f6ff441ed36a
+    connectorIndexA: 1
+    pieceGuidB: 7ccf009bb0af47bea05e3f3f130f37cd
+    connectorIndexB: 0
+  - pieceGuidA: 58c54ade79cf4545b42eae856f311e1c
+    connectorIndexA: 1
+    pieceGuidB: 5f8ca38f5869417fbe062308672b55ea
+    connectorIndexB: 1
+  - pieceGuidA: 5f8ca38f5869417fbe062308672b55ea
+    connectorIndexA: 0
+    pieceGuidB: 9fdfd58ef224430db9099b4cd493a423
+    connectorIndexB: 1
+  startFinish:
+    pieceGuid: 
+    segmentIndex: 0
+    connectorIndex: 0
+    worldPos: {x: 0, y: 0}
+    worldDir: {x: 1, y: 0}
+  startGridSlots: []
+  pitEntryGuid: 
+  pitExitGuid: 
+  pan: {x: 0.666687, y: -154}
+  zoom: 0.47
