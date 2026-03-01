@@ -238,11 +238,13 @@ namespace GSP.TrackEditor.Editor
             {
                 _isPlacingStartFinish = true;
                 status = "Click on the main track to place Start/Finish.";
+                Repaint();
             }
 
             if (GUILayout.Button("Generate Start Grid (10)"))
             {
                 GenerateStartGrid(10);
+                Repaint();
             }
 
             if (GUILayout.Button("Snap Start/Finish to Track"))
@@ -255,12 +257,14 @@ namespace GSP.TrackEditor.Editor
                 if (layout.startFinish == null)
                 {
                     status = "No Start/Finish set.";
+                    Repaint();
                     return;
                 }
 
                 if (!TryProjectOntoMainLoop(layout.startFinish.worldPos, out var snappedPos, out var snappedTangent))
                 {
                     status = "Main loop not valid yet.";
+                    Repaint();
                     return;
                 }
 
@@ -703,6 +707,21 @@ namespace GSP.TrackEditor.Editor
 
             var canvasRect = new Rect(Vector2.zero, size);
             var leftOverlayRect = new Rect(8f, 8f, 260f, size.y - 16f);
+            var overLeftPanel = leftOverlayRect.Contains(evt.mousePosition);
+            if (overLeftPanel)
+            {
+                // Allow IMGUI controls (buttons/scroll) to receive clicks/wheel.
+                // Only keep keyboard shortcuts (Escape/Delete/Space tracking) working.
+                if (evt.type == EventType.MouseDown ||
+                    evt.type == EventType.MouseUp ||
+                    evt.type == EventType.MouseDrag ||
+                    evt.type == EventType.ScrollWheel ||
+                    evt.type == EventType.DragUpdated ||
+                    evt.type == EventType.DragPerform)
+                {
+                    return;
+                }
+            }
 
             if (evt.type == EventType.ScrollWheel
                 && canvasRect.Contains(evt.mousePosition)
