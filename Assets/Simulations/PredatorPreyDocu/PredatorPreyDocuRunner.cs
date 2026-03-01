@@ -81,7 +81,9 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         var dryness01 = 0f;
         if (phase >= wet)
         {
-            var t = (phase - wet) / (float)Mathf.Max(1, dry);
+            var dryPhase = phase - wet;
+            var dryDenominator = Mathf.Max(1, dry - 1);
+            var t = Mathf.Clamp01(dryPhase / (float)dryDenominator);
             dryness01 = Mathf.SmoothStep(0f, 1f, t);
         }
 
