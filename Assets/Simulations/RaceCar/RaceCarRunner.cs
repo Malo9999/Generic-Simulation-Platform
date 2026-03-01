@@ -272,6 +272,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         trackRuntime = root.AddComponent<TrackRuntime>();
         trackRuntime.Initialize(track);
 
+        var overlay = root.AddComponent<TrackStartFinishOverlay>();
+        overlay.Render(track);
+
         var bounds = ComputeTrackBounds(track);
         PresentationBoundsSync.Apply(bounds);
         halfWidth = bounds.width * 0.5f;
