@@ -90,6 +90,20 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
     public void Shutdown()
     {
+        DestroyCarsOnly();
+
+        if (trackRoot != null)
+        {
+            Destroy(trackRoot.gameObject);
+            trackRoot = null;
+        }
+
+        trackRuntime = null;
+        Debug.Log("RaceCarRunner Shutdown");
+    }
+
+    private void DestroyCarsOnly()
+    {
         if (cars != null)
         {
             for (var i = 0; i < cars.Length; i++)
@@ -108,20 +122,11 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         laneTargets = null;
         pipelineRenderers = null;
         visualKeys = null;
-
-        if (trackRoot != null)
-        {
-            Destroy(trackRoot.gameObject);
-            trackRoot = null;
-        }
-
-        trackRuntime = null;
-        Debug.Log("RaceCarRunner Shutdown");
     }
 
     private void BuildCars(ScenarioConfig config)
     {
-        Shutdown();
+        DestroyCarsOnly();
         nextEntityId = 0;
 
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64) * 0.5f);
@@ -227,7 +232,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         trackRuntime = null;
 
-        if (sceneGraph?.ArenaRoot == null || track == null)
+        if (track == null)
+        {
+            Debug.Log("RaceCarRunner: track not assigned");
+            return;
+        }
+
+        if (sceneGraph?.ArenaRoot == null)
         {
             return;
         }
@@ -241,6 +252,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         trackRuntime = root.AddComponent<TrackRuntime>();
         trackRuntime.Initialize(track);
+        Debug.Log($"RaceCarRunner: TrackRoot created for {track.name}");
     }
 
     private void ResolveArtPipeline()
