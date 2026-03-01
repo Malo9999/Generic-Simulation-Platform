@@ -116,6 +116,36 @@ namespace GSP.TrackEditor.Editor
             return BuildImplicitLinks(pieceMap, role, epsilonWorld);
         }
 
+        public static bool TryBuildMainLoopCenterline(
+            TrackLayout layout,
+            out Vector2[] mainCenterline,
+            out float trackWidth)
+        {
+            mainCenterline = null;
+            trackWidth = 8f;
+            if (layout == null)
+            {
+                return false;
+            }
+
+            var pieceMap = layout.pieces.Where(p => p?.piece != null).ToDictionary(p => p.guid, p => p);
+            if (pieceMap.Count == 0)
+            {
+                return false;
+            }
+
+            var implicitMainLinks = GetImplicitLinks(layout, TrackConnectorRole.Main);
+            var orderedMainSegments = BuildOrderedMainLoopSegments(layout, pieceMap, implicitMainLinks);
+            if (orderedMainSegments.Count == 0)
+            {
+                return false;
+            }
+
+            mainCenterline = Stitch(orderedMainSegments.Select(s => TransformPolyline(pieceMap[s.pieceGuid], s.segment.localCenterline)).ToList());
+            trackWidth = layout.pieces.First(p => p?.piece != null).piece.trackWidth;
+            return mainCenterline != null && mainCenterline.Length >= 2;
+        }
+
         private static void ValidateWidths(TrackLayout layout, Dictionary<string, PlacedPiece> pieceMap, ValidationReport report)
         {
             foreach (var link in layout.links)
@@ -723,7 +753,7 @@ namespace GSP.TrackEditor.Editor
             baked.startFinishDistance = distanceAlong;
         }
 
-        private static bool TryFindClosestPointOnPolyline(
+        public static bool TryFindClosestPointOnPolyline(
             Vector2[] polyline,
             Vector2 point,
             out Vector2 closestPoint,
