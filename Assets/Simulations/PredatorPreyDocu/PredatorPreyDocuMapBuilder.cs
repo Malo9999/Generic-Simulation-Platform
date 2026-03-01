@@ -4,18 +4,32 @@ using UnityEngine;
 public sealed class PredatorPreyDocuMapBuilder
 {
     private const string SortingLayerDefault = "Default";
-    private const int SavannaOrder = -200;
+    private const int SavannaBaseOrder = -200;
+    private const int SavannaNoiseOrder = -199;
+    private const int FloodplainOrder = -190;
+    private const int RiverBankOrder = -181;
     private const int PermanentWaterOrder = -180;
     private const int SeasonalWaterOrder = -175;
-    private const int GrassOrder = -170;
+    private const int GrassOrder = -165;
     private const int TreeOrder = -160;
+
+    private const int TerrainPixelsPerUnit = 4;
     private const int WaterPixelsPerUnit = 6;
+
+    private const float RiverMargin = 14f;
+    private const float RiverWidthNorth = 10f;
+    private const float RiverWidthSouth = 6f;
+    private const float FloodplainExtra = 26f;
+    private const float BankExtra = 2.5f;
 
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
 
     private Transform mapRoot;
     private SpriteRenderer seasonalWaterRenderer;
+
+    // Optional debug-only paint markers for creek starts/endpoints.
+    public bool DebugPaintDots = false;
 
     public IReadOnlyList<Vector2> WaterNodes => waterNodes;
     public IReadOnlyList<Vector2> ShadeNodes => shadeNodes;
@@ -24,13 +38,13 @@ public sealed class PredatorPreyDocuMapBuilder
     {
         Clear();
 
-        var docu = config?.predatorPreyDocu ?? new PredatorPreyDocuConfig();
-        docu.Normalize();
+        var cfg = config?.predatorPreyDocu ?? new PredatorPreyDocuConfig();
+        cfg.Normalize();
 
         mapRoot = new GameObject("PredatorPreyDocuMap").transform;
         mapRoot.SetParent(parent, false);
 
-        BuildObjectMap(halfWidth, halfHeight, docu);
+        BuildObjectMap(config, cfg, halfWidth, halfHeight);
     }
 
     public void UpdateSeasonVisuals(float dryness01)
@@ -40,9 +54,7 @@ public sealed class PredatorPreyDocuMapBuilder
             return;
         }
 
-        var c = seasonalWaterRenderer.color;
-        c.a = 1f - Mathf.Clamp01(dryness01);
-        seasonalWaterRenderer.color = c;
+        seasonalWaterRenderer.color = new Color(1f, 1f, 1f, 1f - Mathf.Clamp01(dryness01));
     }
 
     public void Clear()
@@ -58,80 +70,138 @@ public sealed class PredatorPreyDocuMapBuilder
         shadeNodes.Clear();
     }
 
-    private void BuildObjectMap(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg)
+    private void BuildObjectMap(ScenarioConfig config, PredatorPreyDocuConfig cfg, float providedHalfW, float providedHalfH)
     {
-        var arenaW = halfWidth * 2f;
-        var arenaH = halfHeight * 2f;
-        var mapCfg = cfg.map ?? new Map();
+        var worldCfg = config?.world;
+        var halfW = Mathf.Max(1f, worldCfg != null ? worldCfg.arenaWidth * 0.5f : providedHalfW);
+        var halfH = Mathf.Max(1f, worldCfg != null ? worldCfg.arenaHeight * 0.5f : providedHalfH);
+        var arenaW = halfW * 2f;
+        var arenaH = halfH * 2f;
 
-        BuildSavannaBackground(arenaW, arenaH);
-        BuildWaterOverlays(halfWidth, halfHeight, mapCfg);
-        BuildGrass(halfWidth, halfHeight);
-        BuildTrees(halfWidth, halfHeight, cfg);
+        var rngMap = RngService.Fork("SIM:PredatorPreyDocu:MAP");
+        var rngWaterMain = RngService.Fork("SIM:PredatorPreyDocu:WATER:MAIN");
+        var rngSeasonal = RngService.Fork("SIM:PredatorPreyDocu:WATER:SEASONAL");
+        var rngScatter = RngService.Fork("SIM:PredatorPreyDocu:SCATTER");
+        _ = RngService.Fork("SIM:PredatorPreyDocu:WATER");
+
+        var riverModel = new RiverModel(rngWaterMain);
+
+        BuildSavannaBase(arenaW, arenaH);
+        BuildSavannaNoiseOverlay(arenaW, arenaH, halfW, halfH, riverModel, rngScatter);
+        BuildRiverCorridorStrips(halfW, halfH, riverModel);
+        var waterSummary = BuildWaterOverlays(halfW, halfH, cfg.map, riverModel, rngSeasonal);
+        BuildGrass(halfW, halfH, rngScatter);
+        BuildTrees(halfW, halfH, cfg, riverModel, rngMap);
+
+        Debug.Log($"PredatorPreyDocuMap build summary arenaW={arenaW:F1} arenaH={arenaH:F1} waterTex={waterSummary.texW}x{waterSummary.texH} creeks={waterSummary.creekCount} riverMargin={RiverMargin:F1}");
     }
 
-    private void BuildSavannaBackground(float arenaW, float arenaH)
+    private void BuildSavannaBase(float arenaW, float arenaH)
     {
         CreateSprite(
             mapRoot,
-            "SavannaBackground",
+            "SavannaBase",
             PrimitiveSpriteLibrary.RoundedRectFill(64),
             Vector2.zero,
             new Vector2(arenaW + 2f, arenaH + 2f),
             new Color(0.79f, 0.69f, 0.42f, 1f),
-            SavannaOrder);
-
-        BuildSavannaNoiseOverlay(arenaW, arenaH);
+            SavannaBaseOrder);
     }
 
-    private void BuildSavannaNoiseOverlay(float arenaW, float arenaH)
+    private void BuildSavannaNoiseOverlay(float arenaW, float arenaH, float halfW, float halfH, RiverModel riverModel, IRng rngScatter)
     {
-        var texW = Mathf.Max(64, Mathf.RoundToInt(arenaW * WaterPixelsPerUnit));
-        var texH = Mathf.Max(64, Mathf.RoundToInt(arenaH * WaterPixelsPerUnit));
-        var overlayTex = CreateWaterTexture(texW, texH);
+        var texW = Mathf.Max(64, Mathf.RoundToInt(arenaW * TerrainPixelsPerUnit));
+        var texH = Mathf.Max(64, Mathf.RoundToInt(arenaH * TerrainPixelsPerUnit));
+        var texture = CreateTexture(texW, texH);
         var pixels = new Color32[texW * texH];
-        var rng = RngService.Fork("SIM:PredatorPreyDocu:SAVANNA:OVERLAY");
-        var floodplainBandPx = Mathf.Max(3f, texW * 0.10f);
-        var centerX = texW * 0.5f;
-        var speckleCount = Mathf.Clamp(Mathf.RoundToInt((texW * texH) * 0.07f), 5000, 12000);
+
+        var area = arenaW * arenaH;
+        var speckleCount = Mathf.Clamp(Mathf.RoundToInt(area * 0.30f), 8000, 20000);
 
         for (var i = 0; i < speckleCount; i++)
         {
-            var x = rng.NextInt(0, texW);
-            var y = rng.NextInt(0, texH);
-            var offsetToCenter = Mathf.Abs(x - centerX);
-            var floodplainBoost = Mathf.Clamp01(1f - (offsetToCenter / floodplainBandPx));
-            var radius = rng.Value() < (0.35f + (floodplainBoost * 0.35f)) ? 2 : 1;
-            var c = rng.Value() < (0.5f + (floodplainBoost * 0.2f))
-                ? new Color32((byte)rng.NextInt(113, 132), (byte)rng.NextInt(122, 148), (byte)rng.NextInt(78, 100), (byte)rng.NextInt(18, 40))
-                : new Color32((byte)rng.NextInt(140, 162), (byte)rng.NextInt(117, 139), (byte)rng.NextInt(69, 92), (byte)rng.NextInt(14, 34));
-            PaintDiscAlphaBlend(pixels, texW, texH, x, y, radius, c);
+            var px = rngScatter.NextInt(0, texW);
+            var py = rngScatter.NextInt(0, texH);
+
+            var x = Mathf.Lerp(-halfW, halfW, px / Mathf.Max(1f, texW - 1f));
+            var y = Mathf.Lerp(-halfH, halfH, py / Mathf.Max(1f, texH - 1f));
+            var riverX = riverModel.EvaluateX(y, halfW, halfH);
+            var corridorDistance = Mathf.Abs(x - riverX);
+            var corridorBoost = Mathf.Clamp01(1f - (corridorDistance / Mathf.Max(8f, (FloodplainExtra * 1.3f))));
+
+            if (rngScatter.Value() > (0.35f + (corridorBoost * 0.55f)))
+            {
+                continue;
+            }
+
+            var dotRadius = rngScatter.Value() < (0.55f + (0.25f * corridorBoost)) ? 1 : 2;
+            var greenish = rngScatter.Value() < (0.52f + (0.20f * corridorBoost));
+            var color = greenish
+                ? new Color32((byte)rngScatter.NextInt(106, 132), (byte)rngScatter.NextInt(114, 148), (byte)rngScatter.NextInt(70, 98), (byte)rngScatter.NextInt(16, 42))
+                : new Color32((byte)rngScatter.NextInt(132, 165), (byte)rngScatter.NextInt(112, 140), (byte)rngScatter.NextInt(67, 95), (byte)rngScatter.NextInt(14, 34));
+            PaintDiscAlphaBlend(pixels, texW, texH, px, py, dotRadius, color);
         }
 
-        overlayTex.SetPixels32(pixels);
-        overlayTex.Apply(false, false);
+        texture.SetPixels32(pixels);
+        texture.Apply(false, false);
 
-        var overlaySprite = Sprite.Create(overlayTex, new Rect(0f, 0f, texW, texH), new Vector2(0.5f, 0.5f), WaterPixelsPerUnit);
-        CreateSprite(mapRoot, "SavannaNoiseOverlay", overlaySprite, Vector2.zero, Vector2.one, Color.white, SavannaOrder + 1);
+        var sprite = Sprite.Create(texture, new Rect(0f, 0f, texW, texH), new Vector2(0.5f, 0.5f), TerrainPixelsPerUnit);
+        CreateSprite(mapRoot, "SavannaNoiseOverlay", sprite, Vector2.zero, Vector2.one, Color.white, SavannaNoiseOrder);
     }
 
-    private void BuildWaterOverlays(float halfWidth, float halfHeight, Map mapCfg)
+    private void BuildRiverCorridorStrips(float halfW, float halfH, RiverModel riverModel)
     {
-        var arenaW = halfWidth * 2f;
-        var arenaH = halfHeight * 2f;
-        var texW = Mathf.Max(64, Mathf.RoundToInt(arenaW * WaterPixelsPerUnit));
-        var texH = Mathf.Max(64, Mathf.RoundToInt(arenaH * WaterPixelsPerUnit));
+        var stripsRoot = new GameObject("RiverCorridorStrips").transform;
+        stripsRoot.SetParent(mapRoot, false);
 
-        var permanentTex = CreateWaterTexture(texW, texH);
-        var seasonalTex = CreateWaterTexture(texW, texH);
+        var slices = 160;
+        var arenaH = halfH * 2f;
+        var dy = arenaH / slices;
+
+        for (var i = 0; i < slices; i++)
+        {
+            var t = (i + 0.5f) / slices;
+            var y = Mathf.Lerp(halfH, -halfH, t);
+            var x = riverModel.EvaluateX(y, halfW, halfH);
+            var riverWidth = riverModel.EvaluateWidth(y, halfH);
+            var floodW = Mathf.Min((halfW * 2f) - 0.5f, riverWidth + FloodplainExtra);
+            var bankW = Mathf.Min(floodW, riverWidth + (BankExtra * 2f));
+
+            CreateSprite(
+                stripsRoot,
+                $"Floodplain_{i:000}",
+                PrimitiveSpriteLibrary.RoundedRectFill(24),
+                new Vector2(x, y),
+                new Vector2(Mathf.Max(0.2f, floodW), dy + 0.3f),
+                new Color(0.57f, 0.64f, 0.36f, 0.95f),
+                FloodplainOrder);
+
+            CreateSprite(
+                stripsRoot,
+                $"RiverBank_{i:000}",
+                PrimitiveSpriteLibrary.RoundedRectFill(24),
+                new Vector2(x, y),
+                new Vector2(Mathf.Max(0.2f, bankW), dy + 0.3f),
+                new Color(0.41f, 0.52f, 0.30f, 0.95f),
+                RiverBankOrder);
+        }
+    }
+
+    private (int texW, int texH, int creekCount) BuildWaterOverlays(float halfW, float halfH, Map mapCfg, RiverModel riverModel, IRng rngSeasonal)
+    {
+        var arenaW = halfW * 2f;
+        var arenaH = halfH * 2f;
+        var texW = Mathf.Max(128, Mathf.RoundToInt(arenaW * WaterPixelsPerUnit));
+        var texH = Mathf.Max(128, Mathf.RoundToInt(arenaH * WaterPixelsPerUnit));
+
+        var permanentTex = CreateTexture(texW, texH);
+        var seasonalTex = CreateTexture(texW, texH);
+
         var permanentPixels = new Color32[texW * texH];
         var seasonalPixels = new Color32[texW * texH];
 
-        var mainRng = RngService.Fork("SIM:PredatorPreyDocu:WATER:MAIN");
-        var riverCurve = new RiverCurve(mainRng);
-
-        PaintMainRiver(permanentPixels, texW, texH, halfWidth, halfHeight, mapCfg, riverCurve);
-        PaintSeasonalCreeksAndPonds(seasonalPixels, texW, texH, halfWidth, halfHeight, mapCfg, riverCurve);
+        PaintMainRiver(permanentPixels, texW, texH, halfW, halfH, riverModel);
+        var creekCount = PaintSeasonalCreeksAndPonds(seasonalPixels, texW, texH, halfW, halfH, mapCfg, riverModel, rngSeasonal);
 
         permanentTex.SetPixels32(permanentPixels);
         permanentTex.Apply(false, false);
@@ -143,150 +213,177 @@ public sealed class PredatorPreyDocuMapBuilder
 
         CreateSprite(mapRoot, "PermanentWaterOverlay", permanentSprite, Vector2.zero, Vector2.one, Color.white, PermanentWaterOrder);
         seasonalWaterRenderer = CreateSprite(mapRoot, "SeasonalWaterOverlay", seasonalSprite, Vector2.zero, Vector2.one, Color.white, SeasonalWaterOrder);
+
+        return (texW, texH, creekCount);
     }
 
-    private void PaintMainRiver(Color32[] pixels, int texW, int texH, float halfWidth, float halfHeight, Map mapCfg, RiverCurve riverCurve)
+    private void PaintMainRiver(Color32[] pixels, int texW, int texH, float halfW, float halfH, RiverModel riverModel)
     {
-        const int samples = 420;
-        var margin = Mathf.Min(14f, Mathf.Max(1f, halfWidth - 0.05f));
-        var northWidth = Mathf.Max(2f, mapCfg.riverWidth);
-        var southWidth = Mathf.Max(1.5f, northWidth * 0.6f);
-        var color = new Color32(36, 120, 233, 255);
+        var riverColor = new Color32(50, 140, 220, 255);
+        const int samples = 600;
 
         for (var i = 0; i <= samples; i++)
         {
             var t = i / (float)samples;
-            var y = Mathf.Lerp(halfHeight, -halfHeight, t);
-            var x = riverCurve.EvaluateX(t, halfWidth, margin);
-            var w = Mathf.Lerp(northWidth, southWidth, Mathf.SmoothStep(0.10f, 1f, t));
-            var rPx = Mathf.Max(1, Mathf.RoundToInt((w * 0.5f) * WaterPixelsPerUnit));
+            var y = Mathf.Lerp(halfH, -halfH, t);
+            var x = riverModel.EvaluateX(y, halfW, halfH);
+            var riverWidth = riverModel.EvaluateWidth(y, halfH);
+            var radiusPx = Mathf.Max(1, Mathf.RoundToInt((riverWidth * 0.5f) * WaterPixelsPerUnit));
+            var (px, py) = WorldToPixel(x, y, halfW, halfH, texW, texH);
 
-            var (px, py) = WorldToPixel(x, y, halfWidth, halfHeight, texW, texH);
-            PaintDisc(pixels, texW, texH, px, py, rPx, color);
-
-            if (i % 28 == 0)
-            {
-                waterNodes.Add(new Vector2(x, y));
-            }
+            PaintDisc(pixels, texW, texH, px, py, radiusPx, riverColor);
+            waterNodes.Add(new Vector2(x, y));
         }
     }
 
-    private void PaintSeasonalCreeksAndPonds(Color32[] pixels, int texW, int texH, float halfWidth, float halfHeight, Map mapCfg, RiverCurve riverCurve)
+    private int PaintSeasonalCreeksAndPonds(Color32[] pixels, int texW, int texH, float halfW, float halfH, Map mapCfg, RiverModel riverModel, IRng rngSeasonal)
     {
-        var seasonalRng = RngService.Fork("SIM:PredatorPreyDocu:WATER:SEASONAL");
-        var creekCount = Mathf.Clamp(mapCfg.creekCount, 0, 12);
-        var creekWidth = Mathf.Clamp(mapCfg.creekWidth, 1.4f, 2.2f);
-        var creekColor = new Color32(62, 145, 242, 255);
+        var creekCount = Mathf.Clamp(mapCfg?.creekCount ?? 6, 0, 64);
+        var baseCreekWidth = Mathf.Clamp(mapCfg?.creekWidth ?? 2f, 1.6f, 2.2f);
+        var creekColor = new Color32(82, 168, 246, 255);
 
-        for (var k = 0; k < creekCount; k++)
+        for (var c = 0; c < creekCount; c++)
         {
-            var side = seasonalRng.Value() < 0.5f ? -1f : 1f;
-            var x = side * seasonalRng.Range(halfWidth * 0.35f, halfWidth * 0.90f);
-            var y = seasonalRng.Range(-halfHeight * 0.80f, halfHeight * 0.80f);
-            var steps = seasonalRng.NextInt(140, 221);
-            var baseCreekRadiusPx = Mathf.Max(1, Mathf.RoundToInt((creekWidth * 0.5f) * WaterPixelsPerUnit));
-            var creekRadiusPx = baseCreekRadiusPx;
-            var variationStepInterval = seasonalRng.NextInt(10, 21);
-            var (prevPx, prevPy) = WorldToPixel(x, y, halfWidth, halfHeight, texW, texH);
+            var absX = rngSeasonal.Range(halfW * 0.35f, halfW * 0.90f);
+            var side = rngSeasonal.Value() < 0.5f ? -1f : 1f;
+            var x = Mathf.Clamp(absX * side, -halfW, halfW);
+            var y = rngSeasonal.Range(-halfH * 0.80f, halfH * 0.80f);
+
+            var (prevPx, prevPy) = WorldToPixel(x, y, halfW, halfH, texW, texH);
+            if (DebugPaintDots)
+            {
+                PaintDisc(pixels, texW, texH, prevPx, prevPy, 2, new Color32(255, 120, 120, 255));
+            }
+
+            var steps = rngSeasonal.NextInt(160, 241);
+            var stepLen = rngSeasonal.Range(0.55f, 0.95f);
+            var baseRadiusPx = Mathf.Max(1, Mathf.RoundToInt((baseCreekWidth * 0.5f) * WaterPixelsPerUnit));
+            var creekRadiusPx = baseRadiusPx;
+            var widthChangeInterval = rngSeasonal.NextInt(18, 25);
 
             for (var step = 0; step < steps; step++)
             {
-                var t = Mathf.InverseLerp(halfHeight, -halfHeight, y);
-                var riverX = riverCurve.EvaluateX(t, halfWidth, Mathf.Min(14f, Mathf.Max(1f, halfWidth - 0.05f)));
-
-                var dirX = (riverX - x) * 0.11f;
-                var dirY = ((-0.2f * y) / Mathf.Max(1f, halfHeight)) - 0.035f;
-                var wiggleX = seasonalRng.Range(-0.35f, 0.35f);
-                var wiggleY = seasonalRng.Range(-0.22f, 0.22f);
-
-                x += dirX + wiggleX;
-                y += dirY + wiggleY;
-
-                x = Mathf.Clamp(x, -halfWidth, halfWidth);
-                y = Mathf.Clamp(y, -halfHeight, halfHeight);
-
-                var (px, py) = WorldToPixel(x, y, halfWidth, halfHeight, texW, texH);
-
-                if ((step > 0) && (step % variationStepInterval == 0))
+                if ((step > 0) && (step % widthChangeInterval == 0))
                 {
-                    creekRadiusPx = Mathf.Max(1, baseCreekRadiusPx + seasonalRng.NextInt(-1, 2));
-                    variationStepInterval = seasonalRng.NextInt(10, 21);
+                    creekRadiusPx = Mathf.Max(1, baseRadiusPx + rngSeasonal.NextInt(-1, 2));
+                    widthChangeInterval = rngSeasonal.NextInt(18, 25);
                 }
 
+                var riverX = riverModel.EvaluateX(y, halfW, halfH);
+                var riverWidth = riverModel.EvaluateWidth(y, halfH);
+                var floodW = riverWidth + FloodplainExtra;
+                var distanceToCorridor = Mathf.Abs(x - riverX);
+                if (distanceToCorridor <= (floodW * 0.5f + 1f))
+                {
+                    break;
+                }
+
+                var dirX = Mathf.Sign(riverX - x);
+                var driftSouth = -0.02f;
+                var wiggleX = rngSeasonal.Range(-0.20f, 0.20f);
+                var wiggleY = rngSeasonal.Range(-0.16f, 0.16f);
+
+                x += (dirX * stepLen) + wiggleX;
+                y += driftSouth + wiggleY;
+
+                x = Mathf.Clamp(x, -halfW, halfW);
+                y = Mathf.Clamp(y, -halfH, halfH);
+
+                var (px, py) = WorldToPixel(x, y, halfW, halfH, texW, texH);
                 PaintStroke(pixels, texW, texH, prevPx, prevPy, px, py, creekRadiusPx, creekColor);
                 prevPx = px;
                 prevPy = py;
             }
 
-            var pondCount = seasonalRng.NextInt(1, 3);
+            var pondCount = rngSeasonal.NextInt(1, 3);
             for (var p = 0; p < pondCount; p++)
             {
-                var off = seasonalRng.InsideUnitCircle() * 1.2f;
-                var pondX = Mathf.Clamp(x + off.x, -halfWidth, halfWidth);
-                var pondY = Mathf.Clamp(y + off.y, -halfHeight, halfHeight);
-                var pondRadius = seasonalRng.Range(3f, 8f);
-                var pondRPx = Mathf.Max(1, Mathf.RoundToInt(pondRadius * WaterPixelsPerUnit));
-                var (px, py) = WorldToPixel(pondX, pondY, halfWidth, halfHeight, texW, texH);
-                PaintDisc(pixels, texW, texH, px, py, pondRPx, new Color32(76, 158, 245, 255));
+                var pondOffset = rngSeasonal.InsideUnitCircle() * 1.4f;
+                var pondX = Mathf.Clamp(x + pondOffset.x, -halfW, halfW);
+                var pondY = Mathf.Clamp(y + pondOffset.y, -halfH, halfH);
+                var pondRadiusWorld = rngSeasonal.Range(3f, 8f);
+                var pondRadiusPx = Mathf.Max(1, Mathf.RoundToInt(pondRadiusWorld * WaterPixelsPerUnit));
+                var (pondPx, pondPy) = WorldToPixel(pondX, pondY, halfW, halfH, texW, texH);
+                PaintDisc(pixels, texW, texH, pondPx, pondPy, pondRadiusPx, new Color32(76, 158, 245, 255));
+                waterNodes.Add(new Vector2(pondX, pondY));
+            }
+
+            if (DebugPaintDots)
+            {
+                PaintDisc(pixels, texW, texH, prevPx, prevPy, 2, new Color32(255, 220, 80, 255));
             }
         }
+
+        return creekCount;
     }
 
-    private static Texture2D CreateWaterTexture(int width, int height)
+    private void BuildGrass(float halfW, float halfH, IRng rngScatter)
     {
-        var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
-        {
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
-        };
-        return texture;
-    }
+        var count = Mathf.Clamp(Mathf.RoundToInt(halfW * halfH * 0.35f), 160, 700);
 
-    private void BuildGrass(float halfWidth, float halfHeight)
-    {
-        var rng = RngService.Fork("SIM:PredatorPreyDocu:GRASS");
-        var count = Mathf.Clamp(Mathf.RoundToInt(halfWidth * halfHeight * 0.5f), 180, 850);
         for (var i = 0; i < count; i++)
         {
-            var pos = new Vector2(rng.Range(-halfWidth, halfWidth), rng.Range(-halfHeight, halfHeight));
-            var scale = rng.Range(0.12f, 0.32f);
-            var tint = rng.Range(-0.06f, 0.06f);
-            var c = new Color(0.31f + tint, 0.54f + (tint * 0.6f), 0.25f + (tint * 0.5f), rng.Range(0.22f, 0.55f));
-            CreateSprite(mapRoot, $"Grass_{i:0000}", PrimitiveSpriteLibrary.CircleFill(32), pos, new Vector2(scale, scale), c, GrassOrder);
+            var pos = new Vector2(rngScatter.Range(-halfW, halfW), rngScatter.Range(-halfH, halfH));
+            var scale = rngScatter.Range(0.12f, 0.28f);
+            var tint = rngScatter.Range(-0.05f, 0.05f);
+            var color = new Color(0.33f + tint, 0.53f + (tint * 0.6f), 0.24f + (tint * 0.4f), rngScatter.Range(0.18f, 0.45f));
+            CreateSprite(mapRoot, $"Grass_{i:0000}", PrimitiveSpriteLibrary.CircleFill(24), pos, new Vector2(scale, scale), color, GrassOrder);
         }
     }
 
-    private void BuildTrees(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg)
+    private void BuildTrees(float halfW, float halfH, PredatorPreyDocuConfig cfg, RiverModel riverModel, IRng rngMap)
     {
         var mapCfg = cfg.map ?? new Map();
         var visuals = cfg.visuals ?? new Visuals();
         var clusterCount = Mathf.Max(1, mapCfg.treeClusterCount);
         var treeScale = Mathf.Max(0.5f, visuals.treeScale);
-        var rng = RngService.Fork("SIM:PredatorPreyDocu:TREES");
 
         for (var c = 0; c < clusterCount; c++)
         {
-            var center = new Vector2(rng.Range(-halfWidth * 0.92f, halfWidth * 0.92f), rng.Range(-halfHeight * 0.92f, halfHeight * 0.92f));
-            var trees = rng.NextInt(3, 8);
+            var y = rngMap.Range(-halfH * 0.92f, halfH * 0.92f);
+            var riverX = riverModel.EvaluateX(y, halfW, halfH);
+            var floodHalf = (riverModel.EvaluateWidth(y, halfH) + FloodplainExtra) * 0.5f;
+
+            var side = rngMap.Value() < 0.5f ? -1f : 1f;
+            var innerX = Mathf.Clamp(riverX + (side * (floodHalf + 1.8f)), -halfW * 0.95f, halfW * 0.95f);
+            var outerX = side < 0f ? -halfW * 0.95f : halfW * 0.95f;
+            var lo = Mathf.Min(innerX, outerX);
+            var hi = Mathf.Max(innerX, outerX);
+            var x = rngMap.Range(lo, hi);
+
+            var center = new Vector2(Mathf.Clamp(x, -halfW, halfW), Mathf.Clamp(y, -halfH, halfH));
+            var trees = rngMap.NextInt(3, 8);
+
             for (var i = 0; i < trees; i++)
             {
-                var offset = rng.InsideUnitCircle() * rng.Range(0.2f, 2.2f);
+                var offset = rngMap.InsideUnitCircle() * rngMap.Range(0.2f, 2.2f);
                 var pos = center + offset;
-                pos.x = Mathf.Clamp(pos.x, -halfWidth + 0.2f, halfWidth - 0.2f);
-                pos.y = Mathf.Clamp(pos.y, -halfHeight + 0.2f, halfHeight - 0.2f);
+                pos.x = Mathf.Clamp(pos.x, -halfW + 0.2f, halfW - 0.2f);
+                pos.y = Mathf.Clamp(pos.y, -halfH + 0.2f, halfH - 0.2f);
                 shadeNodes.Add(pos);
 
-                var canopy = rng.Range(0.45f, 1.0f) * treeScale;
+                var canopy = rngMap.Range(0.45f, 1.0f) * treeScale;
                 CreateSprite(mapRoot, $"TreeShadow_{c:000}_{i:00}", PrimitiveSpriteLibrary.CircleFill(32), pos + new Vector2(0.12f, -0.09f), new Vector2(canopy * 1.2f, canopy * 0.8f), new Color(0f, 0f, 0f, 0.25f), TreeOrder);
                 CreateSprite(mapRoot, $"TreeCanopy_{c:000}_{i:00}", PrimitiveSpriteLibrary.CircleFill(32), pos, new Vector2(canopy, canopy), new Color(0.14f, 0.35f, 0.16f, 1f), TreeOrder + 1);
             }
         }
     }
 
-    private static (int px, int py) WorldToPixel(float x, float y, float halfWidth, float halfHeight, int texW, int texH)
+    private static Texture2D CreateTexture(int width, int height)
     {
-        var px = Mathf.Clamp(Mathf.RoundToInt(((x + halfWidth) / (2f * halfWidth)) * (texW - 1)), 0, texW - 1);
-        var py = Mathf.Clamp(Mathf.RoundToInt(((y + halfHeight) / (2f * halfHeight)) * (texH - 1)), 0, texH - 1);
+        return new Texture2D(width, height, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+    }
+
+    private static (int px, int py) WorldToPixel(float x, float y, float halfW, float halfH, int texW, int texH)
+    {
+        var u = (x + halfW) / (2f * halfW);
+        var v = (y + halfH) / (2f * halfH);
+        var px = Mathf.Clamp(Mathf.RoundToInt(u * (texW - 1)), 0, texW - 1);
+        var py = Mathf.Clamp(Mathf.RoundToInt(v * (texH - 1)), 0, texH - 1);
         return (px, py);
     }
 
@@ -306,7 +403,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
                 var clampedX = Mathf.Clamp(x, 0, texW - 1);
                 var clampedY = Mathf.Clamp(y, 0, texH - 1);
-                pixels[(clampedY * texW) + clampedX] = color;
+                pixels[clampedX + (clampedY * texW)] = color;
             }
         }
     }
@@ -316,7 +413,8 @@ public sealed class PredatorPreyDocuMapBuilder
         var dx = x1 - x0;
         var dy = y1 - y0;
         var dist = Mathf.Sqrt((dx * dx) + (dy * dy));
-        var steps = Mathf.Max(1, Mathf.CeilToInt(dist / Mathf.Max(1f, radius * 0.5f)));
+        var stepSize = Mathf.Max(1f, radius * 0.5f);
+        var steps = Mathf.Max(1, Mathf.CeilToInt(dist / stepSize));
 
         for (var i = 0; i <= steps; i++)
         {
@@ -343,7 +441,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
                 var clampedX = Mathf.Clamp(x, 0, texW - 1);
                 var clampedY = Mathf.Clamp(y, 0, texH - 1);
-                var idx = (clampedY * texW) + clampedX;
+                var idx = clampedX + (clampedY * texW);
                 pixels[idx] = Color32.Lerp(pixels[idx], color, color.a / 255f);
             }
         }
@@ -364,7 +462,7 @@ public sealed class PredatorPreyDocuMapBuilder
         return sr;
     }
 
-    private sealed class RiverCurve
+    private sealed class RiverModel
     {
         private readonly float f1;
         private readonly float f2;
@@ -373,25 +471,31 @@ public sealed class PredatorPreyDocuMapBuilder
         private readonly float p2;
         private readonly float p3;
 
-        public RiverCurve(IRng rng)
+        public RiverModel(IRng rngWaterMain)
         {
-            f1 = rng.Range(0.6f, 1.1f);
-            f2 = rng.Range(1.2f, 2.0f);
-            f3 = rng.Range(3.0f, 5.0f);
-            p1 = rng.Value();
-            p2 = rng.Value();
-            p3 = rng.Value();
+            f1 = rngWaterMain.Range(0.6f, 1.1f);
+            f2 = rngWaterMain.Range(1.2f, 2.0f);
+            f3 = rngWaterMain.Range(3.0f, 5.0f);
+            p1 = rngWaterMain.Value();
+            p2 = rngWaterMain.Value();
+            p3 = rngWaterMain.Value();
         }
 
-        public float EvaluateX(float t, float halfWidth, float margin)
+        public float EvaluateX(float y, float halfW, float halfH)
         {
-            t = Mathf.Clamp01(t);
+            var t = Mathf.Clamp01((halfH - y) / (2f * Mathf.Max(0.001f, halfH)));
             var ampBase = Mathf.Lerp(10f, 5f, t);
-            var ampSwirl = 9f * Mathf.SmoothStep(0.75f, 1.0f, t);
+            var ampSwirl = 9f * Mathf.SmoothStep(0.80f, 1f, t);
             var x = (ampBase * Mathf.Sin(2f * Mathf.PI * ((f1 * t) + p1)))
                     + ((ampBase * 0.6f) * Mathf.Sin(2f * Mathf.PI * ((f2 * t) + p2)))
                     + (ampSwirl * Mathf.Sin(2f * Mathf.PI * ((f3 * t * t) + p3)));
-            return Mathf.Clamp(x, -halfWidth + margin, halfWidth - margin);
+            return Mathf.Clamp(x, -halfW + RiverMargin, halfW - RiverMargin);
+        }
+
+        public float EvaluateWidth(float y, float halfH)
+        {
+            var t = Mathf.Clamp01((halfH - y) / (2f * Mathf.Max(0.001f, halfH)));
+            return Mathf.Lerp(RiverWidthNorth, RiverWidthSouth, Mathf.SmoothStep(0.10f, 1f, t));
         }
     }
 }
