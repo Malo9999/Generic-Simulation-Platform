@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using GSP.TrackEditor;
@@ -64,12 +65,15 @@ namespace GSP.TrackEditor.Editor
         private TrackLayout layout;
         private TrackLayout previousLayout;
         private Vector2 paletteScroll;
+        private Vector2 _leftScroll;
         private Vector2 canvasPan;
         private float canvasZoom = 1f;
         private string search = string.Empty;
         private string status = "Ready.";
         private int selectedPiece = -1;
-        private TrackBakeUtility.ValidationReport lastValidation;
+        private TrackBakeUtility.ValidationReport _lastValidation;
+        private (string aGuid, string bGuid)[] _lastOverlaps = Array.Empty<(string aGuid, string bGuid)>();
+        private readonly HashSet<string> _overlapHighlightedGuids = new();
         private TrackPieceDef _palettePressedPiece;
         private Vector2 _palettePressedPos;
         private bool _paletteDragStarted;
@@ -134,7 +138,7 @@ namespace GSP.TrackEditor.Editor
                 Validate();
             }
 
-            EditorGUI.BeginDisabledGroup(lastValidation == null || !lastValidation.IsValid || layout == null);
+            EditorGUI.BeginDisabledGroup(_lastValidation == null || !_lastValidation.IsValid || layout == null);
             if (GUILayout.Button("Bake", EditorStyles.toolbarButton, GUILayout.Width(60f)))
             {
                 Bake();
@@ -185,12 +189,22 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            GUILayout.BeginArea(new Rect(rect.x + 8f, rect.y + 8f, 230f, 220f), EditorStyles.helpBox);
+            const float leftPanelWidth = 260f;
+            var leftPanelRect = new Rect(rect.x + 8f, rect.y + 8f, leftPanelWidth, rect.height - 16f);
+            GUILayout.BeginArea(leftPanelRect, EditorStyles.helpBox);
+            _leftScroll = EditorGUILayout.BeginScrollView(_leftScroll, GUILayout.Width(leftPanelWidth - 8f), GUILayout.Height(leftPanelRect.height - 8f));
             GUILayout.Label("Selected Piece", EditorStyles.boldLabel);
             if (selectedPiece >= 0 && selectedPiece < layout.pieces.Count)
             {
                 var p = layout.pieces[selectedPiece];
                 GUILayout.Label(p.piece != null ? p.piece.displayName : "None");
+                if (GUILayout.Button("Deselect"))
+                {
+                    selectedPiece = -1;
+                    _isDragging = false;
+                    _dragGroup.Clear();
+                    Repaint();
+                }
             }
 
             EditorGUI.BeginDisabledGroup(selectedPiece < 0 || selectedPiece >= layout.pieces.Count);
@@ -237,20 +251,40 @@ namespace GSP.TrackEditor.Editor
                 EditorUtility.SetDirty(layout);
             }
 
-            if (lastValidation != null)
+            if (_lastValidation != null)
             {
                 GUILayout.Space(8f);
                 GUILayout.Label("Validation", EditorStyles.boldLabel);
-                foreach (var error in lastValidation.Errors)
+                foreach (var error in _lastValidation.Errors)
                 {
                     GUILayout.Label($"Error: {error}", EditorStyles.wordWrappedMiniLabel);
                 }
-                foreach (var warning in lastValidation.Warnings)
+                foreach (var warning in _lastValidation.Warnings)
                 {
-                    GUILayout.Label($"Warn: {warning}", EditorStyles.wordWrappedMiniLabel);
+                    if (TryParseOverlapWarning(warning, out var overlap))
+                    {
+                        EditorGUILayout.BeginHorizontal();
+                        GUILayout.Label($"Warn: {warning}", EditorStyles.wordWrappedMiniLabel);
+                        if (GUILayout.Button("Select", GUILayout.Width(56f)))
+                        {
+                            var selectedIdx = layout.pieces.FindIndex(p => p.guid == overlap.aGuid);
+                            if (selectedIdx >= 0)
+                            {
+                                selectedPiece = selectedIdx;
+                                Repaint();
+                            }
+                        }
+
+                        EditorGUILayout.EndHorizontal();
+                    }
+                    else
+                    {
+                        GUILayout.Label($"Warn: {warning}", EditorStyles.wordWrappedMiniLabel);
+                    }
                 }
             }
 
+            EditorGUILayout.EndScrollView();
             GUILayout.EndArea();
         }
 
@@ -437,6 +471,8 @@ namespace GSP.TrackEditor.Editor
             if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Escape)
             {
                 selectedPiece = -1;
+                _isDragging = false;
+                _dragGroup.Clear();
                 _isPlacingStartFinish = false;
                 Repaint();
                 evt.Use();
@@ -491,7 +527,18 @@ namespace GSP.TrackEditor.Editor
                     return;
                 }
 
-                selectedPiece = PickPieceAtMouse(mouseWorld);
+                var hit = PickPieceAtMouse(mouseWorld);
+                if (hit < 0)
+                {
+                    selectedPiece = -1;
+                    _isDragging = false;
+                    _dragGroup.Clear();
+                    Repaint();
+                    evt.Use();
+                    return;
+                }
+
+                selectedPiece = hit;
                 Repaint();
 
                 if (selectedPiece >= 0)
@@ -634,7 +681,12 @@ namespace GSP.TrackEditor.Editor
                     continue;
                 }
 
-                DrawPieceGeometry(placed, canvasSize, new Color(0.22f, 0.22f, 0.22f, 0.95f), new Color(0.95f, 0.95f, 0.95f, 0.9f));
+                var hasOverlap = _overlapHighlightedGuids.Contains(placed.guid);
+                var borderColor = hasOverlap
+                    ? new Color(1f, 0.65f, 0.2f, 0.98f)
+                    : new Color(0.95f, 0.95f, 0.95f, 0.9f);
+                var borderWidth = hasOverlap ? 4f : 2f;
+                DrawPieceGeometry(placed, canvasSize, new Color(0.22f, 0.22f, 0.22f, 0.95f), borderColor, borderWidth);
 
                 var shouldShowLabel = pieceIndex == selectedPiece || canvasZoom > 1.2f;
                 if (!shouldShowLabel)
@@ -648,7 +700,7 @@ namespace GSP.TrackEditor.Editor
             }
         }
 
-        private void DrawPieceGeometry(PlacedPiece placed, Vector2 canvasSize, Color asphaltColor, Color borderColor)
+        private void DrawPieceGeometry(PlacedPiece placed, Vector2 canvasSize, Color asphaltColor, Color borderColor, float borderWidth = 2f)
         {
             if (placed.piece?.segments == null)
             {
@@ -670,13 +722,13 @@ namespace GSP.TrackEditor.Editor
                 if (segment.localLeftBoundary != null && segment.localLeftBoundary.Length >= 2)
                 {
                     Handles.color = borderColor;
-                    Handles.DrawAAPolyLine(2f, TransformPolyline(placed, segment.localLeftBoundary, canvasSize));
+                    Handles.DrawAAPolyLine(borderWidth, TransformPolyline(placed, segment.localLeftBoundary, canvasSize));
                 }
 
                 if (segment.localRightBoundary != null && segment.localRightBoundary.Length >= 2)
                 {
                     Handles.color = borderColor;
-                    Handles.DrawAAPolyLine(2f, TransformPolyline(placed, segment.localRightBoundary, canvasSize));
+                    Handles.DrawAAPolyLine(borderWidth, TransformPolyline(placed, segment.localRightBoundary, canvasSize));
                 }
 
                 if (segment.localLeftBoundary != null && segment.localRightBoundary != null &&
@@ -687,8 +739,8 @@ namespace GSP.TrackEditor.Editor
                     var endCapA = WorldToCanvas(TrackMathUtil.ToWorld(placed, segment.localLeftBoundary[segment.localLeftBoundary.Length - 1]), canvasSize);
                     var endCapB = WorldToCanvas(TrackMathUtil.ToWorld(placed, segment.localRightBoundary[segment.localRightBoundary.Length - 1]), canvasSize);
                     Handles.color = borderColor;
-                    Handles.DrawAAPolyLine(2f, startCapA, startCapB);
-                    Handles.DrawAAPolyLine(2f, endCapA, endCapB);
+                    Handles.DrawAAPolyLine(borderWidth, startCapA, startCapB);
+                    Handles.DrawAAPolyLine(borderWidth, endCapA, endCapB);
                 }
             }
         }
@@ -1851,8 +1903,38 @@ namespace GSP.TrackEditor.Editor
 
         private void Validate()
         {
-            lastValidation = TrackBakeUtility.Validate(layout);
-            status = lastValidation.IsValid ? "Validation passed." : $"Validation failed: {lastValidation.Errors.Count} errors.";
+            _lastValidation = TrackBakeUtility.Validate(layout);
+            _lastOverlaps = _lastValidation?.Warnings
+                .Select(w => TryParseOverlapWarning(w, out var overlap) ? overlap : default)
+                .Where(overlap => !string.IsNullOrEmpty(overlap.aGuid) && !string.IsNullOrEmpty(overlap.bGuid))
+                .ToArray() ?? Array.Empty<(string aGuid, string bGuid)>();
+
+            _overlapHighlightedGuids.Clear();
+            foreach (var overlap in _lastOverlaps)
+            {
+                _overlapHighlightedGuids.Add(overlap.aGuid);
+                _overlapHighlightedGuids.Add(overlap.bGuid);
+            }
+
+            status = _lastValidation.IsValid ? "Validation passed." : $"Validation failed: {_lastValidation.Errors.Count} errors.";
+        }
+
+        private static bool TryParseOverlapWarning(string warning, out (string aGuid, string bGuid) overlap)
+        {
+            overlap = default;
+            if (string.IsNullOrWhiteSpace(warning))
+            {
+                return false;
+            }
+
+            var match = Regex.Match(warning, @"Piece overlap detected between\s+([\w\-]+)\s+and\s+([\w\-]+)", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            overlap = (match.Groups[1].Value, match.Groups[2].Value);
+            return true;
         }
 
         private void Bake()
