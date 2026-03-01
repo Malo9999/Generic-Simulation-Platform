@@ -256,6 +256,11 @@ namespace GSP.TrackEditor.Editor
                 Repaint();
             }
 
+            if (GUILayout.Button("Flip Direction"))
+            {
+                FlipStartFinishDirection();
+            }
+
             if (GUILayout.Button("Snap Start/Finish to Track"))
             {
                 if (layout?.startFinish == null)
@@ -1273,8 +1278,8 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            const float slotLengthWorld = 1.6f;
-            const float slotHalfWidthWorld = 0.5f;
+            const float slotLengthWorld = 1.5f;
+            const float slotHalfWidthWorld = 0.45f;
             const float tickLengthWorld = 1.0f;
 
             Handles.color = new Color(1f, 0.9f, 0.25f, 0.95f);
@@ -2307,28 +2312,17 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
+            SnapStartFinishToMainLoop();
+
             var startPos = layout.startFinish.worldPos;
             var forward = layout.startFinish.worldDir.normalized;
             var right = new Vector2(-forward.y, forward.x);
-
-            var trackWidth = 8f;
-            if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out _, out trackWidth) && layout.pieces != null)
-            {
-                foreach (var piece in layout.pieces)
-                {
-                    if (piece?.piece != null)
-                    {
-                        trackWidth = piece.piece.trackWidth;
-                        break;
-                    }
-                }
-            }
-
-            var usableWidth = trackWidth * 0.55f;
-            const int columns = 5;
-            const float rowSpacing = 3.2f;
-            const float offsetBehindStart = 2.0f;
-            var rows = Mathf.CeilToInt(count / (float)columns);
+            var trackWidth = GetLayoutTrackWidth();
+            var usableLaneOffset = trackWidth * 0.18f;
+            const float behind = 2.6f;
+            const float rowSpacing = 2.8f;
+            var stagger = rowSpacing * 0.5f;
+            var rows = Mathf.CeilToInt(count / 2f);
 
             if (layout.startGridSlots == null)
             {
@@ -2336,28 +2330,57 @@ namespace GSP.TrackEditor.Editor
             }
 
             layout.startGridSlots.Clear();
-            for (var row = 0; row < rows; row++)
+            for (var i = 0; i < rows; i++)
             {
-                for (var col = 0; col < columns; col++)
+                var laneAIndex = i * 2;
+                if (laneAIndex < count)
                 {
-                    if (layout.startGridSlots.Count >= count)
-                    {
-                        break;
-                    }
-
-                    var t = columns == 1 ? 0.5f : col / (float)(columns - 1);
-                    var lateral = Mathf.Lerp(-usableWidth * 0.5f, usableWidth * 0.5f, t);
-                    var back = offsetBehindStart + row * rowSpacing;
+                    var posA = startPos - forward * (behind + i * rowSpacing) + right * usableLaneOffset;
                     layout.startGridSlots.Add(new TrackSlot
                     {
-                        pos = startPos - forward * back + right * lateral,
+                        pos = posA,
+                        dir = forward
+                    });
+                }
+
+                var laneBIndex = i * 2 + 1;
+                if (laneBIndex < count)
+                {
+                    var posB = startPos - forward * (behind + i * rowSpacing + stagger) - right * usableLaneOffset;
+                    layout.startGridSlots.Add(new TrackSlot
+                    {
+                        pos = posB,
                         dir = forward
                     });
                 }
             }
 
             EditorUtility.SetDirty(layout);
-            status = $"Generated start grid ({count}).";
+            status = $"Generated staggered grid ({count}).";
+            Repaint();
+        }
+
+        private void FlipStartFinishDirection()
+        {
+            if (layout?.startFinish == null)
+            {
+                status = "No Start/Finish set.";
+                return;
+            }
+
+            layout.startFinish.worldDir = -layout.startFinish.worldDir;
+            if (layout.startGridSlots != null && layout.startGridSlots.Count > 0)
+            {
+                var startPos = layout.startFinish.worldPos;
+                foreach (var slot in layout.startGridSlots)
+                {
+                    slot.dir = -slot.dir;
+                    slot.pos = startPos + (startPos - slot.pos);
+                }
+            }
+
+            EditorUtility.SetDirty(layout);
+            status = "Direction flipped.";
             Repaint();
         }
 
