@@ -4,6 +4,7 @@ using TeamPhase = FantasySportTactics.TeamPhase;
 using RoleGroup = FantasySportTactics.RoleGroup;
 using Lane = FantasySportTactics.Lane;
 using IntentType = FantasySportTactics.IntentType;
+using PlayCall = FantasySportTactics.PlayCall;
 
 public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 {
@@ -77,6 +78,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private const float FinishPlanDuration = 0.8f;
     private const float RunOpenRadius = 3f;
     private const float RunDepth = 8f;
+    private const float PlayCallMinTtl = 4f;
+    private const float PlayCallMaxTtl = 6f;
+    private const float PlayFailFallbackSeconds = 2f;
+    private const float ScrumBreakRadius = 2.5f;
+    private const float ScrumBreakHoldSeconds = 0.6f;
+    private const int ScrumBreakBodiesThreshold = 7;
     private static readonly Vector2 PadSize = new Vector2(4.2f, 2.7f);
     private static readonly Color Team0Color = new Color(0.2f, 0.78f, 1f, 1f);
     private static readonly Color Team1Color = new Color(1f, 0.45f, 0.25f, 1f);
@@ -105,6 +112,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private struct PlayPlan
     {
         public int teamId;
+        public PlayCall call;
         public int shortIdx;
         public int wideIdx;
         public int forwardIdx;
@@ -206,6 +214,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private float lastProgress;
     private bool possessionCongested;
     private string possessionPlan = "None";
+    private int threatMeter;
     private readonly TeamPhase[] teamPhase = { TeamPhase.Transition, TeamPhase.Transition };
     private readonly PlayPlan[] activePlayPlans = new PlayPlan[Teams];
     private readonly int[] triangleShortSupportByTeam = { -1, -1 };
@@ -239,6 +248,9 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private readonly int[] idxWingL = { -1, -1 };
     private readonly int[] idxWingR = { -1, -1 };
     private readonly int[] kickoffDuelIndexByTeam = { -1, -1 };
+    private readonly float[] playProgressBaseline = new float[Teams];
+    private readonly float[] scrumHoldTimeByTeam = new float[Teams];
+    private readonly bool[] scrumBreakerArmedByTeam = new bool[Teams];
     private float kickoffFreezeUntilTime = -1f;
 
     public void Initialize(ScenarioConfig config)
@@ -294,6 +306,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         RefreshAssignments();
         UpdatePossessionProgress(dt);
+        ResolveScrumBreaker(dt);
         UpdateShotClock(dt);
         ResolveBallCarrierDecision();
         UpdateAthletes(dt);
@@ -669,6 +682,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastProgress = 0f;
         possessionCongested = false;
         possessionPlan = "None";
+        threatMeter = 0;
         teamPhase[0] = TeamPhase.Transition;
         teamPhase[1] = TeamPhase.Transition;
         lastPasserIndex = -1;
@@ -690,6 +704,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         triangleForwardRunByTeam[1] = -1;
         attackPressure[0] = 0.5f;
         attackPressure[1] = 0.5f;
+        playProgressBaseline[0] = 0f;
+        playProgressBaseline[1] = 0f;
+        scrumHoldTimeByTeam[0] = 0f;
+        scrumHoldTimeByTeam[1] = 0f;
+        scrumBreakerArmedByTeam[0] = false;
+        scrumBreakerArmedByTeam[1] = false;
         if (returnToShapeUntilByAthlete != null && leftShapeByAthlete != null)
         {
             for (var i = 0; i < returnToShapeUntilByAthlete.Length; i++)
@@ -731,6 +751,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastProgress = 0f;
         possessionCongested = false;
         possessionPlan = "None";
+        threatMeter = 0;
         teamPhase[0] = TeamPhase.Transition;
         teamPhase[1] = TeamPhase.Transition;
         lastPasserIndex = -1;
@@ -752,6 +773,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         triangleForwardRunByTeam[1] = -1;
         attackPressure[0] = 0.5f;
         attackPressure[1] = 0.5f;
+        playProgressBaseline[0] = 0f;
+        playProgressBaseline[1] = 0f;
+        scrumHoldTimeByTeam[0] = 0f;
+        scrumHoldTimeByTeam[1] = 0f;
+        scrumBreakerArmedByTeam[0] = false;
+        scrumBreakerArmedByTeam[1] = false;
         if (returnToShapeUntilByAthlete != null && leftShapeByAthlete != null)
         {
             for (var i = 0; i < returnToShapeUntilByAthlete.Length; i++)
@@ -794,8 +821,16 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastProgress = 0f;
         possessionCongested = false;
         possessionPlan = "None";
+        threatMeter = 0;
         teamPhase[0] = TeamPhase.Transition;
         teamPhase[1] = TeamPhase.Transition;
+
+        playProgressBaseline[0] = 0f;
+        playProgressBaseline[1] = 0f;
+        scrumHoldTimeByTeam[0] = 0f;
+        scrumHoldTimeByTeam[1] = 0f;
+        scrumBreakerArmedByTeam[0] = false;
+        scrumBreakerArmedByTeam[1] = false;
 
         kickoffDuelIndexByTeam[0] = PickKickoffDuelIndex(0);
         kickoffDuelIndexByTeam[1] = PickKickoffDuelIndex(1);
@@ -960,7 +995,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var inCounterPressWindow = counterPressTeam == teamId && (matchTimeSeconds - possessionFlipTime) <= 1.1f;
-        var allowSecondary = ballOwnerIndex < 0 || inCounterPressWindow;
+        var wingTrap = ballOwnerIndex >= 0 && ballOwnerTeam != teamId && threatMeter > 40 && Mathf.Abs(ballPos.y) > halfHeight * 0.24f;
+        var allowSecondary = ballOwnerIndex < 0 || inCounterPressWindow || wingTrap;
         if (!allowSecondary)
         {
             secondary = -1;
@@ -1616,11 +1652,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 var progress = GetTeamProgress(possessingTeam, ballPos);
                 bestProgress = progress;
                 lastProgress = progress;
+                playProgressBaseline[possessingTeam] = progress;
             }
             else
             {
                 bestProgress = 0f;
                 lastProgress = 0f;
+                threatMeter = 0;
                 possessionCongested = false;
                 possessionPlan = "None";
                 return;
@@ -1629,6 +1667,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (possessingTeam < 0)
         {
+            threatMeter = 0;
             return;
         }
 
@@ -1648,12 +1687,39 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var nearbyOpponents = CountOpponentsNear(ballPos, 3f, possessingTeam);
         var nearbyTeammates = CountTeammatesNear(ballPos, 3f, possessingTeam);
         possessionCongested = nearbyOpponents >= 3 || (nearbyOpponents + nearbyTeammates) >= 6;
+        threatMeter = ComputeThreatMeter(possessingTeam);
+    }
+
+    private int ComputeThreatMeter(int teamId)
+    {
+        if (teamId < 0)
+        {
+            return 0;
+        }
+
+        var progress01 = GetTeamProgress(teamId, ballPos);
+        var centrality01 = 1f - Mathf.Clamp01(Mathf.Abs(ballPos.y) / Mathf.Max(1f, halfHeight));
+        var endzone = GetEndzoneRect(1 - teamId);
+        var congestionPoint = new Vector2(Mathf.Clamp(ballPos.x, endzone.xMin, endzone.xMax), Mathf.Clamp(ballPos.y, endzone.yMin, endzone.yMax));
+        var congestion = Mathf.Clamp01((CountOpponentsNear(congestionPoint, 5f, teamId) + CountTeammatesNear(congestionPoint, 5f, teamId)) / 10f);
+        var threat = (progress01 * 62f) + (centrality01 * 20f) + (congestion * 18f);
+        return Mathf.Clamp(Mathf.RoundToInt(threat), 0, 100);
     }
 
     private void PickAttackSidePlan(int teamId, bool forceRefresh)
     {
-        if (!forceRefresh && attackPlanUntilTime[teamId] > matchTimeSeconds && !IsCentralLaneBlocked(ballOwnerIndex))
+        if (ballOwnerIndex < 0 || teamId < 0 || teamId >= Teams)
         {
+            return;
+        }
+
+        var existingPlan = activePlayPlans[teamId];
+        if (!forceRefresh && existingPlan.untilTime > matchTimeSeconds && existingPlan.call != PlayCall.None)
+        {
+            if (noProgressTime > PlayFailFallbackSeconds && lastProgress <= playProgressBaseline[teamId] + 0.01f)
+            {
+                BuildPlayPlan(teamId, existingPlan.side, PlayCall.Switch, useFallback: true);
+            }
             return;
         }
 
@@ -1663,41 +1729,92 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         currentAttackSide[teamId] = Mathf.Abs(leftOpen - rightOpen) > 0.4f
             ? (leftOpen >= rightOpen ? AttackSide.Left : AttackSide.Right)
             : (parityLeft ? AttackSide.Left : AttackSide.Right);
-
-        var planUntil = matchTimeSeconds + 4f + ((((simulationSeed + teamId + currentTickIndex) & 1) == 0) ? 1f : 2f);
-        attackPlanUntilTime[teamId] = planUntil;
         var side = currentAttackSide[teamId] == AttackSide.Left ? -1 : 1;
-        BuildPlayPlan(teamId, side, planUntil);
+
+        var playCall = DeterminePlayCall(teamId, side);
+        BuildPlayPlan(teamId, side, playCall, useFallback: false);
     }
 
+    private PlayCall DeterminePlayCall(int teamId, int side)
+    {
+        if (ballOwnerIndex < 0 || teamId != ballOwnerTeam)
+        {
+            return PlayCall.None;
+        }
 
-    private void BuildPlayPlan(int teamId, int side, float untilTime)
+        var carrier = ballOwnerIndex;
+        var progress = GetTeamProgress(teamId, ballPos);
+        var nearPressure = CountOpponentsNear(positions[carrier], 2.4f, teamId);
+        var onWing = Mathf.Abs(positions[carrier].y) > halfHeight * 0.24f;
+        var wingCongested = CountOpponentsNear(positions[carrier], 4.8f, teamId) >= 4;
+
+        if (IsGoalkeeper(carrier) && progress < 0.34f && nearPressure <= 1)
+        {
+            return PlayCall.BuildOut;
+        }
+
+        if (teamPhase[teamId] == TeamPhase.FinalThird && onWing)
+        {
+            return ((currentTickIndex + teamId + simulationSeed) & 1) == 0 ? PlayCall.FinalThirdCross : PlayCall.FinalThirdCutback;
+        }
+
+        if (teamPhase[teamId] == TeamPhase.Advance && onWing)
+        {
+            var overlap = FindNearestByRoleAndSide(teamId, RoleGroup.Defender, side, carrier, -1, positions[carrier]);
+            if (IsValidAthleteIndex(overlap))
+            {
+                return PlayCall.Overlap;
+            }
+        }
+
+        if (wingCongested || noProgressTime > 1.2f)
+        {
+            return PlayCall.Switch;
+        }
+
+        return PlayCall.BuildOut;
+    }
+
+    private void BuildPlayPlan(int teamId, int side, PlayCall call, bool useFallback)
     {
         if (ballOwnerIndex < 0 || teamId < 0 || teamId >= Teams)
         {
             return;
         }
 
+        var towardGoal = (GetOpponentGoalCenter(teamId) - ballPos).normalized;
+        var ttl = Mathf.Lerp(PlayCallMinTtl, PlayCallMaxTtl, ((simulationSeed + currentTickIndex + teamId) & 1) == 0 ? 0.35f : 0.8f);
+        var untilTime = matchTimeSeconds + ttl;
+        var carrier = ballOwnerIndex;
         var plan = new PlayPlan
         {
             teamId = teamId,
+            call = call,
             side = side,
             untilTime = untilTime,
-            shortIdx = FindShortSupportNode(teamId, ballOwnerIndex, (GetOpponentGoalCenter(teamId) - ballPos).normalized),
-            wideIdx = FindWideOutletNode(teamId, ballOwnerIndex),
-            forwardIdx = FindForwardRunNode(teamId, ballOwnerIndex, (GetOpponentGoalCenter(teamId) - ballPos).normalized),
-            overlapIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Defender, side, ballOwnerIndex, -1, ballPos),
-            cutbackIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Midfielder, side, ballOwnerIndex, -1, ballPos)
+            shortIdx = FindShortSupportNode(teamId, carrier, towardGoal),
+            wideIdx = FindWideOutletNode(teamId, carrier),
+            forwardIdx = FindForwardRunNode(teamId, carrier, towardGoal),
+            overlapIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Defender, side, carrier, -1, ballPos),
+            cutbackIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Midfielder, side, carrier, -1, ballPos)
         };
 
         if (!IsValidAthleteIndex(plan.wideIdx))
         {
-            plan.wideIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Attacker, side, ballOwnerIndex, -1, ballPos);
+            plan.wideIdx = FindNearestByRoleAndSide(teamId, RoleGroup.Attacker, side, carrier, -1, ballPos);
         }
 
+        if (useFallback && call == PlayCall.Switch)
+        {
+            plan.wideIdx = FindBestOpenTeammate(carrier, preferWing: true, forceSwitch: true);
+            plan.forwardIdx = FindForwardRunNode(teamId, carrier, towardGoal);
+        }
+
+        attackPlanUntilTime[teamId] = untilTime;
         activePlayPlans[teamId] = plan;
+        playProgressBaseline[teamId] = lastProgress;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        Debug.Log($"[PLAN] build t={matchTimeSeconds:F1} team={teamId} side={plan.side} until={plan.untilTime:F1} nodes={plan.shortIdx}/{plan.wideIdx}/{plan.forwardIdx}/{plan.overlapIdx}/{plan.cutbackIdx}");
+        Debug.Log($"[PLAN] build t={matchTimeSeconds:F1} team={teamId} call={plan.call} side={plan.side} until={plan.untilTime:F1} nodes={plan.shortIdx}/{plan.wideIdx}/{plan.forwardIdx}/{plan.overlapIdx}/{plan.cutbackIdx}");
 #endif
     }
 
@@ -1717,37 +1834,42 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var towardGoal = (GetOpponentGoalCenter(teamId) - ballPos).normalized;
         var carrierPos = ballOwnerIndex >= 0 ? positions[ballOwnerIndex] : ballPos;
         var wingY = plan.side * GetLaneWideY(teamId);
+        var ttl = Mathf.Clamp(plan.untilTime - matchTimeSeconds, 1.6f, PlayCallMaxTtl);
 
         if (IsValidAthleteIndex(plan.shortIdx))
         {
-            var shortTarget = carrierPos - (towardGoal * 2.8f) + new Vector2(0f, plan.side * 1.1f);
-            SetIntent(plan.shortIdx, IntentType.SupportShort, shortTarget, 2f);
+            var shortDepth = plan.call == PlayCall.BuildOut ? 4f : 2.8f;
+            var shortTarget = carrierPos - (towardGoal * shortDepth) + new Vector2(0f, plan.side * 1.1f);
+            SetIntent(plan.shortIdx, IntentType.SupportShort, shortTarget, ttl);
         }
 
         if (IsValidAthleteIndex(plan.wideIdx))
         {
-            var wingTarget = new Vector2(Mathf.Clamp(carrierPos.x + towardGoal.x * 6f, -halfWidth + 1.2f, halfWidth - 1.2f), wingY);
-            SetIntent(plan.wideIdx, IntentType.HoldWidth, wingTarget, 2.2f);
+            var widthX = plan.call == PlayCall.Switch ? 8f : 6f;
+            var wingTarget = new Vector2(Mathf.Clamp(carrierPos.x + towardGoal.x * widthX, -halfWidth + 1.2f, halfWidth - 1.2f), wingY);
+            var intent = plan.call == PlayCall.Switch ? IntentType.SwitchOutlet : IntentType.HoldWidth;
+            SetIntent(plan.wideIdx, intent, wingTarget, ttl);
         }
 
         if (IsValidAthleteIndex(plan.overlapIdx))
         {
-            var overlapX = Mathf.Lerp(midLineXByTeam[teamId], attLineXByTeam[teamId], 0.6f);
-            SetIntent(plan.overlapIdx, IntentType.OverlapRun, new Vector2(overlapX, wingY), 2.2f);
+            var overlapX = Mathf.Lerp(midLineXByTeam[teamId], attLineXByTeam[teamId], plan.call == PlayCall.Overlap ? 0.72f : 0.6f);
+            SetIntent(plan.overlapIdx, IntentType.OverlapRun, new Vector2(overlapX, wingY), ttl);
         }
 
         if (IsValidAthleteIndex(plan.forwardIdx))
         {
             var laneY = plan.side * GetLaneNarrowY(teamId) * 0.7f;
-            var runTarget = carrierPos + (towardGoal * RunDepth) + new Vector2(0f, laneY);
-            SetIntent(plan.forwardIdx, IntentType.RunInBehind, runTarget, 2.3f);
+            var runDepth = plan.call == PlayCall.FinalThirdCross ? RunDepth * 0.85f : RunDepth;
+            var runTarget = carrierPos + (towardGoal * runDepth) + new Vector2(0f, laneY);
+            SetIntent(plan.forwardIdx, IntentType.RunInBehind, runTarget, ttl);
         }
 
         if (IsValidAthleteIndex(plan.cutbackIdx))
         {
             var endzone = GetEndzoneRect(1 - teamId);
             var topOfBox = new Vector2(endzone.center.x - (towardGoal.x * Mathf.Min(5f, endzone.width * 0.8f)), plan.side * GetLaneNarrowY(teamId));
-            SetIntent(plan.cutbackIdx, IntentType.SupportShort, topOfBox, 2f);
+            SetIntent(plan.cutbackIdx, IntentType.SupportShort, topOfBox, ttl);
         }
     }
 
@@ -2557,6 +2679,30 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         home.y = GetLaneY(laneByIndex[athleteIndex], halfHeight, 0f, teamId);
 
+        if (ballOwnerTeam >= 0 && ballOwnerTeam != teamId)
+        {
+            var roleThreat = roleByIndex[athleteIndex] == RoleGroup.Defender || roleByIndex[athleteIndex] == RoleGroup.Sweeper;
+            if (roleThreat && threatMeter > 60)
+            {
+                home.y = Mathf.Lerp(home.y, Mathf.Clamp(ballPos.y, -halfHeight * 0.22f, halfHeight * 0.22f), 0.55f);
+                home.x = Mathf.Lerp(home.x, defLineXByTeam[teamId], 0.25f);
+            }
+
+            var wingBall = Mathf.Abs(ballPos.y) > halfHeight * 0.24f;
+            if (wingBall && threatMeter > 40f && roleThreat)
+            {
+                var trapSign = Mathf.Sign(ballPos.y);
+                if (Mathf.Sign(home.y) == trapSign)
+                {
+                    home.y = Mathf.Lerp(home.y, ballPos.y, 0.4f);
+                }
+                else if (laneByIndex[athleteIndex] == Lane.Center || laneByIndex[athleteIndex] == Lane.LeftCenter || laneByIndex[athleteIndex] == Lane.RightCenter)
+                {
+                    home.y = Mathf.Lerp(home.y, ballPos.y * 0.35f, 0.5f);
+                }
+            }
+        }
+
         if (ShouldApplyWidthAnchor(teamId, athleteIndex))
         {
             home.y = GetWidthAnchorTargetY(teamId, athleteIndex);
@@ -3041,7 +3187,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
                 }
             }
 
-            possessionRings[i].enabled = ballOwnerIndex == i;
+            var isCarrier = ballOwnerIndex == i;
+            possessionRings[i].enabled = isCarrier;
+            possessionRings[i].transform.localPosition = isCarrier ? new Vector3(0f, 1.55f, 0f) : Vector3.zero;
+            possessionRings[i].transform.localScale = isCarrier ? Vector3.one * 0.66f : Vector3.one * 1.1f;
         }
 
         UpdateStaminaBars();
@@ -3124,14 +3273,43 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastHudSecond = remainingWhole;
         var minutes = remainingWhole / 60;
         var seconds = remainingWhole % 60;
-        var possession = possessingTeam >= 0 ? $"Team{possessingTeam}" : "Free";
+        var possession = BuildPossessionDescriptor();
         var congested = possessionCongested ? "Y" : "N";
-        var triShort = possessingTeam >= 0 ? triangleShortSupportByTeam[possessingTeam] : -1;
-        var triWide = possessingTeam >= 0 ? triangleWideOutletByTeam[possessingTeam] : -1;
-        var triForward = possessingTeam >= 0 ? triangleForwardRunByTeam[possessingTeam] : -1;
-        hudText.text = $"FantasySport  Team0 {scoreTeam0} : {scoreTeam1} Team1   Time: {minutes:00}:{seconds:00}   Possession: {possession}\nPossTeam={possessingTeam} possTime={possessionTime:F1} noProg={noProgressTime:F1} progress={lastProgress:F2} congested={congested} plan={possessionPlan} tri={triShort}/{triWide}/{triForward}";
+        var activeCall = possessingTeam >= 0 ? activePlayPlans[possessingTeam].call.ToString() : "None";
+        hudText.text = $"FantasySport  Team0 {scoreTeam0} : {scoreTeam1} Team1   Time: {minutes:00}:{seconds:00}\nThreat: {threatMeter:00}  Poss: {possession}  Plan: {activeCall}  noProg={noProgressTime:F1} congested={congested}";
     }
 
+
+
+    private string BuildPossessionDescriptor()
+    {
+        if (ballOwnerIndex < 0)
+        {
+            return "Free";
+        }
+
+        var team = teamIdByIndex[ballOwnerIndex] == 0 ? "BLUE" : "ORANGE";
+        var shirt = teamLocalIndexByIndex[ballOwnerIndex] + 1;
+        var role = roleByIndex[ballOwnerIndex] switch
+        {
+            RoleGroup.Keeper => "GK",
+            RoleGroup.Sweeper => "SWP",
+            RoleGroup.Defender => "DEF",
+            RoleGroup.Midfielder => "MID",
+            RoleGroup.Attacker => "ATT",
+            _ => "PLY"
+        };
+        var lane = laneByIndex[ballOwnerIndex] switch
+        {
+            Lane.Left => "L",
+            Lane.LeftCenter => "LC",
+            Lane.Center => "C",
+            Lane.RightCenter => "RC",
+            Lane.Right => "R",
+            _ => "C"
+        };
+        return $"{team} #{shirt} ({role}-{lane})";
+    }
 
     private void UpdateScoreboardUI(bool force)
     {
@@ -3166,7 +3344,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastScoreboardTeam1 = scoreTeam1;
         var minutes = remainingWhole / 60;
         var seconds = remainingWhole % 60;
-        scoreboardText.text = $"BLUE {scoreTeam0} — {scoreTeam1} ORANGE   {minutes:00}:{seconds:00}";
+        var possession = BuildPossessionDescriptor();
+        scoreboardText.text = $"BLUE {scoreTeam0} — {scoreTeam1} ORANGE   {minutes:00}:{seconds:00}\nThreat: {threatMeter:00}  Poss: {possession}";
     }
 
     private void ResolveArtPipeline()
@@ -3657,34 +3836,44 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             if (planActive)
             {
                 var isPlanNode = i == plan.shortIdx || i == plan.wideIdx || i == plan.forwardIdx || i == plan.overlapIdx || i == plan.cutbackIdx;
+                var playBias = plan.call switch
+                {
+                    PlayCall.BuildOut => 8f,
+                    PlayCall.Overlap => 11f,
+                    PlayCall.Switch => 14f,
+                    PlayCall.FinalThirdCross => 13f,
+                    PlayCall.FinalThirdCutback => 13f,
+                    _ => 6f
+                };
+
                 if (i == plan.shortIdx)
                 {
-                    score += 6.5f;
+                    score += playBias * 0.75f;
                 }
 
-                if (i == plan.wideIdx && nearestOpponent > OpenThreshold * 0.95f)
+                if (i == plan.wideIdx)
                 {
-                    score += 10.5f;
+                    score += nearestOpponent > OpenThreshold * 0.9f ? playBias + 4f : playBias;
                 }
 
                 if (i == plan.forwardIdx)
                 {
-                    score += progressGain > 0.02f ? 12f : 6f;
+                    score += progressGain > 0.02f ? playBias + 3f : playBias * 0.65f;
                 }
 
-                if (i == plan.overlapIdx && nearestOpponent > OpenThreshold)
+                if (i == plan.overlapIdx)
                 {
-                    score += 8.2f;
+                    score += (plan.call == PlayCall.Overlap ? 14f : 9f) + (nearestOpponent > OpenThreshold ? 2f : 0f);
                 }
 
-                if (i == plan.cutbackIdx && nearestOpponent > OpenThreshold * 0.9f)
+                if (i == plan.cutbackIdx)
                 {
-                    score += 7.5f;
+                    score += plan.call == PlayCall.FinalThirdCutback ? 15f : 8f;
                 }
 
                 if (!pressured && !isPlanNode)
                 {
-                    score -= 6f;
+                    score -= playBias * 0.9f;
                 }
 
                 if (!pressured && (roleByIndex[i] == RoleGroup.Defender || roleByIndex[i] == RoleGroup.Sweeper) && progressGain < 0.02f)
@@ -3765,6 +3954,72 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private float GetTeamProgress(int teamId, Vector2 position)
     {
         return FantasySportTactics.Progress01(position, teamId, halfWidth);
+    }
+
+    private void ResolveScrumBreaker(float dt)
+    {
+        if (ballOwnerIndex < 0 || ballOwnerTeam < 0)
+        {
+            scrumHoldTimeByTeam[0] = 0f;
+            scrumHoldTimeByTeam[1] = 0f;
+            return;
+        }
+
+        var teamId = ballOwnerTeam;
+        var bodiesNear = CountBodiesNearBall(ScrumBreakRadius);
+        if (bodiesNear >= ScrumBreakBodiesThreshold)
+        {
+            scrumHoldTimeByTeam[teamId] += dt;
+            if (scrumHoldTimeByTeam[teamId] >= ScrumBreakHoldSeconds && !scrumBreakerArmedByTeam[teamId])
+            {
+                scrumBreakerArmedByTeam[teamId] = true;
+                ExecuteScrumBreaker(teamId, ballOwnerIndex);
+                scrumHoldTimeByTeam[teamId] = 0f;
+                scrumBreakerArmedByTeam[teamId] = false;
+            }
+        }
+        else
+        {
+            scrumHoldTimeByTeam[teamId] = 0f;
+        }
+    }
+
+    private int CountBodiesNearBall(float radius)
+    {
+        var radiusSq = radius * radius;
+        var count = 0;
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if ((positions[i] - ballPos).sqrMagnitude <= radiusSq)
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private void ExecuteScrumBreaker(int teamId, int carrier)
+    {
+        if (!IsValidAthleteIndex(carrier) || passCooldowns[carrier] > 0f)
+        {
+            return;
+        }
+
+        possessionPlan = "ScrumBreak";
+        if (IsGoalkeeper(carrier))
+        {
+            TryKeeperLongShot(carrier, teamId, positions[carrier], pressured: false, shotClockHot: true);
+            passCooldowns[carrier] = PassCooldownSeconds;
+            return;
+        }
+
+        var outlet = FindBestOpenTeammate(carrier, preferWing: true, forceSwitch: true);
+        var target = outlet >= 0 ? positions[outlet] + (velocities[outlet] * GetPassLeadTime(carrier)) : GetFarWingDumpTarget(carrier);
+        ThrowBall(carrier, target, outlet, false);
+        passCooldowns[carrier] = PassCooldownSeconds;
+        var side = target.y >= 0f ? 1 : -1;
+        BuildPlayPlan(teamId, side, PlayCall.Switch, useFallback: true);
     }
 
     private float GetWingLaneAbs()

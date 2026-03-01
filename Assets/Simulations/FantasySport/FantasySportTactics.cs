@@ -41,6 +41,16 @@ public static class FantasySportTactics
         MarkLane
     }
 
+    public enum PlayCall
+    {
+        None,
+        BuildOut,
+        Overlap,
+        Switch,
+        FinalThirdCross,
+        FinalThirdCutback
+    }
+
     public static float Progress01(Vector2 ballPos, int teamId, float halfWidth)
     {
         var progress = teamId == 0
