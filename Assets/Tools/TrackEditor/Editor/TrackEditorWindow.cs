@@ -249,30 +249,19 @@ namespace GSP.TrackEditor.Editor
 
             if (GUILayout.Button("Snap Start/Finish to Track"))
             {
-                if (layout == null)
-                {
-                    return;
-                }
-
-                if (layout.startFinish == null)
+                if (layout?.startFinish == null)
                 {
                     status = "No Start/Finish set.";
-                    Repaint();
-                    return;
                 }
-
-                if (!TryProjectOntoMainLoop(layout.startFinish.worldPos, out var snappedPos, out var snappedTangent))
+                else if (SnapStartFinishToMainLoop())
+                {
+                    status = "Start/Finish and grid snapped to track.";
+                }
+                else
                 {
                     status = "Main loop not valid yet.";
-                    Repaint();
-                    return;
                 }
 
-                layout.startFinish.worldPos = snappedPos;
-                layout.startFinish.worldDir = snappedTangent;
-                layout.startFinish.pieceGuid = string.Empty;
-                EditorUtility.SetDirty(layout);
-                status = "Start/Finish snapped to track.";
                 Repaint();
             }
 
@@ -2359,16 +2348,44 @@ namespace GSP.TrackEditor.Editor
                 return false;
             }
 
+            var oldPos = layout.startFinish.worldPos;
+            var oldDir = layout.startFinish.worldDir.sqrMagnitude > 0.001f
+                ? layout.startFinish.worldDir.normalized
+                : Vector2.right;
+
             if (!TryProjectOntoMainLoop(layout.startFinish.worldPos, out var closest, out var tangent))
             {
                 return false;
             }
 
+            var snappedDir = tangent.sqrMagnitude > 0.001f ? tangent.normalized : Vector2.right;
+            var angleDeg = Vector2.SignedAngle(oldDir, snappedDir);
+
+            if (layout.startGridSlots != null)
+            {
+                foreach (var slot in layout.startGridSlots)
+                {
+                    var offset = slot.pos - oldPos;
+                    slot.pos = closest + Rotate(offset, angleDeg);
+                    slot.dir = Rotate(slot.dir, angleDeg).normalized;
+                }
+            }
+
             layout.startFinish.worldPos = closest;
-            layout.startFinish.worldDir = tangent.sqrMagnitude > 0.001f ? tangent.normalized : Vector2.right;
+            layout.startFinish.worldDir = snappedDir;
             layout.startFinish.pieceGuid = string.Empty;
             EditorUtility.SetDirty(layout);
             return true;
+        }
+
+        private static Vector2 Rotate(Vector2 value, float angleDeg)
+        {
+            var angleRad = angleDeg * Mathf.Deg2Rad;
+            var sin = Mathf.Sin(angleRad);
+            var cos = Mathf.Cos(angleRad);
+            return new Vector2(
+                value.x * cos - value.y * sin,
+                value.x * sin + value.y * cos);
         }
 
         private bool TryProjectOntoMainLoop(Vector2 sourceWorldPos, out Vector2 projectedWorldPos, out Vector2 projectedForward)
