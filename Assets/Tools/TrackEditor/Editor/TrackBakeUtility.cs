@@ -213,11 +213,17 @@ namespace GSP.TrackEditor.Editor
             ValidationReport report,
             List<(string aGuid, int aIdx, string bGuid, int bIdx)> implicitLinks)
         {
+            var hasPitRelatedPieces = layout.pieces.Any(p => p?.piece != null && (p.piece.category == "Pit" || p.piece.category == "PitLane"));
+            if (!hasPitRelatedPieces)
+            {
+                return;
+            }
+
             var pitEntries = layout.pieces.Where(p => p.piece.category == "Pit" && p.piece.pieceId.Contains("PitEntry")).ToList();
             var pitExits = layout.pieces.Where(p => p.piece.category == "Pit" && p.piece.pieceId.Contains("PitExit")).ToList();
             if (pitEntries.Count != 1 || pitExits.Count != 1)
             {
-                report.Errors.Add("Pit lane requires exactly one PitEntry and one PitExit piece.");
+                report.Errors.Add("Pit pieces present, but missing PitEntry/PitExit. Add exactly one of each or remove pit pieces.");
                 return;
             }
 
