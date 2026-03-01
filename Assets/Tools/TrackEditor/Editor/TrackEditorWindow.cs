@@ -236,10 +236,8 @@ namespace GSP.TrackEditor.Editor
             var placeStartLabel = _isPlacingStartFinish ? "Placing Start/Finish..." : "Place Start/Finish";
             if (GUILayout.Button(placeStartLabel))
             {
-                _isPlacingStartFinish = !_isPlacingStartFinish;
-                status = _isPlacingStartFinish
-                    ? "Click on a main path to place start/finish marker."
-                    : "Start/finish placement cancelled.";
+                _isPlacingStartFinish = true;
+                status = "Click on the main track to place Start/Finish.";
             }
 
             if (GUILayout.Button("Generate Start Grid (10)"))
@@ -792,17 +790,63 @@ namespace GSP.TrackEditor.Editor
 
                 if (_isPlacingStartFinish)
                 {
-                    if (TryPlaceStartFinishAtMouse(mouseWorld))
+                    if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out var mainCenterline, out _))
                     {
-                        status = "Placed start/finish marker.";
-                    }
-                    else
-                    {
-                        status = "Could not find nearby main centerline segment for start/finish.";
+                        status = "Main loop not valid yet.";
+                        _isPlacingStartFinish = false;
+                        evt.Use();
+                        return;
                     }
 
+                    var bestDistanceSq = float.MaxValue;
+                    var bestPoint = Vector2.zero;
+                    var bestTangent = Vector2.right;
+                    for (var i = 0; i < mainCenterline.Length - 1; i++)
+                    {
+                        var a = mainCenterline[i];
+                        var b = mainCenterline[i + 1];
+                        var ab = b - a;
+                        var segmentLengthSq = ab.sqrMagnitude;
+                        if (segmentLengthSq < 0.000001f)
+                        {
+                            continue;
+                        }
+
+                        var t = Mathf.Clamp01(Vector2.Dot(mouseWorld - a, ab) / segmentLengthSq);
+                        var candidate = a + ab * t;
+                        var distanceSq = (mouseWorld - candidate).sqrMagnitude;
+                        if (distanceSq >= bestDistanceSq)
+                        {
+                            continue;
+                        }
+
+                        bestDistanceSq = distanceSq;
+                        bestPoint = candidate;
+                        bestTangent = ab.normalized;
+                    }
+
+                    if (bestDistanceSq == float.MaxValue)
+                    {
+                        status = "Main loop not valid yet.";
+                        _isPlacingStartFinish = false;
+                        evt.Use();
+                        return;
+                    }
+
+                    if (layout.startFinish == null)
+                    {
+                        layout.startFinish = new StartFinishMarker();
+                    }
+
+                    layout.startFinish.worldPos = bestPoint;
+                    layout.startFinish.worldDir = bestTangent;
+                    layout.startFinish.pieceGuid = null;
+
+                    EditorUtility.SetDirty(layout);
                     _isPlacingStartFinish = false;
+                    status = "Start/Finish placed.";
                     evt.Use();
+                    Repaint();
                     return;
                 }
 
@@ -1985,39 +2029,6 @@ namespace GSP.TrackEditor.Editor
             }
 
             return slotIndex >= 0;
-        }
-
-        private bool TryPlaceStartFinishAtMouse(Vector2 mouseWorld)
-        {
-            if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out var mainCenterline, out _))
-            {
-                status = "Main loop not valid yet.";
-                return false;
-            }
-
-            if (!TrackBakeUtility.TryFindClosestPointOnPolyline(mainCenterline, mouseWorld, out var closest, out var tangent, out _, out _))
-            {
-                status = "Main loop not valid yet.";
-                return false;
-            }
-
-            if (layout.startFinish == null)
-            {
-                layout.startFinish = new StartFinishMarker();
-            }
-
-            layout.startFinish.worldPos = closest;
-            layout.startFinish.worldDir = tangent.normalized;
-            layout.startFinish.pieceGuid = string.Empty;
-
-            if (layout.startGridSlots != null && layout.startGridSlots.Count > 0)
-            {
-                GenerateStartGrid(layout.startGridSlots.Count);
-            }
-
-            EditorUtility.SetDirty(layout);
-            Repaint();
-            return true;
         }
 
         private void AutoSnapMovedPieces(HashSet<string> movedGuids, Vector2 canvasSize)
