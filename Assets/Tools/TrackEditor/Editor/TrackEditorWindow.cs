@@ -2267,53 +2267,70 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            Vector2 startPos;
-            Vector2 forward;
-            if (IsStartFinishSet())
+            if (layout.startFinish == null)
             {
-                SnapStartFinishToMainLoop();
-                startPos = layout.startFinish.worldPos;
-                forward = layout.startFinish.worldDir.sqrMagnitude > 0.001f ? layout.startFinish.worldDir.normalized : Vector2.right;
-            }
-            else
-            {
-                if (!TryGetFallbackStart(out startPos, out forward, out _))
-                {
-                    return;
-                }
-
-                if (layout.startFinish == null)
-                {
-                    layout.startFinish = new StartFinishMarker();
-                }
-
-                layout.startFinish.worldPos = startPos;
-                layout.startFinish.worldDir = forward;
-                layout.startFinish.pieceGuid = string.Empty;
+                status = "Place Start/Finish first.";
+                return;
             }
 
-            var trackWidth = GetLayoutTrackWidth();
-            var usableWidth = trackWidth * 0.55f;
-            var columns = Mathf.Min(5, count);
+            if (layout.startFinish.worldDir.sqrMagnitude <= 0.001f)
+            {
+                status = "Start/Finish direction invalid.";
+                return;
+            }
+
+            var startPos = layout.startFinish.worldPos;
+            var forward = layout.startFinish.worldDir.normalized;
             var right = new Vector2(-forward.y, forward.x);
+
+            var trackWidth = 8f;
+            if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out _, out trackWidth) && layout.pieces != null)
+            {
+                foreach (var piece in layout.pieces)
+                {
+                    if (piece?.piece != null)
+                    {
+                        trackWidth = piece.piece.trackWidth;
+                        break;
+                    }
+                }
+            }
+
+            var usableWidth = trackWidth * 0.55f;
+            const int columns = 5;
             const float rowSpacing = 3.2f;
             const float offsetBehindStart = 2.0f;
+            var rows = Mathf.CeilToInt(count / (float)columns);
+
+            if (layout.startGridSlots == null)
+            {
+                layout.startGridSlots = new List<TrackSlot>();
+            }
 
             layout.startGridSlots.Clear();
-            for (var i = 0; i < count; i++)
+            for (var row = 0; row < rows; row++)
             {
-                var row = i / columns;
-                var col = i % columns;
-                var lateral = columns == 1 ? 0f : Mathf.Lerp(-usableWidth * 0.5f, usableWidth * 0.5f, col / (float)(columns - 1));
-                var back = offsetBehindStart + row * rowSpacing;
-                layout.startGridSlots.Add(new TrackSlot
+                for (var col = 0; col < columns; col++)
                 {
-                    pos = startPos - forward * back + right * lateral,
-                    dir = forward
-                });
+                    if (layout.startGridSlots.Count >= count)
+                    {
+                        break;
+                    }
+
+                    var t = columns == 1 ? 0.5f : col / (float)(columns - 1);
+                    var lateral = Mathf.Lerp(-usableWidth * 0.5f, usableWidth * 0.5f, t);
+                    var back = offsetBehindStart + row * rowSpacing;
+                    layout.startGridSlots.Add(new TrackSlot
+                    {
+                        pos = startPos - forward * back + right * lateral,
+                        dir = forward
+                    });
+                }
             }
 
             EditorUtility.SetDirty(layout);
+            status = $"Generated start grid ({count}).";
+            Repaint();
         }
 
         private bool SnapStartFinishToMainLoop()
