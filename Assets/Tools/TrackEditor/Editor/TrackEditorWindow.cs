@@ -489,7 +489,12 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            if (evt.type == EventType.ScrollWheel)
+            var canvasRect = new Rect(Vector2.zero, size);
+            var leftOverlayRect = new Rect(8f, 8f, 260f, size.y - 16f);
+
+            if (evt.type == EventType.ScrollWheel
+                && canvasRect.Contains(evt.mousePosition)
+                && !leftOverlayRect.Contains(evt.mousePosition))
             {
                 canvasZoom = Mathf.Clamp(canvasZoom - evt.delta.y * 0.03f, 0.2f, 3f);
                 layout.zoom = canvasZoom;
@@ -497,15 +502,16 @@ namespace GSP.TrackEditor.Editor
                 evt.Use();
             }
 
-            if (evt.type == EventType.MouseDrag && evt.button == 2)
+            if (evt.type == EventType.MouseDrag
+                && evt.button == 2
+                && canvasRect.Contains(evt.mousePosition)
+                && !leftOverlayRect.Contains(evt.mousePosition))
             {
                 canvasPan += evt.delta;
                 layout.pan = canvasPan;
                 EditorUtility.SetDirty(layout);
                 evt.Use();
             }
-
-            var canvasRect = new Rect(Vector2.zero, size);
 
             if ((evt.type == EventType.DragUpdated || evt.type == EventType.DragPerform) && canvasRect.Contains(evt.mousePosition))
             {
