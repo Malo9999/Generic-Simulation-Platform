@@ -4,15 +4,19 @@ using UnityEngine;
 public sealed class PredatorPreyDocuMapBuilder
 {
     private const string SortingLayerDefault = "Default";
-    private const int BakedMapOrder = -200;
-    private const int ArenaOutlineOrder = -5;
-    private const int BakedPixelsPerUnit = 12;
+    private const int SavannaOrder = -200;
+    private const int FloodplainOrder = -190;
+    private const int BankOrder = -181;
+    private const int RiverOrder = -180;
+    private const int CreekOrder = -176;
+    private const int GrassOrder = -170;
+    private const int TreeOrder = -160;
 
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
+    private readonly List<SpriteRenderer> creekRenderers = new();
 
     private Transform mapRoot;
-    public bool debugShowArenaBounds = false;
     public IReadOnlyList<Vector2> WaterNodes => waterNodes;
     public IReadOnlyList<Vector2> ShadeNodes => shadeNodes;
 
@@ -27,12 +31,25 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(parent, false);
 
         var mapRng = RngService.Fork("SIM:PredatorPreyDocu:MAP");
-        BuildBakedMap(halfWidth, halfHeight, docu, mapRng);
+        BuildObjectMap(halfWidth, halfHeight, docu, mapRng);
     }
 
     public void UpdateSeasonVisuals(float dryness01)
     {
-        _ = Mathf.Clamp01(dryness01);
+        var dry = Mathf.Clamp01(dryness01);
+        var alpha = Mathf.Lerp(0.95f, 0.22f, dry);
+        for (var i = 0; i < creekRenderers.Count; i++)
+        {
+            var sr = creekRenderers[i];
+            if (sr == null)
+            {
+                continue;
+            }
+
+            var c = sr.color;
+            c.a = alpha;
+            sr.color = c;
+        }
     }
 
     public void Clear()
@@ -45,236 +62,198 @@ public sealed class PredatorPreyDocuMapBuilder
 
         waterNodes.Clear();
         shadeNodes.Clear();
+        creekRenderers.Clear();
     }
 
-    private void BuildBakedMap(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, IRng rng)
+    private void BuildObjectMap(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, IRng rng)
     {
         var arenaW = halfWidth * 2f;
         var arenaH = halfHeight * 2f;
-        var texW = Mathf.Max(32, Mathf.RoundToInt(arenaW * BakedPixelsPerUnit));
-        var texH = Mathf.Max(32, Mathf.RoundToInt(arenaH * BakedPixelsPerUnit));
+        var mapCfg = cfg.map ?? new Map();
 
-        var tex = new Texture2D(texW, texH, TextureFormat.RGBA32, false)
+        BuildSavannaBackground(arenaW, arenaH);
+        BuildBiomeGradientBands(halfWidth, halfHeight, rng);
+
+        BuildRiverRibbon(halfWidth, halfHeight, mapCfg, rng, out var riverPoints, out var widths);
+        BuildCreeks(halfWidth, halfHeight, mapCfg, riverPoints, rng);
+        BuildGrass(halfWidth, halfHeight, rng);
+        BuildTrees(halfWidth, halfHeight, cfg, rng);
+
+        if (waterNodes.Count == 0 && riverPoints.Count > 0)
         {
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
-        };
+            waterNodes.Add(riverPoints[riverPoints.Count / 2]);
+        }
+    }
 
-        var pixels = new Color32[texW * texH];
-        var dryColor = new Color(0.79f, 0.69f, 0.42f, 1f);
-        var greenishColor = new Color(0.53f, 0.67f, 0.39f, 1f);
-        var noiseSeed = rng.NextInt(0, int.MaxValue);
+    private void BuildSavannaBackground(float arenaW, float arenaH)
+    {
+        var sr = CreateSprite(
+            mapRoot,
+            "SavannaBackground",
+            PrimitiveSpriteLibrary.RoundedRectFill(64),
+            Vector2.zero,
+            new Vector2(arenaW + 2f, arenaH + 2f),
+            0f,
+            new Color(0.79f, 0.69f, 0.42f, 1f),
+            SavannaOrder);
 
-        FillSavannaBackground(pixels, texW, texH, dryColor, greenishColor, noiseSeed);
+        sr.sortingLayerName = SortingLayerDefault;
+    }
 
-        const int segmentCount = 280;
-        const float xMargin = 10f;
-        var f1 = rng.Range(0.55f, 1.05f);
-        var f2 = rng.Range(1.15f, 1.95f);
-        var f3 = rng.Range(3.2f, 5.2f);
+    private void BuildBiomeGradientBands(float halfWidth, float halfHeight, IRng rng)
+    {
+        const int strips = 20;
+        var stripH = (halfHeight * 2f) / strips;
+        for (var i = 0; i < strips; i++)
+        {
+            var t = i / (float)(strips - 1);
+            var y = Mathf.Lerp(halfHeight - (stripH * 0.5f), -halfHeight + (stripH * 0.5f), t);
+            var baseColor = Color.Lerp(new Color(0.82f, 0.73f, 0.47f, 0.30f), new Color(0.50f, 0.66f, 0.38f, 0.34f), 1f - t);
+            var jitter = rng.Range(-0.04f, 0.04f);
+            baseColor.r = Mathf.Clamp01(baseColor.r + jitter);
+            baseColor.g = Mathf.Clamp01(baseColor.g + jitter * 0.6f);
+
+            CreateSprite(
+                mapRoot,
+                $"BiomeStrip_{i:00}",
+                PrimitiveSpriteLibrary.RoundedRectFill(64),
+                new Vector2(0f, y),
+                new Vector2((halfWidth * 2f) + 1.6f, stripH + 0.2f),
+                0f,
+                baseColor,
+                SavannaOrder + 1);
+        }
+    }
+
+    private void BuildRiverRibbon(
+        float halfWidth,
+        float halfHeight,
+        Map mapCfg,
+        IRng rng,
+        out List<Vector2> points,
+        out List<float> widths)
+    {
+        const int segmentCount = 160;
+        const float xMargin = 3f;
+        const float overlap = 0.75f;
+
+        var baseRiverWidth = Mathf.Max(0.8f, mapCfg.riverWidth);
+        var floodplainExtra = Mathf.Max(0.8f, mapCfg.floodplainWidth);
+        var bankExtra = Mathf.Max(0.8f, Mathf.Min(mapCfg.floodplainWidth * 0.25f, 5.5f));
+
+        var f1 = rng.Range(0.6f, 1.05f);
+        var f2 = rng.Range(1.2f, 1.9f);
         var p1 = rng.Value();
         var p2 = rng.Value();
-        var p3 = rng.Value();
+        var southSwirlPhase = rng.Value();
 
-        var riverPoints = new Vector2[segmentCount + 1];
-
-        var mapConfig = cfg.map ?? new Map();
-        var baseRiverWidth = Mathf.Max(0.8f, mapConfig.riverWidth);
-        var floodExtra = Mathf.Max(0.8f, mapConfig.floodplainWidth);
-
-        var floodColor = new Color32(128, 184, 94, 255);
-        var bankColor = new Color32(77, 112, 56, 255);
-        var riverColor = new Color32(36, 120, 235, 255);
+        points = new List<Vector2>(segmentCount + 1);
+        widths = new List<float>(segmentCount + 1);
 
         for (var i = 0; i <= segmentCount; i++)
         {
             var t = i / (float)segmentCount;
             var y = Mathf.Lerp(halfHeight, -halfHeight, t);
-            var ampBase = Mathf.Lerp(6f, 3f, t);
-            var ampDelta = 5f * Mathf.SmoothStep(0.75f, 1f, t);
 
-            var x = (ampBase * Mathf.Sin(2f * Mathf.PI * ((f1 * t) + p1)))
-                + ((ampBase * 0.6f) * Mathf.Sin(2f * Mathf.PI * ((f2 * t) + p2)))
-                + (ampDelta * Mathf.Sin(2f * Mathf.PI * ((f3 * t * t) + p3)));
-            x = Mathf.Clamp(x, -halfWidth + xMargin, halfWidth - xMargin);
+            var amp = Mathf.Lerp(Mathf.Min(halfWidth * 0.32f, 8f), Mathf.Min(halfWidth * 0.22f, 4f), t);
+            var meander = (amp * Mathf.Sin((2f * Mathf.PI * f1 * t) + (p1 * Mathf.PI * 2f)))
+                          + ((amp * 0.62f) * Mathf.Sin((2f * Mathf.PI * f2 * t) + (p2 * Mathf.PI * 2f)));
+            var swirlT = Mathf.SmoothStep(0.70f, 1f, t);
+            var swirl = swirlT * Mathf.Min(halfWidth * 0.2f, 2.5f) * Mathf.Sin((6f * Mathf.PI * t * t) + (southSwirlPhase * Mathf.PI * 2f));
 
-            var pt = new Vector2(x, y);
-            riverPoints[i] = pt;
-
+            var x = Mathf.Clamp(meander + swirl, -halfWidth + xMargin, halfWidth - xMargin);
             var riverW = Mathf.Lerp(baseRiverWidth * 1.10f, baseRiverWidth * 0.55f, Mathf.SmoothStep(0.10f, 1f, t));
-            var floodW = riverW + floodExtra;
-            var bankW = riverW + 2.5f;
 
-            var (px, py) = WorldToPixel(pt, halfWidth, halfHeight, texW, texH);
-            var floodRad = Mathf.Max(1, Mathf.RoundToInt((floodW * 0.5f) * BakedPixelsPerUnit));
-            var bankRad = Mathf.Max(1, Mathf.RoundToInt((bankW * 0.5f) * BakedPixelsPerUnit));
-            var riverRad = Mathf.Max(1, Mathf.RoundToInt((riverW * 0.5f) * BakedPixelsPerUnit));
+            points.Add(new Vector2(x, y));
+            widths.Add(riverW);
+        }
 
-            PaintDisc(pixels, texW, texH, px, py, floodRad, floodColor);
-            PaintDisc(pixels, texW, texH, px, py, bankRad, bankColor);
-            PaintDisc(pixels, texW, texH, px, py, riverRad, riverColor);
+        for (var i = 0; i < segmentCount; i++)
+        {
+            var a = points[i];
+            var b = points[i + 1];
+            var dir = b - a;
+            var len = Mathf.Max(0.001f, dir.magnitude);
+            var angleRad = Mathf.Atan2(dir.y, dir.x);
+            var segLen = len + ((i > 0 && i < segmentCount - 1) ? overlap : 0f);
+            var angleDeg = angleRad * Mathf.Rad2Deg;
+            var mid = (a + b) * 0.5f;
+            var w = (widths[i] + widths[i + 1]) * 0.5f;
 
-            if (i % 20 == 0)
+            var floodWidth = w + floodplainExtra;
+            var bankWidth = w + bankExtra;
+
+            var floodMid = ClampSegmentCenterToArena(mid, halfWidth, halfHeight, segLen, floodWidth, angleRad);
+            CreateSprite(mapRoot, $"Flood_{i:000}", PrimitiveSpriteLibrary.RoundedRectFill(64), floodMid, new Vector2(segLen, floodWidth), angleDeg, new Color(0.50f, 0.72f, 0.40f, 0.95f), FloodplainOrder);
+
+            var bankMid = ClampSegmentCenterToArena(mid, halfWidth, halfHeight, segLen, bankWidth, angleRad);
+            CreateSprite(mapRoot, $"Bank_{i:000}", PrimitiveSpriteLibrary.RoundedRectFill(64), bankMid, new Vector2(segLen, bankWidth), angleDeg, new Color(0.30f, 0.44f, 0.22f, 1f), BankOrder);
+
+            var waterMid = ClampSegmentCenterToArena(mid, halfWidth, halfHeight, segLen, w, angleRad);
+            CreateSprite(mapRoot, $"Water_{i:000}", PrimitiveSpriteLibrary.RoundedRectFill(64), waterMid, new Vector2(segLen, w), angleDeg, new Color(0.14f, 0.47f, 0.92f, 1f), RiverOrder);
+
+            if (i % 14 == 0)
             {
-                waterNodes.Add(pt);
+                waterNodes.Add(waterMid);
             }
         }
 
-        if (waterNodes.Count == 0)
-        {
-            waterNodes.Add(new Vector2(riverPoints[segmentCount / 2].x, riverPoints[segmentCount / 2].y));
-        }
-
-        PaintCreeks(pixels, texW, texH, halfWidth, halfHeight, mapConfig, rng, riverPoints, riverColor);
-        PaintGrassSpeckles(pixels, texW, texH, halfWidth, halfHeight, rng);
-        PaintTrees(pixels, texW, texH, halfWidth, halfHeight, cfg, rng);
-
-        tex.SetPixels32(pixels);
-        tex.Apply(false, false);
-
-        var sprite = Sprite.Create(
-            tex,
-            new Rect(0f, 0f, texW, texH),
-            new Vector2(0.5f, 0.5f),
-            BakedPixelsPerUnit,
-            0,
-            SpriteMeshType.FullRect);
-
-        var go = new GameObject("BakedMap");
-        go.transform.SetParent(mapRoot, false);
-        go.transform.position = Vector3.zero;
-        go.transform.localRotation = Quaternion.identity;
-        go.transform.localScale = new Vector3(arenaW / (texW / (float)BakedPixelsPerUnit), arenaH / (texH / (float)BakedPixelsPerUnit), 1f);
-
-        var renderer = go.AddComponent<SpriteRenderer>();
-        renderer.sprite = sprite;
-        renderer.sortingLayerName = SortingLayerDefault;
-        renderer.sortingOrder = BakedMapOrder;
-        renderer.color = Color.white;
-
-        ConstrainRendererToArena(renderer, halfWidth, halfHeight, margin: 0f);
-
-        if (debugShowArenaBounds)
-        {
-            var outlineGo = new GameObject("ArenaBoundsOutline");
-            outlineGo.transform.SetParent(mapRoot, false);
-            outlineGo.transform.position = Vector3.zero;
-            outlineGo.transform.localRotation = Quaternion.identity;
-            outlineGo.transform.localScale = new Vector3(arenaW, arenaH, 1f);
-
-            var outlineRenderer = outlineGo.AddComponent<SpriteRenderer>();
-            outlineRenderer.sprite = PrimitiveSpriteLibrary.RoundedRectOutline();
-            outlineRenderer.sortingLayerName = SortingLayerDefault;
-            outlineRenderer.sortingOrder = ArenaOutlineOrder;
-            outlineRenderer.color = new Color(0f, 0f, 0f, 0.3f);
-
-            ConstrainRendererToArena(outlineRenderer, halfWidth, halfHeight, margin: 0f);
-        }
+        AddRiverCaps(halfWidth, halfHeight, points[0], points[points.Count - 1], widths[0], widths[widths.Count - 1]);
     }
 
-    private static void ConstrainRendererToArena(SpriteRenderer sr, float halfWidth, float halfHeight, float margin = 0f)
+    private void AddRiverCaps(float halfWidth, float halfHeight, Vector2 northPoint, Vector2 southPoint, float northWidth, float southWidth)
     {
-        if (!sr)
+        AddCap("RiverCap_North", northPoint, northWidth, halfWidth, halfHeight, true);
+        AddCap("RiverCap_South", southPoint, southWidth, halfWidth, halfHeight, false);
+    }
+
+    private void AddCap(string name, Vector2 edgePoint, float width, float halfWidth, float halfHeight, bool north)
+    {
+        var radiusWorld = width * 0.5f;
+        var x = Mathf.Clamp(edgePoint.x, -halfWidth + radiusWorld, halfWidth - radiusWorld);
+        var y = north ? halfHeight - radiusWorld : -halfHeight + radiusWorld;
+
+        CreateSprite(mapRoot, name, PrimitiveSpriteLibrary.CircleFill(64), new Vector2(x, y), new Vector2(width, width), 0f, new Color(0.14f, 0.47f, 0.92f, 1f), RiverOrder);
+    }
+
+    private void BuildCreeks(float halfWidth, float halfHeight, Map mapCfg, IReadOnlyList<Vector2> riverPoints, IRng rng)
+    {
+        var creekCount = Mathf.Clamp(mapCfg.creekCount, 0, 12);
+        if (creekCount <= 0 || riverPoints.Count == 0)
         {
             return;
         }
 
-        sr.forceRenderingOff = false;
-
-        var b = sr.bounds;
-        var minX = -halfWidth + margin;
-        var maxX = halfWidth - margin;
-        var minY = -halfHeight + margin;
-        var maxY = halfHeight - margin;
-
-        var dx = 0f;
-        var dy = 0f;
-
-        if (b.max.x > maxX)
-        {
-            dx -= b.max.x - maxX;
-        }
-
-        if (b.min.x < minX)
-        {
-            dx += minX - b.min.x;
-        }
-
-        if (b.max.y > maxY)
-        {
-            dy -= b.max.y - maxY;
-        }
-
-        if (b.min.y < minY)
-        {
-            dy += minY - b.min.y;
-        }
-
-        if (dx != 0f || dy != 0f)
-        {
-            var t = sr.transform;
-            t.position = new Vector3(t.position.x + dx, t.position.y + dy, t.position.z);
-        }
-    }
-
-    private void FillSavannaBackground(Color32[] pixels, int texW, int texH, Color dryColor, Color greenishColor, int seed)
-    {
-        for (var y = 0; y < texH; y++)
-        {
-            var tY = texH <= 1 ? 0f : y / (float)(texH - 1);
-            for (var x = 0; x < texW; x++)
-            {
-                var tX = texW <= 1 ? 0f : x / (float)(texW - 1);
-                var baseMix = Mathf.Clamp01((0.55f * tX) + (0.25f * (1f - tY)));
-                var baseColor = Color.Lerp(dryColor, greenishColor, baseMix);
-                var noise = (SmoothHashNoise01(x, y, seed) * 2f) - 1f;
-                var nScale = 1f + (noise * 0.06f);
-                baseColor *= nScale;
-                baseColor.a = 1f;
-                pixels[(y * texW) + x] = (Color32)baseColor;
-            }
-        }
-    }
-
-    private void PaintCreeks(
-        Color32[] pixels,
-        int texW,
-        int texH,
-        float halfWidth,
-        float halfHeight,
-        Map mapConfig,
-        IRng rng,
-        IReadOnlyList<Vector2> riverPoints,
-        Color32 creekColor)
-    {
-        var creekCount = Mathf.Clamp(mapConfig.creekCount, 4, 8);
-        var riverTargetX = 0f;
-        var stepLen = 2.2f;
-        var creekRadiusPx = Mathf.Max(1, Mathf.RoundToInt(Mathf.Max(0.25f, mapConfig.creekWidth * 0.5f) * BakedPixelsPerUnit));
+        var creekWidth = Mathf.Max(0.25f, mapCfg.creekWidth);
+        var creekColor = new Color(0.14f, 0.47f, 0.92f, 0.95f);
 
         for (var c = 0; c < creekCount; c++)
         {
-            var side = c % 2 == 0 ? -1f : 1f;
-            var current = new Vector2(
-                side * rng.Range(halfWidth * 0.5f, halfWidth * 0.95f),
-                rng.Range(-halfHeight * 0.95f, halfHeight * 0.95f));
+            var side = (c & 1) == 0 ? -1f : 1f;
+            var current = new Vector2(side * rng.Range(halfWidth * 0.55f, halfWidth * 0.95f), rng.Range(-halfHeight * 0.92f, halfHeight * 0.92f));
+            var steps = rng.NextInt(12, 28);
 
-            var steps = rng.NextInt(18, 45);
             for (var s = 0; s < steps; s++)
             {
-                var nearest = FindNearestRiverPoint(current, riverPoints);
-                riverTargetX = nearest.x;
-                var towardRiver = new Vector2(riverTargetX - current.x, nearest.y - current.y).normalized;
-                var wiggle = new Vector2(rng.Range(-0.55f, 0.55f), rng.Range(-0.35f, 0.35f));
+                var nearest = FindNearestPoint(current, riverPoints);
+                var towardRiver = (nearest - current).normalized;
+                var wiggle = new Vector2(rng.Range(-0.45f, 0.45f), rng.Range(-0.30f, 0.30f));
                 var dir = (towardRiver + wiggle).normalized;
+                if (dir.sqrMagnitude < 0.0001f)
+                {
+                    dir = towardRiver;
+                }
+
+                var stepLen = rng.Range(1.6f, 2.6f);
                 var next = current + (dir * stepLen);
-                next.x = Mathf.Clamp(next.x, -halfWidth + 0.1f, halfWidth - 0.1f);
-                next.y = Mathf.Clamp(next.y, -halfHeight + 0.1f, halfHeight - 0.1f);
+                next.x = Mathf.Clamp(next.x, -halfWidth + 0.15f, halfWidth - 0.15f);
+                next.y = Mathf.Clamp(next.y, -halfHeight + 0.15f, halfHeight - 0.15f);
 
-                PaintStroke(pixels, texW, texH, halfWidth, halfHeight, current, next, creekRadiusPx, creekColor);
+                var segment = CreateSegment($"Creek_{c:00}_{s:00}", current, next, creekWidth, creekColor, CreekOrder, halfWidth, halfHeight);
+                creekRenderers.Add(segment);
+
                 current = next;
-
-                if (Vector2.Distance(current, nearest) <= 1.8f)
+                if ((current - nearest).sqrMagnitude <= 2.5f * 2.5f)
                 {
                     break;
                 }
@@ -282,129 +261,125 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-    private void PaintGrassSpeckles(Color32[] pixels, int texW, int texH, float halfWidth, float halfHeight, IRng rng)
+    private void BuildGrass(float halfWidth, float halfHeight, IRng rng)
     {
-        var grassCount = Mathf.Clamp(Mathf.RoundToInt(halfWidth * halfHeight * 0.9f), 1000, 4000);
-        for (var i = 0; i < grassCount; i++)
+        var count = Mathf.Clamp(Mathf.RoundToInt(halfWidth * halfHeight * 0.5f), 180, 850);
+        for (var i = 0; i < count; i++)
         {
-            var p = new Vector2(rng.Range(-halfWidth, halfWidth), rng.Range(-halfHeight, halfHeight));
-            var radius = rng.NextInt(1, 3);
-            var tint = rng.Range(-14, 16);
-            var color = new Color32((byte)Mathf.Clamp(83 + tint, 0, 255), (byte)Mathf.Clamp(132 + tint, 0, 255), (byte)Mathf.Clamp(62 + tint, 0, 255), 255);
-            var (px, py) = WorldToPixel(p, halfWidth, halfHeight, texW, texH);
-            PaintDisc(pixels, texW, texH, px, py, radius, color);
+            var pos = new Vector2(rng.Range(-halfWidth, halfWidth), rng.Range(-halfHeight, halfHeight));
+            var scale = rng.Range(0.12f, 0.32f);
+            var tint = rng.Range(-0.06f, 0.06f);
+            var c = new Color(0.31f + tint, 0.54f + (tint * 0.6f), 0.25f + (tint * 0.5f), rng.Range(0.22f, 0.55f));
+            CreateSprite(mapRoot, $"Grass_{i:0000}", PrimitiveSpriteLibrary.CircleFill(32), pos, new Vector2(scale, scale), 0f, c, GrassOrder);
         }
     }
 
-    private void PaintTrees(Color32[] pixels, int texW, int texH, float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, IRng rng)
+    private void BuildTrees(float halfWidth, float halfHeight, PredatorPreyDocuConfig cfg, IRng rng)
     {
-        var clusterCount = Mathf.Max(1, cfg.map.treeClusterCount);
-        var treeScale = Mathf.Max(0.5f, cfg.visuals.treeScale);
+        var mapCfg = cfg.map ?? new Map();
+        var visuals = cfg.visuals ?? new Visuals();
+        var clusterCount = Mathf.Max(1, mapCfg.treeClusterCount);
+        var treeScale = Mathf.Max(0.5f, visuals.treeScale);
 
         for (var c = 0; c < clusterCount; c++)
         {
             var center = new Vector2(rng.Range(-halfWidth * 0.92f, halfWidth * 0.92f), rng.Range(-halfHeight * 0.92f, halfHeight * 0.92f));
-            var treeCount = rng.NextInt(3, 9);
-            for (var i = 0; i < treeCount; i++)
+            var trees = rng.NextInt(3, 8);
+            for (var i = 0; i < trees; i++)
             {
-                var pos = center + rng.InsideUnitCircle() * rng.Range(0.3f, 2.6f);
+                var offset = rng.InsideUnitCircle() * rng.Range(0.2f, 2.2f);
+                var pos = center + offset;
+                pos.x = Mathf.Clamp(pos.x, -halfWidth + 0.2f, halfWidth - 0.2f);
+                pos.y = Mathf.Clamp(pos.y, -halfHeight + 0.2f, halfHeight - 0.2f);
                 shadeNodes.Add(pos);
-                var radius = Mathf.RoundToInt(rng.Range(3f, 6f) * treeScale);
-                var outlineRadius = Mathf.Max(radius + 1, radius + Mathf.RoundToInt(1f * treeScale));
-                var (px, py) = WorldToPixel(pos, halfWidth, halfHeight, texW, texH);
-                PaintDisc(pixels, texW, texH, px, py, outlineRadius, new Color32(18, 44, 20, 255));
-                PaintDisc(pixels, texW, texH, px, py, radius, new Color32(36, 88, 38, 255));
+
+                var canopy = rng.Range(0.45f, 1.0f) * treeScale;
+                CreateSprite(mapRoot, $"TreeShadow_{c:000}_{i:00}", PrimitiveSpriteLibrary.CircleFill(32), pos + new Vector2(0.12f, -0.09f), new Vector2(canopy * 1.2f, canopy * 0.8f), 0f, new Color(0f, 0f, 0f, 0.25f), TreeOrder);
+                CreateSprite(mapRoot, $"TreeCanopy_{c:000}_{i:00}", PrimitiveSpriteLibrary.CircleFill(32), pos, new Vector2(canopy, canopy), 0f, new Color(0.14f, 0.35f, 0.16f, 1f), TreeOrder + 1);
             }
         }
     }
 
-    private static Vector2 FindNearestRiverPoint(Vector2 p, IReadOnlyList<Vector2> riverPoints)
+    private SpriteRenderer CreateSegment(string name, Vector2 a, Vector2 b, float width, Color color, int sortingOrder, float halfWidth, float halfHeight)
     {
-        var nearest = riverPoints[0];
-        var bestSq = (p - nearest).sqrMagnitude;
-        for (var i = 1; i < riverPoints.Count; i++)
+        var dir = b - a;
+        var length = Mathf.Max(0.001f, dir.magnitude);
+        var angleRad = Mathf.Atan2(dir.y, dir.x);
+        var mid = (a + b) * 0.5f;
+        var clampedMid = ClampSegmentCenterToArena(mid, halfWidth, halfHeight, length, width, angleRad);
+        return CreateSprite(mapRoot, name, PrimitiveSpriteLibrary.RoundedRectFill(64), clampedMid, new Vector2(length, width), angleRad * Mathf.Rad2Deg, color, sortingOrder);
+    }
+
+    private static SpriteRenderer CreateSprite(
+        Transform parent,
+        string name,
+        Sprite sprite,
+        Vector2 position,
+        Vector2 scale,
+        float angleDeg,
+        Color color,
+        int sortingOrder)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = new Vector3(position.x, position.y, 0f);
+        go.transform.localRotation = Quaternion.Euler(0f, 0f, angleDeg);
+        go.transform.localScale = new Vector3(scale.x, scale.y, 1f);
+
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sprite;
+        sr.sortingLayerName = SortingLayerDefault;
+        sr.sortingOrder = sortingOrder;
+        sr.color = color;
+        return sr;
+    }
+
+    private static Vector2 ClampSegmentCenterToArena(Vector2 c, float halfW, float halfH, float length, float width, float angleRad)
+    {
+        var ca = Mathf.Abs(Mathf.Cos(angleRad));
+        var sa = Mathf.Abs(Mathf.Sin(angleRad));
+        var ex = (0.5f * length * ca) + (0.5f * width * sa);
+        var ey = (0.5f * length * sa) + (0.5f * width * ca);
+
+        var minX = -halfW + ex;
+        var maxX = halfW - ex;
+        var minY = -halfH + ey;
+        var maxY = halfH - ey;
+
+        if (minX > maxX)
         {
-            var sq = (p - riverPoints[i]).sqrMagnitude;
+            minX = 0f;
+            maxX = 0f;
+        }
+
+        if (minY > maxY)
+        {
+            minY = 0f;
+            maxY = 0f;
+        }
+
+        c.x = Mathf.Clamp(c.x, minX, maxX);
+        c.y = Mathf.Clamp(c.y, minY, maxY);
+        return c;
+    }
+
+    private static Vector2 FindNearestPoint(Vector2 p, IReadOnlyList<Vector2> points)
+    {
+        var nearest = points[0];
+        var bestSq = (p - nearest).sqrMagnitude;
+
+        for (var i = 1; i < points.Count; i++)
+        {
+            var sq = (p - points[i]).sqrMagnitude;
             if (sq >= bestSq)
             {
                 continue;
             }
 
+            nearest = points[i];
             bestSq = sq;
-            nearest = riverPoints[i];
         }
 
         return nearest;
-    }
-
-    private static void PaintStroke(Color32[] pixels, int texW, int texH, float halfWidth, float halfHeight, Vector2 a, Vector2 b, int radiusPx, Color32 color)
-    {
-        var dist = Vector2.Distance(a, b);
-        var samples = Mathf.Max(2, Mathf.CeilToInt(dist * BakedPixelsPerUnit * 0.6f));
-        for (var i = 0; i <= samples; i++)
-        {
-            var t = i / (float)samples;
-            var p = Vector2.Lerp(a, b, t);
-            var (px, py) = WorldToPixel(p, halfWidth, halfHeight, texW, texH);
-            PaintDisc(pixels, texW, texH, px, py, radiusPx, color);
-        }
-    }
-
-    private static (int px, int py) WorldToPixel(Vector2 world, float halfWidth, float halfHeight, int texW, int texH)
-    {
-        var u = (world.x + halfWidth) / (2f * halfWidth);
-        var v = (world.y + halfHeight) / (2f * halfHeight);
-        var px = Mathf.RoundToInt(u * (texW - 1));
-        var py = Mathf.RoundToInt(v * (texH - 1));
-        px = Mathf.Clamp(px, 0, texW - 1);
-        py = Mathf.Clamp(py, 0, texH - 1);
-        return (px, py);
-    }
-
-    private static void PaintDisc(Color32[] pixels, int texW, int texH, int cx, int cy, int radiusPx, Color32 color)
-    {
-        if (radiusPx <= 0)
-        {
-            return;
-        }
-
-        var minX = Mathf.Max(0, cx - radiusPx);
-        var maxX = Mathf.Min(texW - 1, cx + radiusPx);
-        var minY = Mathf.Max(0, cy - radiusPx);
-        var maxY = Mathf.Min(texH - 1, cy + radiusPx);
-        var r2 = radiusPx * radiusPx;
-
-        for (var y = minY; y <= maxY; y++)
-        {
-            var dy = y - cy;
-            for (var x = minX; x <= maxX; x++)
-            {
-                var dx = x - cx;
-                if ((dx * dx) + (dy * dy) > r2)
-                {
-                    continue;
-                }
-
-                pixels[(y * texW) + x] = color;
-            }
-        }
-    }
-
-    private static float SmoothHashNoise01(int x, int y, int seed)
-    {
-        var center = HashNoise01(x, y, seed);
-        var left = HashNoise01(x - 1, y, seed);
-        var right = HashNoise01(x + 1, y, seed);
-        var up = HashNoise01(x, y + 1, seed);
-        var down = HashNoise01(x, y - 1, seed);
-        return (center * 0.4f) + ((left + right + up + down) * 0.15f);
-    }
-
-    private static float HashNoise01(int x, int y, int seed)
-    {
-        var h = unchecked((x * 374761393) + (y * 668265263) + (seed * 1442695041));
-        h = unchecked((h ^ (h >> 13)) * 1274126177);
-        h ^= h >> 16;
-        return (h & 0xFFFF) / 65535f;
     }
 }
