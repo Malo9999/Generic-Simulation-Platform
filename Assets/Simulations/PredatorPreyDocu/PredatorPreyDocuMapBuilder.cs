@@ -88,8 +88,8 @@ public sealed class PredatorPreyDocuMapBuilder
         var arenaWidth = halfWidth * 2f;
         var arenaHeight = halfHeight * 2f;
 
-        var texWidth = Mathf.Max(8, Mathf.RoundToInt(arenaWidth * BackgroundPixelsPerUnit));
-        var texHeight = Mathf.Max(8, Mathf.RoundToInt(arenaHeight * BackgroundPixelsPerUnit));
+        var texWidth = Mathf.Max(32, Mathf.RoundToInt(arenaWidth * BackgroundPixelsPerUnit));
+        var texHeight = Mathf.Max(32, Mathf.RoundToInt(arenaHeight * BackgroundPixelsPerUnit));
 
         var texture = new Texture2D(texWidth, texHeight, TextureFormat.RGBA32, false)
         {
@@ -128,14 +128,17 @@ public sealed class PredatorPreyDocuMapBuilder
             0,
             SpriteMeshType.FullRect);
 
-        var sr = CreateSprite("SavannaBackground", sprite, Color.white, Vector2.zero, Vector2.one, 0f, BackgroundOrder);
+        var backgroundScale = new Vector2((arenaWidth + 2f) / Mathf.Max(0.001f, arenaWidth), (arenaHeight + 2f) / Mathf.Max(0.001f, arenaHeight));
+        var sr = CreateSprite("SavannaBackground", sprite, Color.white, Vector2.zero, backgroundScale, 0f, BackgroundOrder);
         sr.sortingLayerName = SortingLayerDefault;
         sr.sortingOrder = BackgroundOrder;
         sr.color = Color.white;
+        sr.transform.localPosition = Vector3.zero;
 
-        var overlay = CreateSprite("SavannaBackgroundOverlay", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.95f, 0.97f, 0.9f, 0.09f), Vector2.zero, new Vector2(arenaWidth, arenaHeight), 0f, BiomeOverlayOrder);
+        var overlay = CreateSprite("SavannaBackgroundOverlay", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.95f, 0.97f, 0.9f, 0.09f), Vector2.zero, new Vector2(arenaWidth + 2f, arenaHeight + 2f), 0f, BiomeOverlayOrder);
         overlay.sortingLayerName = SortingLayerDefault;
         overlay.sortingOrder = BiomeOverlayOrder;
+        overlay.transform.localPosition = Vector3.zero;
     }
 
     private void BuildGrassDots(Map mapConfig, float halfWidth, float halfHeight)
@@ -236,7 +239,8 @@ public sealed class PredatorPreyDocuMapBuilder
             }
 
             var mid = (a + b) * 0.5f;
-            var angle = Mathf.Atan2(segment.y, segment.x) * Mathf.Rad2Deg;
+            var angleRad = Mathf.Atan2(segment.y, segment.x);
+            var angle = angleRad * Mathf.Rad2Deg;
             var tMid = (i + 0.5f) / segmentCount;
             var taper = Mathf.SmoothStep(0.1f, 1f, tMid);
             var wMid = Mathf.Lerp(widthNorth, widthSouth, taper);
@@ -249,26 +253,62 @@ public sealed class PredatorPreyDocuMapBuilder
                 segLen += overlap;
             }
 
-            var floodplain = CreateSprite($"FloodplainSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), floodplainColor, mid, new Vector2(wMid + floodExtra, segLen), angle, FloodplainOrder);
+            var floodplainWidth = wMid + floodExtra;
+            var bankWidthMid = wMid + (bankWidth * 2f);
+            var floodMid = AdjustMidpointToVerticalBounds(mid, angleRad, segLen, floodplainWidth, halfHeight);
+            var bankMid = AdjustMidpointToVerticalBounds(mid, angleRad, segLen, bankWidthMid, halfHeight);
+            var riverMid = AdjustMidpointToVerticalBounds(mid, angleRad, segLen, wMid, halfHeight);
+
+            var floodplain = CreateSprite($"FloodplainSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), floodplainColor, floodMid, new Vector2(floodplainWidth, segLen), angle, FloodplainOrder);
             floodplain.transform.SetParent(riverRoot, true);
             floodplainRenderers.Add(floodplain);
 
-            var bank = CreateSprite($"RiverBankSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), bankColor, mid, new Vector2(wMid + (bankWidth * 2f), segLen), angle, RiverBankOrder);
+            var bank = CreateSprite($"RiverBankSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), bankColor, bankMid, new Vector2(bankWidthMid, segLen), angle, RiverBankOrder);
             bank.transform.SetParent(riverRoot, true);
 
-            var river = CreateSprite($"RiverSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), riverColor, mid, new Vector2(wMid, segLen), angle, RiverOrder);
+            var river = CreateSprite($"RiverSeg_{i}", PrimitiveSpriteLibrary.RoundedRectFill(64), riverColor, riverMid, new Vector2(wMid, segLen), angle, RiverOrder);
             river.transform.SetParent(riverRoot, true);
 
             if (i % rng.NextInt(4, 7) == 0)
             {
-                waterNodes.Add(mid);
+                waterNodes.Add(riverMid);
             }
         }
+
+        var northCapRadius = Mathf.Max(0.1f, widthNorth * 0.9f);
+        var northCap = CreateSprite("RiverCapNorth", PrimitiveSpriteLibrary.CircleFill(), riverColor, new Vector2(points[0].x, halfHeight), new Vector2(northCapRadius, northCapRadius), 0f, RiverOrder + 1);
+        northCap.transform.SetParent(riverRoot, true);
+
+        var southCapRadius = Mathf.Max(0.1f, widthSouth * 0.9f);
+        var southCap = CreateSprite("RiverCapSouth", PrimitiveSpriteLibrary.CircleFill(), riverColor, new Vector2(points[segmentCount].x, -halfHeight), new Vector2(southCapRadius, southCapRadius), 0f, RiverOrder + 1);
+        southCap.transform.SetParent(riverRoot, true);
 
         if (waterNodes.Count == 0)
         {
             waterNodes.Add(points[segmentCount / 2]);
         }
+    }
+
+    private static Vector2 AdjustMidpointToVerticalBounds(Vector2 midpoint, float angleRad, float segmentLength, float width, float halfHeight)
+    {
+        var yExtent = (0.5f * segmentLength * Mathf.Abs(Mathf.Sin(angleRad)))
+            + (0.5f * width * Mathf.Abs(Mathf.Cos(angleRad)));
+
+        var adjusted = midpoint;
+        var maxY = halfHeight;
+        var minY = -halfHeight;
+
+        if (adjusted.y + yExtent > maxY)
+        {
+            adjusted.y -= (adjusted.y + yExtent) - maxY;
+        }
+
+        if (adjusted.y - yExtent < minY)
+        {
+            adjusted.y += minY - (adjusted.y - yExtent);
+        }
+
+        return adjusted;
     }
 
     private static float SmoothHashNoise01(int x, int y, int seed)
