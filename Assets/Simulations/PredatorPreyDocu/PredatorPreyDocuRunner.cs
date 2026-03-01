@@ -147,7 +147,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        var root = sceneGraph.ArenaRoot != null ? sceneGraph.ArenaRoot : sceneGraph.Root;
+        var root = sceneGraph.ArenaRoot;
         if (root == null)
         {
             return;
