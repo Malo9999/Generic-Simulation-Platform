@@ -7,6 +7,7 @@ public sealed class PredatorPreyDocuMapBuilder
     private const float BackgroundPixelsPerUnit = 8f;
     private const int BackgroundOrder = -200;
     private const int FloodplainOrder = -190;
+    private const int BiomeOverlayOrder = -198;
     private const int RiverOrder = -180;
     private const int RiverBankOrder = -181;
     private const int CreekOrder = -170;
@@ -88,37 +89,30 @@ public sealed class PredatorPreyDocuMapBuilder
         var texture = new Texture2D(texWidth, texHeight, TextureFormat.RGBA32, false)
         {
             wrapMode = TextureWrapMode.Clamp,
-            filterMode = FilterMode.Bilinear
+            filterMode = FilterMode.Point
         };
 
-        var dryWest = new Color(0.82f, 0.74f, 0.46f, 1f);
-        var greenEast = new Color(0.62f, 0.72f, 0.42f, 1f);
-        var southTint = new Color(0.96f, 0.95f, 0.92f, 1f);
-        var northTint = new Color(0.92f, 1f, 0.94f, 1f);
+        var seedRng = RngService.Fork("SIM:PredatorPreyDocu:MAP");
+        var noiseSeed = seedRng.NextInt(0, int.MaxValue);
+        var dryColor = new Color(0.79f, 0.69f, 0.42f, 1f);
+        var greenColor = new Color(0.53f, 0.67f, 0.39f, 1f);
+        var pixels = new Color32[texWidth * texHeight];
 
         for (var y = 0; y < texHeight; y++)
         {
-            var v = texHeight <= 1 ? 0f : y / (float)(texHeight - 1);
-            var latTint = Color.Lerp(southTint, northTint, v);
+            var tY = texHeight <= 1 ? 0f : y / (float)(texHeight - 1);
 
             for (var x = 0; x < texWidth; x++)
             {
-                var u = texWidth <= 1 ? 0f : x / (float)(texWidth - 1);
-                var baseColor = Color.Lerp(dryWest, greenEast, u);
-                var biomeColor = new Color(baseColor.r * latTint.r, baseColor.g * latTint.g, baseColor.b * latTint.b, 1f);
-
-                var grain = Frac01(Hash01((uint)x, (uint)y, 0xA531E7D1u) * 2f - 1f);
-                var macro = Frac01(Hash01((uint)(x / 5), (uint)(y / 5), 0x4D98AB11u) * 2f - 1f);
-                var noise = (grain * 0.018f) + (macro * 0.028f);
-
-                texture.SetPixel(x, y, new Color(
-                    Mathf.Clamp01(biomeColor.r + noise * 0.8f),
-                    Mathf.Clamp01(biomeColor.g + noise),
-                    Mathf.Clamp01(biomeColor.b + noise * 0.65f),
-                    1f));
+                var tX = texWidth <= 1 ? 0f : x / (float)(texWidth - 1);
+                var noise = SmoothHashNoise01(x, y, noiseSeed);
+                var blend = Mathf.Clamp01((0.55f * tX) + (0.25f * tY) + (0.20f * noise));
+                var color = Color.Lerp(dryColor, greenColor, blend);
+                pixels[(y * texWidth) + x] = color;
             }
         }
 
+        texture.SetPixels32(pixels);
         texture.Apply(false, false);
 
         var sprite = Sprite.Create(
@@ -133,6 +127,10 @@ public sealed class PredatorPreyDocuMapBuilder
         sr.sortingLayerName = SortingLayerDefault;
         sr.sortingOrder = BackgroundOrder;
         sr.color = Color.white;
+
+        var overlay = CreateSprite("SavannaBackgroundOverlay", PrimitiveSpriteLibrary.Square(), new Color(0.95f, 0.97f, 0.9f, 0.09f), Vector2.zero, new Vector2(arenaWidth, arenaHeight), 0f, BiomeOverlayOrder);
+        overlay.sortingLayerName = SortingLayerDefault;
+        overlay.sortingOrder = BiomeOverlayOrder;
     }
 
     private void BuildGrassDots(Map mapConfig, float halfWidth, float halfHeight)
@@ -171,10 +169,12 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private void BuildRiverAndFloodplain(float halfWidth, float halfHeight, Map mapConfig)
     {
-        var riverHeight = halfHeight * 2f;
+        var arenaHeight = halfHeight * 2f;
+        var riverHeight = arenaHeight + 1f;
         var riverCenterY = 0f;
         var floodWidth = Mathf.Max(mapConfig.floodplainWidth, mapConfig.riverWidth + 1f);
-        floodplainRenderer = CreateSprite("Floodplain", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.5f, 0.72f, 0.37f, 1f), new Vector2(0f, riverCenterY), new Vector2(floodWidth, riverHeight), 0f, FloodplainOrder);
+        var floodplainHeight = arenaHeight + 1f;
+        floodplainRenderer = CreateSprite("Floodplain", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.5f, 0.72f, 0.37f, 1f), new Vector2(0f, riverCenterY), new Vector2(floodWidth, floodplainHeight), 0f, FloodplainOrder);
         floodplainRenderer.drawMode = SpriteDrawMode.Sliced;
 
         var riverBody = CreateSprite("RiverBody", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.14f, 0.47f, 0.92f, 1f), new Vector2(0f, riverCenterY), new Vector2(mapConfig.riverWidth, riverHeight), 0f, RiverOrder);
@@ -186,8 +186,8 @@ public sealed class PredatorPreyDocuMapBuilder
         CreateSprite("RiverBankRight", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.49f, 0.24f, 1f), new Vector2(bankOffset, riverCenterY), new Vector2(bankWidth, riverHeight), 0f, RiverBankOrder).drawMode = SpriteDrawMode.Sliced;
 
         const int sampleCount = 18;
-        var riverStartY = -halfHeight;
-        var riverEndY = halfHeight;
+        var riverStartY = -(riverHeight * 0.5f);
+        var riverEndY = riverHeight * 0.5f;
         for (var i = 0; i <= sampleCount; i++)
         {
             var y = Mathf.Lerp(riverStartY, riverEndY, i / (float)sampleCount);
@@ -195,17 +195,22 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-    private static float Hash01(uint x, uint y, uint seed)
+    private static float SmoothHashNoise01(int x, int y, int seed)
     {
-        var h = x * 374761393u + y * 668265263u + seed * 700001u;
-        h = (h ^ (h >> 13)) * 1274126177u;
-        h ^= h >> 16;
-        return (h & 0x00FFFFFFu) / 16777215f;
+        var center = HashNoise01(x, y, seed);
+        var left = HashNoise01(x - 1, y, seed);
+        var right = HashNoise01(x + 1, y, seed);
+        var up = HashNoise01(x, y + 1, seed);
+        var down = HashNoise01(x, y - 1, seed);
+        return (center * 0.4f) + ((left + right + up + down) * 0.15f);
     }
 
-    private static float Frac01(float value)
+    private static float HashNoise01(int x, int y, int seed)
     {
-        return Mathf.Clamp(value, -1f, 1f);
+        var h = unchecked((x * 374761393) + (y * 668265263) + (seed * 1442695041));
+        h = unchecked((h ^ (h >> 13)) * 1274126177);
+        h ^= h >> 16;
+        return (h & 0xFFFF) / 65535f;
     }
 
     private void BuildCreeks(Map mapConfig, float halfWidth, float halfHeight)
