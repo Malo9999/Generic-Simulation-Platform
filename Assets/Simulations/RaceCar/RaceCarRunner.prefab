@@ -44,3 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2173199a24ccb864caf263b1404a1da7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RaceCarRunner
+  logSpawnIdentity: 1
+  track: {fileID: 11400000, guid: 2e196c4f99a79944888b523c517bcb2a, type: 2}
