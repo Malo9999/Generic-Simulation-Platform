@@ -233,12 +233,21 @@ namespace GSP.TrackEditor.Editor
             if (GUILayout.Button("Delete Selected")) DeleteSelectedPiece();
             EditorGUI.EndDisabledGroup();
 
-            var placeStartLabel = _isPlacingStartFinish ? "Placing Start/Finish..." : "Place Start/Finish";
+            var placeStartLabel = _isPlacingStartFinish ? "Placing…" : "Place Start/Finish";
             if (GUILayout.Button(placeStartLabel))
             {
-                _isPlacingStartFinish = true;
-                status = "Click on the main track to place Start/Finish.";
-                Repaint();
+                if (_isPlacingStartFinish)
+                {
+                    _isPlacingStartFinish = false;
+                    status = "Placement cancelled.";
+                    Repaint();
+                }
+                else
+                {
+                    _isPlacingStartFinish = true;
+                    status = "Click on the main track to place Start/Finish.";
+                    Repaint();
+                }
             }
 
             if (GUILayout.Button("Generate Start Grid (10)"))
@@ -833,6 +842,17 @@ namespace GSP.TrackEditor.Editor
                     if (layout.startFinish == null)
                     {
                         layout.startFinish = new StartFinishMarker();
+                    }
+
+                    var oldPos = layout.startFinish != null ? layout.startFinish.worldPos : bestPoint;
+                    var newPos = bestPoint;
+                    var delta = newPos - oldPos;
+                    if (layout.startGridSlots != null && layout.startGridSlots.Count > 0)
+                    {
+                        foreach (var slot in layout.startGridSlots)
+                        {
+                            slot.pos += delta;
+                        }
                     }
 
                     layout.startFinish.worldPos = bestPoint;
