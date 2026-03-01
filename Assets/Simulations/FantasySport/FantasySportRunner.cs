@@ -576,9 +576,25 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         return GetAthleteIndexByLocal(teamId, 12);
     }
 
-    private int TeamOf(int athleteIndex) => identities[athleteIndex].teamId;
+    private int TeamOf(int athleteIndex)
+    {
+        if (teamIdByIndex != null && athleteIndex >= 0 && athleteIndex < teamIdByIndex.Length)
+        {
+            return teamIdByIndex[athleteIndex];
+        }
 
-    private int LocalIndexOf(int athleteIndex) => teamLocalIndexByIndex[athleteIndex];
+        return athleteIndex < PlayersPerTeam ? 0 : 1;
+    }
+
+    private int LocalIndexOf(int athleteIndex)
+    {
+        if (teamLocalIndexByIndex != null && athleteIndex >= 0 && athleteIndex < teamLocalIndexByIndex.Length)
+        {
+            return teamLocalIndexByIndex[athleteIndex];
+        }
+
+        return Mathf.Abs(athleteIndex) % Mathf.Max(1, PlayersPerTeam);
+    }
 
     private int GetAthleteIndexByLocal(int teamId, int localIndex)
     {
