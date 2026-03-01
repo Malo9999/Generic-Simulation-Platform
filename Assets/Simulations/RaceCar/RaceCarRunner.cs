@@ -25,11 +25,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private TrackRuntime trackRuntime;
     private Transform trackRoot;
     private bool trackRootAttempted;
+    private bool boundsAppliedAfterStart;
 
     public void Initialize(ScenarioConfig config)
     {
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
         trackRootAttempted = false;
+        boundsAppliedAfterStart = false;
         SetupTrackRoot();
         EnsureMainCamera();
         BuildCars(config);
@@ -42,6 +44,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         {
             trackRootAttempted = true;
             SetupTrackRoot();
+        }
+
+        if (track != null && trackRoot != null && !boundsAppliedAfterStart)
+        {
+            boundsAppliedAfterStart = true;
+            var bounds = TrackBakedDataUtil.ComputeBounds(track);
+            PresentationBoundsSync.Apply(bounds);
         }
 
         if (cars == null)
