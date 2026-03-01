@@ -234,7 +234,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (track == null)
         {
-            Debug.Log("RaceCarRunner: track not assigned");
+            Debug.LogWarning("RaceCarRunner: Track is NULL (not assigned).");
             return;
         }
 
@@ -252,7 +252,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         trackRuntime = root.AddComponent<TrackRuntime>();
         trackRuntime.Initialize(track);
-        Debug.Log($"RaceCarRunner: TrackRoot created for {track.name}");
+        Debug.Log($"RaceCarRunner: TrackRoot created for '{track.name}' (centerline={track.mainCenterline?.Length ?? 0}).");
     }
 
     private void ResolveArtPipeline()
