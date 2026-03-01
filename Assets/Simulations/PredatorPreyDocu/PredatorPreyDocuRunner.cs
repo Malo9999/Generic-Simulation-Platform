@@ -35,9 +35,6 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     private int[] prideShadeIndex;
 
     private string lastSeasonName;
-    private bool loggedArenaBackgroundOverride;
-
-    [SerializeField] private PredatorPreyDocuMapRecipe mapRecipe;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -47,7 +44,6 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         activeConfig.NormalizeAliases();
 
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "PredatorPreyDocu");
-        ForceArenaRootBackgroundBehindEverything();
         halfWidth = Mathf.Max(1f, activeConfig.world.arenaWidth * 0.5f);
         halfHeight = Mathf.Max(1f, activeConfig.world.arenaHeight * 0.5f);
 
@@ -60,7 +56,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             mapParent.gameObject.SetActive(true);
         }
 
-        map.Build(mapParent != null ? mapParent : transform, activeConfig, halfWidth, halfHeight, mapRecipe);
+        map.Build(mapParent != null ? mapParent : transform, activeConfig, halfWidth, halfHeight);
         SpawnEntities();
 
         lastSeasonName = null;
@@ -151,48 +147,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var mapParent = sceneGraph != null && sceneGraph.WorldObjectsRoot != null ? sceneGraph.WorldObjectsRoot : transform;
-        map.Build(mapParent, activeConfig, halfWidth, halfHeight, mapRecipe);
-    }
-
-    private void ForceArenaRootBackgroundBehindEverything()
-    {
-        if (sceneGraph == null)
-        {
-            return;
-        }
-
-        var root = sceneGraph.ArenaRoot;
-        if (root == null)
-        {
-            return;
-        }
-
-        var renderers = root.GetComponentsInChildren<SpriteRenderer>(true);
-        var forcedAny = false;
-        for (var i = 0; i < renderers.Length; i++)
-        {
-            var sr = renderers[i];
-            if (sr == null)
-            {
-                continue;
-            }
-
-            if (sr.gameObject.name != "Background")
-            {
-                continue;
-            }
-
-            sr.sortingLayerName = "Default";
-            sr.sortingOrder = -1000;
-            sr.color = Color.white;
-            forcedAny = true;
-        }
-
-        if (forcedAny && !loggedArenaBackgroundOverride)
-        {
-            Debug.Log("[PredatorPreyDocu] Forced Arena Background behind (sortingOrder=-1000).");
-            loggedArenaBackgroundOverride = true;
-        }
+        map.Build(mapParent, activeConfig, halfWidth, halfHeight);
     }
 
     private void SpawnEntities()
