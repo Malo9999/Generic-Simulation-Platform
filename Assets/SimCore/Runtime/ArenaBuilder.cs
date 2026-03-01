@@ -296,6 +296,8 @@ public static class ArenaBuilder
 
         var renderer = background.AddComponent<SpriteRenderer>();
         RenderOrder.Apply(renderer, RenderOrder.WorldBase);
+        renderer.sortingLayerName = "Default";
+        renderer.sortingOrder = -1000;
 
         var texWidth = Mathf.Max(8, Mathf.RoundToInt(width * PixelsPerUnit));
         var texHeight = Mathf.Max(8, Mathf.RoundToInt(height * PixelsPerUnit));
