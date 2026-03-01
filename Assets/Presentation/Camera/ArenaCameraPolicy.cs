@@ -66,6 +66,11 @@ public class ArenaCameraPolicy : MonoBehaviour
     private int _lastOrthoWriteFrame = -1;
     private float _lastFitToBoundsTime = -1f;
     private int _lastFitToBoundsFrame = -1;
+    private int _lastRequestedRefX;
+    private int _lastRequestedRefY;
+    private int _lastMaxPpcZoom;
+    private bool _lastRequestedRefExceedsScreen;
+    private bool _isUsingPixelPerfectZoom = true;
 
     private void Reset() => AutoWire();
     private void OnValidate() => AutoWire();
@@ -155,7 +160,16 @@ public class ArenaCameraPolicy : MonoBehaviour
         var center = new Vector3((minX + maxX) * 0.5f, (minY + maxY) * 0.5f, transform.position.z);
         transform.position = center;
 
-        SyncZoomLevelToOrtho(requiredOrthographicSize);
+        var fittedZoomLevel = ComputeZoomLevelFromOrtho(requiredOrthographicSize);
+        var maxPpcZoom = ComputeMaxPpcZoomLevelAllowedByScreen();
+
+        zoomLevel = Mathf.Clamp(fittedZoomLevel, minZoomLevel, maxZoomLevel);
+
+        if (IsPixelPerfectActive() && zoomLevel > maxPpcZoom)
+        {
+            SetOrtho(requiredOrthographicSize, "FitToBounds[FallbackSeed]");
+        }
+
         _lastFitToBoundsTime = Time.unscaledTime;
         _lastFitToBoundsFrame = Time.frameCount;
         ApplyZoom("FitToBounds");
@@ -196,15 +210,26 @@ public class ArenaCameraPolicy : MonoBehaviour
         AutoWire();
         CacheBaseOrthographicSize();
 
-        float factor = Mathf.Pow(zoomStep, zoomLevel);
+        float safeZoomStep = Mathf.Max(1.0001f, zoomStep);
+        float factor = Mathf.Pow(safeZoomStep, zoomLevel);
         var pixelPerfectActive = IsPixelPerfectActive();
         var beforeOrtho = targetCamera != null ? targetCamera.orthographicSize : 0f;
         var desiredOrtho = Mathf.Max(0.01f, _baseOrthographicSize * factor);
+        int requestedRefX = Mathf.Max(minPixelPerfectRefResolutionX, Mathf.RoundToInt(baseRefResolution.x * factor));
+        int requestedRefY = Mathf.Max(1, Mathf.RoundToInt(baseRefResolution.y * factor));
+        int maxPpcZoom = ComputeMaxPpcZoomLevelAllowedByScreen();
+        bool requestedRefExceedsScreen = requestedRefX > Screen.width || requestedRefY > Screen.height;
+        bool shouldUsePpcZoom = pixelPerfectActive && zoomLevel <= maxPpcZoom && !requestedRefExceedsScreen;
         const float maxAllowedOrtho = -1f;
 
         _lastOrthoBeforeApply = beforeOrtho;
         _lastDesiredOrtho = desiredOrtho;
         _lastMaxAllowedOrtho = maxAllowedOrtho;
+        _lastRequestedRefX = requestedRefX;
+        _lastRequestedRefY = requestedRefY;
+        _lastMaxPpcZoom = maxPpcZoom;
+        _lastRequestedRefExceedsScreen = requestedRefExceedsScreen;
+        _isUsingPixelPerfectZoom = shouldUsePpcZoom;
         CacheBoundsForDebug();
 
         SetOrtho(desiredOrtho, writer);
@@ -225,13 +250,20 @@ public class ArenaCameraPolicy : MonoBehaviour
 
         ApplyFantasySportPixelPerfectOverrides();
 
-        var useFantasySportRefResolution = IsCurrentSimulation("FantasySport");
-        int rx = useFantasySportRefResolution
-            ? Mathf.Max(minPixelPerfectRefResolutionX, baseRefResolution.x)
-            : Mathf.Max(minPixelPerfectRefResolutionX, Mathf.RoundToInt(baseRefResolution.x * factor));
-        int ry = useFantasySportRefResolution
-            ? Mathf.Max(1, baseRefResolution.y)
-            : Mathf.RoundToInt(rx * 9f / 16f);
+        if (!shouldUsePpcZoom)
+        {
+            _lastOrthoAfterApply = targetCamera != null ? targetCamera.orthographicSize : beforeOrtho;
+
+            if (logZoomChanges)
+            {
+                UnityEngine.Debug.Log($"[GSP] Zoom level={zoomLevel} using fallback orthographic zoom (requestedRef={requestedRefX}x{requestedRefY}, screen={Screen.width}x{Screen.height}, maxPpcZoom={maxPpcZoom})");
+            }
+
+            return;
+        }
+
+        int rx = requestedRefX;
+        int ry = requestedRefY;
 
         bool okX = TrySetMember(pixelPerfectComponent, "refResolutionX", rx);
         bool okY = TrySetMember(pixelPerfectComponent, "refResolutionY", ry);
@@ -314,6 +346,7 @@ public class ArenaCameraPolicy : MonoBehaviour
         GUILayout.Label($"Screen: {Screen.width}x{Screen.height}");
         GUILayout.Label($"PixelPerfect: present={pixelPerfectPresent} active={pixelPerfectEnabled} ref={refX}x{refY} assetsPPU={ppu:F2} cropX={cropX} cropY={cropY} upscaleRT={upscaleRT} stretchFill={stretchFill}");
         GUILayout.Label($"Zoom: level={zoomLevel} min={minZoomLevel} max={maxZoomLevel} step={zoomStep:F3}");
+        GUILayout.Label($"PPC Mode: mode={(_isUsingPixelPerfectZoom ? "PPC" : "Fallback")} maxPpcZoom={_lastMaxPpcZoom} requestedRef={_lastRequestedRefX}x{_lastRequestedRefY} exceedsScreen={_lastRequestedRefExceedsScreen}");
         GUILayout.Label($"Ortho: desired={_lastDesiredOrtho:F3} applied={appliedOrtho:F3} before={_lastOrthoBeforeApply:F3} maxAllowed={_lastMaxAllowedOrtho:F3}");
         GUILayout.Label($"Bounds rect: x={_lastBoundsRect.xMin:F2} y={_lastBoundsRect.yMin:F2} w={_lastBoundsRect.width:F2} h={_lastBoundsRect.height:F2}");
         GUILayout.Label($"FitToBounds ran this frame: {fitToBoundsInfo}");
@@ -326,9 +359,36 @@ public class ArenaCameraPolicy : MonoBehaviour
         CacheBaseOrthographicSize();
         var baseOrtho = Mathf.Max(0.01f, _baseOrthographicSize);
         var safeZoomStep = Mathf.Max(1.0001f, zoomStep);
-        var normalized = Mathf.Max(0.01f, orthographicSize) / baseOrtho;
-        var level = Mathf.RoundToInt(Mathf.Log(normalized) / Mathf.Log(safeZoomStep));
+        var level = ComputeZoomLevelFromOrtho(orthographicSize, baseOrtho, safeZoomStep);
         zoomLevel = Mathf.Clamp(level, minZoomLevel, maxZoomLevel);
+    }
+
+    private int ComputeZoomLevelFromOrtho(float orthographicSize)
+    {
+        CacheBaseOrthographicSize();
+        var baseOrtho = Mathf.Max(0.01f, _baseOrthographicSize);
+        var safeZoomStep = Mathf.Max(1.0001f, zoomStep);
+        return ComputeZoomLevelFromOrtho(orthographicSize, baseOrtho, safeZoomStep);
+    }
+
+    private static int ComputeZoomLevelFromOrtho(float orthographicSize, float baseOrtho, float safeZoomStep)
+    {
+        var normalized = Mathf.Max(0.01f, orthographicSize) / Mathf.Max(0.01f, baseOrtho);
+        return Mathf.RoundToInt(Mathf.Log(normalized) / Mathf.Log(safeZoomStep));
+    }
+
+    private int ComputeMaxPpcZoomLevelAllowedByScreen()
+    {
+        var safeZoomStep = Mathf.Max(1.0001f, zoomStep);
+        float baseRefX = Mathf.Max(1f, baseRefResolution.x);
+        float baseRefY = Mathf.Max(1f, baseRefResolution.y);
+
+        float ratioX = Mathf.Max(0.0001f, Screen.width / baseRefX);
+        float ratioY = Mathf.Max(0.0001f, Screen.height / baseRefY);
+
+        int maxZoomX = Mathf.FloorToInt(Mathf.Log(ratioX) / Mathf.Log(safeZoomStep));
+        int maxZoomY = Mathf.FloorToInt(Mathf.Log(ratioY) / Mathf.Log(safeZoomStep));
+        return Mathf.Min(maxZoomX, maxZoomY);
     }
 
     private void SetOrtho(float value, string writer)
