@@ -53,10 +53,6 @@ namespace GSP.TrackEditor.Editor
             pieces.Add(CloneRotated(mainCornerBase, 4, "MainCorner90WS", "MAIN — Corner 90 (W+S)"));
             pieces.Add(CloneRotated(mainCornerBase, 6, "MainCorner90SE", "MAIN — Corner 90 (S+E)"));
 
-            var hairpinH = BuildHairpin180Horizontal();
-            pieces.Add(CreatePiece("MainHairpin180WE", "MAIN — Hairpin 180 (W+E)", "Main", TrackWidth, hairpinH.connectors, hairpinH.segments));
-            pieces.Add(CloneRotated(hairpinH, 2, "MainHairpin180NS", "MAIN — Hairpin 180 (N+S)"));
-
             var pitStraightBase = BuildStraightBase("PitStraightBase", "PIT — Straight H", "PitLane", TrackConnectorRole.Pit);
             var pitStraight45Base = BuildStraight45Base("PitStraight45Base", "PIT — Straight 45 /", "PitLane", TrackConnectorRole.Pit);
             pieces.Add(CloneRotated(pitStraightBase, 0, "PitLaneStraightH", "PIT — Straight H"));
@@ -182,27 +178,6 @@ namespace GSP.TrackEditor.Editor
             };
 
             return CreateTransientPiece(pieceId, displayName, category, TrackWidth, new[] { c0, c1 }, segments);
-        }
-
-        private static TrackPieceDef BuildHairpin180Horizontal()
-        {
-            var c0 = Connector("W", new Vector2(-L, 0f), Dir8.W, TrackConnectorRole.Main);
-            var c1 = Connector("E", new Vector2(L, 0f), Dir8.E, TrackConnectorRole.Main);
-
-            var depth = 2f * L;
-            var mid = new Vector2(0f, -depth);
-            var handleLen = 0.6f * L;
-
-            var segA = BezierWithHandleLength(c0.localPos, mid, Vector2.right, Vector2.right, handleLen, 18);
-            var segB = BezierWithHandleLength(mid, c1.localPos, Vector2.right, Vector2.right, handleLen, 18);
-            var path = CombineUnique(segA, segB);
-            var segments = new[]
-            {
-                Segment(0, 1, TrackConnectorRole.Main, path, -c0.localDir.ToVector2(), c1.localDir.ToVector2()),
-                Segment(1, 0, TrackConnectorRole.Main, Reverse(path), -c1.localDir.ToVector2(), c0.localDir.ToVector2())
-            };
-
-            return CreateTransientPiece("MainHairpin180Base", "MAIN — Hairpin 180 (W+E)", "Main", TrackWidth, new[] { c0, c1 }, segments);
         }
 
         private static TrackPieceDef BuildPitEntry90()

@@ -4,14 +4,13 @@ using UnityEngine;
 public sealed class PredatorPreyDocuMapBuilder
 {
     private const string SortingLayerDefault = "Default";
-    private const int BackgroundOrder = -50;
-    private const int FloodplainOrder = -40;
-    private const int RiverOrder = -30;
-    private const int RiverEdgeOrder = -29;
-    private const int CreekOrder = -25;
-    private const int GrassOrder = -22;
-    private const int TreeOrder = -20;
-    private const int DebugOrder = -10;
+    private const int BackgroundOrder = -200;
+    private const int FloodplainOrder = -190;
+    private const int RiverOrder = -180;
+    private const int RiverBankOrder = -179;
+    private const int CreekOrder = -170;
+    private const int GrassOrder = -165;
+    private const int TreeOrder = -160;
 
     private readonly List<SpriteRenderer> creekRenderers = new();
     private readonly List<Vector2> waterNodes = new();
@@ -34,11 +33,10 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(parent, false);
 
         BuildBackground(halfWidth, halfHeight);
-        BuildGrassDots(docu.map, halfWidth, halfHeight);
         BuildRiverAndFloodplain(halfWidth, halfHeight, docu.map);
         BuildCreeks(docu.map, halfWidth, halfHeight);
+        BuildGrassDots(docu.map, halfWidth, halfHeight);
         BuildTrees(docu, halfWidth, halfHeight);
-        BuildDebugMarker();
     }
 
     public void UpdateSeasonVisuals(float dryness01)
@@ -91,7 +89,7 @@ public sealed class PredatorPreyDocuMapBuilder
         grassRoot.SetParent(mapRoot, false);
 
         var area = halfWidth * halfHeight * 4f;
-        var targetCount = Mathf.Clamp(Mathf.RoundToInt(area * 0.22f), 600, 1200);
+        var targetCount = Mathf.Clamp(Mathf.RoundToInt(area * 0.32f), 800, 2000);
         var floodWidth = Mathf.Max(1f, mapConfig.floodplainWidth * 1.2f);
 
         for (var i = 0; i < targetCount; i++)
@@ -104,7 +102,7 @@ public sealed class PredatorPreyDocuMapBuilder
                 continue;
             }
 
-            var scale = rng.Range(0.08f, 0.16f);
+            var scale = rng.Range(0.06f, 0.14f);
             var baseColor = new Color(0.41f, 0.62f, 0.3f, 1f);
             var variance = rng.Range(-0.045f, 0.045f);
             var color = new Color(
@@ -127,10 +125,10 @@ public sealed class PredatorPreyDocuMapBuilder
         var river = CreateSprite("River", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.14f, 0.47f, 0.92f, 1f), Vector2.zero, new Vector2(mapConfig.riverWidth, halfHeight * 2.1f), 0f, RiverOrder);
         river.drawMode = SpriteDrawMode.Sliced;
 
-        var edgeWidth = Mathf.Max(0.08f, mapConfig.riverWidth * 0.055f);
-        var edgeOffset = (mapConfig.riverWidth * 0.5f) + (edgeWidth * 0.5f);
-        CreateSprite("RiverEdgeLeft", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.06f, 0.26f, 0.55f, 1f), new Vector2(-edgeOffset, 0f), new Vector2(edgeWidth, halfHeight * 2.1f), 0f, RiverEdgeOrder).drawMode = SpriteDrawMode.Sliced;
-        CreateSprite("RiverEdgeRight", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.06f, 0.26f, 0.55f, 1f), new Vector2(edgeOffset, 0f), new Vector2(edgeWidth, halfHeight * 2.1f), 0f, RiverEdgeOrder).drawMode = SpriteDrawMode.Sliced;
+        var bankWidth = Mathf.Max(0.16f, mapConfig.riverWidth * 0.14f);
+        var bankOffset = (mapConfig.riverWidth * 0.5f) + (bankWidth * 0.5f);
+        CreateSprite("RiverBankLeft", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.49f, 0.24f, 1f), new Vector2(-bankOffset, 0f), new Vector2(bankWidth, halfHeight * 2.1f), 0f, RiverBankOrder).drawMode = SpriteDrawMode.Sliced;
+        CreateSprite("RiverBankRight", PrimitiveSpriteLibrary.RoundedRectFill(), new Color(0.33f, 0.49f, 0.24f, 1f), new Vector2(bankOffset, 0f), new Vector2(bankWidth, halfHeight * 2.1f), 0f, RiverBankOrder).drawMode = SpriteDrawMode.Sliced;
 
         const int sampleCount = 18;
         for (var i = 0; i <= sampleCount; i++)
@@ -189,7 +187,7 @@ public sealed class PredatorPreyDocuMapBuilder
         for (var c = 0; c < docu.map.treeClusterCount; c++)
         {
             var center = new Vector2(rng.Range(-halfWidth * 0.94f, halfWidth * 0.94f), rng.Range(-halfHeight * 0.94f, halfHeight * 0.94f));
-            var treeCount = rng.NextInt(3, 8);
+            var treeCount = rng.NextInt(3, 9);
 
             for (var i = 0; i < treeCount; i++)
             {
@@ -198,14 +196,10 @@ public sealed class PredatorPreyDocuMapBuilder
                 shadeNodes.Add(pos);
 
                 var radius = rng.Range(0.55f, 1.1f) * treeScale;
+                CreateSprite("TreeOutline", PrimitiveSpriteLibrary.CircleOutline(), new Color(0.06f, 0.17f, 0.07f, 1f), pos, new Vector2(radius * 1.08f, radius * 1.08f), 0f, TreeOrder);
                 CreateSprite("Tree", PrimitiveSpriteLibrary.CircleFill(), new Color(0.14f, 0.36f, 0.15f, 1f), pos, new Vector2(radius, radius), 0f, TreeOrder);
             }
         }
-    }
-
-    private void BuildDebugMarker()
-    {
-        CreateSprite("MapBuildMarker", PrimitiveSpriteLibrary.CircleFill(), Color.white, Vector2.zero, new Vector2(0.22f, 0.22f), 0f, DebugOrder);
     }
 
     private SpriteRenderer CreateSprite(string name, Sprite sprite, Color color, Vector2 localPosition, Vector2 localScale, float localRotationDeg, int sortingOrder)
