@@ -82,13 +82,37 @@ MonoBehaviour:
     connectorIndexA: 0
     pieceGuidB: 9fdfd58ef224430db9099b4cd493a423
     connectorIndexB: 1
+  - pieceGuidA: 7ccf009bb0af47bea05e3f3f130f37cd
+    connectorIndexA: 1
+    pieceGuidB: 9fdfd58ef224430db9099b4cd493a423
+    connectorIndexB: 0
   startFinish:
     pieceGuid: 
     segmentIndex: 0
     connectorIndex: 0
-    worldPos: {x: 6.2393155, y: 15.769231}
-    worldDir: {x: 1, y: 0}
-  startGridSlots: []
+    worldPos: {x: 6.2393155, y: 15.719553}
+    worldDir: {x: -1, y: 0}
+  startGridSlots:
+  - pos: {x: 8.239315, y: 17.919554}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 8.239315, y: 16.819553}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 8.239315, y: 15.719553}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 8.239315, y: 14.619554}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 8.239316, y: 13.519553}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 11.439316, y: 17.919554}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 11.439316, y: 16.819553}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 11.439316, y: 15.719553}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 11.439316, y: 14.6195545}
+    dir: {x: -1, y: -0.00000008742278}
+  - pos: {x: 11.439316, y: 13.519554}
+    dir: {x: -1, y: -0.00000008742278}
   pitEntryGuid: 
   pitExitGuid: 
   pan: {x: 0.666687, y: -154}
