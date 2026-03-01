@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Text;
 
 using GSP.TrackEditor;
 public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
@@ -280,10 +281,48 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         halfWidth = bounds.width * 0.5f;
         halfHeight = bounds.height * 0.5f;
 
+        Debug.Log(track.BuildDebugReport());
+        Debug.Log($"RaceCarRunner[{name}]: framing bounds rect min={bounds.min}, max={bounds.max}, center={bounds.center}, size={bounds.size}.");
+
+        var parentTransformPath = BuildTransformPath(parent);
+        Debug.Log(
+            $"RaceCarRunner[{name}]: TrackRoot parent='{parent.name}', path='{parentTransformPath}', worldPosition={parent.position}.");
+
+        var spriteRendererCount = root.GetComponentsInChildren<SpriteRenderer>(true).Length;
+        var lineRendererCount = root.GetComponentsInChildren<LineRenderer>(true).Length;
+        Debug.Log(
+            $"RaceCarRunner[{name}]: TrackRoot renderers SpriteRenderer={spriteRendererCount}, LineRenderer={lineRendererCount}.");
+
         Debug.Log($"RaceCarRunner[{name}]: using track bounds center={bounds.center}, size={bounds.size}.");
         Debug.Log(
             $"RaceCarRunner[{name}]: TrackRoot created for '{track.name}' " +
             $"(centerline={track.mainCenterline?.Length ?? 0}, parent={parentPath}, position={trackRoot.position}).");
+    }
+
+    private static string BuildTransformPath(Transform node)
+    {
+        if (node == null)
+        {
+            return "<null>";
+        }
+
+        var builder = new StringBuilder(64);
+        var current = node;
+        while (current != null)
+        {
+            if (builder.Length == 0)
+            {
+                builder.Insert(0, current.name);
+            }
+            else
+            {
+                builder.Insert(0, '/').Insert(0, current.name);
+            }
+
+            current = current.parent;
+        }
+
+        return builder.ToString();
     }
 
     private void ResolveArtPipeline()
