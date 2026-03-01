@@ -803,15 +803,18 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void ResetAfterGoal()
     {
-        ResetAthleteFormationAndVelocities();
-        kickoffSanityLogPending = true;
-
         ballOwnerIndex = -1;
         ballOwnerTeam = -1;
         ballPos = Vector2.zero;
         previousBallPos = Vector2.zero;
         ballVel = Vector2.zero;
         freeBallTime = 0f;
+        teamPhase[0] = TeamPhase.Transition;
+        teamPhase[1] = TeamPhase.Transition;
+
+        ResetAthleteFormationAndVelocities();
+        kickoffSanityLogPending = true;
+
         intendedReceiverIndex = -1;
         receiverLockUntilTime = -999f;
         for (var i = 0; i < finishPlanType.Length; i++)
@@ -832,8 +835,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         possessionCongested = false;
         possessionPlan = "None";
         threatMeter = 0;
-        teamPhase[0] = TeamPhase.Transition;
-        teamPhase[1] = TeamPhase.Transition;
 
         playProgressBaseline[0] = 0f;
         playProgressBaseline[1] = 0f;
@@ -904,6 +905,12 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < TotalAthletes; i++)
         {
+            if (matchTimeSeconds < kickoffFreezeUntilTime + 0.05f)
+            {
+                prevPosByAthlete[i] = positions[i];
+                continue;
+            }
+
             var delta = positions[i] - prevPosByAthlete[i];
             if (delta.magnitude > 6f && matchTimeSeconds - lastTeleportLogTimeByAthlete[i] > 0.5f)
             {
@@ -5191,6 +5198,14 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         if (athleteIndex == idxWingR[teamId])
         {
             return GetTopBandY();
+        }
+
+        var localIndex = teamLocalIndexByIndex[athleteIndex];
+        if (localIndex == 7 || localIndex == 10)
+        {
+            var lane = laneByIndex[athleteIndex];
+            var wantsBottom = lane == Lane.Left || lane == Lane.LeftCenter;
+            return wantsBottom ? GetBottomBandY() : GetTopBandY();
         }
 
         return GetAttackWingSign(teamId) < 0f ? GetBottomBandY() : GetTopBandY();
