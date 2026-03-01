@@ -100,6 +100,7 @@ namespace GSP.TrackEditor.Editor
         private bool _mouseDownOnAlreadySelectedPiece;
         private const float DragThresholdPx = 6f;
         private bool _isPanningWithSpace;
+        private bool _spaceHeld;
 
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
@@ -541,6 +542,20 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
+            if (evt.type == EventType.KeyDown && evt.keyCode == KeyCode.Space)
+            {
+                _spaceHeld = true;
+                evt.Use();
+                Repaint();
+            }
+
+            if (evt.type == EventType.KeyUp && evt.keyCode == KeyCode.Space)
+            {
+                _spaceHeld = false;
+                evt.Use();
+                Repaint();
+            }
+
             if (evt.type == EventType.MouseDown && evt.button == 1)
             {
                 var clicked = PickPieceAtMouse(CanvasToWorld(evt.mousePosition, size));
@@ -561,7 +576,7 @@ namespace GSP.TrackEditor.Editor
                 _mouseDownOnAlreadySelectedPiece = _mouseDownHitPiece >= 0 && _mouseDownHitPiece == selectedPiece;
                 _dragThresholdPassed = false;
 
-                if (Input.GetKey(KeyCode.Space))
+                if (_spaceHeld)
                 {
                     _isPanningWithSpace = true;
                     evt.Use();
@@ -728,6 +743,7 @@ namespace GSP.TrackEditor.Editor
                 _mouseDownOnAlreadySelectedPiece = false;
                 _dragThresholdPassed = false;
                 _isPanningWithSpace = false;
+                _spaceHeld = false;
             }
 
             if (evt.type == EventType.DragExited)
