@@ -5,6 +5,7 @@ public sealed class PredatorPreyDocuMapBuilder
 {
     private const string SortingLayerDefault = "Default";
     private const int BakedMapOrder = -200;
+    private const int ArenaOutlineOrder = -5;
     private const int BakedPixelsPerUnit = 12;
 
     private readonly List<Vector2> waterNodes = new();
@@ -140,14 +141,76 @@ public sealed class PredatorPreyDocuMapBuilder
 
         var go = new GameObject("BakedMap");
         go.transform.SetParent(mapRoot, false);
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localScale = Vector3.one;
+        go.transform.position = Vector3.zero;
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale = new Vector3(arenaW / (texW / (float)BakedPixelsPerUnit), arenaH / (texH / (float)BakedPixelsPerUnit), 1f);
 
         var renderer = go.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
         renderer.sortingLayerName = SortingLayerDefault;
         renderer.sortingOrder = BakedMapOrder;
         renderer.color = Color.white;
+
+        ConstrainRendererToArena(renderer, halfWidth, halfHeight, margin: 0f);
+
+        var outlineGo = new GameObject("ArenaBoundsOutline");
+        outlineGo.transform.SetParent(mapRoot, false);
+        outlineGo.transform.position = Vector3.zero;
+        outlineGo.transform.localRotation = Quaternion.identity;
+        outlineGo.transform.localScale = new Vector3(arenaW, arenaH, 1f);
+
+        var outlineRenderer = outlineGo.AddComponent<SpriteRenderer>();
+        outlineRenderer.sprite = PrimitiveSpriteLibrary.RoundedRectOutline();
+        outlineRenderer.sortingLayerName = SortingLayerDefault;
+        outlineRenderer.sortingOrder = ArenaOutlineOrder;
+        outlineRenderer.color = new Color(0f, 0f, 0f, 0.3f);
+
+        ConstrainRendererToArena(outlineRenderer, halfWidth, halfHeight, margin: 0f);
+    }
+
+    private static void ConstrainRendererToArena(SpriteRenderer sr, float halfWidth, float halfHeight, float margin = 0f)
+    {
+        if (!sr)
+        {
+            return;
+        }
+
+        sr.forceRenderingOff = false;
+
+        var b = sr.bounds;
+        var minX = -halfWidth + margin;
+        var maxX = halfWidth - margin;
+        var minY = -halfHeight + margin;
+        var maxY = halfHeight - margin;
+
+        var dx = 0f;
+        var dy = 0f;
+
+        if (b.max.x > maxX)
+        {
+            dx -= b.max.x - maxX;
+        }
+
+        if (b.min.x < minX)
+        {
+            dx += minX - b.min.x;
+        }
+
+        if (b.max.y > maxY)
+        {
+            dy -= b.max.y - maxY;
+        }
+
+        if (b.min.y < minY)
+        {
+            dy += minY - b.min.y;
+        }
+
+        if (dx != 0f || dy != 0f)
+        {
+            var t = sr.transform;
+            t.position = new Vector3(t.position.x + dx, t.position.y + dy, t.position.z);
+        }
     }
 
     private void FillSavannaBackground(Color32[] pixels, int texW, int texH, Color dryColor, Color greenishColor, int seed)
