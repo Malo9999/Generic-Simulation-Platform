@@ -798,6 +798,7 @@ namespace GSP.TrackEditor.Editor
                 return null;
             }
 
+            string fallbackNode = null;
             for (var i = 0; i < placed.piece.connectors.Length; i++)
             {
                 var connector = placed.piece.connectors[i];
@@ -806,20 +807,29 @@ namespace GSP.TrackEditor.Editor
                     continue;
                 }
 
-                if (string.IsNullOrWhiteSpace(connector.id) ||
-                    connector.id.IndexOf(idToken, StringComparison.OrdinalIgnoreCase) < 0)
+                if (string.IsNullOrWhiteSpace(connector.id))
                 {
                     continue;
                 }
 
                 var node = $"{pieceGuid}:{i}";
-                if (graph.ContainsKey(node))
+                if (!graph.ContainsKey(node))
+                {
+                    continue;
+                }
+
+                if (string.Equals(connector.id, idToken, StringComparison.OrdinalIgnoreCase))
                 {
                     return node;
                 }
+
+                if (connector.id.IndexOf(idToken, StringComparison.OrdinalIgnoreCase) >= 0 && fallbackNode == null)
+                {
+                    fallbackNode = node;
+                }
             }
 
-            return null;
+            return fallbackNode;
         }
 
         private enum PitPolylineKind
