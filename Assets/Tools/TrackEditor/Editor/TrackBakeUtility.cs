@@ -9,6 +9,20 @@ namespace GSP.TrackEditor.Editor
 {
     public static class TrackBakeUtility
     {
+        private readonly struct OrderedSegment
+        {
+            public OrderedSegment(string pieceGuid, TrackSegment segment, bool reverse)
+            {
+                PieceGuid = pieceGuid;
+                Segment = segment;
+                Reverse = reverse;
+            }
+
+            public string PieceGuid { get; }
+            public TrackSegment Segment { get; }
+            public bool Reverse { get; }
+        }
+
         public class ValidationReport
         {
             public readonly List<string> Errors = new();
@@ -84,15 +98,20 @@ namespace GSP.TrackEditor.Editor
             baked.startGridSlots = layout.startGridSlots != null ? new List<TrackSlot>(layout.startGridSlots) : new List<TrackSlot>();
 
             var implicitPitLinks = BuildImplicitLinks(pieceMap, TrackConnectorRole.Pit, 0.06f);
-            var pitSegments = BuildOrderedSegments(layout, pieceMap, TrackConnectorRole.Pit, implicitPitLinks, allowOpenPath: true);
+            var pitSegments = BuildOrderedPitPathSegments(layout, pieceMap, implicitPitLinks);
             if (pitSegments.Count > 0)
             {
-                baked.pitCenterline = Stitch(pitSegments.Select(s => TransformPolyline(pieceMap[s.pieceGuid], s.segment.localCenterline)).ToList());
-                baked.pitLeftBoundary = Stitch(pitSegments.Select(s => TransformPolyline(pieceMap[s.pieceGuid], s.segment.localLeftBoundary)).ToList());
-                baked.pitRightBoundary = Stitch(pitSegments.Select(s => TransformPolyline(pieceMap[s.pieceGuid], s.segment.localRightBoundary)).ToList());
+                baked.pitCenterline = Stitch(pitSegments.Select(s => TransformPolyline(pieceMap[s.PieceGuid], s.Segment.localCenterline, s.Reverse)).ToList(), closeLoop: false);
+                baked.pitLeftBoundary = Stitch(pitSegments.Select(s => TransformPolyline(pieceMap[s.PieceGuid], s.Segment.localLeftBoundary, s.Reverse)).ToList(), closeLoop: false);
+                baked.pitRightBoundary = Stitch(pitSegments.Select(s => TransformPolyline(pieceMap[s.PieceGuid], s.Segment.localRightBoundary, s.Reverse)).ToList(), closeLoop: false);
             }
             else
             {
+                if (layout.pieces.Any(p => p?.piece != null && (p.piece.category == "Pit" || p.piece.category == "PitLane")))
+                {
+                    Debug.LogWarning("Track bake: could not build ordered pit path from PitEntry to PitExit; baked pit geometry was omitted.");
+                }
+
                 baked.pitCenterline = null;
                 baked.pitLeftBoundary = null;
                 baked.pitRightBoundary = null;
@@ -583,37 +602,157 @@ namespace GSP.TrackEditor.Editor
             return ordered;
         }
 
-        private static List<(string pieceGuid, TrackSegment segment)> BuildOrderedSegments(
+        private static List<OrderedSegment> BuildOrderedPitPathSegments(
             TrackLayout layout,
             Dictionary<string, PlacedPiece> pieceMap,
-            TrackConnectorRole role,
-            List<(string aGuid, int aIdx, string bGuid, int bIdx)> extraLinks = null,
-            bool allowOpenPath = false)
+            List<(string aGuid, int aIdx, string bGuid, int bIdx)> implicitPitLinks)
         {
-            var result = new List<(string pieceGuid, TrackSegment segment)>();
-
-            foreach (var placed in pieceMap.Values)
+            var ordered = new List<OrderedSegment>();
+            if (layout == null || pieceMap == null || pieceMap.Count == 0)
             {
-                if (placed.piece?.segments == null)
+                return ordered;
+            }
+
+            var entryGuid = !string.IsNullOrWhiteSpace(layout.pitEntryGuid) && pieceMap.ContainsKey(layout.pitEntryGuid)
+                ? layout.pitEntryGuid
+                : layout.pieces.FirstOrDefault(p => p?.piece != null && p.piece.category == "Pit" && p.piece.pieceId.Contains("PitEntry"))?.guid;
+            var exitGuid = !string.IsNullOrWhiteSpace(layout.pitExitGuid) && pieceMap.ContainsKey(layout.pitExitGuid)
+                ? layout.pitExitGuid
+                : layout.pieces.FirstOrDefault(p => p?.piece != null && p.piece.category == "Pit" && p.piece.pieceId.Contains("PitExit"))?.guid;
+
+            if (string.IsNullOrWhiteSpace(entryGuid) || string.IsNullOrWhiteSpace(exitGuid))
+            {
+                Debug.LogWarning("Track bake: pit path ordering failed because PitEntry/PitExit could not be resolved.");
+                return ordered;
+            }
+
+            var graph = BuildConnectorGraph(layout, pieceMap, TrackConnectorRole.Pit, implicitPitLinks);
+            if (graph.Count == 0)
+            {
+                Debug.LogWarning("Track bake: pit path ordering failed because no pit connector graph could be built.");
+                return ordered;
+            }
+
+            var start = FindPitConnectorNode(pieceMap, graph, entryGuid, "PitOut");
+            var end = FindPitConnectorNode(pieceMap, graph, exitGuid, "PitIn");
+            if (string.IsNullOrWhiteSpace(start) || string.IsNullOrWhiteSpace(end))
+            {
+                Debug.LogWarning("Track bake: pit path ordering failed because PitOut/PitIn connectors were not found on PitEntry/PitExit.");
+                return ordered;
+            }
+
+            var current = start;
+            string prev = null;
+            var visited = new HashSet<string> { current };
+            var guard = 0;
+            var guardMax = graph.Count * 2;
+
+            while (current != end && guard++ < guardMax)
+            {
+                if (!graph.TryGetValue(current, out var neighbours) || neighbours.Count == 0)
+                {
+                    Debug.LogWarning($"Track bake: pit path ordering failed at {current} (no neighbours).");
+                    return new List<OrderedSegment>();
+                }
+
+                var nextCandidates = neighbours
+                    .Where(n => n != prev && !visited.Contains(n))
+                    .OrderBy(n => n, StringComparer.Ordinal)
+                    .ToList();
+                if (nextCandidates.Count == 0)
+                {
+                    Debug.LogWarning($"Track bake: pit path ordering failed at {current} (dead end before PitExit).");
+                    return new List<OrderedSegment>();
+                }
+
+                if (nextCandidates.Count > 1)
+                {
+                    Debug.LogWarning($"Track bake: ambiguous pit path at {current}; selecting first of {nextCandidates.Count} candidates.");
+                }
+
+                var next = nextCandidates[0];
+                if (TryParseNode(current, out var currentGuid, out var currentIdx) &&
+                    TryParseNode(next, out var nextGuid, out var nextIdx) &&
+                    currentGuid == nextGuid &&
+                    pieceMap.TryGetValue(currentGuid, out var placed) &&
+                    placed.piece?.segments != null)
+                {
+                    var forward = placed.piece.segments.FirstOrDefault(s =>
+                        SegmentMatchesRole(s, TrackConnectorRole.Pit) &&
+                        s.fromConnectorIndex == currentIdx &&
+                        s.toConnectorIndex == nextIdx);
+                    if (forward != null)
+                    {
+                        ordered.Add(new OrderedSegment(currentGuid, forward, reverse: false));
+                    }
+                    else
+                    {
+                        var reverse = placed.piece.segments.FirstOrDefault(s =>
+                            SegmentMatchesRole(s, TrackConnectorRole.Pit) &&
+                            s.fromConnectorIndex == nextIdx &&
+                            s.toConnectorIndex == currentIdx);
+                        if (reverse != null)
+                        {
+                            ordered.Add(new OrderedSegment(currentGuid, reverse, reverse: true));
+                        }
+                    }
+                }
+
+                prev = current;
+                current = next;
+                visited.Add(current);
+            }
+
+            if (current != end)
+            {
+                Debug.LogWarning("Track bake: pit path ordering failed to reach PitExit from PitEntry.");
+                return new List<OrderedSegment>();
+            }
+
+            if (ordered.Count == 0)
+            {
+                Debug.LogWarning("Track bake: pit path ordering found no traversable pit segments from PitEntry to PitExit.");
+            }
+
+            return ordered;
+        }
+
+        private static string FindPitConnectorNode(
+            Dictionary<string, PlacedPiece> pieceMap,
+            Dictionary<string, HashSet<string>> graph,
+            string pieceGuid,
+            string idToken)
+        {
+            if (!pieceMap.TryGetValue(pieceGuid, out var placed) || placed.piece?.connectors == null)
+            {
+                return null;
+            }
+
+            for (var i = 0; i < placed.piece.connectors.Length; i++)
+            {
+                var connector = placed.piece.connectors[i];
+                if (connector == null || connector.role != TrackConnectorRole.Pit)
                 {
                     continue;
                 }
 
-                foreach (var segment in placed.piece.segments)
+                if (string.IsNullOrWhiteSpace(connector.id) ||
+                    connector.id.IndexOf(idToken, StringComparison.OrdinalIgnoreCase) < 0)
                 {
-                    if (!SegmentMatchesRole(segment, role))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    result.Add((placed.guid, segment));
+                var node = $"{pieceGuid}:{i}";
+                if (graph.ContainsKey(node))
+                {
+                    return node;
                 }
             }
 
-            return result;
+            return null;
         }
 
-        private static Vector2[] TransformPolyline(PlacedPiece placed, Vector2[] local)
+        private static Vector2[] TransformPolyline(PlacedPiece placed, Vector2[] local, bool reverse = false)
         {
             if (local == null)
             {
@@ -621,15 +760,25 @@ namespace GSP.TrackEditor.Editor
             }
 
             var output = new Vector2[local.Length];
-            for (var i = 0; i < local.Length; i++)
+            if (!reverse)
             {
-                output[i] = TrackMathUtil.ToWorld(placed, local[i]);
+                for (var i = 0; i < local.Length; i++)
+                {
+                    output[i] = TrackMathUtil.ToWorld(placed, local[i]);
+                }
+            }
+            else
+            {
+                for (var i = 0; i < local.Length; i++)
+                {
+                    output[i] = TrackMathUtil.ToWorld(placed, local[local.Length - 1 - i]);
+                }
             }
 
             return output;
         }
 
-        private static Vector2[] Stitch(List<Vector2[]> polylines)
+        private static Vector2[] Stitch(List<Vector2[]> polylines, bool closeLoop = true)
         {
             var points = new List<Vector2>();
             foreach (var line in polylines)
@@ -645,7 +794,7 @@ namespace GSP.TrackEditor.Editor
                 }
             }
 
-            if (points.Count > 1 && Vector2.Distance(points[0], points[^1]) > TrackMathUtil.Epsilon)
+            if (closeLoop && points.Count > 1 && Vector2.Distance(points[0], points[^1]) > TrackMathUtil.Epsilon)
             {
                 points.Add(points[0]);
             }
