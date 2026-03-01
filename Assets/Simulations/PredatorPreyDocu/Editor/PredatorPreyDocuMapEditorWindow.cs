@@ -237,7 +237,7 @@ public sealed class PredatorPreyDocuMapEditorWindow : EditorWindow
             return;
         }
 
-        var runners = FindObjectsOfType<PredatorPreyDocuRunner>();
+        var runners = UnityEngine.Object.FindObjectsByType<PredatorPreyDocuRunner>(FindObjectsSortMode.None);
         for (var i = 0; i < runners.Length; i++)
         {
             runners[i].RebuildMapPreview();
