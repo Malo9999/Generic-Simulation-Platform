@@ -9,7 +9,7 @@ namespace GSP.TrackEditor.Editor
 {
     /*
     HOW TO TEST
-    1) Unity: GSP -> TrackEditor -> Create Default Track Pieces (must rebuild defaults so new PitLane + Hairpin exist).
+    1) Unity: GSP -> TrackEditor -> Create Default Track Pieces (must rebuild defaults pieces).
     2) Open: GSP -> TrackEditor -> TrackEditor
     3) New Layout
     4) Place a few pieces floating (drop anywhere): should work (no rejection).
@@ -26,8 +26,6 @@ namespace GSP.TrackEditor.Editor
     9) Pit lane:
        - Place Pit Entry; connect PitOut using "Pit Straight (Pit)" and "Pit Corner 90 (Pit)".
        - Pit connectors should be magenta; snapping should be obvious.
-    10) Hairpin:
-       - Place "Hairpin 180 (Main)" and verify it looks like a sane U-turn segment.
     */
     public class TrackEditorWindow : EditorWindow
     {
@@ -214,10 +212,19 @@ namespace GSP.TrackEditor.Editor
                 GenerateStartGrid(10);
             }
 
+            if (GUILayout.Button("Fix Links (from snapped geometry)"))
+            {
+                FixLinksFromSnappedGeometry();
+            }
+
             if (GUILayout.Button("Clear Start/Finish"))
             {
                 layout.startFinish = null;
-                layout.startGridSlots.Clear();
+                if (layout.startGridSlots != null)
+                {
+                    layout.startGridSlots.Clear();
+                }
+
                 EditorUtility.SetDirty(layout);
                 Repaint();
             }
@@ -247,6 +254,59 @@ namespace GSP.TrackEditor.Editor
             GUILayout.EndArea();
         }
 
+
+        private void FixLinksFromSnappedGeometry()
+        {
+            if (layout == null)
+            {
+                return;
+            }
+
+            var implicitMain = TrackBakeUtility.GetImplicitLinks(layout, TrackConnectorRole.Main);
+            var implicitPit = TrackBakeUtility.GetImplicitLinks(layout, TrackConnectorRole.Pit);
+            var allImplicit = implicitMain.Concat(implicitPit);
+
+            var existing = new HashSet<string>(layout.links.Select(l => NormalizeLinkKey(l.pieceGuidA, l.connectorIndexA, l.pieceGuidB, l.connectorIndexB)));
+            var added = 0;
+            foreach (var link in allImplicit)
+            {
+                var key = NormalizeLinkKey(link.aGuid, link.aIdx, link.bGuid, link.bIdx);
+                if (!existing.Add(key))
+                {
+                    continue;
+                }
+
+                layout.links.Add(new ConnectorLink
+                {
+                    pieceGuidA = link.aGuid,
+                    connectorIndexA = link.aIdx,
+                    pieceGuidB = link.bGuid,
+                    connectorIndexB = link.bIdx
+                });
+                added++;
+            }
+
+            if (added > 0)
+            {
+                EditorUtility.SetDirty(layout);
+                status = $"Added {added} missing link(s) from snapped geometry.";
+            }
+            else
+            {
+                status = "No missing links were found.";
+            }
+
+            Repaint();
+        }
+
+        private static string NormalizeLinkKey(string aGuid, int aIdx, string bGuid, int bIdx)
+        {
+            var left = $"{aGuid}:{aIdx:D4}";
+            var right = $"{bGuid}:{bIdx:D4}";
+            return string.CompareOrdinal(left, right) <= 0
+                ? $"{left}|{right}"
+                : $"{right}|{left}";
+        }
         private void DrawPalette(Rect rect)
         {
             GUILayout.BeginArea(rect, EditorStyles.helpBox);
@@ -1444,11 +1504,7 @@ namespace GSP.TrackEditor.Editor
 
         private bool IsStartFinishSet()
         {
-            return layout != null &&
-                   layout.startFinish != null &&
-                   (layout.startFinish.worldDir.sqrMagnitude > 0.001f ||
-                    layout.startFinish.worldPos.sqrMagnitude > 0.001f ||
-                    !string.IsNullOrEmpty(layout.startFinish.pieceGuid));
+            return layout != null && layout.startFinish != null;
         }
 
         private bool HasStartMarker()

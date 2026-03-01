@@ -16,5 +16,8 @@ namespace GSP.TrackEditor
         public Vector2[] pitLeftBoundary;
         public Vector2[] pitRightBoundary;
         public float[] cumulativeMainLength;
+        public Vector2 startFinishPos;
+        public Vector2 startFinishDir;
+        public float startFinishDistance;
     }
 }
