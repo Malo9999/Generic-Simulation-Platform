@@ -1,0 +1,322 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d326ef2582144697b86af9770f03f856, type: 3}
+  m_Name: TrackLayout-NEW
+  m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
+  pieces:
+  - guid: 84a27c503aea4c959da2cbd725d9654f
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 5.430552, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 8f6c7c84c217407fba136d54f3657e0b
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 25.430553, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 297104e30fb64b92928253fbf6fd068a
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -34.569443, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 8aa9dfeb4c5d44a6854bc213b98e28e1
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 45.430553, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 49920fee8b6948c68c47d15c66906a8f
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 85.43056, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: ac7956c166a94f1fb85505e63e1b78ee
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -54.569443, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 7dcad37071814e919c5ec090be6b0e90
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 105.43056, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: dde0928be2cc494680d5619b58fcf571
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -74.569435, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: cb6e623e1cc04ff9948cf6c2f4d51d34
+    piece: {fileID: 11400000, guid: e82d7adad2ad1c14cbdbdff5528af73c, type: 2}
+    position: {x: -14.569447, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 4a664c8065f34f40862fb3c3304e5b61
+    piece: {fileID: 11400000, guid: 276f1c16c46d05349a94b73c6bd33751, type: 2}
+    position: {x: 5.4305534, y: -7.690269}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: c738040e9ba5415d8439ffcf5011db97
+    piece: {fileID: 11400000, guid: 276f1c16c46d05349a94b73c6bd33751, type: 2}
+    position: {x: 25.430553, y: -7.690269}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: f2838a8507fc4cc9a554315db7d21c47
+    piece: {fileID: 11400000, guid: 276f1c16c46d05349a94b73c6bd33751, type: 2}
+    position: {x: 45.430553, y: -7.690269}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: c433a9ad1ea440189c2120793a2db412
+    piece: {fileID: 11400000, guid: cd2ea367ffe8acd4ebaaf49c1c79eb09, type: 2}
+    position: {x: 65.43056, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: be6558b8d12e4112a2837e914d275090
+    piece: {fileID: 11400000, guid: 209f5d0e7f7c4b24f83eba66de36265b, type: 2}
+    position: {x: 125.43056, y: 1.9097306}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 293d642312b34db1b86f5e56125e27be
+    piece: {fileID: 11400000, guid: 69ddd97a83254a64fa5f36eabe42addd, type: 2}
+    position: {x: -94.569435, y: 1.909732}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: e04b9c05de55431ba7a6ed36e352d9bb
+    piece: {fileID: 11400000, guid: fe178f4c75bcd44438e81583f4b510a2, type: 2}
+    position: {x: 125.43056, y: -18.09027}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 841eb97b389c49b486743756868baeaf
+    piece: {fileID: 11400000, guid: fe178f4c75bcd44438e81583f4b510a2, type: 2}
+    position: {x: -94.569435, y: -18.09027}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 4509dd1db7ba46ebb5a8af04923442aa
+    piece: {fileID: 11400000, guid: ed1dfb0d89eaff9458e1a56bbe8b0c4e, type: 2}
+    position: {x: -94.569435, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 6865a7011a094be6acc7cf8d3e7bd908
+    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
+    position: {x: 125.43056, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 29d88299612a4feaa8d6f7ec64e9c398
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: 105.43056, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: aa3cdd20e7244fefbc0281b28a39245a
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -74.569435, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: e8968f2bf30649cabed431aae656578e
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -54.569435, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 77ac748022f8401783068c75d4331e32
+    piece: {fileID: 11400000, guid: 475cece9109624c4ca6cbfaa493d5321, type: 2}
+    position: {x: 85.43056, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: e21d4a9cc97f4004af4514c9e728f343
+    piece: {fileID: 11400000, guid: a932bf65cbe22a84ea1013baa92d3613, type: 2}
+    position: {x: 65.43056, y: -58.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: ecf205dd50624a708b290579d7849c26
+    piece: {fileID: 11400000, guid: f81152b5d41d9f4418ac4e2360303c02, type: 2}
+    position: {x: 45.430557, y: -58.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 3adcc0733d1f4ba7b90be9e6a930a503
+    piece: {fileID: 11400000, guid: 488b5975e85419f499b301ef387f9ca4, type: 2}
+    position: {x: 25.430557, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 7c495f6aa5f04a2d95b5991d6f9f8f21
+    piece: {fileID: 11400000, guid: 209f5d0e7f7c4b24f83eba66de36265b, type: 2}
+    position: {x: -34.569435, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 6d61b89979ea4274ba0f78157ef6ee56
+    piece: {fileID: 11400000, guid: ed1dfb0d89eaff9458e1a56bbe8b0c4e, type: 2}
+    position: {x: -34.569435, y: -58.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: c579a7a6a48e403a8b87f36950127edc
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -14.569435, y: -58.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 931a41681ce04a769fdf154461bd4f09
+    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
+    position: {x: 5.430565, y: -58.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: f16b635506794872bb11a3358867095e
+    piece: {fileID: 11400000, guid: 69ddd97a83254a64fa5f36eabe42addd, type: 2}
+    position: {x: 5.4305573, y: -38.090267}
+    rotationSteps45: 0
+    mirrored: 0
+  links:
+  - pieceGuidA: 84a27c503aea4c959da2cbd725d9654f
+    connectorIndexA: 1
+    pieceGuidB: 8f6c7c84c217407fba136d54f3657e0b
+    connectorIndexB: 0
+  - pieceGuidA: 8f6c7c84c217407fba136d54f3657e0b
+    connectorIndexA: 1
+    pieceGuidB: 8aa9dfeb4c5d44a6854bc213b98e28e1
+    connectorIndexB: 0
+  - pieceGuidA: 49920fee8b6948c68c47d15c66906a8f
+    connectorIndexA: 1
+    pieceGuidB: 7dcad37071814e919c5ec090be6b0e90
+    connectorIndexB: 0
+  - pieceGuidA: ac7956c166a94f1fb85505e63e1b78ee
+    connectorIndexA: 0
+    pieceGuidB: dde0928be2cc494680d5619b58fcf571
+    connectorIndexB: 1
+  - pieceGuidA: cb6e623e1cc04ff9948cf6c2f4d51d34
+    connectorIndexA: 0
+    pieceGuidB: 297104e30fb64b92928253fbf6fd068a
+    connectorIndexB: 1
+  - pieceGuidA: 84a27c503aea4c959da2cbd725d9654f
+    connectorIndexA: 0
+    pieceGuidB: cb6e623e1cc04ff9948cf6c2f4d51d34
+    connectorIndexB: 1
+  - pieceGuidA: 297104e30fb64b92928253fbf6fd068a
+    connectorIndexA: 0
+    pieceGuidB: ac7956c166a94f1fb85505e63e1b78ee
+    connectorIndexB: 1
+  - pieceGuidA: cb6e623e1cc04ff9948cf6c2f4d51d34
+    connectorIndexA: 2
+    pieceGuidB: 4a664c8065f34f40862fb3c3304e5b61
+    connectorIndexB: 0
+  - pieceGuidA: 4a664c8065f34f40862fb3c3304e5b61
+    connectorIndexA: 1
+    pieceGuidB: c738040e9ba5415d8439ffcf5011db97
+    connectorIndexB: 0
+  - pieceGuidA: c738040e9ba5415d8439ffcf5011db97
+    connectorIndexA: 1
+    pieceGuidB: f2838a8507fc4cc9a554315db7d21c47
+    connectorIndexB: 0
+  - pieceGuidA: 7dcad37071814e919c5ec090be6b0e90
+    connectorIndexA: 1
+    pieceGuidB: be6558b8d12e4112a2837e914d275090
+    connectorIndexB: 0
+  - pieceGuidA: dde0928be2cc494680d5619b58fcf571
+    connectorIndexA: 0
+    pieceGuidB: 293d642312b34db1b86f5e56125e27be
+    connectorIndexB: 1
+  - pieceGuidA: be6558b8d12e4112a2837e914d275090
+    connectorIndexA: 1
+    pieceGuidB: e04b9c05de55431ba7a6ed36e352d9bb
+    connectorIndexB: 0
+  - pieceGuidA: 293d642312b34db1b86f5e56125e27be
+    connectorIndexA: 0
+    pieceGuidB: 841eb97b389c49b486743756868baeaf
+    connectorIndexB: 0
+  - pieceGuidA: 841eb97b389c49b486743756868baeaf
+    connectorIndexA: 1
+    pieceGuidB: 4509dd1db7ba46ebb5a8af04923442aa
+    connectorIndexB: 1
+  - pieceGuidA: e04b9c05de55431ba7a6ed36e352d9bb
+    connectorIndexA: 1
+    pieceGuidB: 6865a7011a094be6acc7cf8d3e7bd908
+    connectorIndexB: 0
+  - pieceGuidA: 6865a7011a094be6acc7cf8d3e7bd908
+    connectorIndexA: 1
+    pieceGuidB: 29d88299612a4feaa8d6f7ec64e9c398
+    connectorIndexB: 1
+  - pieceGuidA: 4509dd1db7ba46ebb5a8af04923442aa
+    connectorIndexA: 0
+    pieceGuidB: aa3cdd20e7244fefbc0281b28a39245a
+    connectorIndexB: 0
+  - pieceGuidA: aa3cdd20e7244fefbc0281b28a39245a
+    connectorIndexA: 1
+    pieceGuidB: e8968f2bf30649cabed431aae656578e
+    connectorIndexB: 0
+  - pieceGuidA: 29d88299612a4feaa8d6f7ec64e9c398
+    connectorIndexA: 0
+    pieceGuidB: 77ac748022f8401783068c75d4331e32
+    connectorIndexB: 0
+  - pieceGuidA: 77ac748022f8401783068c75d4331e32
+    connectorIndexA: 1
+    pieceGuidB: e21d4a9cc97f4004af4514c9e728f343
+    connectorIndexB: 1
+  - pieceGuidA: e21d4a9cc97f4004af4514c9e728f343
+    connectorIndexA: 0
+    pieceGuidB: ecf205dd50624a708b290579d7849c26
+    connectorIndexB: 0
+  - pieceGuidA: ecf205dd50624a708b290579d7849c26
+    connectorIndexA: 1
+    pieceGuidB: 3adcc0733d1f4ba7b90be9e6a930a503
+    connectorIndexB: 1
+  - pieceGuidA: e8968f2bf30649cabed431aae656578e
+    connectorIndexA: 1
+    pieceGuidB: 7c495f6aa5f04a2d95b5991d6f9f8f21
+    connectorIndexB: 0
+  - pieceGuidA: 7c495f6aa5f04a2d95b5991d6f9f8f21
+    connectorIndexA: 1
+    pieceGuidB: 6d61b89979ea4274ba0f78157ef6ee56
+    connectorIndexB: 1
+  - pieceGuidA: 6d61b89979ea4274ba0f78157ef6ee56
+    connectorIndexA: 0
+    pieceGuidB: c579a7a6a48e403a8b87f36950127edc
+    connectorIndexB: 0
+  - pieceGuidA: c579a7a6a48e403a8b87f36950127edc
+    connectorIndexA: 1
+    pieceGuidB: 931a41681ce04a769fdf154461bd4f09
+    connectorIndexB: 1
+  - pieceGuidA: 3adcc0733d1f4ba7b90be9e6a930a503
+    connectorIndexA: 0
+    pieceGuidB: f16b635506794872bb11a3358867095e
+    connectorIndexB: 1
+  - pieceGuidA: 931a41681ce04a769fdf154461bd4f09
+    connectorIndexA: 0
+    pieceGuidB: f16b635506794872bb11a3358867095e
+    connectorIndexB: 0
+  - pieceGuidA: 49920fee8b6948c68c47d15c66906a8f
+    connectorIndexA: 0
+    pieceGuidB: c433a9ad1ea440189c2120793a2db412
+    connectorIndexB: 2
+  startFinish:
+    pieceGuid: 
+    segmentIndex: 0
+    connectorIndex: 0
+    worldPos: {x: 20.833334, y: 1.9097315}
+    worldDir: {x: 1, y: 0}
+  startGridSlots:
+  - pos: {x: 18.233334, y: 3.3497317}
+    dir: {x: 1, y: 0}
+  - pos: {x: 16.833334, y: 0.46973145}
+    dir: {x: 1, y: 0}
+  - pos: {x: 15.433334, y: 3.3497317}
+    dir: {x: 1, y: 0}
+  - pos: {x: 14.033335, y: 0.46973145}
+    dir: {x: 1, y: 0}
+  - pos: {x: 12.633334, y: 3.3497317}
+    dir: {x: 1, y: 0}
+  - pos: {x: 11.233335, y: 0.46973145}
+    dir: {x: 1, y: 0}
+  - pos: {x: 9.833334, y: 3.3497317}
+    dir: {x: 1, y: 0}
+  - pos: {x: 8.433334, y: 0.46973145}
+    dir: {x: 1, y: 0}
+  - pos: {x: 7.0333347, y: 3.3497317}
+    dir: {x: 1, y: 0}
+  - pos: {x: 5.633334, y: 0.46973145}
+    dir: {x: 1, y: 0}
+  pitEntryGuid: 
+  pitExitGuid: 
+  pan: {x: 0, y: 0}
+  zoom: 0.2
