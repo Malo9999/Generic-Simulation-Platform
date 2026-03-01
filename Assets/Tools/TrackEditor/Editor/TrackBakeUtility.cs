@@ -841,23 +841,26 @@ namespace GSP.TrackEditor.Editor
 
         private static Vector2[] TransformPitSegmentPolyline(PlacedPiece placed, OrderedSegment orderedSegment, PitPolylineKind kind)
         {
-            Vector2[] local;
+            Vector2[] points;
             var reverse = orderedSegment.Reverse;
 
             switch (kind)
             {
+                case PitPolylineKind.Centerline:
+                    points = orderedSegment.Segment.localCenterline;
+                    break;
                 case PitPolylineKind.LeftBoundary:
-                    local = reverse ? orderedSegment.Segment.localRightBoundary : orderedSegment.Segment.localLeftBoundary;
+                    points = reverse ? orderedSegment.Segment.localRightBoundary : orderedSegment.Segment.localLeftBoundary;
                     break;
                 case PitPolylineKind.RightBoundary:
-                    local = reverse ? orderedSegment.Segment.localLeftBoundary : orderedSegment.Segment.localRightBoundary;
+                    points = reverse ? orderedSegment.Segment.localLeftBoundary : orderedSegment.Segment.localRightBoundary;
                     break;
                 default:
-                    local = orderedSegment.Segment.localCenterline;
+                    points = orderedSegment.Segment.localCenterline;
                     break;
             }
 
-            return TransformPolyline(placed, local, reverse);
+            return TransformPolyline(placed, points, reverse);
         }
 
         private static Vector2[] TransformPolyline(PlacedPiece placed, Vector2[] local, bool reverse = false)
