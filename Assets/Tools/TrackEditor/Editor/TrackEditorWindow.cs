@@ -247,16 +247,29 @@ namespace GSP.TrackEditor.Editor
 
             if (GUILayout.Button("Snap Start/Finish to Track"))
             {
-                if (SnapStartFinishToMainLoop())
+                if (layout == null)
                 {
-                    var gridCount = layout.startGridSlots != null && layout.startGridSlots.Count > 0 ? layout.startGridSlots.Count : 10;
-                    GenerateStartGrid(gridCount);
-                    status = "Start/Finish snapped to main loop and start grid regenerated.";
+                    return;
                 }
-                else
+
+                if (layout.startFinish == null)
+                {
+                    status = "No Start/Finish set.";
+                    return;
+                }
+
+                if (!TryProjectOntoMainLoop(layout.startFinish.worldPos, out var snappedPos, out var snappedTangent))
                 {
                     status = "Main loop not valid yet.";
+                    return;
                 }
+
+                layout.startFinish.worldPos = snappedPos;
+                layout.startFinish.worldDir = snappedTangent;
+                layout.startFinish.pieceGuid = string.Empty;
+                EditorUtility.SetDirty(layout);
+                status = "Start/Finish snapped to track.";
+                Repaint();
             }
 
             if (GUILayout.Button("Fix Links (from snapped geometry)"))
@@ -790,42 +803,7 @@ namespace GSP.TrackEditor.Editor
 
                 if (_isPlacingStartFinish)
                 {
-                    if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out var mainCenterline, out _))
-                    {
-                        status = "Main loop not valid yet.";
-                        _isPlacingStartFinish = false;
-                        evt.Use();
-                        return;
-                    }
-
-                    var bestDistanceSq = float.MaxValue;
-                    var bestPoint = Vector2.zero;
-                    var bestTangent = Vector2.right;
-                    for (var i = 0; i < mainCenterline.Length - 1; i++)
-                    {
-                        var a = mainCenterline[i];
-                        var b = mainCenterline[i + 1];
-                        var ab = b - a;
-                        var segmentLengthSq = ab.sqrMagnitude;
-                        if (segmentLengthSq < 0.000001f)
-                        {
-                            continue;
-                        }
-
-                        var t = Mathf.Clamp01(Vector2.Dot(mouseWorld - a, ab) / segmentLengthSq);
-                        var candidate = a + ab * t;
-                        var distanceSq = (mouseWorld - candidate).sqrMagnitude;
-                        if (distanceSq >= bestDistanceSq)
-                        {
-                            continue;
-                        }
-
-                        bestDistanceSq = distanceSq;
-                        bestPoint = candidate;
-                        bestTangent = ab.normalized;
-                    }
-
-                    if (bestDistanceSq == float.MaxValue)
+                    if (!TryProjectOntoMainLoop(mouseWorld, out var bestPoint, out var bestTangent))
                     {
                         status = "Main loop not valid yet.";
                         _isPlacingStartFinish = false;
@@ -2345,12 +2323,7 @@ namespace GSP.TrackEditor.Editor
                 return false;
             }
 
-            if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out var mainCenterline, out _))
-            {
-                return false;
-            }
-
-            if (!TrackBakeUtility.TryFindClosestPointOnPolyline(mainCenterline, layout.startFinish.worldPos, out var closest, out var tangent, out _, out _))
+            if (!TryProjectOntoMainLoop(layout.startFinish.worldPos, out var closest, out var tangent))
             {
                 return false;
             }
@@ -2359,6 +2332,31 @@ namespace GSP.TrackEditor.Editor
             layout.startFinish.worldDir = tangent.sqrMagnitude > 0.001f ? tangent.normalized : Vector2.right;
             layout.startFinish.pieceGuid = string.Empty;
             EditorUtility.SetDirty(layout);
+            return true;
+        }
+
+        private bool TryProjectOntoMainLoop(Vector2 sourceWorldPos, out Vector2 projectedWorldPos, out Vector2 projectedForward)
+        {
+            projectedWorldPos = Vector2.zero;
+            projectedForward = Vector2.right;
+
+            if (layout == null)
+            {
+                return false;
+            }
+
+            if (!TrackBakeUtility.TryBuildMainLoopCenterline(layout, out var mainCenterline, out _))
+            {
+                return false;
+            }
+
+            if (!TrackBakeUtility.TryFindClosestPointOnPolyline(mainCenterline, sourceWorldPos, out var closest, out var tangent, out _, out _))
+            {
+                return false;
+            }
+
+            projectedWorldPos = closest;
+            projectedForward = tangent.sqrMagnitude > 0.001f ? tangent.normalized : Vector2.right;
             return true;
         }
 
