@@ -4614,29 +4614,29 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             var teamId = identities[athleteIndex].teamId;
             var allowedXLimit = teamId == 0 ? -0.6f : 0.6f;
             var canCrossCenter = ballOwnerTeam == teamId && ((teamId == 0 && ballPos.x > 0f) || (teamId == 1 && ballPos.x < 0f));
-            var v = velocities[athleteIndex];
+            var vel = velocities[athleteIndex];
             if (!canCrossCenter)
             {
                 const float leash = 0.18f;
                 if (teamId == 0 && p.x > allowedXLimit)
                 {
                     p.x = Mathf.Lerp(p.x, allowedXLimit, leash);
-                    if (v.x > 0f)
+                    if (vel.x > 0f)
                     {
-                        v.x = 0f;
+                        vel.x = 0f;
                     }
                 }
                 else if (teamId == 1 && p.x < allowedXLimit)
                 {
                     p.x = Mathf.Lerp(p.x, allowedXLimit, leash);
-                    if (v.x < 0f)
+                    if (vel.x < 0f)
                     {
-                        v.x = 0f;
+                        vel.x = 0f;
                     }
                 }
             }
 
-            velocities[athleteIndex] = v;
+            velocities[athleteIndex] = vel;
         }
 
         if (ShouldApplyWidthAnchor(identities[athleteIndex].teamId, athleteIndex) && athleteIndex != ballOwnerIndex)
