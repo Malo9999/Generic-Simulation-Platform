@@ -118,10 +118,10 @@ namespace GSP.TrackEditor.Editor
 
         public static bool TryBuildMainLoopCenterline(
             TrackLayout layout,
-            out Vector2[] mainCenterline,
+            out Vector2[] centerline,
             out float trackWidth)
         {
-            mainCenterline = null;
+            centerline = null;
             trackWidth = 8f;
             if (layout == null)
             {
@@ -134,16 +134,16 @@ namespace GSP.TrackEditor.Editor
                 return false;
             }
 
-            var implicitMainLinks = GetImplicitLinks(layout, TrackConnectorRole.Main);
+            var implicitMainLinks = BuildImplicitLinks(pieceMap, TrackConnectorRole.Main, 0.06f);
             var orderedMainSegments = BuildOrderedMainLoopSegments(layout, pieceMap, implicitMainLinks);
             if (orderedMainSegments.Count == 0)
             {
                 return false;
             }
 
-            mainCenterline = Stitch(orderedMainSegments.Select(s => TransformPolyline(pieceMap[s.pieceGuid], s.segment.localCenterline)).ToList());
+            centerline = Stitch(orderedMainSegments.Select(s => TransformPolyline(pieceMap[s.pieceGuid], s.segment.localCenterline)).ToList());
             trackWidth = layout.pieces.First(p => p?.piece != null).piece.trackWidth;
-            return mainCenterline != null && mainCenterline.Length >= 2;
+            return centerline != null && centerline.Length >= 2;
         }
 
         private static void ValidateWidths(TrackLayout layout, Dictionary<string, PlacedPiece> pieceMap, ValidationReport report)
