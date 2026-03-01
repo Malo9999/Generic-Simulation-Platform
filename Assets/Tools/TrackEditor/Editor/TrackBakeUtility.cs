@@ -322,44 +322,97 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            var entryPrefix = $"{pitEntries[0].guid}:";
-            var exitPrefix = $"{pitExits[0].guid}:";
-            var starts = pitGraph.Keys.Where(k => k.StartsWith(entryPrefix)).ToList();
-            var targets = new HashSet<string>(pitGraph.Keys.Where(k => k.StartsWith(exitPrefix)));
-            var reachedExit = false;
-            foreach (var start in starts)
+            string FindFirstNodeWithDegree(int degree)
             {
-                var stack = new Stack<string>();
-                var seen = new HashSet<string>();
-                stack.Push(start);
-                seen.Add(start);
-                while (stack.Count > 0)
+                foreach (var kvp in pitGraph)
                 {
-                    var cur = stack.Pop();
-                    if (targets.Contains(cur))
+                    if (kvp.Value.Count == degree)
                     {
-                        reachedExit = true;
-                        break;
+                        return kvp.Key;
                     }
+                }
 
-                    if (!pitGraph.TryGetValue(cur, out var neighbours))
-                    {
-                        continue;
-                    }
+                return pitGraph.Keys.First();
+            }
 
-                    foreach (var next in neighbours)
+            void ReportAmbiguousPitPath(string node, int degree)
+            {
+                report.Errors.Add($"Pit path is ambiguous (fork). Node={node} degree={degree}. Fix layout so pit is one open chain from PitEntry(PitOut) to PitExit(PitIn).");
+            }
+
+            var components = 0;
+            var globalVisited = new HashSet<string>();
+            foreach (var node in pitGraph.Keys)
+            {
+                if (!globalVisited.Add(node))
+                {
+                    continue;
+                }
+
+                components++;
+                var queue = new Queue<string>();
+                queue.Enqueue(node);
+                while (queue.Count > 0)
+                {
+                    var current = queue.Dequeue();
+                    foreach (var next in pitGraph[current])
                     {
-                        if (seen.Add(next))
+                        if (!globalVisited.Add(next))
                         {
-                            stack.Push(next);
+                            continue;
                         }
+
+                        queue.Enqueue(next);
                     }
                 }
             }
 
-            if (!reachedExit)
+            if (components != 1)
             {
-                report.Errors.Add("Pit path does not connect PitEntry to PitExit.");
+                var node = pitGraph.Keys.First();
+                ReportAmbiguousPitPath(node, pitGraph[node].Count);
+                return;
+            }
+
+            foreach (var kvp in pitGraph)
+            {
+                if (kvp.Value.Count <= 2)
+                {
+                    continue;
+                }
+
+                ReportAmbiguousPitPath(kvp.Key, kvp.Value.Count);
+                return;
+            }
+
+            var endpoints = pitGraph.Where(kvp => kvp.Value.Count == 1).Select(kvp => kvp.Key).ToList();
+            if (endpoints.Count != 2)
+            {
+                var node = FindFirstNodeWithDegree(endpoints.Count == 0 ? 0 : 1);
+                ReportAmbiguousPitPath(node, pitGraph[node].Count);
+                return;
+            }
+
+            var entryPitOutNode = FindPitConnectorNode(pieceMap, pitGraph, pitEntries[0].guid, "PitOut");
+            var exitPitInNode = FindPitConnectorNode(pieceMap, pitGraph, pitExits[0].guid, "PitIn");
+            if (string.IsNullOrWhiteSpace(entryPitOutNode) || string.IsNullOrWhiteSpace(exitPitInNode))
+            {
+                report.Errors.Add("Pit path does not expose PitEntry(PitOut) and PitExit(PitIn) connectors.");
+                return;
+            }
+
+            var endpointSet = new HashSet<string>(endpoints);
+            if (!endpointSet.Contains(entryPitOutNode) || !endpointSet.Contains(exitPitInNode))
+            {
+                var node = endpoints.FirstOrDefault(n => n != entryPitOutNode && n != exitPitInNode) ?? endpoints[0];
+                ReportAmbiguousPitPath(node, pitGraph[node].Count);
+                return;
+            }
+
+            var nonChainNode = pitGraph.FirstOrDefault(kvp => kvp.Value.Count != 2 && !endpointSet.Contains(kvp.Key));
+            if (!string.IsNullOrWhiteSpace(nonChainNode.Key))
+            {
+                ReportAmbiguousPitPath(nonChainNode.Key, nonChainNode.Value.Count);
             }
         }
 
