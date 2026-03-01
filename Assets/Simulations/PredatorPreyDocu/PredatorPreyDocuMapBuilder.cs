@@ -12,6 +12,7 @@ public sealed class PredatorPreyDocuMapBuilder
     private readonly List<Vector2> shadeNodes = new();
 
     private Transform mapRoot;
+    public bool debugShowArenaBounds = false;
     public IReadOnlyList<Vector2> WaterNodes => waterNodes;
     public IReadOnlyList<Vector2> ShadeNodes => shadeNodes;
 
@@ -153,19 +154,22 @@ public sealed class PredatorPreyDocuMapBuilder
 
         ConstrainRendererToArena(renderer, halfWidth, halfHeight, margin: 0f);
 
-        var outlineGo = new GameObject("ArenaBoundsOutline");
-        outlineGo.transform.SetParent(mapRoot, false);
-        outlineGo.transform.position = Vector3.zero;
-        outlineGo.transform.localRotation = Quaternion.identity;
-        outlineGo.transform.localScale = new Vector3(arenaW, arenaH, 1f);
+        if (debugShowArenaBounds)
+        {
+            var outlineGo = new GameObject("ArenaBoundsOutline");
+            outlineGo.transform.SetParent(mapRoot, false);
+            outlineGo.transform.position = Vector3.zero;
+            outlineGo.transform.localRotation = Quaternion.identity;
+            outlineGo.transform.localScale = new Vector3(arenaW, arenaH, 1f);
 
-        var outlineRenderer = outlineGo.AddComponent<SpriteRenderer>();
-        outlineRenderer.sprite = PrimitiveSpriteLibrary.RoundedRectOutline();
-        outlineRenderer.sortingLayerName = SortingLayerDefault;
-        outlineRenderer.sortingOrder = ArenaOutlineOrder;
-        outlineRenderer.color = new Color(0f, 0f, 0f, 0.3f);
+            var outlineRenderer = outlineGo.AddComponent<SpriteRenderer>();
+            outlineRenderer.sprite = PrimitiveSpriteLibrary.RoundedRectOutline();
+            outlineRenderer.sortingLayerName = SortingLayerDefault;
+            outlineRenderer.sortingOrder = ArenaOutlineOrder;
+            outlineRenderer.color = new Color(0f, 0f, 0f, 0.3f);
 
-        ConstrainRendererToArena(outlineRenderer, halfWidth, halfHeight, margin: 0f);
+            ConstrainRendererToArena(outlineRenderer, halfWidth, halfHeight, margin: 0f);
+        }
     }
 
     private static void ConstrainRendererToArena(SpriteRenderer sr, float halfWidth, float halfHeight, float margin = 0f)
