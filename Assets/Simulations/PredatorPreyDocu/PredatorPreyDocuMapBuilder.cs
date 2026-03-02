@@ -216,11 +216,9 @@ public sealed class PredatorPreyDocuMapBuilder
         const int veinCount = 3;
         const float stepLen = 1.2f;
         const int maxSteps = 180;
-        const float widthStart = 1.9f;
-        const float widthDecay = 0.975f;
-        const float alphaStart = 200f;
-        const float alphaDecay = 0.990f;
-        const int blendSteps = 10;
+        const float alphaPeak = 150f;
+        const float widthPeakWorld = 1.8f;
+        const float widthMinWorld = 0.7f;
         var maxDistance = halfW * 0.80f;
 
         for (var v = 0; v < veinCount; v++)
@@ -231,21 +229,18 @@ public sealed class PredatorPreyDocuMapBuilder
             var sign = rng.NextFloat01() < 0.5f ? -1f : 1f;
             var dir = new Vector2(sign, rng.Range(-0.15f, 0.15f)).normalized;
             var phase = rng.Range(0f, Mathf.PI * 2f);
+            var phase2 = rng.Range(0f, Mathf.PI * 2f);
             var freq = rng.Range(0.10f, 0.22f);
+            var freq2 = rng.Range(0.22f, 0.40f);
             var curlAmp = rng.Range(0.45f, 0.85f);
+            var joinSteps = rng.NextInt(10, 15);
             if (dir.sqrMagnitude < 0.0001f)
             {
                 dir = new Vector2(sign, 0f);
             }
 
-            var width = widthStart;
-            var alpha = alphaStart;
+            var veinPoints = new List<Vector2>(maxSteps + 1) { pos };
             var (prevPx, prevPy) = WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH);
-
-            if (DebugPaintDots)
-            {
-                PaintDisc(seasonalBuf, texW, texH, prevPx, prevPy, 2, new Color32(255, 120, 120, 255));
-            }
 
             for (var step = 0; step < maxSteps; step++)
             {
@@ -253,7 +248,11 @@ public sealed class PredatorPreyDocuMapBuilder
                 var rx = riverModel.EvaluateX(pos.y, halfW, halfH);
                 var awayFromRiver = new Vector2(Mathf.Sign(pos.x - rx), 0f);
                 awayFromRiver = awayFromRiver.sqrMagnitude < 0.0001f ? outward : awayFromRiver;
-                var curl = new Vector2(0f, Mathf.Sin(phase + (step * freq)) * curlAmp);
+                var inJoin = step < joinSteps;
+                var joinCurlAmp = inJoin ? curlAmp * 0.35f : curlAmp;
+                var curl1 = Mathf.Sin(phase + (step * freq)) * joinCurlAmp;
+                var curl2 = Mathf.Sin(phase2 + (step * freq2)) * (joinCurlAmp * 0.35f);
+                var curl = new Vector2(0f, curl1 + curl2);
                 var wiggle = new Vector2(0f, rng.Range(-0.35f, 0.35f));
 
                 dir = ((dir * 0.78f) + (outward * 0.45f) + (awayFromRiver * 0.18f) + (curl * 0.55f) + (wiggle * 0.10f)).normalized;
@@ -263,9 +262,9 @@ public sealed class PredatorPreyDocuMapBuilder
                 }
 
                 var next = pos + (dir * stepLen);
-                if (step < blendSteps)
+                if (inJoin)
                 {
-                    next.x = Mathf.Lerp(next.x, rx, 0.35f);
+                    next.x = Mathf.Lerp(next.x, rx, 0.55f);
                 }
 
                 next.x = Mathf.Clamp(next.x, -halfW, halfW);
@@ -276,27 +275,56 @@ public sealed class PredatorPreyDocuMapBuilder
                     break;
                 }
 
-                width *= widthDecay;
-                alpha *= alphaDecay;
-
-                var (px, py) = WorldToPixel(next.x, next.y, halfW, halfH, texW, texH);
-                var blendProgress = Mathf.Clamp01(step / Mathf.Max(1f, blendSteps - 1f));
-                var widthBoost = step < blendSteps ? 1.15f : 1f;
-                var alphaBoost = step < blendSteps ? 1.10f : 1f;
-                var rPx = Mathf.Max(1, Mathf.RoundToInt((width * widthBoost * 0.5f) * ppu));
-                var alphaByte = (byte)Mathf.Clamp(Mathf.RoundToInt(alpha * alphaBoost), 0, 255);
-                var rgb = Color32.Lerp(mainWater, veinWater, Mathf.SmoothStep(0f, 1f, blendProgress));
-                var col = new Color32(rgb.r, rgb.g, rgb.b, alphaByte);
-                PaintStroke(seasonalBuf, texW, texH, prevPx, prevPy, px, py, rPx, col);
-
                 pos = next;
-                prevPx = px;
-                prevPy = py;
+                veinPoints.Add(pos);
+            }
 
-                if ((rPx <= 1) && (alpha < 40f))
+            var veinSteps = veinPoints.Count - 1;
+            var widthChunkScale = 1f;
+            var alphaChunkScale = 1f;
+            for (var step = 0; step < veinSteps; step++)
+            {
+                if ((step % 8) == 0)
                 {
-                    break;
+                    widthChunkScale = 1f + rng.Range(-0.08f, 0.08f);
+                    alphaChunkScale = 1f + rng.Range(-0.06f, 0.06f);
                 }
+
+                var u = veinSteps <= 1 ? 1f : step / (float)(veinSteps - 1);
+                var rise = Mathf.SmoothStep(0.05f, 0.20f, u);
+                var fall = 1f - Mathf.SmoothStep(0.55f, 0.98f, u);
+                var env = Mathf.Clamp01(rise * fall);
+
+                if (step < joinSteps)
+                {
+                    var envJoin = Mathf.SmoothStep(0f, 1f, step / Mathf.Max(1f, (float)joinSteps));
+                    env *= envJoin;
+                }
+
+                var width = Mathf.Lerp(widthMinWorld, widthPeakWorld, env) * widthChunkScale;
+                var alpha = Mathf.Lerp(0f, alphaPeak, env) * alphaChunkScale;
+                width = Mathf.Max(widthMinWorld, width);
+                alpha = Mathf.Clamp(alpha, 0f, alphaPeak);
+
+                var from = veinPoints[step];
+                var to = veinPoints[step + 1];
+                var (px0, py0) = WorldToPixel(from.x, from.y, halfW, halfH, texW, texH);
+                var (px1, py1) = WorldToPixel(to.x, to.y, halfW, halfH, texW, texH);
+
+                var colorLerp = Mathf.SmoothStep(0f, 1f, u);
+                var rgb = Color32.Lerp(mainWater, veinWater, colorLerp);
+                if (step < joinSteps)
+                {
+                    rgb = mainWater;
+                    alpha *= 0.55f;
+                }
+
+                var rPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f) * ppu));
+                var alphaByte = (byte)Mathf.Clamp(Mathf.RoundToInt(alpha), 0, 255);
+                var col = new Color32(rgb.r, rgb.g, rgb.b, alphaByte);
+                PaintStroke(seasonalBuf, texW, texH, px0, py0, px1, py1, rPx, col);
+                prevPx = px1;
+                prevPy = py1;
             }
 
             if (DebugPaintDots)
