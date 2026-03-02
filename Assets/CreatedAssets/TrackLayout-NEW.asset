@@ -33,11 +33,6 @@ MonoBehaviour:
     position: {x: 45.430553, y: 1.9097315}
     rotationSteps45: 0
     mirrored: 0
-  - guid: 49920fee8b6948c68c47d15c66906a8f
-    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
-    position: {x: 85.43056, y: 1.9097315}
-    rotationSteps45: 0
-    mirrored: 0
   - guid: ac7956c166a94f1fb85505e63e1b78ee
     piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
     position: {x: -54.569443, y: 1.9097315}
@@ -51,31 +46,6 @@ MonoBehaviour:
   - guid: dde0928be2cc494680d5619b58fcf571
     piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
     position: {x: -74.569435, y: 1.9097315}
-    rotationSteps45: 0
-    mirrored: 0
-  - guid: cb6e623e1cc04ff9948cf6c2f4d51d34
-    piece: {fileID: 11400000, guid: e82d7adad2ad1c14cbdbdff5528af73c, type: 2}
-    position: {x: -14.569447, y: 1.9097315}
-    rotationSteps45: 0
-    mirrored: 0
-  - guid: 4a664c8065f34f40862fb3c3304e5b61
-    piece: {fileID: 11400000, guid: 276f1c16c46d05349a94b73c6bd33751, type: 2}
-    position: {x: 5.4305534, y: -7.690269}
-    rotationSteps45: 0
-    mirrored: 0
-  - guid: c738040e9ba5415d8439ffcf5011db97
-    piece: {fileID: 11400000, guid: 276f1c16c46d05349a94b73c6bd33751, type: 2}
-    position: {x: 25.430553, y: -7.690269}
-    rotationSteps45: 0
-    mirrored: 0
-  - guid: f2838a8507fc4cc9a554315db7d21c47
-    piece: {fileID: 11400000, guid: 276f1c16c46d05349a94b73c6bd33751, type: 2}
-    position: {x: 45.430553, y: -7.690269}
-    rotationSteps45: 0
-    mirrored: 0
-  - guid: c433a9ad1ea440189c2120793a2db412
-    piece: {fileID: 11400000, guid: cd2ea367ffe8acd4ebaaf49c1c79eb09, type: 2}
-    position: {x: 65.43056, y: 1.9097315}
     rotationSteps45: 0
     mirrored: 0
   - guid: be6558b8d12e4112a2837e914d275090
@@ -168,6 +138,21 @@ MonoBehaviour:
     position: {x: 5.4305573, y: -38.090267}
     rotationSteps45: 0
     mirrored: 0
+  - guid: a49ae40287f14bd297e89b698b8e01af
+    piece: {fileID: 11400000, guid: e82d7adad2ad1c14cbdbdff5528af73c, type: 2}
+    position: {x: 65.43056, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 545c8aed6da34c0eb9a2913cb2df7073
+    piece: {fileID: 11400000, guid: cd2ea367ffe8acd4ebaaf49c1c79eb09, type: 2}
+    position: {x: 85.43056, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 3bb7c2e2c4f44415a65737675b022aa3
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -14.569443, y: 1.9097315}
+    rotationSteps45: 0
+    mirrored: 0
   links:
   - pieceGuidA: 84a27c503aea4c959da2cbd725d9654f
     connectorIndexA: 1
@@ -177,38 +162,14 @@ MonoBehaviour:
     connectorIndexA: 1
     pieceGuidB: 8aa9dfeb4c5d44a6854bc213b98e28e1
     connectorIndexB: 0
-  - pieceGuidA: 49920fee8b6948c68c47d15c66906a8f
-    connectorIndexA: 1
-    pieceGuidB: 7dcad37071814e919c5ec090be6b0e90
-    connectorIndexB: 0
   - pieceGuidA: ac7956c166a94f1fb85505e63e1b78ee
     connectorIndexA: 0
     pieceGuidB: dde0928be2cc494680d5619b58fcf571
-    connectorIndexB: 1
-  - pieceGuidA: cb6e623e1cc04ff9948cf6c2f4d51d34
-    connectorIndexA: 0
-    pieceGuidB: 297104e30fb64b92928253fbf6fd068a
-    connectorIndexB: 1
-  - pieceGuidA: 84a27c503aea4c959da2cbd725d9654f
-    connectorIndexA: 0
-    pieceGuidB: cb6e623e1cc04ff9948cf6c2f4d51d34
     connectorIndexB: 1
   - pieceGuidA: 297104e30fb64b92928253fbf6fd068a
     connectorIndexA: 0
     pieceGuidB: ac7956c166a94f1fb85505e63e1b78ee
     connectorIndexB: 1
-  - pieceGuidA: cb6e623e1cc04ff9948cf6c2f4d51d34
-    connectorIndexA: 2
-    pieceGuidB: 4a664c8065f34f40862fb3c3304e5b61
-    connectorIndexB: 0
-  - pieceGuidA: 4a664c8065f34f40862fb3c3304e5b61
-    connectorIndexA: 1
-    pieceGuidB: c738040e9ba5415d8439ffcf5011db97
-    connectorIndexB: 0
-  - pieceGuidA: c738040e9ba5415d8439ffcf5011db97
-    connectorIndexA: 1
-    pieceGuidB: f2838a8507fc4cc9a554315db7d21c47
-    connectorIndexB: 0
   - pieceGuidA: 7dcad37071814e919c5ec090be6b0e90
     connectorIndexA: 1
     pieceGuidB: be6558b8d12e4112a2837e914d275090
@@ -285,10 +246,18 @@ MonoBehaviour:
     connectorIndexA: 0
     pieceGuidB: f16b635506794872bb11a3358867095e
     connectorIndexB: 0
-  - pieceGuidA: 49920fee8b6948c68c47d15c66906a8f
+  - pieceGuidA: 8aa9dfeb4c5d44a6854bc213b98e28e1
+    connectorIndexA: 1
+    pieceGuidB: a49ae40287f14bd297e89b698b8e01af
+    connectorIndexB: 0
+  - pieceGuidA: 7dcad37071814e919c5ec090be6b0e90
     connectorIndexA: 0
-    pieceGuidB: c433a9ad1ea440189c2120793a2db412
+    pieceGuidB: 545c8aed6da34c0eb9a2913cb2df7073
     connectorIndexB: 2
+  - pieceGuidA: 297104e30fb64b92928253fbf6fd068a
+    connectorIndexA: 1
+    pieceGuidB: 3bb7c2e2c4f44415a65737675b022aa3
+    connectorIndexB: 0
   startFinish:
     pieceGuid: 
     segmentIndex: 0
