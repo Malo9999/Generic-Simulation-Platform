@@ -113,6 +113,14 @@ namespace GSP.TrackEditor.Editor
         private string _lastBakedPath;
         private DebugOverlayData? _debugOverlay;
 
+        private enum SnapRejectReason
+        {
+            None,
+            RoleMismatch,
+            NameMismatch,
+            ConnectorAlreadyLinked
+        }
+
         [MenuItem("GSP/TrackEditor/TrackEditor")]
         public static void Open()
         {
@@ -1016,24 +1024,32 @@ namespace GSP.TrackEditor.Editor
                     if (_moveDragPreview.HasValue && _moveDragPreview.Value.valid)
                     {
                         var preview = _moveDragPreview.Value;
-                        foreach (var piece in layout.pieces)
+                        if (IsConnectorLinked(layout, preview.openPiece.guid, preview.openConnectorIndex)
+                            || IsConnectorLinked(layout, preview.movedPieceGuid, preview.candidateConnectorIndex))
                         {
-                            if (_dragGroup.Contains(piece.guid))
-                            {
-                                piece.position += preview.deltaWorld;
-                            }
+                            status = "Snap rejected: connector already linked.";
                         }
-
-                        layout.links.Add(new ConnectorLink
+                        else
                         {
-                            pieceGuidA = preview.openPiece.guid,
-                            connectorIndexA = preview.openConnectorIndex,
-                            pieceGuidB = preview.movedPieceGuid,
-                            connectorIndexB = preview.candidateConnectorIndex
-                        });
+                            foreach (var piece in layout.pieces)
+                            {
+                                if (_dragGroup.Contains(piece.guid))
+                                {
+                                    piece.position += preview.deltaWorld;
+                                }
+                            }
 
-                        status = "Snapped moved piece/group.";
-                        EditorUtility.SetDirty(layout);
+                            layout.links.Add(new ConnectorLink
+                            {
+                                pieceGuidA = preview.openPiece.guid,
+                                connectorIndexA = preview.openConnectorIndex,
+                                pieceGuidB = preview.movedPieceGuid,
+                                connectorIndexB = preview.candidateConnectorIndex
+                            });
+
+                            status = "Snapped moved piece/group.";
+                            EditorUtility.SetDirty(layout);
+                        }
                     }
                     else
                     {
@@ -1298,7 +1314,7 @@ namespace GSP.TrackEditor.Editor
                 mirrored = false
             };
 
-            TryFindSnap(draggedPiece, worldDrop, canvasSize, out var snapped, out _, out var bestDistPx, out var preview);
+            TryFindSnap(draggedPiece, worldDrop, canvasSize, out var snapped, out _, out var bestDistPx, out var preview, out _);
 
             DrawPieceGeometry(fallback, canvasSize, new Color(0.28f, 0.4f, 0.62f, 0.22f), new Color(0.7f, 0.8f, 0.95f, 0.45f));
             if (preview.valid)
@@ -1407,10 +1423,16 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            if (!TryFindSnap(piece, worldDrop, canvasSize, out var snapped, out var link, out var distance, out _))
+            if (!TryFindSnap(piece, worldDrop, canvasSize, out var snapped, out var link, out var distance, out _, out var rejectReason))
             {
                 layout.pieces.Add(newPlaced);
-                status = "Placed floating (drag near a connector to snap).";
+                status = rejectReason switch
+                {
+                    SnapRejectReason.RoleMismatch => "No snap candidate (role mismatch).",
+                    SnapRejectReason.NameMismatch => "No snap candidate (needs PitIn↔PitOut).",
+                    SnapRejectReason.ConnectorAlreadyLinked => "Snap rejected: connector already linked.",
+                    _ => "Placed floating (drag near a connector to snap)."
+                };
                 EditorUtility.SetDirty(layout);
                 ClearSnapLock();
                 return;
@@ -1418,6 +1440,14 @@ namespace GSP.TrackEditor.Editor
 
             snapped.guid = newPlaced.guid;
             link.pieceGuidB = snapped.guid;
+
+            if (IsConnectorLinked(layout, link.pieceGuidA, link.connectorIndexA) || IsConnectorLinked(layout, link.pieceGuidB, link.connectorIndexB))
+            {
+                status = "Snap rejected: connector already linked.";
+                EditorUtility.SetDirty(layout);
+                ClearSnapLock();
+                return;
+            }
 
             layout.pieces.Add(snapped);
             layout.links.Add(link);
@@ -1433,12 +1463,14 @@ namespace GSP.TrackEditor.Editor
             out PlacedPiece snapped,
             out ConnectorLink link,
             out float bestDistPx,
-            out SnapPreview preview)
+            out SnapPreview preview,
+            out SnapRejectReason rejectReason)
         {
             snapped = null;
             link = null;
             bestDistPx = float.MaxValue;
             preview = default;
+            rejectReason = SnapRejectReason.None;
 
             var mouseCanvas = Event.current.mousePosition;
             var openConnectors = GetOpenConnectors();
@@ -1454,6 +1486,7 @@ namespace GSP.TrackEditor.Editor
 
             if (!TrySolveSnapCandidate(piece, worldDrop, open, out snapped, out link, out preview))
             {
+                rejectReason = DetermineSnapRejectReason(piece, open.connector, open.worldDir);
                 return false;
             }
 
@@ -1546,7 +1579,12 @@ namespace GSP.TrackEditor.Editor
             for (var i = 0; i < piece.connectors.Length; i++)
             {
                 var connector = piece.connectors[i];
-                if (!RolesCompatible(connector.role, open.connector.role))
+                if (!IsRoleCompatible(connector, open.connector))
+                {
+                    continue;
+                }
+
+                if (!IsNameCompatible(connector, open.connector))
                 {
                     continue;
                 }
@@ -1664,7 +1702,12 @@ namespace GSP.TrackEditor.Editor
                     }
 
                     var connector = moved.piece.connectors[i];
-                    if (!RolesCompatible(connector.role, open.connector.role))
+                    if (!IsRoleCompatible(connector, open.connector))
+                    {
+                        continue;
+                    }
+
+                    if (!IsNameCompatible(connector, open.connector))
                     {
                         continue;
                     }
@@ -1728,7 +1771,12 @@ namespace GSP.TrackEditor.Editor
                     }
 
                     var connector = moved.piece.connectors[i];
-                    if (!RolesCompatible(connector.role, open.connector.role))
+                    if (!IsRoleCompatible(connector, open.connector))
+                    {
+                        continue;
+                    }
+
+                    if (!IsNameCompatible(connector, open.connector))
                     {
                         continue;
                     }
@@ -1822,7 +1870,12 @@ namespace GSP.TrackEditor.Editor
 
             foreach (var connector in piece.connectors)
             {
-                if (!RolesCompatible(connector.role, openConnector.role))
+                if (!IsRoleCompatible(connector, openConnector))
+                {
+                    continue;
+                }
+
+                if (!IsNameCompatible(connector, openConnector))
                 {
                     continue;
                 }
@@ -1865,6 +1918,83 @@ namespace GSP.TrackEditor.Editor
             return aRole == bRole;
         }
 
+
+        private bool IsConnectorLinked(TrackLayout targetLayout, string guid, int connectorIndex)
+        {
+            if (targetLayout?.links == null)
+            {
+                return false;
+            }
+
+            return targetLayout.links.Any(l =>
+                (l.pieceGuidA == guid && l.connectorIndexA == connectorIndex)
+                || (l.pieceGuidB == guid && l.connectorIndexB == connectorIndex));
+        }
+
+        private bool IsRoleCompatible(TrackConnector a, TrackConnector b)
+        {
+            return RolesCompatible(a.role, b.role);
+        }
+
+        private bool IsNameCompatible(TrackConnector a, TrackConnector b)
+        {
+            var aId = a?.id ?? string.Empty;
+            var bId = b?.id ?? string.Empty;
+
+            var aIsPitOut = aId.IndexOf("PitOut", StringComparison.OrdinalIgnoreCase) >= 0;
+            var bIsPitOut = bId.IndexOf("PitOut", StringComparison.OrdinalIgnoreCase) >= 0;
+            var aIsPitIn = aId.IndexOf("PitIn", StringComparison.OrdinalIgnoreCase) >= 0;
+            var bIsPitIn = bId.IndexOf("PitIn", StringComparison.OrdinalIgnoreCase) >= 0;
+
+            if (aIsPitOut || bIsPitOut)
+            {
+                return aIsPitIn || bIsPitIn;
+            }
+
+            if (aIsPitIn || bIsPitIn)
+            {
+                return aIsPitOut || bIsPitOut;
+            }
+
+            return true;
+        }
+
+        private SnapRejectReason DetermineSnapRejectReason(TrackPieceDef piece, TrackConnector openConnector, Dir8 openWorldDir)
+        {
+            if (piece?.connectors == null)
+            {
+                return SnapRejectReason.None;
+            }
+
+            var roleMatchFound = false;
+            foreach (var connector in piece.connectors)
+            {
+                if (!IsRoleCompatible(connector, openConnector))
+                {
+                    continue;
+                }
+
+                roleMatchFound = true;
+                if (!IsNameCompatible(connector, openConnector))
+                {
+                    continue;
+                }
+
+                if (Mathf.Abs(connector.trackWidth - openConnector.trackWidth) > SnapEpsilonWorld)
+                {
+                    continue;
+                }
+
+                if (connector.localDir != openWorldDir.Opposite())
+                {
+                    continue;
+                }
+
+                return SnapRejectReason.ConnectorAlreadyLinked;
+            }
+
+            return roleMatchFound ? SnapRejectReason.NameMismatch : SnapRejectReason.RoleMismatch;
+        }
 
         private HashSet<string> ConnectedComponentGuids(string rootGuid)
         {
@@ -2129,7 +2259,12 @@ namespace GSP.TrackEditor.Editor
                     var movedWorldPos = TrackMathUtil.ToWorld(moved, movedConnector.localPos);
                     foreach (var open in openConnectors)
                     {
-                        if (!RolesCompatible(movedConnector.role, open.connector.role))
+                        if (!IsRoleCompatible(movedConnector, open.connector))
+                        {
+                            continue;
+                        }
+
+                        if (!IsNameCompatible(movedConnector, open.connector))
                         {
                             continue;
                         }
@@ -2176,6 +2311,12 @@ namespace GSP.TrackEditor.Editor
             foreach (var piece in movedPieces)
             {
                 piece.position += delta;
+            }
+
+            if (IsConnectorLinked(layout, bestOpen.placed.guid, bestOpen.index) || IsConnectorLinked(layout, bestMovedPiece.guid, bestMovedIndex))
+            {
+                status = "Snap rejected: connector already linked.";
+                return;
             }
 
             layout.links.Add(new ConnectorLink
@@ -2254,9 +2395,23 @@ namespace GSP.TrackEditor.Editor
                 return false;
             }
 
+            if (layout.links.Count(l =>
+                    (l.pieceGuidA == link.pieceGuidA && l.connectorIndexA == link.connectorIndexA)
+                    || (l.pieceGuidB == link.pieceGuidA && l.connectorIndexB == link.connectorIndexA)) > 1)
+            {
+                return false;
+            }
+
+            if (layout.links.Count(l =>
+                    (l.pieceGuidA == link.pieceGuidB && l.connectorIndexA == link.connectorIndexB)
+                    || (l.pieceGuidB == link.pieceGuidB && l.connectorIndexB == link.connectorIndexB)) > 1)
+            {
+                return false;
+            }
+
             var connectorA = a.piece.connectors[link.connectorIndexA];
             var connectorB = b.piece.connectors[link.connectorIndexB];
-            if (!RolesCompatible(connectorA.role, connectorB.role))
+            if (!IsRoleCompatible(connectorA, connectorB) || !IsNameCompatible(connectorA, connectorB))
             {
                 return false;
             }
