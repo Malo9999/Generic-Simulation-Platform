@@ -7,6 +7,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     private SimulationSceneGraph sceneGraph;
     private ScenarioConfig activeConfig;
     private PredatorPreyDocuMapBuilder map;
+    private SerengetiMapSpec loadedMapSpec;
     private float halfWidth;
     private float halfHeight;
     private int preyCountTotal;
@@ -44,14 +45,15 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         activeConfig.NormalizeAliases();
 
         var mapId = activeConfig.predatorPreyDocu?.mapId ?? "serengeti_v1";
-        var mapSpec = SerengetiMapSpecLoader.LoadOrThrow(mapId);
-        if (mapSpec.arena != null &&
-            (mapSpec.arena.width != activeConfig.world.arenaWidth || mapSpec.arena.height != activeConfig.world.arenaHeight))
+        loadedMapSpec = SerengetiMapSpecLoader.LoadOrThrow(mapId);
+        if (loadedMapSpec.arena != null &&
+            (loadedMapSpec.arena.width != activeConfig.world.arenaWidth || loadedMapSpec.arena.height != activeConfig.world.arenaHeight))
         {
-            Debug.LogWarning($"[PredatorPreyDocu] Map '{mapSpec.mapId}' arena={mapSpec.arena.width}x{mapSpec.arena.height} differs from configured world {activeConfig.world.arenaWidth}x{activeConfig.world.arenaHeight}. Preset should match arena size before ArenaBuilder.Build.");
+            Debug.LogWarning($"[PredatorPreyDocu] Map '{loadedMapSpec.mapId}' arena={loadedMapSpec.arena.width}x{loadedMapSpec.arena.height} differs from configured world {activeConfig.world.arenaWidth}x{activeConfig.world.arenaHeight}. Preset should match arena size before ArenaBuilder.Build.");
         }
 
-        Debug.Log($"[PredatorPreyDocu] Loaded map '{mapSpec.mapId}' arena={mapSpec.arena.width}x{mapSpec.arena.height} regions={mapSpec.regions.Count} speciesLegend={mapSpec.legend.species.Count}");
+        Debug.Log($"[PredatorPreyDocu] Loaded map '{loadedMapSpec.mapId}' arena={loadedMapSpec.arena.width}x{loadedMapSpec.arena.height} regions={loadedMapSpec.regions.Count} speciesLegend={loadedMapSpec.legend.species.Count}");
+        Debug.Log($"[PredatorPreyDocu] MapRender: {loadedMapSpec.mapId} regions={loadedMapSpec.regions.Count} pools={loadedMapSpec.water.pools.Count} kopjes={loadedMapSpec.landmarks.kopjes.Count}");
 
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "PredatorPreyDocu");
         halfWidth = Mathf.Max(1f, activeConfig.world.arenaWidth * 0.5f);
@@ -66,7 +68,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             mapParent.gameObject.SetActive(true);
         }
 
-        map.Build(mapParent != null ? mapParent : transform, activeConfig, halfWidth, halfHeight);
+        map.Build(mapParent != null ? mapParent : transform, activeConfig, loadedMapSpec, halfWidth, halfHeight, RngService.Fork("SIM:PredatorPreyDocu:MAP_RENDER"));
         SpawnEntities();
 
         lastSeasonName = null;
@@ -147,6 +149,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         activeConfig = null;
+        loadedMapSpec = null;
         lastSeasonName = null;
         Debug.Log("PredatorPreyDocuRunner Shutdown");
     }
@@ -159,7 +162,8 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var mapParent = sceneGraph != null && sceneGraph.WorldObjectsRoot != null ? sceneGraph.WorldObjectsRoot : transform;
-        map.Build(mapParent, activeConfig, halfWidth, halfHeight);
+        loadedMapSpec = SerengetiMapSpecLoader.LoadOrThrow(activeConfig.predatorPreyDocu?.mapId ?? "serengeti_v1");
+        map.Build(mapParent, activeConfig, loadedMapSpec, halfWidth, halfHeight, RngService.Fork("SIM:PredatorPreyDocu:MAP_RENDER"));
     }
 
     private void SpawnEntities()
