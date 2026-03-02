@@ -68,7 +68,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             mapParent.gameObject.SetActive(true);
         }
 
-        map.Build(mapParent != null ? mapParent : transform, activeConfig, loadedMapSpec, halfWidth, halfHeight, RngService.Fork("SIM:PredatorPreyDocu:MAP_RENDER"));
+        map.Build(mapParent != null ? mapParent : transform, activeConfig, loadedMapSpec, halfWidth, halfHeight);
         SpawnEntities();
 
         lastSeasonName = null;
@@ -83,30 +83,25 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var docu = activeConfig.predatorPreyDocu;
-        var season = docu.season;
-        var wet = Mathf.Max(1, season.wetTicks);
-        var dry = Mathf.Max(1, season.dryTicks);
-        var cycle = wet + dry;
-        var phase = cycle > 0 ? tickIndex % cycle : 0;
-        var seasonName = phase < wet ? "Wet" : "Dry";
-
-        var dryness01 = 0f;
-        if (phase >= wet)
+        var ticksPerMonth = docu.ticksPerMonth > 0 ? docu.ticksPerMonth : Mathf.Max(300, loadedMapSpec?.calendar?.ticksPerMonth ?? 3600);
+        var startMonth = Mathf.Clamp(docu.startMonth, 1, 12);
+        var month = ((startMonth - 1) + (tickIndex / Mathf.Max(1, ticksPerMonth))) % 12 + 1;
+        var seasonalPresence01 = 0f;
+        var presence = loadedMapSpec?.water?.seasonal?.presenceByMonth;
+        if (presence != null && presence.TryGetValue(month.ToString(), out var monthPresence))
         {
-            var dryPhase = phase - wet;
-            var dryDenominator = Mathf.Max(1, dry - 1);
-            var t = Mathf.Clamp01(dryPhase / (float)dryDenominator);
-            dryness01 = Mathf.SmoothStep(0f, 1f, t);
+            seasonalPresence01 = Mathf.Clamp01(monthPresence);
         }
 
+        var seasonName = seasonalPresence01 >= 0.5f ? "Wet" : "Dry";
         if (!string.Equals(lastSeasonName, seasonName))
         {
-            EventBusService.Global.Publish("season.change", new { season = seasonName });
+            EventBusService.Global.Publish("season.change", new { season = seasonName, month });
             lastSeasonName = seasonName;
         }
 
-        map.UpdateSeasonVisuals(dryness01);
-        UpdateHerdCenters(tickIndex, dt, dryness01);
+        map.UpdateSeasonVisuals(seasonalPresence01);
+        UpdateHerdCenters(tickIndex, dt, 1f - seasonalPresence01);
         UpdatePrey(tickIndex, dt, docu);
         UpdateLions(tickIndex, dt, docu);
     }
@@ -163,7 +158,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
 
         var mapParent = sceneGraph != null && sceneGraph.WorldObjectsRoot != null ? sceneGraph.WorldObjectsRoot : transform;
         loadedMapSpec = SerengetiMapSpecLoader.LoadOrThrow(activeConfig.predatorPreyDocu?.mapId ?? "serengeti_v1");
-        map.Build(mapParent, activeConfig, loadedMapSpec, halfWidth, halfHeight, RngService.Fork("SIM:PredatorPreyDocu:MAP_RENDER"));
+        map.Build(mapParent, activeConfig, loadedMapSpec, halfWidth, halfHeight);
     }
 
     private void SpawnEntities()
