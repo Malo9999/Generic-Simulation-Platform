@@ -644,7 +644,20 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var x = ownBacklineX + (towardCenter * xOffset);
-        var y = FormationYFrac[localIndex] * halfH;
+        const float inset = 2.0f;
+        var wingY = (halfH - inset) * 0.92f;
+        var halfY = (halfH - inset) * 0.55f;
+        var laneIndex = (teamId * PlayersPerTeam) + localIndex;
+        var y = laneByIndex != null && laneIndex >= 0 && laneIndex < laneByIndex.Length
+            ? laneByIndex[laneIndex] switch
+            {
+                Lane.Left => -wingY,
+                Lane.LeftCenter => -halfY,
+                Lane.RightCenter => halfY,
+                Lane.Right => wingY,
+                _ => 0f
+            }
+            : FormationYFrac[localIndex] * halfH;
         const float yInset = 1.8f;
         y = Mathf.Clamp(y, -halfH + yInset, halfH - yInset);
         return new Vector2(x, y);
@@ -2890,9 +2903,96 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var lanePush = ComputeLaneOccupancyPush(athleteIndex);
         home.y += lanePush;
 
+        GetRoleRoamBox(teamId, roleByIndex[athleteIndex], out var xMin, out var xMax, out var yMin, out var yMax);
+        home.x = Mathf.Clamp(home.x, xMin, xMax);
+        home.y = Mathf.Clamp(home.y, yMin, yMax);
+
         home.x = Mathf.Clamp(home.x, -halfWidth + 1.1f, halfWidth - 1.1f);
         home.y = Mathf.Clamp(home.y, -halfHeight + 2f, halfHeight - 2f);
         return home;
+    }
+
+    private void GetRoleRoamBox(int teamId, RoleGroup role, out float xMin, out float xMax, out float yMin, out float yMax)
+    {
+        const float fieldInset = 1.5f;
+        var xMinField = -halfWidth + fieldInset;
+        var xMaxField = halfWidth - fieldInset;
+        var yMinField = -halfHeight + fieldInset;
+        var yMaxField = halfHeight - fieldInset;
+        var ownBacklineX = teamId == 0 ? -halfWidth : halfWidth;
+        var towardCenter = teamId == 0 ? 1f : -1f;
+        var endzoneDepth = GetEndzoneDepth();
+
+        var ownThirdEdge = ownBacklineX + (towardCenter * (halfWidth * 0.35f));
+        var ownHalfEdge = ownBacklineX + (towardCenter * (halfWidth * 0.55f));
+        var opponentBacklineInset = -ownBacklineX - (towardCenter * fieldInset);
+        var midBandLeft = -halfWidth * 0.15f;
+        var midBandRight = halfWidth * 0.15f;
+        var middlePush = halfWidth * 0.70f;
+        var hasPossession = ballOwnerTeam == teamId;
+        var isAttacking = hasPossession && (teamPhase[teamId] == TeamPhase.Advance || teamPhase[teamId] == TeamPhase.FinalThird);
+
+        var xA = ownBacklineX;
+        var xB = ownHalfEdge;
+        yMin = -halfHeight * 0.6f;
+        yMax = halfHeight * 0.6f;
+
+        switch (role)
+        {
+            case RoleGroup.Keeper:
+            {
+                var goalMouthHalf = GetGoalMouthHalfHeight();
+                xA = ownBacklineX;
+                xB = ownBacklineX + (towardCenter * endzoneDepth);
+                yMin = -goalMouthHalf * 0.95f;
+                yMax = goalMouthHalf * 0.95f;
+                break;
+            }
+            case RoleGroup.Sweeper:
+                xA = ownBacklineX;
+                xB = ownThirdEdge;
+                break;
+            case RoleGroup.Defender:
+                xA = ownBacklineX;
+                xB = ownHalfEdge;
+                break;
+            case RoleGroup.Midfielder:
+                xA = midBandLeft;
+                xB = midBandRight;
+                if (isAttacking)
+                {
+                    var attackPush = towardCenter * middlePush;
+                    if (towardCenter > 0f)
+                    {
+                        xB = Mathf.Max(xB, attackPush);
+                    }
+                    else
+                    {
+                        xA = Mathf.Min(xA, attackPush);
+                    }
+                }
+                break;
+            case RoleGroup.Attacker:
+                xA = ownHalfEdge;
+                xB = opponentBacklineInset;
+                break;
+        }
+
+        xMin = Mathf.Clamp(Mathf.Min(xA, xB), xMinField, xMaxField);
+        xMax = Mathf.Clamp(Mathf.Max(xA, xB), xMinField, xMaxField);
+
+        yMin = Mathf.Clamp(yMin, yMinField, yMaxField);
+        yMax = Mathf.Clamp(yMax, yMinField, yMaxField);
+
+        if (xMax < xMin)
+        {
+            xMax = xMin;
+        }
+
+        if (yMax < yMin)
+        {
+            yMax = yMin;
+        }
     }
 
     private Vector2 ComputeGoalkeeperTarget(int i)
@@ -4483,17 +4583,22 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void GetLaneFractions(int teamId, out float wingFrac, out float halfFrac)
     {
+        const float inset = 2.0f;
+        var maxUsableHeight = Mathf.Max(1f, halfHeight - inset);
+        var kickoffWingFrac = (maxUsableHeight * 0.92f) / Mathf.Max(0.01f, halfHeight);
+        var kickoffHalfFrac = (maxUsableHeight * 0.55f) / Mathf.Max(0.01f, halfHeight);
+
         var hasPossession = ballOwnerTeam == teamId;
         var phase = teamId >= 0 && teamId < teamPhase.Length ? teamPhase[teamId] : TeamPhase.Transition;
-        halfFrac = 0.24f;
+        halfFrac = kickoffHalfFrac;
 
         if (hasPossession && (phase == TeamPhase.Advance || phase == TeamPhase.FinalThird))
         {
-            wingFrac = 0.46f;
+            wingFrac = kickoffWingFrac * 1.0f;
             return;
         }
 
-        wingFrac = hasPossession ? 0.42f : 0.38f;
+        wingFrac = kickoffWingFrac * (hasPossession ? 0.92f : 0.85f);
     }
 
     private float GetLaneY(Lane lane, float arenaHalfHeight, float bonus = 0f, int teamId = -1)
