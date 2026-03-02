@@ -173,6 +173,13 @@ namespace GSP.TrackEditor.Editor
             EditorGUI.EndDisabledGroup();
 
             EditorGUI.BeginDisabledGroup(layout == null);
+            if (GUILayout.Button("Reveal Baked Asset", EditorStyles.toolbarButton, GUILayout.Width(130f)))
+            {
+                RevealBakedAsset();
+            }
+            EditorGUI.EndDisabledGroup();
+
+            EditorGUI.BeginDisabledGroup(layout == null);
             if (GUILayout.Button("Debug Report", EditorStyles.toolbarButton, GUILayout.Width(95f)))
             {
                 DebugReport();
@@ -2588,18 +2595,52 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            var layoutPath = AssetDatabase.GetAssetPath(layout);
-            var folder = System.IO.Path.GetDirectoryName(layoutPath);
-            var bakedFolder = $"{folder}/Baked";
-            if (!AssetDatabase.IsValidFolder(bakedFolder))
+            var bakedPath = TrackBakeUtility.GetDeterministicBakedAssetPath(layout);
+            if (string.IsNullOrWhiteSpace(bakedPath))
             {
-                AssetDatabase.CreateFolder(folder, "Baked");
+                status = "Bake failed: could not resolve TrackLayout asset path.";
+                return;
             }
 
-            var bakedPath = $"{bakedFolder}/{layout.name}_Baked.asset";
-            TrackBakeUtility.Bake(layout, bakedPath);
+            var bakedAsset = TrackBakeUtility.Bake(layout, bakedPath);
             _lastBakedPath = bakedPath;
-            status = $"Baked track data: {bakedPath}";
+            status = $"Baked to: {bakedPath}";
+
+            if (bakedAsset != null)
+            {
+                Selection.activeObject = bakedAsset;
+                EditorGUIUtility.PingObject(bakedAsset);
+            }
+
+            Debug.Log($"Baked to: {bakedPath}", bakedAsset);
+        }
+
+        private void RevealBakedAsset()
+        {
+            if (layout == null)
+            {
+                return;
+            }
+
+            var bakedPath = TrackBakeUtility.GetDeterministicBakedAssetPath(layout);
+            if (string.IsNullOrWhiteSpace(bakedPath))
+            {
+                status = "Reveal failed: could not resolve TrackLayout asset path.";
+                return;
+            }
+
+            var bakedAsset = AssetDatabase.LoadAssetAtPath<TrackBakedData>(bakedPath);
+            if (bakedAsset == null)
+            {
+                _lastBakedPath = bakedPath;
+                status = $"No baked asset found at: {bakedPath}";
+                return;
+            }
+
+            _lastBakedPath = bakedPath;
+            Selection.activeObject = bakedAsset;
+            EditorGUIUtility.PingObject(bakedAsset);
+            status = $"Revealed baked asset: {bakedPath}";
         }
 
         private void DebugReport()
@@ -2648,8 +2689,12 @@ namespace GSP.TrackEditor.Editor
                 return null;
             }
 
-            var folder = System.IO.Path.GetDirectoryName(layoutPath);
-            var expectedBakedPath = $"{folder}/Baked/{layout.name}_Baked.asset";
+            var expectedBakedPath = TrackBakeUtility.GetDeterministicBakedAssetPath(layout);
+            if (string.IsNullOrWhiteSpace(expectedBakedPath))
+            {
+                return null;
+            }
+
             baked = AssetDatabase.LoadAssetAtPath<TrackBakedData>(expectedBakedPath);
             if (baked != null)
             {
