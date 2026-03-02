@@ -135,6 +135,7 @@ public class RaceCarConfig
 public class PredatorPreyDocuConfig
 {
     public string mapId = "serengeti_v1";
+    public bool debugShowMapOverlays = false;
     public int startMonth = 1;
     public int ticksPerMonth = 3600;
     public Season season = new();
