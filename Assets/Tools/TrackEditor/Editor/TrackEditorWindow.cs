@@ -1451,9 +1451,107 @@ namespace GSP.TrackEditor.Editor
 
             layout.pieces.Add(snapped);
             layout.links.Add(link);
+            var pieceMap = layout.pieces.ToDictionary(p => p.guid, p => p);
+            TryAutoLinkOtherConnectors(layout, pieceMap, snapped);
             status = $"Placed with snap distance {distance:F1}px.";
             EditorUtility.SetDirty(layout);
             ClearSnapLock();
+        }
+
+        private void TryAutoLinkOtherConnectors(TrackLayout targetLayout, Dictionary<string, PlacedPiece> pieceMap, PlacedPiece newlyPlaced)
+        {
+            if (targetLayout?.links == null || pieceMap == null || newlyPlaced?.piece?.connectors == null)
+            {
+                return;
+            }
+
+            const float ambiguityWorldEpsilon = 0.001f;
+
+            for (var newIndex = 0; newIndex < newlyPlaced.piece.connectors.Length; newIndex++)
+            {
+                if (IsConnectorLinked(targetLayout, newlyPlaced.guid, newIndex))
+                {
+                    continue;
+                }
+
+                var newConnector = newlyPlaced.piece.connectors[newIndex];
+                var newWorldPos = TrackMathUtil.ToWorld(newlyPlaced, newConnector.localPos);
+                var newWorldDir = TrackMathUtil.ToWorld(newlyPlaced, newConnector.localDir);
+
+                (PlacedPiece placed, int index, float distance)? best = null;
+                float? secondBestDistance = null;
+
+                foreach (var existing in pieceMap.Values)
+                {
+                    if (existing.guid == newlyPlaced.guid || existing?.piece?.connectors == null)
+                    {
+                        continue;
+                    }
+
+                    for (var existingIndex = 0; existingIndex < existing.piece.connectors.Length; existingIndex++)
+                    {
+                        if (IsConnectorLinked(targetLayout, existing.guid, existingIndex))
+                        {
+                            continue;
+                        }
+
+                        var existingConnector = existing.piece.connectors[existingIndex];
+                        if (!IsRoleCompatible(newConnector, existingConnector)
+                            || !IsNameCompatible(newConnector, existingConnector)
+                            || Mathf.Abs(newConnector.trackWidth - existingConnector.trackWidth) > SnapEpsilonWorld)
+                        {
+                            continue;
+                        }
+
+                        var existingWorldDir = TrackMathUtil.ToWorld(existing, existingConnector.localDir);
+                        if (existingWorldDir != newWorldDir.Opposite())
+                        {
+                            continue;
+                        }
+
+                        var existingWorldPos = TrackMathUtil.ToWorld(existing, existingConnector.localPos);
+                        var distance = Vector2.Distance(existingWorldPos, newWorldPos);
+                        if (distance > SnapEpsilonWorld)
+                        {
+                            continue;
+                        }
+
+                        if (!best.HasValue || distance < best.Value.distance)
+                        {
+                            if (best.HasValue)
+                            {
+                                secondBestDistance = best.Value.distance;
+                            }
+
+                            best = (existing, existingIndex, distance);
+                        }
+                        else if (!secondBestDistance.HasValue || distance < secondBestDistance.Value)
+                        {
+                            secondBestDistance = distance;
+                        }
+                    }
+                }
+
+                if (!best.HasValue)
+                {
+                    continue;
+                }
+
+                var ambiguous = secondBestDistance.HasValue
+                    && Mathf.Abs(secondBestDistance.Value - best.Value.distance) <= ambiguityWorldEpsilon;
+                if (ambiguous)
+                {
+                    continue;
+                }
+
+                targetLayout.links.Add(new ConnectorLink
+                {
+                    pieceGuidA = best.Value.placed.guid,
+                    connectorIndexA = best.Value.index,
+                    pieceGuidB = newlyPlaced.guid,
+                    connectorIndexB = newIndex
+                });
+            }
         }
 
         private bool TryFindSnap(
