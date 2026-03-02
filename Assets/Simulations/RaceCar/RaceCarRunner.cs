@@ -26,12 +26,14 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private Transform trackRoot;
     private bool trackRootAttempted;
     private bool boundsAppliedAfterStart;
+    private bool runtimeTrackBannerLogged;
 
     public void Initialize(ScenarioConfig config)
     {
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
         trackRootAttempted = false;
         boundsAppliedAfterStart = false;
+        runtimeTrackBannerLogged = false;
         SetupTrackRoot();
         EnsureMainCamera();
         BuildCars(config);
@@ -49,7 +51,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         if (track != null && trackRoot != null && !boundsAppliedAfterStart)
         {
             boundsAppliedAfterStart = true;
-            var bounds = TrackBakedDataUtil.ComputeBounds(track);
+            var bounds = ComputePaddedTrackBounds(track);
             PresentationBoundsSync.Apply(bounds);
         }
 
@@ -253,7 +255,14 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (track == null)
         {
-            Debug.LogWarning($"RaceCarRunner[{name}]: SetupTrackRoot skipped because track is null.");
+            Debug.LogWarning("RaceCarRunner.Track is NULL");
+            return;
+        }
+
+        if (track.mainCenterline == null || track.mainCenterline.Length < 2)
+        {
+            Debug.LogWarning(
+                $"RaceCarRunner[{name}]: track '{track.name}' has no valid mainCenterline (count={track.mainCenterline?.Length ?? 0}); skipping rendering.");
             return;
         }
 
@@ -275,6 +284,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         var root = new GameObject("TrackRoot");
         root.transform.SetParent(parent, false);
         trackRoot = root.transform;
+        trackRoot.localPosition = Vector3.zero;
+        trackRoot.localRotation = Quaternion.identity;
+        trackRoot.localScale = Vector3.one;
 
         var renderer = root.AddComponent<TrackRendererV1>();
         renderer.Render(track);
@@ -285,10 +297,16 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         var overlay = root.AddComponent<TrackStartFinishOverlay>();
         overlay.Render(track);
 
-        var bounds = TrackBakedDataUtil.ComputeBounds(track);
+        var bounds = ComputePaddedTrackBounds(track);
         PresentationBoundsSync.Apply(bounds);
         halfWidth = bounds.width * 0.5f;
         halfHeight = bounds.height * 0.5f;
+
+        if (!runtimeTrackBannerLogged)
+        {
+            runtimeTrackBannerLogged = true;
+            LogRuntimeTrackBanner(track);
+        }
 
         Debug.Log(track.BuildDebugReport());
         Debug.Log($"RaceCarRunner[{name}]: framing bounds rect min={bounds.min}, max={bounds.max}, center={bounds.center}, size={bounds.size}.");
@@ -306,6 +324,44 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         Debug.Log(
             $"RaceCarRunner[{name}]: TrackRoot created for '{track.name}' " +
             $"(centerline={track.mainCenterline?.Length ?? 0}, parent={parentPath}, position={trackRoot.position}).");
+    }
+
+    private static Rect ComputePaddedTrackBounds(TrackBakedData trackData)
+    {
+        var debugBounds = TrackBakedData.ComputeDebugMainBounds(trackData);
+        var padding = Mathf.Max(1f, (trackData != null ? trackData.trackWidth : 8f) * 1.25f);
+        var min = debugBounds.min - Vector2.one * padding;
+        var max = debugBounds.max + Vector2.one * padding;
+
+        if (max.x <= min.x)
+        {
+            max.x = min.x + 1f;
+        }
+
+        if (max.y <= min.y)
+        {
+            max.y = min.y + 1f;
+        }
+
+        return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+    }
+
+    private void LogRuntimeTrackBanner(TrackBakedData trackData)
+    {
+        var debugBounds = TrackBakedData.ComputeDebugMainBounds(trackData);
+        var startFinishDir = trackData.startFinishDir.sqrMagnitude > 0.0001f
+            ? trackData.startFinishDir.normalized
+            : Vector2.zero;
+        var pitCount = trackData.pitCenterline?.Length ?? 0;
+        var pitLength = TrackBakedData.ComputePolylineLength(trackData.pitCenterline);
+
+        Debug.Log(
+            $"RaceCar Runtime Track Banner | name={trackData.name} | " +
+            $"trackWidth={trackData.trackWidth:F3} | " +
+            $"bounds min={debugBounds.min}, max={debugBounds.max} | " +
+            $"startFinish pos={trackData.startFinishPos}, dir={startFinishDir} | " +
+            $"startGridSlots={trackData.startGridSlots?.Count ?? 0} | " +
+            $"pitCenterline count={pitCount}, length={pitLength:F3}");
     }
 
     private static string BuildTransformPath(Transform node)
