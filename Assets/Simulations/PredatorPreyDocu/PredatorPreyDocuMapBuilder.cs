@@ -226,7 +226,7 @@ public sealed class PredatorPreyDocuMapBuilder
             var y0 = rng.Range(-halfH * 0.75f, halfH * 0.75f);
             var x0 = riverModel.EvaluateX(y0, halfW, halfH);
             var pos = new Vector2(x0, y0);
-            var sign = rng.NextFloat() < 0.5f ? -1f : 1f;
+            var sign = rng.NextFloat01() < 0.5f ? -1f : 1f;
             var dir = new Vector2(sign, rng.Range(-0.15f, 0.15f)).normalized;
             if (dir.sqrMagnitude < 0.0001f)
             {
