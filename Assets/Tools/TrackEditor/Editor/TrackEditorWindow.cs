@@ -1451,39 +1451,35 @@ namespace GSP.TrackEditor.Editor
 
             layout.pieces.Add(snapped);
             layout.links.Add(link);
-            var pieceMap = layout.pieces.ToDictionary(p => p.guid, p => p);
-            TryAutoLinkOtherConnectors(layout, pieceMap, snapped);
+            TryAutoLinkOtherConnectors(layout, snapped, link.connectorIndexB);
             status = $"Placed with snap distance {distance:F1}px.";
             EditorUtility.SetDirty(layout);
             ClearSnapLock();
         }
 
-        private void TryAutoLinkOtherConnectors(TrackLayout targetLayout, Dictionary<string, PlacedPiece> pieceMap, PlacedPiece newlyPlaced)
+        private void TryAutoLinkOtherConnectors(TrackLayout targetLayout, PlacedPiece newPiece, int primaryConnectorIndexUsed)
         {
-            if (targetLayout?.links == null || pieceMap == null || newlyPlaced?.piece?.connectors == null)
+            if (targetLayout?.links == null || targetLayout.pieces == null || newPiece?.piece?.connectors == null)
             {
                 return;
             }
 
-            const float ambiguityWorldEpsilon = 0.001f;
-
-            for (var newIndex = 0; newIndex < newlyPlaced.piece.connectors.Length; newIndex++)
+            for (var newIndex = 0; newIndex < newPiece.piece.connectors.Length; newIndex++)
             {
-                if (IsConnectorLinked(targetLayout, newlyPlaced.guid, newIndex))
+                if (newIndex == primaryConnectorIndexUsed || IsConnectorLinked(targetLayout, newPiece.guid, newIndex))
                 {
                     continue;
                 }
 
-                var newConnector = newlyPlaced.piece.connectors[newIndex];
-                var newWorldPos = TrackMathUtil.ToWorld(newlyPlaced, newConnector.localPos);
-                var newWorldDir = TrackMathUtil.ToWorld(newlyPlaced, newConnector.localDir);
+                var newConnector = newPiece.piece.connectors[newIndex];
+                var newWorldPos = TrackMathUtil.ToWorld(newPiece, newConnector.localPos);
+                var newWorldDir = TrackMathUtil.ToWorld(newPiece, newConnector.localDir);
 
                 (PlacedPiece placed, int index, float distance)? best = null;
-                float? secondBestDistance = null;
 
-                foreach (var existing in pieceMap.Values)
+                foreach (var existing in targetLayout.pieces)
                 {
-                    if (existing.guid == newlyPlaced.guid || existing?.piece?.connectors == null)
+                    if (existing.guid == newPiece.guid || existing?.piece?.connectors == null)
                     {
                         continue;
                     }
@@ -1518,16 +1514,7 @@ namespace GSP.TrackEditor.Editor
 
                         if (!best.HasValue || distance < best.Value.distance)
                         {
-                            if (best.HasValue)
-                            {
-                                secondBestDistance = best.Value.distance;
-                            }
-
                             best = (existing, existingIndex, distance);
-                        }
-                        else if (!secondBestDistance.HasValue || distance < secondBestDistance.Value)
-                        {
-                            secondBestDistance = distance;
                         }
                     }
                 }
@@ -1537,18 +1524,11 @@ namespace GSP.TrackEditor.Editor
                     continue;
                 }
 
-                var ambiguous = secondBestDistance.HasValue
-                    && Mathf.Abs(secondBestDistance.Value - best.Value.distance) <= ambiguityWorldEpsilon;
-                if (ambiguous)
-                {
-                    continue;
-                }
-
                 targetLayout.links.Add(new ConnectorLink
                 {
                     pieceGuidA = best.Value.placed.guid,
                     connectorIndexA = best.Value.index,
-                    pieceGuidB = newlyPlaced.guid,
+                    pieceGuidB = newPiece.guid,
                     connectorIndexB = newIndex
                 });
             }
