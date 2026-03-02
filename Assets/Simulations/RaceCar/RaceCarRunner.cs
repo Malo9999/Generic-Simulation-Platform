@@ -14,6 +14,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private Vector2[] positions;
     private Vector2[] velocities;
     private float[] laneTargets;
+    private float[] lapS;
+    private float[] speed;
+    private float[] laneOffset;
     private ArtModeSelector artSelector;
     private ArtPipelineBase activePipeline;
     private GameObject[] pipelineRenderers;
@@ -27,6 +30,8 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private bool trackRootAttempted;
     private bool boundsAppliedAfterStart;
     private bool runtimeTrackBannerLogged;
+    [SerializeField] private bool ReverseDirection;
+    private TrackPathSampler pathSampler;
 
     public void Initialize(ScenarioConfig config)
     {
@@ -69,34 +74,56 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             var oldPosition = positions[i];
-            positions[i].x += velocities[i].x * dt;
 
-            if (trackRuntime == null && (positions[i].x < -halfWidth || positions[i].x > halfWidth))
+            if (pathSampler != null)
             {
-                positions[i].x = Mathf.Clamp(positions[i].x, -halfWidth, halfWidth);
-                velocities[i].x *= -1f;
+                var directionMultiplier = ReverseDirection ? -1f : 1f;
+                lapS[i] += speed[i] * dt * directionMultiplier;
+
+                var (pathPos, tangent) = pathSampler.SampleByDistance(lapS[i]);
+                var travelTangent = directionMultiplier > 0f ? tangent : -tangent;
+                var normal = new Vector2(-travelTangent.y, travelTangent.x);
+                var desiredPos = pathPos + normal * laneOffset[i];
+
+                positions[i] = desiredPos;
+                velocities[i] = travelTangent * speed[i];
+                car.localPosition = new Vector3(desiredPos.x, desiredPos.y, 0f);
+                if (travelTangent.sqrMagnitude > 0.0001f)
+                {
+                    car.right = travelTangent;
+                }
             }
-
-            var targetY = laneTargets[i] + Mathf.Sin((tickIndex * 0.08f) + i) * 0.25f;
-            positions[i].y = Mathf.MoveTowards(positions[i].y, targetY, dt * 2.5f);
-            if (trackRuntime == null)
+            else
             {
-                positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
-            }
+                positions[i].x += velocities[i].x * dt;
 
-            if (trackRuntime != null && trackRuntime.IsOffTrack(positions[i]))
-            {
-                var clamped = trackRuntime.ClampToTrack(positions[i]);
-                var correction = clamped - positions[i];
-                positions[i] = clamped;
-                velocities[i] = Vector2.Reflect(velocities[i], correction.normalized);
-                velocities[i] *= 0.75f;
-            }
+                if (trackRuntime == null && (positions[i].x < -halfWidth || positions[i].x > halfWidth))
+                {
+                    positions[i].x = Mathf.Clamp(positions[i].x, -halfWidth, halfWidth);
+                    velocities[i].x *= -1f;
+                }
 
-            car.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            if (Mathf.Abs(velocities[i].x) > 0.0001f)
-            {
-                car.right = new Vector2(Mathf.Sign(velocities[i].x), 0f);
+                var targetY = laneTargets[i] + Mathf.Sin((tickIndex * 0.08f) + i) * 0.25f;
+                positions[i].y = Mathf.MoveTowards(positions[i].y, targetY, dt * 2.5f);
+                if (trackRuntime == null)
+                {
+                    positions[i].y = Mathf.Clamp(positions[i].y, -halfHeight, halfHeight);
+                }
+
+                if (trackRuntime != null && trackRuntime.IsOffTrack(positions[i]))
+                {
+                    var clamped = trackRuntime.ClampToTrack(positions[i]);
+                    var correction = clamped - positions[i];
+                    positions[i] = clamped;
+                    velocities[i] = Vector2.Reflect(velocities[i], correction.normalized);
+                    velocities[i] *= 0.75f;
+                }
+
+                car.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+                if (Mathf.Abs(velocities[i].x) > 0.0001f)
+                {
+                    car.right = new Vector2(Mathf.Sign(velocities[i].x), 0f);
+                }
             }
 
             var pipelineRenderer = pipelineRenderers != null ? pipelineRenderers[i] : null;
@@ -119,6 +146,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         trackRuntime = null;
+        pathSampler = null;
         trackRootAttempted = false;
         Debug.Log("RaceCarRunner Shutdown");
     }
@@ -141,6 +169,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         positions = null;
         velocities = null;
         laneTargets = null;
+        lapS = null;
+        speed = null;
+        laneOffset = null;
         pipelineRenderers = null;
         visualKeys = null;
     }
@@ -160,12 +191,21 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         positions = new Vector2[carCount];
         velocities = new Vector2[carCount];
         laneTargets = new float[carCount];
+        lapS = new float[carCount];
+        speed = new float[carCount];
+        laneOffset = new float[carCount];
         pipelineRenderers = new GameObject[carCount];
         visualKeys = new VisualKey[carCount];
 
         ResolveArtPipeline();
 
         var rng = RngService.Fork("SIM:RaceCar:SPAWN");
+
+        pathSampler = null;
+        if (track != null && track.mainCenterline != null && track.mainCenterline.Length >= 2)
+        {
+            pathSampler = new TrackPathSampler(track.mainCenterline);
+        }
 
         for (var i = 0; i < carCount; i++)
         {
@@ -208,29 +248,57 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             var startX = rng.Range(-halfWidth, halfWidth);
             var lane = Mathf.Lerp(-halfHeight * 0.8f, halfHeight * 0.8f, (i + 0.5f) / carCount);
             var jitterY = rng.Range(-0.35f, 0.35f);
-            var speed = rng.Range(10f, 17f);
-            if (rng.Value() < 0.5f)
-            {
-                speed *= -1f;
-            }
+            var carSpeed = rng.Range(10f, 17f);
 
             positions[i] = new Vector2(startX, lane + jitterY);
-            velocities[i] = new Vector2(speed, 0f);
+            velocities[i] = new Vector2(carSpeed, 0f);
             laneTargets[i] = lane;
+            speed[i] = carSpeed;
+            laneOffset[i] = rng.Range(-Mathf.Max(0f, track != null ? track.trackWidth * 0.1f : 0f), Mathf.Max(0f, track != null ? track.trackWidth * 0.1f : 0f));
+            lapS[i] = 0f;
 
-            if (track != null && track.startGridSlots != null && track.startGridSlots.Count > 0)
+            if (pathSampler != null)
             {
-                var slot = track.startGridSlots[i % track.startGridSlots.Count];
-                var dir = slot.dir.sqrMagnitude > 0.001f ? slot.dir.normalized : Vector2.right;
-                positions[i] = slot.pos;
-                velocities[i] = dir * Mathf.Abs(speed);
-                laneTargets[i] = slot.pos.y;
+                var spawnAnchor = positions[i];
+                if (track != null && track.startGridSlots != null && track.startGridSlots.Count > 0)
+                {
+                    var slot = track.startGridSlots[i % track.startGridSlots.Count];
+                    spawnAnchor = slot.pos;
+                    laneOffset[i] = 0f;
+                }
+
+                lapS[i] = pathSampler.FindNearestDistance(spawnAnchor);
+                var directionMultiplier = ReverseDirection ? -1f : 1f;
+                var (pathPos, tangent) = pathSampler.SampleByDistance(lapS[i]);
+                var travelTangent = directionMultiplier > 0f ? tangent : -tangent;
+                var normal = new Vector2(-travelTangent.y, travelTangent.x);
+                var spawnPos = pathPos + normal * laneOffset[i];
+                positions[i] = spawnPos;
+                velocities[i] = travelTangent * speed[i];
+                laneTargets[i] = spawnPos.y;
+
+                car.transform.localPosition = new Vector3(spawnPos.x, spawnPos.y, 0f);
+                if (travelTangent.sqrMagnitude > 0.0001f)
+                {
+                    car.transform.right = travelTangent;
+                }
             }
-
-            car.transform.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
-            if (Mathf.Abs(speed) > 0.001f)
+            else
             {
-                car.transform.right = new Vector2(Mathf.Sign(speed), 0f);
+                if (track != null && track.startGridSlots != null && track.startGridSlots.Count > 0)
+                {
+                    var slot = track.startGridSlots[i % track.startGridSlots.Count];
+                    var dir = slot.dir.sqrMagnitude > 0.001f ? slot.dir.normalized : Vector2.right;
+                    positions[i] = slot.pos;
+                    velocities[i] = dir * Mathf.Abs(carSpeed);
+                    laneTargets[i] = slot.pos.y;
+                }
+
+                car.transform.localPosition = new Vector3(positions[i].x, positions[i].y, 0f);
+                if (Mathf.Abs(carSpeed) > 0.001f)
+                {
+                    car.transform.right = new Vector2(Mathf.Sign(carSpeed), 0f);
+                }
             }
             cars[i] = car.transform;
             identities[i] = identity;
@@ -252,6 +320,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         trackRuntime = null;
+        pathSampler = null;
 
         if (track == null)
         {
