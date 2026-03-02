@@ -258,6 +258,10 @@ MonoBehaviour:
     connectorIndexA: 1
     pieceGuidB: 3bb7c2e2c4f44415a65737675b022aa3
     connectorIndexB: 0
+  - pieceGuidA: 545c8aed6da34c0eb9a2913cb2df7073
+    connectorIndexA: 1
+    pieceGuidB: a49ae40287f14bd297e89b698b8e01af
+    connectorIndexB: 1
   startFinish:
     pieceGuid: 
     segmentIndex: 0
@@ -287,5 +291,5 @@ MonoBehaviour:
     dir: {x: 1, y: 0}
   pitEntryGuid: 
   pitExitGuid: 
-  pan: {x: 0, y: 0}
+  pan: {x: -39.400024, y: 57.499916}
   zoom: 0.2
