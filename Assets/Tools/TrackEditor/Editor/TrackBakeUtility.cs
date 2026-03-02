@@ -9,6 +9,28 @@ namespace GSP.TrackEditor.Editor
 {
     public static class TrackBakeUtility
     {
+        public static string GetDeterministicBakedAssetPath(TrackLayout layout)
+        {
+            if (layout == null)
+            {
+                return null;
+            }
+
+            var layoutPath = AssetDatabase.GetAssetPath(layout);
+            if (string.IsNullOrWhiteSpace(layoutPath))
+            {
+                return null;
+            }
+
+            var folder = System.IO.Path.GetDirectoryName(layoutPath)?.Replace("\\", "/");
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                return null;
+            }
+
+            return $"{folder}/{layout.name}_Baked.asset";
+        }
+
         private readonly struct OrderedSegment
         {
             public OrderedSegment(string pieceGuid, TrackSegment segment, bool reverse)
@@ -75,12 +97,8 @@ namespace GSP.TrackEditor.Editor
                 throw new InvalidOperationException(string.Join("\n", report.Errors));
             }
 
-            var baked = AssetDatabase.LoadAssetAtPath<TrackBakedData>(outputAssetPath);
-            if (baked == null)
-            {
-                baked = ScriptableObject.CreateInstance<TrackBakedData>();
-                AssetDatabase.CreateAsset(baked, outputAssetPath);
-            }
+            var existingBaked = AssetDatabase.LoadAssetAtPath<TrackBakedData>(outputAssetPath);
+            var baked = ScriptableObject.CreateInstance<TrackBakedData>();
 
             var pieceMap = layout.pieces.Where(p => p?.piece != null).ToDictionary(p => p.guid, p => p);
             var implicitMainLinks = BuildImplicitLinks(pieceMap, TrackConnectorRole.Main, 0.06f);
@@ -119,9 +137,20 @@ namespace GSP.TrackEditor.Editor
 
             PopulateStartFinishData(layout, baked);
 
-            EditorUtility.SetDirty(baked);
+            if (existingBaked == null)
+            {
+                AssetDatabase.CreateAsset(baked, outputAssetPath);
+                existingBaked = baked;
+            }
+            else
+            {
+                EditorUtility.CopySerialized(baked, existingBaked);
+                UnityEngine.Object.DestroyImmediate(baked);
+            }
+
+            EditorUtility.SetDirty(existingBaked);
             AssetDatabase.SaveAssets();
-            return baked;
+            return existingBaked;
         }
 
         public static List<(string aGuid, int aIdx, string bGuid, int bIdx)> GetImplicitLinks(TrackLayout layout, TrackConnectorRole role, float epsilonWorld = 0.06f)
