@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RaceCarRunner
   logSpawnIdentity: 1
-  track: {fileID: 11400000, guid: 2e196c4f99a79944888b523c517bcb2a, type: 2}
+  track: {fileID: 11400000, guid: e79e9182e6f1a3942b82af47172e2c4c, type: 2}

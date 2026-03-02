@@ -12,16 +12,175 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d326ef2582144697b86af9770f03f856, type: 3}
   m_Name: My-TrackLayout
   m_EditorClassIdentifier: Assembly-CSharp::GSP.TrackEditor.TrackLayout
-  pieces: []
-  links: []
+  pieces:
+  - guid: 1d78588cd81b426b8167e19c1c09547d
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -80.647964, y: -20.46388}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: bf93d9ab18704d39850cdd697a4fc1c2
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -60.64797, y: -20.46388}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: f005201e8ced431fb9ec70f016716ce0
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -40.647964, y: -20.46388}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 9a8a11eefd59450ba84f6b91ad8aefb7
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -20.647964, y: -20.46388}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 9be7bd12ba5848ab892cca14b9cf25ee
+    piece: {fileID: 11400000, guid: 209f5d0e7f7c4b24f83eba66de36265b, type: 2}
+    position: {x: -0.6479645, y: -20.46388}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 552cd02fdce74d09a03323cfa648b46a
+    piece: {fileID: 11400000, guid: fe178f4c75bcd44438e81583f4b510a2, type: 2}
+    position: {x: -0.6479658, y: -40.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: a37096fe331244a6a8fd7a7031c42585
+    piece: {fileID: 11400000, guid: 9b484babd9dc6d9499e7683d48ac59a9, type: 2}
+    position: {x: -0.6479663, y: -60.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 8b3b277b0b5148ebbd8dd093c45314b5
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -20.647966, y: -60.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: e52a00e5952543d0b52ef9d8b281bdf7
+    piece: {fileID: 11400000, guid: d105a32ef05a4b645a6e25bdb6cb4c87, type: 2}
+    position: {x: -40.647964, y: -60.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 9c1e4cf591cd44baa21e7fedd5b17b8a
+    piece: {fileID: 11400000, guid: 276f1c16c46d05349a94b73c6bd33751, type: 2}
+    position: {x: -60.647964, y: -50.86388}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 36b43b38917e4160a5e758602e2f4146
+    piece: {fileID: 11400000, guid: 43a1c6a5b9ab59d4994b70ad03b5184e, type: 2}
+    position: {x: -60.647964, y: -60.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 03ecd1314c074a74b6613e5b51550d2d
+    piece: {fileID: 11400000, guid: 5aef9f44ccc04254ca09d1168a681ddd, type: 2}
+    position: {x: -80.647964, y: -60.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 4c4bd8a5029a4176bc1b3b8d7f24d96b
+    piece: {fileID: 11400000, guid: ed1dfb0d89eaff9458e1a56bbe8b0c4e, type: 2}
+    position: {x: -100.647964, y: -60.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 3a619e2b65354c44acfc8b77619b8ee3
+    piece: {fileID: 11400000, guid: fe178f4c75bcd44438e81583f4b510a2, type: 2}
+    position: {x: -100.647964, y: -40.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  - guid: 83790d43ee8c4b5885f4b52c2036b0c4
+    piece: {fileID: 11400000, guid: 69ddd97a83254a64fa5f36eabe42addd, type: 2}
+    position: {x: -100.647964, y: -20.463882}
+    rotationSteps45: 0
+    mirrored: 0
+  links:
+  - pieceGuidA: 1d78588cd81b426b8167e19c1c09547d
+    connectorIndexA: 1
+    pieceGuidB: bf93d9ab18704d39850cdd697a4fc1c2
+    connectorIndexB: 0
+  - pieceGuidA: bf93d9ab18704d39850cdd697a4fc1c2
+    connectorIndexA: 1
+    pieceGuidB: f005201e8ced431fb9ec70f016716ce0
+    connectorIndexB: 0
+  - pieceGuidA: f005201e8ced431fb9ec70f016716ce0
+    connectorIndexA: 1
+    pieceGuidB: 9a8a11eefd59450ba84f6b91ad8aefb7
+    connectorIndexB: 0
+  - pieceGuidA: 9a8a11eefd59450ba84f6b91ad8aefb7
+    connectorIndexA: 1
+    pieceGuidB: 9be7bd12ba5848ab892cca14b9cf25ee
+    connectorIndexB: 0
+  - pieceGuidA: 9be7bd12ba5848ab892cca14b9cf25ee
+    connectorIndexA: 1
+    pieceGuidB: 552cd02fdce74d09a03323cfa648b46a
+    connectorIndexB: 0
+  - pieceGuidA: 552cd02fdce74d09a03323cfa648b46a
+    connectorIndexA: 1
+    pieceGuidB: a37096fe331244a6a8fd7a7031c42585
+    connectorIndexB: 0
+  - pieceGuidA: a37096fe331244a6a8fd7a7031c42585
+    connectorIndexA: 1
+    pieceGuidB: 8b3b277b0b5148ebbd8dd093c45314b5
+    connectorIndexB: 1
+  - pieceGuidA: 8b3b277b0b5148ebbd8dd093c45314b5
+    connectorIndexA: 0
+    pieceGuidB: e52a00e5952543d0b52ef9d8b281bdf7
+    connectorIndexB: 0
+  - pieceGuidA: e52a00e5952543d0b52ef9d8b281bdf7
+    connectorIndexA: 2
+    pieceGuidB: 9c1e4cf591cd44baa21e7fedd5b17b8a
+    connectorIndexB: 1
+  - pieceGuidA: e52a00e5952543d0b52ef9d8b281bdf7
+    connectorIndexA: 1
+    pieceGuidB: 36b43b38917e4160a5e758602e2f4146
+    connectorIndexB: 1
+  - pieceGuidA: 36b43b38917e4160a5e758602e2f4146
+    connectorIndexA: 0
+    pieceGuidB: 03ecd1314c074a74b6613e5b51550d2d
+    connectorIndexB: 1
+  - pieceGuidA: 9c1e4cf591cd44baa21e7fedd5b17b8a
+    connectorIndexA: 0
+    pieceGuidB: 03ecd1314c074a74b6613e5b51550d2d
+    connectorIndexB: 0
+  - pieceGuidA: 03ecd1314c074a74b6613e5b51550d2d
+    connectorIndexA: 2
+    pieceGuidB: 4c4bd8a5029a4176bc1b3b8d7f24d96b
+    connectorIndexB: 0
+  - pieceGuidA: 4c4bd8a5029a4176bc1b3b8d7f24d96b
+    connectorIndexA: 1
+    pieceGuidB: 3a619e2b65354c44acfc8b77619b8ee3
+    connectorIndexB: 1
+  - pieceGuidA: 3a619e2b65354c44acfc8b77619b8ee3
+    connectorIndexA: 0
+    pieceGuidB: 83790d43ee8c4b5885f4b52c2036b0c4
+    connectorIndexB: 0
+  - pieceGuidA: 1d78588cd81b426b8167e19c1c09547d
+    connectorIndexA: 0
+    pieceGuidB: 83790d43ee8c4b5885f4b52c2036b0c4
+    connectorIndexB: 1
   startFinish:
     pieceGuid: 
     segmentIndex: 0
     connectorIndex: 0
-    worldPos: {x: 0, y: 0}
-    worldDir: {x: 1, y: 0}
-  startGridSlots: []
+    worldPos: {x: -37.791645, y: -20.46388}
+    worldDir: {x: -1, y: -0}
+  startGridSlots:
+  - pos: {x: -40.391647, y: -19.023882}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -41.79165, y: -21.903881}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -43.191647, y: -19.023882}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -44.59165, y: -21.903881}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -45.991646, y: -19.023882}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -47.39165, y: -21.903881}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -48.791645, y: -19.023884}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -50.191647, y: -21.903887}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -51.59165, y: -19.023888}
+    dir: {x: 1, y: 0.00000026226832}
+  - pos: {x: -52.991642, y: -21.903887}
+    dir: {x: 1, y: 0.00000026226832}
   pitEntryGuid: 
   pitExitGuid: 
-  pan: {x: 0, y: 0}
-  zoom: 1
+  pan: {x: 1082.22, y: 534.62335}
+  zoom: 0.55000013
