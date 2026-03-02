@@ -79,7 +79,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
         var rngMap = RngService.Fork("SIM:PredatorPreyDocu:MAP");
         var rngWaterMain = RngService.Fork("SIM:PredatorPreyDocu:WATER:MAIN");
-        var rngSeasonal = RngService.Fork("SIM:PredatorPreyDocu:WATER:SEASONAL");
+        var rngSeasonal = RngService.Fork("SIM:PredatorPreyDocu:WATER:VEINS");
         var rngScatter = RngService.Fork("SIM:PredatorPreyDocu:SCATTER");
         _ = RngService.Fork("SIM:PredatorPreyDocu:WATER");
 
@@ -144,7 +144,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
         PaintMainRiver(permanentPixels, texW, texH, halfW, halfH, riverModel);
         PaintRiverCorridorOverlays(floodplainPixels, bankPixels, texW, texH, halfW, halfH, riverModel);
-        var creekCount = PaintSeasonalCreeksAndPonds(seasonalPixels, texW, texH, halfW, halfH, mapCfg, riverModel, rngSeasonal);
+        var creekCount = GenerateSeasonalVeins(seasonalPixels, texW, texH, WaterPixelsPerUnit, halfW, halfH, riverModel, rngSeasonal);
 
         permanentTex.SetPixels32(permanentPixels);
         permanentTex.Apply(false, false);
@@ -210,104 +210,90 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-    private int PaintSeasonalCreeksAndPonds(Color32[] pixels, int texW, int texH, float halfW, float halfH, Map mapCfg, RiverModel riverModel, IRng rngSeasonal)
+    private int GenerateSeasonalVeins(Color32[] seasonalBuf, int texW, int texH, float ppu, float halfW, float halfH, RiverModel riverModel, IRng rng)
     {
-        var creekCount = Mathf.Clamp(mapCfg?.creekCount ?? 6, 0, 64);
-        var baseCreekWidth = Mathf.Clamp(mapCfg?.creekWidth ?? 2f, 1.6f, 2.2f);
-        var creekColor = new Color32(82, 168, 246, 255);
+        const int veinCount = 3;
+        const float stepLen = 1.4f;
+        const int maxSteps = 180;
+        const float widthStart = 1.9f;
+        const float widthDecay = 0.975f;
+        const float alphaStart = 220f;
+        const float alphaDecay = 0.985f;
+        var maxDistance = halfW * 0.80f;
 
-        for (var c = 0; c < creekCount; c++)
+        for (var v = 0; v < veinCount; v++)
         {
-            var absX = rngSeasonal.Range(halfW * 0.35f, halfW * 0.90f);
-            var side = rngSeasonal.Value() < 0.5f ? -1f : 1f;
-            var x = Mathf.Clamp(absX * side, -halfW, halfW);
-            var y = rngSeasonal.Range(-halfH * 0.80f, halfH * 0.80f);
-
-            var (prevPx, prevPy) = WorldToPixel(x, y, halfW, halfH, texW, texH);
-            if (DebugPaintDots)
+            var y0 = rng.Range(-halfH * 0.75f, halfH * 0.75f);
+            var x0 = riverModel.EvaluateX(y0, halfW, halfH);
+            var pos = new Vector2(x0, y0);
+            var sign = rng.NextFloat() < 0.5f ? -1f : 1f;
+            var dir = new Vector2(sign, rng.Range(-0.15f, 0.15f)).normalized;
+            if (dir.sqrMagnitude < 0.0001f)
             {
-                PaintDisc(pixels, texW, texH, prevPx, prevPy, 2, new Color32(255, 120, 120, 255));
+                dir = new Vector2(sign, 0f);
             }
 
-            var steps = rngSeasonal.NextInt(120, 220);
-            var baseRadiusPx = Mathf.Max(1, Mathf.RoundToInt((baseCreekWidth * 0.5f) * WaterPixelsPerUnit));
-            var creekRadiusPx = baseRadiusPx;
-            var widthChangeInterval = rngSeasonal.NextInt(18, 25);
-            var dir = new Vector2(-Mathf.Sign(x), rngSeasonal.Range(-0.12f, 0.12f));
-            dir = dir.sqrMagnitude < 0.0001f ? Vector2.left : dir.normalized;
+            var width = widthStart;
+            var alpha = alphaStart;
+            var (prevPx, prevPy) = WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH);
 
-            for (var step = 0; step < steps; step++)
+            var startDotRadiusPx = Mathf.Max(1, Mathf.RoundToInt(0.7f * ppu));
+            var startDotAlpha = (byte)Mathf.Clamp(Mathf.RoundToInt(rng.Range(60f, 90f)), 0, 255);
+            PaintDisc(seasonalBuf, texW, texH, prevPx, prevPy, startDotRadiusPx, new Color32(80, 170, 255, startDotAlpha));
+
+            if (DebugPaintDots)
             {
-                if ((step > 0) && (step % widthChangeInterval == 0))
+                PaintDisc(seasonalBuf, texW, texH, prevPx, prevPy, 2, new Color32(255, 120, 120, 255));
+            }
+
+            for (var step = 0; step < maxSteps; step++)
+            {
+                var outward = new Vector2(sign, 0f);
+                var rx = riverModel.EvaluateX(pos.y, halfW, halfH);
+                var awayFromRiver = new Vector2(pos.x - rx, 0f);
+                awayFromRiver = awayFromRiver.sqrMagnitude < 0.0001f ? outward : awayFromRiver.normalized;
+                var wiggle = new Vector2(0f, rng.Range(-0.35f, 0.35f));
+
+                dir = ((dir * 0.65f) + (outward * 0.70f) + (awayFromRiver * 0.45f) + (wiggle * 0.20f)).normalized;
+                if (dir.sqrMagnitude < 0.0001f)
                 {
-                    creekRadiusPx = Mathf.Max(1, baseRadiusPx + rngSeasonal.NextInt(-1, 2));
-                    widthChangeInterval = rngSeasonal.NextInt(18, 25);
+                    dir = outward;
                 }
 
-                var riverX = riverModel.EvaluateX(y, halfW, halfH);
-                var riverWidth = riverModel.EvaluateWidth(y, halfH);
-                var floodW = riverWidth + FloodplainExtra;
-                var distanceToCorridor = Mathf.Abs(x - riverX);
-                if (distanceToCorridor <= (floodW * 0.5f + 1f))
+                var next = pos + (dir * stepLen);
+                next.x = Mathf.Clamp(next.x, -halfW, halfW);
+                next.y = Mathf.Clamp(next.y, -halfH, halfH);
+
+                if (Mathf.Abs(next.x - x0) > maxDistance)
                 {
                     break;
                 }
 
-                var toRiver = new Vector2(riverX - x, 0f);
-                toRiver = toRiver.sqrMagnitude < 0.0001f ? Vector2.zero : toRiver.normalized;
-                var downBias = new Vector2(0f, -0.15f);
-                var perp = new Vector2(-dir.y, dir.x);
-                var wiggle = perp * rngSeasonal.Range(-0.25f, 0.25f);
-                dir = ((dir * 0.80f) + (toRiver * 0.55f) + (downBias * 0.10f) + (wiggle * 0.25f)).normalized;
-                if (dir.sqrMagnitude < 0.0001f)
-                {
-                    dir = toRiver.sqrMagnitude > 0.0001f ? toRiver : Vector2.left;
-                }
+                width *= widthDecay;
+                alpha *= alphaDecay;
 
-                var stepLenWorld = rngSeasonal.Range(1.2f, 2.0f);
-                x += dir.x * stepLenWorld;
-                y += dir.y * stepLenWorld;
+                var (px, py) = WorldToPixel(next.x, next.y, halfW, halfH, texW, texH);
+                var rPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f) * ppu));
+                var col = new Color32(80, 170, 255, (byte)Mathf.Clamp(Mathf.RoundToInt(alpha), 0, 255));
+                PaintStroke(seasonalBuf, texW, texH, prevPx, prevPy, px, py, rPx, col);
 
-                x = Mathf.Clamp(x, -halfW, halfW);
-                y = Mathf.Clamp(y, -halfH, halfH);
-
-                var (px, py) = WorldToPixel(x, y, halfW, halfH, texW, texH);
-                PaintStroke(pixels, texW, texH, prevPx, prevPy, px, py, creekRadiusPx, creekColor);
+                pos = next;
                 prevPx = px;
                 prevPy = py;
-            }
 
-            var pondCount = rngSeasonal.NextInt(1, 3);
-            for (var p = 0; p < pondCount; p++)
-            {
-                var pondOffset = rngSeasonal.InsideUnitCircle() * 1.4f;
-                var pondX = Mathf.Clamp(x + pondOffset.x, -halfW, halfW);
-                var pondY = Mathf.Clamp(y + pondOffset.y, -halfH, halfH);
-                var (pondPx, pondPy) = WorldToPixel(pondX, pondY, halfW, halfH, texW, texH);
-                var baseRadiusWorld = rngSeasonal.Range(2.5f, 5.5f);
-                var pondBaseRadiusPx = Mathf.Max(1, Mathf.RoundToInt(baseRadiusWorld * WaterPixelsPerUnit));
-                var stamps = rngSeasonal.NextInt(5, 11);
-
-                for (var s = 0; s < stamps; s++)
+                if ((rPx <= 1) && (alpha < 40f))
                 {
-                    var stampOffset = rngSeasonal.InsideUnitCircle() * (baseRadiusWorld * 0.35f);
-                    var stampPosX = Mathf.Clamp(pondX + stampOffset.x, -halfW, halfW);
-                    var stampPosY = Mathf.Clamp(pondY + stampOffset.y, -halfH, halfH);
-                    var (stampPx, stampPy) = WorldToPixel(stampPosX, stampPosY, halfW, halfH, texW, texH);
-                    var stampRadius = Mathf.Max(1, Mathf.RoundToInt(pondBaseRadiusPx * rngSeasonal.Range(0.5f, 0.9f)));
-                    PaintDisc(pixels, texW, texH, stampPx, stampPy, stampRadius, new Color32(76, 158, 245, 255));
+                    break;
                 }
-
-                waterNodes.Add(new Vector2(pondX, pondY));
             }
 
             if (DebugPaintDots)
             {
-                PaintDisc(pixels, texW, texH, prevPx, prevPy, 2, new Color32(255, 220, 80, 255));
+                PaintDisc(seasonalBuf, texW, texH, prevPx, prevPy, 2, new Color32(255, 220, 80, 255));
             }
         }
 
-        return creekCount;
+        return veinCount;
     }
 
     private void BuildGrass(float halfW, float halfH, IRng rngScatter)
