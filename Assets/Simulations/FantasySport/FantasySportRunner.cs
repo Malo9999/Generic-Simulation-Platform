@@ -127,6 +127,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private enum AthleteState { BallCarrier, ChaseFreeBall, SupportAttack, PressCarrier, MarkLane, GoalkeeperHome }
     private enum AttackSide { Left, Right }
+    private enum KeeperMode { HoldLine, Intercept, Secure, Punt }
 
     private struct PlayerProfile
     {
@@ -271,6 +272,11 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private int currentTickIndex;
     private readonly int[] primaryChaserByTeam = { -1, -1 };
     private readonly int[] secondaryChaserByTeam = { -1, -1 };
+    private readonly KeeperMode[] keeperMode = { KeeperMode.HoldLine, KeeperMode.HoldLine };
+    private readonly float[] keeperModeUntil = { -1f, -1f };
+    private readonly int[] keeperIndex = { -1, -1 };
+    private readonly Vector2[] keeperObjectiveByTeam = { Vector2.zero, Vector2.zero };
+    private readonly float[] keeperInterceptYByTeam = { 0f, 0f };
     private readonly float[] defLineXByTeam = new float[2];
     private readonly float[] midLineXByTeam = new float[2];
     private readonly float[] attLineXByTeam = new float[2];
@@ -343,6 +349,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             passCooldowns[i] = Mathf.Max(0f, passCooldowns[i] - dt);
         }
 
+        UpdateKeeperAI(0, dt);
+        UpdateKeeperAI(1, dt);
         RefreshAssignments();
         UpdatePossessionProgress(dt);
         ResolveScrumBreaker(dt);
@@ -536,8 +544,20 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             stuckTimeByAthlete[i] = 0f;
         }
 
+        ResolveKeeperIndices();
         ResolveWingAnchors();
         ResetAthleteFormationAndVelocities();
+    }
+
+    private void ResolveKeeperIndices()
+    {
+        for (var teamId = 0; teamId < Teams; teamId++)
+        {
+            keeperIndex[teamId] = GetGoalkeeperIndex(teamId);
+            keeperMode[teamId] = KeeperMode.HoldLine;
+            keeperModeUntil[teamId] = -1f;
+            keeperInterceptYByTeam[teamId] = 0f;
+        }
     }
 
 
@@ -620,7 +640,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         var x = teamId == 0 ? -1.8f : 1.8f;
         if (localIndex == 1)
         {
-            x = teamId == 0 ? (-halfW + 2.0f) : (halfW - 2.0f);
+            var keeperBox = GetKeeperBox(teamId);
+            x = teamId == 0
+                ? (-halfW + (keeperBox.width * 0.55f))
+                : (halfW - (keeperBox.width * 0.55f));
         }
         else if (localIndex >= 0 && localIndex <= 2)
         {
@@ -793,6 +816,17 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         scrumHoldTimeByTeam[1] = 0f;
         scrumBreakerArmedByTeam[0] = false;
         scrumBreakerArmedByTeam[1] = false;
+        for (var teamId = 0; teamId < Teams; teamId++)
+        {
+            keeperMode[teamId] = KeeperMode.HoldLine;
+            keeperModeUntil[teamId] = -1f;
+            keeperInterceptYByTeam[teamId] = 0f;
+            var keeper = keeperIndex[teamId];
+            if (IsValidAthleteIndex(keeper))
+            {
+                keeperObjectiveByTeam[teamId] = new Vector2(positions[keeper].x, 0f);
+            }
+        }
         if (returnToShapeUntilByAthlete != null && leftShapeByAthlete != null)
         {
             for (var i = 0; i < returnToShapeUntilByAthlete.Length; i++)
@@ -860,6 +894,17 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         scrumHoldTimeByTeam[1] = 0f;
         scrumBreakerArmedByTeam[0] = false;
         scrumBreakerArmedByTeam[1] = false;
+        for (var teamId = 0; teamId < Teams; teamId++)
+        {
+            keeperMode[teamId] = KeeperMode.HoldLine;
+            keeperModeUntil[teamId] = -1f;
+            keeperInterceptYByTeam[teamId] = 0f;
+            var keeper = keeperIndex[teamId];
+            if (IsValidAthleteIndex(keeper))
+            {
+                keeperObjectiveByTeam[teamId] = new Vector2(positions[keeper].x, 0f);
+            }
+        }
         if (returnToShapeUntilByAthlete != null && leftShapeByAthlete != null)
         {
             for (var i = 0; i < returnToShapeUntilByAthlete.Length; i++)
@@ -3008,21 +3053,250 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private Vector2 ComputeGoalkeeperTarget(int i)
     {
-        var keeperBox = GetKeeperBox(identities[i].teamId);
-        var isBallInsideKeeperBox = keeperBox.Contains(ballPos);
-        if (isBallInsideKeeperBox)
+        var teamId = identities[i].teamId;
+        if (teamId < 0 || teamId >= Teams)
         {
-            return new Vector2(
-                Mathf.Clamp(ballPos.x, keeperBox.xMin + 0.5f, keeperBox.xMax - 0.5f),
-                Mathf.Clamp(ballPos.y, keeperBox.yMin + 0.4f, keeperBox.yMax - 0.4f));
+            return positions[i];
         }
 
-        var depth = keeperBox.width;
-        var homeX = identities[i].teamId == 0
-            ? (-halfWidth + (depth * 0.55f))
-            : (halfWidth - (depth * 0.55f));
-        var homeY = Mathf.Clamp(ballPos.y, keeperBox.yMin + 0.4f, keeperBox.yMax - 0.4f);
-        return new Vector2(homeX, homeY);
+        return keeperObjectiveByTeam[teamId];
+    }
+
+    private void UpdateKeeperAI(int teamId, float dt)
+    {
+        if (teamId < 0 || teamId >= Teams)
+        {
+            return;
+        }
+
+        var keeper = keeperIndex[teamId];
+        if (!IsValidAthleteIndex(keeper))
+        {
+            keeper = GetGoalkeeperIndex(teamId);
+            keeperIndex[teamId] = keeper;
+            if (!IsValidAthleteIndex(keeper))
+            {
+                return;
+            }
+        }
+
+        var keeperBox = GetKeeperBox(teamId);
+        var goalLineX = GetOwnBacklineX(teamId);
+        var homeX = teamId == 0
+            ? (-halfWidth + (keeperBox.width * 0.55f))
+            : (halfWidth - (keeperBox.width * 0.55f));
+        var holdTarget = new Vector2(homeX, Mathf.Clamp(ballPos.y, keeperBox.yMin, keeperBox.yMax));
+
+        if (keeperModeUntil[teamId] > 0f && matchTimeSeconds >= keeperModeUntil[teamId] && keeperMode[teamId] == KeeperMode.Intercept)
+        {
+            keeperMode[teamId] = KeeperMode.HoldLine;
+            keeperModeUntil[teamId] = -1f;
+        }
+
+        if (keeperMode[teamId] == KeeperMode.Secure && ballOwnerIndex == keeper)
+        {
+            keeperMode[teamId] = KeeperMode.Punt;
+            keeperModeUntil[teamId] = matchTimeSeconds + 0.25f;
+        }
+        else if (keeperMode[teamId] == KeeperMode.Secure)
+        {
+            keeperMode[teamId] = KeeperMode.HoldLine;
+            keeperModeUntil[teamId] = -1f;
+        }
+
+        if (keeperMode[teamId] == KeeperMode.Punt)
+        {
+            keeperObjectiveByTeam[teamId] = holdTarget;
+            if (ballOwnerIndex == keeper)
+            {
+                ExecuteKeeperPunt(teamId, keeper);
+            }
+
+            keeperMode[teamId] = KeeperMode.HoldLine;
+            keeperModeUntil[teamId] = -1f;
+            keeperObjectiveByTeam[teamId] = holdTarget;
+            return;
+        }
+
+        var threat = EvaluateKeeperThreat(teamId, out var interceptY);
+        if (keeperMode[teamId] == KeeperMode.HoldLine && threat)
+        {
+            keeperMode[teamId] = KeeperMode.Intercept;
+            keeperModeUntil[teamId] = matchTimeSeconds + 0.6f;
+            keeperInterceptYByTeam[teamId] = interceptY;
+        }
+
+        if (keeperMode[teamId] == KeeperMode.Intercept)
+        {
+            var towardCenter = TowardCenterSign(teamId);
+            var interceptX = Mathf.Clamp(goalLineX + (towardCenter * 1.5f), keeperBox.xMin, keeperBox.xMax);
+            var interceptTarget = new Vector2(interceptX, Mathf.Clamp(keeperInterceptYByTeam[teamId], keeperBox.yMin, keeperBox.yMax));
+            keeperObjectiveByTeam[teamId] = interceptTarget;
+
+            if (ballOwnerIndex < 0)
+            {
+                var pickupRadius = rules.pickupRadius;
+                if (Vector2.Distance(positions[keeper], ballPos) <= pickupRadius)
+                {
+                    SetBallOwner(keeper);
+                    keeperMode[teamId] = KeeperMode.Secure;
+                    return;
+                }
+            }
+            else if (ballOwnerTeam != teamId)
+            {
+                var carrier = ballOwnerIndex;
+                var inCorridor = Mathf.Abs(positions[carrier].y) <= (GetGoalMouthHalfHeight());
+                var tackleRange = rules.tackleRadius;
+                if (inCorridor && Vector2.Distance(positions[keeper], positions[carrier]) <= tackleRange && tackleCooldowns[keeper] <= 0f)
+                {
+                    AttemptKeeperSteal(keeper, carrier);
+                    if (ballOwnerIndex == keeper)
+                    {
+                        keeperMode[teamId] = KeeperMode.Secure;
+                        return;
+                    }
+                }
+            }
+
+            if (matchTimeSeconds >= keeperModeUntil[teamId])
+            {
+                keeperMode[teamId] = KeeperMode.HoldLine;
+                keeperModeUntil[teamId] = -1f;
+            }
+
+            return;
+        }
+
+        keeperObjectiveByTeam[teamId] = holdTarget;
+    }
+
+    private bool EvaluateKeeperThreat(int teamId, out float interceptY)
+    {
+        var goalLineX = GetOwnBacklineX(teamId);
+        var goalCorridorHalfH = GetGoalMouthHalfHeight();
+        interceptY = Mathf.Clamp(ballPos.y, -goalCorridorHalfH, goalCorridorHalfH);
+
+        if (ballOwnerIndex >= 0 && ballOwnerTeam != teamId)
+        {
+            var carrier = ballOwnerIndex;
+            var carrierPos = positions[carrier];
+            var nearBackline = Mathf.Abs(carrierPos.x - goalLineX) <= 12f;
+            if (nearBackline && Mathf.Abs(carrierPos.y) <= goalCorridorHalfH)
+            {
+                interceptY = carrierPos.y;
+                return true;
+            }
+        }
+
+        if (ballOwnerIndex >= 0)
+        {
+            return false;
+        }
+
+        var towardGoal = teamId == 0 ? ballVel.x < -0.01f : ballVel.x > 0.01f;
+        if (!towardGoal || Mathf.Abs(ballVel.x) < 0.01f)
+        {
+            return false;
+        }
+
+        var t = (goalLineX - ballPos.x) / ballVel.x;
+        if (t < 0f || t > 1.5f)
+        {
+            return false;
+        }
+
+        var yAtGoal = ballPos.y + (ballVel.y * t);
+        if (Mathf.Abs(yAtGoal) > goalCorridorHalfH)
+        {
+            return false;
+        }
+
+        interceptY = yAtGoal;
+        return true;
+    }
+
+    private void AttemptKeeperSteal(int keeper, int carrier)
+    {
+        if (!IsValidAthleteIndex(keeper) || !IsValidAthleteIndex(carrier) || identities[keeper].teamId == identities[carrier].teamId)
+        {
+            return;
+        }
+
+        var impulse = (positions[carrier] - positions[keeper]).normalized;
+        if (impulse.sqrMagnitude < 0.0001f)
+        {
+            impulse = identities[keeper].teamId == 0 ? Vector2.right : Vector2.left;
+        }
+
+        stunTimers[carrier] = rules.stunSeconds * 0.75f;
+        tackleCooldowns[keeper] = Mathf.Lerp(1.3f, 0.6f, profiles[keeper].tackleCooldown);
+        SetBallOwner(keeper);
+        ballPos = positions[keeper];
+        ballVel = impulse * 1.5f;
+        stamina[keeper] = Mathf.Max(0f, stamina[keeper] - TackleStaminaCost);
+    }
+
+    private void ExecuteKeeperPunt(int teamId, int keeper)
+    {
+        if (!IsGoalkeeper(keeper) || ballOwnerIndex != keeper)
+        {
+            return;
+        }
+
+        var stamina01 = Mathf.Clamp01(stamina[keeper] / Mathf.Max(0.01f, staminaMaxByIndex[keeper]));
+        var speed = Mathf.Lerp(10f, 18f, stamina01);
+        var errDeg = Mathf.Lerp(18f, 4f, stamina01);
+
+        var targetX = teamId == 0 ? halfWidth * 0.15f : -halfWidth * 0.15f;
+        var wingY = Mathf.Clamp(GetLaneWideY(teamId), 4f, halfHeight - 1.2f);
+        var lanePlusThreat = CountOpponentsNearPoint(1 - teamId, new Vector2(targetX, wingY), 6f);
+        var laneMinusThreat = CountOpponentsNearPoint(1 - teamId, new Vector2(targetX, -wingY), 6f);
+        var targetY = lanePlusThreat <= laneMinusThreat ? wingY : -wingY;
+        var target = new Vector2(targetX, targetY);
+
+        var start = positions[keeper];
+        var dir = target - start;
+        if (dir.sqrMagnitude < 0.0001f)
+        {
+            dir = teamId == 0 ? Vector2.right : Vector2.left;
+        }
+
+        dir.Normalize();
+        var rng = RngService.Fork($"FS:KEEPER_PUNT:{currentTickIndex}:{keeper}");
+        var finalDir = Rotate(dir, rng.Range(-errDeg, errDeg));
+
+        ballOwnerIndex = -1;
+        ballOwnerTeam = -1;
+        freeBallTime = 0f;
+        ballPos = start;
+        ballVel = finalDir * speed;
+        lastThrowTeam = teamId;
+        lastThrowTime = elapsedMatchTime;
+        intendedReceiverIndex = -1;
+        receiverLockUntilTime = elapsedMatchTime + ReceiverLockSeconds;
+        stamina[keeper] = Mathf.Max(0f, stamina[keeper] - 1.3f);
+        passCooldowns[keeper] = PassCooldownSeconds;
+    }
+
+    private int CountOpponentsNearPoint(int opponentTeamId, Vector2 point, float radius)
+    {
+        var radiusSq = radius * radius;
+        var count = 0;
+        for (var i = 0; i < TotalAthletes; i++)
+        {
+            if (identities[i].teamId != opponentTeamId)
+            {
+                continue;
+            }
+
+            if ((positions[i] - point).sqrMagnitude <= radiusSq)
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private Vector2 BuildSteeringVelocity(int athleteIndex, Vector2 objectiveTarget, Vector2 homeTarget, float maxSpeed)
@@ -4798,16 +5072,21 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private Rect GetKeeperBox(int teamId)
     {
-        var goalMouthHalfH = GetGoalMouthHalfHeight();
         ComputeGoalRects(out var leftRect, out _);
-        var depth = Mathf.Max(6f, leftRect.width * 0.8f);
-        var height = goalMouthHalfH * 2f * 0.7f;
+        var endzoneDepth = leftRect.width;
+        var goalCorridorHalfH = leftRect.height * 0.5f;
+        var keeperBoxDepth = Mathf.Clamp(endzoneDepth * 0.7f, 3f, 6f);
+        var keeperBoxYHalf = goalCorridorHalfH * 0.9f;
         return teamId == 0
-            ? new Rect(-halfWidth, -height * 0.5f, depth, height)
-            : new Rect(halfWidth - depth, -height * 0.5f, depth, height);
+            ? new Rect(-halfWidth, -keeperBoxYHalf, keeperBoxDepth, keeperBoxYHalf * 2f)
+            : new Rect(halfWidth - keeperBoxDepth, -keeperBoxYHalf, keeperBoxDepth, keeperBoxYHalf * 2f);
     }
 
-    private float GetGoalMouthHalfHeight() => Mathf.Clamp(halfHeight * 0.18f, 3.5f, 5.0f);
+    private float GetGoalMouthHalfHeight()
+    {
+        ComputeGoalRects(out var leftRect, out _);
+        return leftRect.height * 0.5f;
+    }
     private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
     private float GetEndzoneDepth() => Mathf.Clamp(halfWidth * 0.12f, 5.5f, 8.5f);
     private float GetEndzoneHalfHeight() => GetGoalMouthHalfHeight() * 1.5f;
