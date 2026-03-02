@@ -337,22 +337,20 @@ namespace GSP.TrackEditor.Editor
                     ? string.Join(", ", endpoints.Take(4))
                     : "none";
                 var suffix = endpoints.Count > 4 ? " ..." : string.Empty;
-                report.Errors.Add($"Pit has {endpoints.Count} endpoints (expected 2: PitEntry.PitOut and PitExit.PitIn). Unconnected pit ends: {endpointPreview}{suffix}");
+                report.Errors.Add($"Pit has {endpoints.Count} endpoints (expected 2). Pit must be one open chain that starts at PitEntry's pit-path endpoint and ends at PitExit's pit-path endpoint. Unconnected pit ends: {endpointPreview}{suffix}");
                 return;
             }
 
-            var entryPitOutNode = FindPitConnectorNode(pieceMap, pitGraph, pitEntries[0].guid, "PitOut");
-            var exitPitInNode = FindPitConnectorNode(pieceMap, pitGraph, pitExits[0].guid, "PitIn");
-            if (string.IsNullOrWhiteSpace(entryPitOutNode) || string.IsNullOrWhiteSpace(exitPitInNode))
+            if (!TryResolvePitPathEndpointNodes(
+                    pieceMap,
+                    pitGraph,
+                    pitEntries[0].guid,
+                    pitExits[0].guid,
+                    out _,
+                    out _,
+                    out var endpointError))
             {
-                report.Errors.Add("Pit path does not expose PitEntry(PitOut) and PitExit(PitIn) connectors.");
-                return;
-            }
-
-            var endpointSet = new HashSet<string>(endpoints);
-            if (!endpointSet.Contains(entryPitOutNode) || !endpointSet.Contains(exitPitInNode))
-            {
-                report.Errors.Add("Pit endpoints are not PitEntry(PitOut) and PitExit(PitIn). Check you used one Entry + one Exit and snapped to PitOut/PitIn.");
+                report.Errors.Add(endpointError);
                 return;
             }
         }
@@ -627,11 +625,9 @@ namespace GSP.TrackEditor.Editor
                 return ordered;
             }
 
-            var start = FindPitConnectorNode(pieceMap, graph, entryGuid, "PitOut");
-            var end = FindPitConnectorNode(pieceMap, graph, exitGuid, "PitIn");
-            if (string.IsNullOrWhiteSpace(start) || string.IsNullOrWhiteSpace(end))
+            if (!TryResolvePitPathEndpointNodes(pieceMap, graph, entryGuid, exitGuid, out var start, out var end, out var endpointError))
             {
-                Debug.LogWarning("Track bake: pit path ordering failed because PitOut/PitIn connectors were not found on PitEntry/PitExit.");
+                Debug.LogWarning($"Track bake: pit path ordering failed because {endpointError}");
                 return ordered;
             }
 
@@ -726,6 +722,72 @@ namespace GSP.TrackEditor.Editor
             }
 
             return ordered;
+        }
+
+        private static bool TryResolvePitPathEndpointNodes(
+            Dictionary<string, PlacedPiece> pieceMap,
+            Dictionary<string, HashSet<string>> graph,
+            string pitEntryGuid,
+            string pitExitGuid,
+            out string startNode,
+            out string endNode,
+            out string error)
+        {
+            startNode = null;
+            endNode = null;
+            error = null;
+
+            var endpoints = graph.Where(kvp => kvp.Value.Count == 1).Select(kvp => kvp.Key).ToList();
+            if (endpoints.Count != 2)
+            {
+                error = $"pit graph has {endpoints.Count} endpoints (expected 2).";
+                return false;
+            }
+
+            foreach (var endpoint in endpoints)
+            {
+                if (!ParseNode(endpoint, out var endpointGuid, out _))
+                {
+                    continue;
+                }
+
+                if (endpointGuid == pitEntryGuid)
+                {
+                    startNode = endpoint;
+                }
+                else if (endpointGuid == pitExitGuid)
+                {
+                    endNode = endpoint;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(startNode) && !string.IsNullOrWhiteSpace(endNode))
+            {
+                return true;
+            }
+
+            var endpointDetails = string.Join(", ", endpoints.Select(endpoint => DescribeNode(pieceMap, endpoint)));
+            error =
+                $"pit endpoints do not map 1-to-1 to PitEntry and PitExit. Pit must be one open chain that starts at PitEntry's pit-path endpoint and ends at PitExit's pit-path endpoint. entryGuid={pitEntryGuid}, exitGuid={pitExitGuid}, endpoints=[{endpointDetails}]";
+            return false;
+        }
+
+        private static string DescribeNode(Dictionary<string, PlacedPiece> pieceMap, string node)
+        {
+            if (!ParseNode(node, out var guid, out var idx))
+            {
+                return node;
+            }
+
+            if (!pieceMap.TryGetValue(guid, out var placed) || !IsConnectorIndexValid(placed, idx))
+            {
+                return $"{node} (unknown piece/connector)";
+            }
+
+            var connector = placed.piece.connectors[idx];
+            var connectorId = connector != null && !string.IsNullOrWhiteSpace(connector.id) ? connector.id : "(no-id)";
+            var pieceId = !string.IsNullOrWhiteSpace(placed.piece.pieceId) ? placed.piece.pieceId : "(no-pieceId)";
+            return $"{node} ({pieceId}/{connectorId})";
         }
 
         private static string FindPitConnectorNode(
@@ -930,7 +992,7 @@ namespace GSP.TrackEditor.Editor
                 : (bGuid, bIdx, aGuid, aIdx);
         }
 
-        private static bool TryParseNode(string node, out string guid, out int connectorIndex)
+        private static bool ParseNode(string node, out string guid, out int connectorIndex)
         {
             guid = string.Empty;
             connectorIndex = -1;
@@ -947,6 +1009,11 @@ namespace GSP.TrackEditor.Editor
 
             guid = split[0];
             return true;
+        }
+
+        private static bool TryParseNode(string node, out string guid, out int connectorIndex)
+        {
+            return ParseNode(node, out guid, out connectorIndex);
         }
 
         private static bool TryGetConnector(
