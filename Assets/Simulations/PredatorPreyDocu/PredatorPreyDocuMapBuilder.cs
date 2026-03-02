@@ -785,6 +785,9 @@ public sealed class PredatorPreyDocuMapBuilder
         public readonly float Radius;
         public readonly float CrocRisk;
 
+        public Vector2 position => Position;
+        public float radius => Radius;
+
         public CrossingNodeData(string id, Vector2 position, float radius, float crocRisk)
         {
             Id = id;
