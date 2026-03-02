@@ -1451,22 +1451,43 @@ namespace GSP.TrackEditor.Editor
 
             layout.pieces.Add(snapped);
             layout.links.Add(link);
-            TryAutoLinkOtherConnectors(layout, snapped, link.connectorIndexB);
-            status = $"Placed with snap distance {distance:F1}px.";
+            var autoLinkedCount = TryAutoLinkOtherConnectors(layout, snapped.guid, link.connectorIndexB);
+            status = autoLinkedCount > 0
+                ? autoLinkedCount == 1
+                    ? "Auto-linked 1 additional connector."
+                    : $"Auto-linked {autoLinkedCount} additional connectors."
+                : $"Placed with snap distance {distance:F1}px.";
             EditorUtility.SetDirty(layout);
             ClearSnapLock();
         }
 
-        private void TryAutoLinkOtherConnectors(TrackLayout targetLayout, PlacedPiece newPiece, int primaryConnectorIndexUsed)
+        private int TryAutoLinkOtherConnectors(TrackLayout targetLayout, string newlyPlacedGuid, int primaryConnectorIndexUsed)
         {
-            if (targetLayout?.links == null || targetLayout.pieces == null || newPiece?.piece?.connectors == null)
+            if (targetLayout?.links == null || targetLayout.pieces == null)
             {
-                return;
+                return 0;
             }
+
+            var newPiece = targetLayout.pieces.FirstOrDefault(p => p.guid == newlyPlacedGuid);
+            if (newPiece?.piece?.connectors == null)
+            {
+                return 0;
+            }
+
+            static string GetLinkKey(string guid, int connectorIndex) => $"{guid}:{connectorIndex}";
+
+            var linkedConnectors = new HashSet<string>();
+            foreach (var existingLink in targetLayout.links)
+            {
+                linkedConnectors.Add(GetLinkKey(existingLink.pieceGuidA, existingLink.connectorIndexA));
+                linkedConnectors.Add(GetLinkKey(existingLink.pieceGuidB, existingLink.connectorIndexB));
+            }
+
+            var addedCount = 0;
 
             for (var newIndex = 0; newIndex < newPiece.piece.connectors.Length; newIndex++)
             {
-                if (newIndex == primaryConnectorIndexUsed || IsConnectorLinked(targetLayout, newPiece.guid, newIndex))
+                if (newIndex == primaryConnectorIndexUsed || linkedConnectors.Contains(GetLinkKey(newPiece.guid, newIndex)))
                 {
                     continue;
                 }
@@ -1486,7 +1507,7 @@ namespace GSP.TrackEditor.Editor
 
                     for (var existingIndex = 0; existingIndex < existing.piece.connectors.Length; existingIndex++)
                     {
-                        if (IsConnectorLinked(targetLayout, existing.guid, existingIndex))
+                        if (linkedConnectors.Contains(GetLinkKey(existing.guid, existingIndex)))
                         {
                             continue;
                         }
@@ -1531,7 +1552,13 @@ namespace GSP.TrackEditor.Editor
                     pieceGuidB = newPiece.guid,
                     connectorIndexB = newIndex
                 });
+
+                linkedConnectors.Add(GetLinkKey(best.Value.placed.guid, best.Value.index));
+                linkedConnectors.Add(GetLinkKey(newPiece.guid, newIndex));
+                addedCount++;
             }
+
+            return addedCount;
         }
 
         private bool TryFindSnap(
