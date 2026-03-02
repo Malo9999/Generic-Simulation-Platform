@@ -4,6 +4,11 @@ using System.Linq;
 
 public static class SerengetiMapSpecValidator
 {
+    private static readonly string[] RequiredRegionIds =
+    {
+        "south_ndutu", "central_seronera", "west_grumeti", "north_mara", "east_kopjes"
+    };
+
     private static readonly string[] RequiredLegendSpecies =
     {
         "elephant", "giraffe", "buffalo", "zebra", "wildebeest", "hippo",
@@ -50,6 +55,12 @@ public static class SerengetiMapSpecValidator
         if (regionIds.Distinct(StringComparer.Ordinal).Count() != regionIds.Count)
         {
             errors.Add("region ids must be unique.");
+        }
+
+        var missingRegionIds = RequiredRegionIds.Where(required => !regionIds.Contains(required)).ToList();
+        if (missingRegionIds.Count > 0)
+        {
+            errors.Add($"regions missing required ids: {string.Join(", ", missingRegionIds)}.");
         }
 
         for (var i = 0; i < regions.Count; i++)
@@ -114,12 +125,10 @@ public static class SerengetiMapSpecValidator
         }
         else
         {
-            foreach (var required in RequiredLegendSpecies)
+            var missing = RequiredLegendSpecies.Where(required => !species.ContainsKey(required)).ToList();
+            if (missing.Count > 0)
             {
-                if (!species.ContainsKey(required))
-                {
-                    errors.Add($"legend.species missing required key '{required}'.");
-                }
+                errors.Add($"legend.species missing required keys: {string.Join(", ", missing)}.");
             }
         }
 
