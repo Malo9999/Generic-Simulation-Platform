@@ -337,7 +337,7 @@ namespace GSP.TrackEditor.Editor
 
             void ReportAmbiguousPitPath(string node, int degree)
             {
-                report.Errors.Add($"Pit path is ambiguous (fork). Node={node} degree={degree}. Fix layout so pit is one open chain from PitEntry(PitOut) to PitExit(PitIn).");
+                report.Errors.Add($"Pit path is ambiguous (fork). forkNode={node} degree={degree}. Fix layout so pit is one open chain from PitEntry(PitOut) to PitExit(PitIn).");
             }
 
             var components = 0;
