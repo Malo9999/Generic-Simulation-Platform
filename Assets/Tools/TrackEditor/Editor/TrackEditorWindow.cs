@@ -1943,19 +1943,19 @@ namespace GSP.TrackEditor.Editor
 
             var aIsPitOut = aId.IndexOf("PitOut", StringComparison.OrdinalIgnoreCase) >= 0;
             var bIsPitOut = bId.IndexOf("PitOut", StringComparison.OrdinalIgnoreCase) >= 0;
-            var aIsPitIn = aId.IndexOf("PitIn", StringComparison.OrdinalIgnoreCase) >= 0;
-            var bIsPitIn = bId.IndexOf("PitIn", StringComparison.OrdinalIgnoreCase) >= 0;
+            var aIsPitIn  = aId.IndexOf("PitIn",  StringComparison.OrdinalIgnoreCase) >= 0;
+            var bIsPitIn  = bId.IndexOf("PitIn",  StringComparison.OrdinalIgnoreCase) >= 0;
 
-            if (aIsPitOut || bIsPitOut)
+            var aSpecial = aIsPitOut || aIsPitIn;
+            var bSpecial = bIsPitOut || bIsPitIn;
+
+            if (aSpecial && bSpecial)
             {
-                return aIsPitIn || bIsPitIn;
+                // strict: PitOut must connect to PitIn
+                return (aIsPitOut && bIsPitIn) || (aIsPitIn && bIsPitOut) || (bIsPitOut && aIsPitIn) || (bIsPitIn && aIsPitOut);
             }
 
-            if (aIsPitIn || bIsPitIn)
-            {
-                return aIsPitOut || bIsPitOut;
-            }
-
+            // if only one side is special and the other is generic (W/E/NE/etc), allow
             return true;
         }
 
