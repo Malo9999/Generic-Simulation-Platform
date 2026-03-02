@@ -460,6 +460,28 @@ namespace GSP.TrackEditor.Editor
 
         private void DrawValidationErrorActions(string error)
         {
+            if (TryParseForkNode(error, out var forkNodeId))
+            {
+                if (GUILayout.Button("Select Fork", GUILayout.Width(82f)))
+                {
+                    var separatorIndex = forkNodeId.IndexOf(':');
+                    if (separatorIndex > 0)
+                    {
+                        var pieceGuid = forkNodeId.Substring(0, separatorIndex);
+                        var pieceIndex = layout.pieces.FindIndex(p => p.guid == pieceGuid);
+                        if (pieceIndex >= 0)
+                        {
+                            selectedPiece = pieceIndex;
+                            RequestFocusOnGuid(pieceGuid);
+                            status = $"Selected fork piece: {pieceGuid}";
+                            Repaint();
+                        }
+                    }
+                }
+
+                return;
+            }
+
             if (error.StartsWith("Main track must form exactly one closed loop", StringComparison.Ordinal))
             {
                 if (GUILayout.Button("Fix Links", GUILayout.Width(70f)))
@@ -2279,6 +2301,24 @@ namespace GSP.TrackEditor.Editor
 
             overlap = (match.Groups[1].Value, match.Groups[2].Value);
             return true;
+        }
+
+        private static bool TryParseForkNode(string error, out string nodeId)
+        {
+            nodeId = null;
+            if (string.IsNullOrWhiteSpace(error))
+            {
+                return false;
+            }
+
+            var match = Regex.Match(error, @"forkNode=([^\s]+)", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                return false;
+            }
+
+            nodeId = match.Groups[1].Value;
+            return !string.IsNullOrWhiteSpace(nodeId);
         }
 
         private void Bake()
