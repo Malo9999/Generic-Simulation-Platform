@@ -1,0 +1,135 @@
+{
+  "mapId": "serengeti_v1",
+  "version": 1,
+  "arena": { "width": 1200, "height": 800 },
+
+  "regions": [
+    { "id": "south_ndutu",   "name": "South / Ndutu (Calving Plains)", "shape": { "type": "rect", "xMin": 0.15, "xMax": 0.85, "yMin": 0.00, "yMax": 0.28 }, "biome": "plains",   "baseGreenness": 0.42, "rainResponse": 0.95, "cover": 0.10 },
+    { "id": "central_seronera","name":"Central / Seronera (Permanent Core)","shape":{ "type":"rect","xMin":0.25,"xMax":0.75,"yMin":0.28,"yMax":0.62 }, "biome":"riverine", "baseGreenness":0.55,"rainResponse":0.70,"cover":0.35 },
+    { "id": "west_grumeti",  "name": "West / Grumeti Corridor",        "shape": { "type": "rect", "xMin": 0.00, "xMax": 0.35, "yMin": 0.45, "yMax": 0.70 }, "biome": "woodland","baseGreenness": 0.48, "rainResponse": 0.65, "cover": 0.30 },
+    { "id": "north_mara",    "name": "North / Mara (Crossings)",       "shape": { "type": "rect", "xMin": 0.15, "xMax": 0.85, "yMin": 0.70, "yMax": 1.00 }, "biome": "riverine","baseGreenness": 0.50, "rainResponse": 0.55, "cover": 0.25 },
+    { "id": "east_kopjes",   "name": "East / Kopjes & Return Route",   "shape": { "type": "rect", "xMin": 0.75, "xMax": 1.00, "yMin": 0.35, "yMax": 0.85 }, "biome": "kopjes",  "baseGreenness": 0.40, "rainResponse": 0.60, "cover": 0.80 }
+  ],
+
+  "water": {
+    "mainRiver": {
+      "id": "main_spine",
+      "centerline": [
+        { "x": 0.52, "y": 1.00 },
+        { "x": 0.47, "y": 0.78 },
+        { "x": 0.55, "y": 0.55 },
+        { "x": 0.46, "y": 0.33 },
+        { "x": 0.54, "y": 0.00 }
+      ],
+      "widthNorth": 22,
+      "widthSouth": 12,
+      "floodplainExtra": 70,
+      "bankExtra": 6,
+      "crossings": [
+        { "id": "mara_crossing_1", "x": 0.52, "y": 0.88, "radius": 45, "crocRisk": 0.90 },
+        { "id": "mara_crossing_2", "x": 0.50, "y": 0.78, "radius": 40, "crocRisk": 0.75 }
+      ]
+    },
+
+    "grumeti": {
+      "id": "grumeti_belt",
+      "centerline": [
+        { "x": 0.06, "y": 0.63 },
+        { "x": 0.18, "y": 0.60 },
+        { "x": 0.30, "y": 0.56 }
+      ],
+      "width": 12,
+      "crossings": [
+        { "id": "grumeti_crossing_1", "x": 0.22, "y": 0.58, "radius": 35, "crocRisk": 0.60 }
+      ]
+    },
+
+    "pools": [
+      { "id": "seronera_pool_1", "x": 0.54, "y": 0.56, "radius": 18, "permanent": true },
+      { "id": "seronera_pool_2", "x": 0.59, "y": 0.52, "radius": 16, "permanent": true },
+      { "id": "seronera_pool_3", "x": 0.50, "y": 0.50, "radius": 14, "permanent": true },
+      { "id": "seronera_pool_4", "x": 0.62, "y": 0.58, "radius": 12, "permanent": true }
+    ],
+
+    "seasonal": {
+      "maxVeins": 3,
+      "maxPonds": 8,
+      "presenceByMonth": { "1": 0.90, "2": 0.90, "3": 0.80, "4": 0.70, "5": 0.60, "6": 0.35, "7": 0.15, "8": 0.10, "9": 0.15, "10": 0.35, "11": 0.70, "12": 0.85 }
+    }
+  },
+
+  "landmarks": {
+    "kopjes": [
+      { "id": "kopjes_1", "x": 0.88, "y": 0.62, "radius": 42, "cover": 0.85 },
+      { "id": "kopjes_2", "x": 0.92, "y": 0.74, "radius": 34, "cover": 0.80 }
+    ],
+    "wetlands": [
+      { "id": "ndutu_wetland_1", "x": 0.55, "y": 0.16, "radius": 50 }
+    ]
+  },
+
+  "calendar": {
+    "ticksPerMonth": 3600,
+    "migrationStages": [
+      { "months": [1,2,3],     "bias": { "south_ndutu": 1.00 }, "crossingPressure": { "mainRiver": 0.15, "grumeti": 0.00 } },
+      { "months": [4,5],       "bias": { "central_seronera": 1.00 }, "crossingPressure": { "mainRiver": 0.35, "grumeti": 0.20 } },
+      { "months": [6],         "bias": { "west_grumeti": 0.95, "central_seronera": 0.35 }, "crossingPressure": { "grumeti": 1.00 } },
+      { "months": [7,8,9],     "bias": { "north_mara": 1.00 }, "crossingPressure": { "mainRiver": 1.00 } },
+      { "months": [10,11],     "bias": { "east_kopjes": 0.80, "south_ndutu": 0.45 }, "crossingPressure": { "mainRiver": 0.30, "grumeti": 0.00 } },
+      { "months": [12],        "bias": { "south_ndutu": 0.75, "central_seronera": 0.40 }, "crossingPressure": { "mainRiver": 0.15, "grumeti": 0.00 } }
+    ]
+  },
+
+  "legend": {
+    "sexAgeRules": {
+      "maleScale": 1.15,
+      "femaleScale": 1.00,
+      "childScale": 0.65,
+      "maleDarken": 0.10,
+      "childLighten": 0.12
+    },
+    "species": {
+      "elephant":   { "shape": "circle",      "fill": "#7D8791", "outline": "#1A1C1F" },
+      "giraffe":    { "shape": "capsule_tall","fill": "#D2B074", "outline": "#1A1C1F" },
+      "buffalo":    { "shape": "circle",      "fill": "#2B2420", "outline": "#1A1C1F" },
+      "zebra":      { "shape": "capsule",     "fill": "#EAEAEA", "outline": "#1A1C1F" },
+      "wildebeest": { "shape": "capsule",     "fill": "#4A4F55", "outline": "#1A1C1F" },
+      "hippo":      { "shape": "capsule",     "fill": "#6B6673", "outline": "#1A1C1F" },
+
+      "lion":       { "shape": "circle_mane", "fill": "#C9A24A", "outline": "#1A1C1F" },
+      "hyena":      { "shape": "circle",      "fill": "#8B6F3E", "outline": "#1A1C1F" },
+      "leopard":    { "shape": "circle",      "fill": "#B88D2E", "outline": "#1A1C1F" },
+      "cheetah":    { "shape": "circle",      "fill": "#D9B45B", "outline": "#1A1C1F" },
+      "wilddog":    { "shape": "circle_rare", "fill": "#6E4E2E", "outline": "#EAEAEA" },
+
+      "rhino":      { "shape": "roundedrect", "fill": "#6C757F", "outline": "#1A1C1F" },
+      "crocodile":  { "shape": "capsule_thin","fill": "#2F4E3A", "outline": "#1A1C1F" },
+      "impala":     { "shape": "capsule_small","fill":"#C07A4A", "outline": "#1A1C1F" },
+      "gazelle":    { "shape": "capsule_small","fill":"#D1A36A", "outline": "#1A1C1F" },
+      "waterbuck":  { "shape": "capsule",     "fill": "#7A5D3A", "outline": "#1A1C1F" },
+      "flamingo":   { "shape": "circle_tiny", "fill": "#FF6FA8", "outline": "#1A1C1F" }
+    }
+  },
+
+  "spawnHints": {
+    "wildebeest": { "baseHerds": 8, "herdSize": 260, "migratory": true },
+    "zebra":      { "baseHerds": 5, "herdSize": 160, "migratory": true, "leadFactor": 0.15 },
+    "gazelle":    { "baseHerds": 6, "herdSize": 90,  "migratory": true },
+    "impala":     { "baseHerds": 5, "herdSize": 70,  "migratory": false },
+    "buffalo":    { "baseHerds": 4, "herdSize": 80,  "migratory": "partial" },
+    "waterbuck":  { "baseHerds": 4, "herdSize": 55,  "waterAnchored": true },
+    "giraffe":    { "baseHerds": 5, "herdSize": 18,  "browser": true },
+    "elephant":   { "baseHerds": 3, "herdSize": 14,  "waterAnchored": "roaming" },
+    "hippo":      { "pods": 6, "podSize": 10, "nearPoolsOnly": true },
+    "rhino":      { "rareIndividuals": [0,1,2], "solitary": true },
+
+    "lion":       { "prides": 6, "prideSize": 10, "territoryNear": ["central_seronera", "mainRiver.crossings"] },
+    "hyena":      { "clans": 5, "clanSize": 14, "roam": true },
+    "leopard":    { "solitary": 10, "preferCover": "kopjes" },
+    "cheetah":    { "solitary": 12, "preferPlains": true },
+    "wilddog":    { "rarePacks": [0,1,2], "packSize": 8, "wideRoam": true },
+
+    "crocodile":  { "nearCrossingsOnly": true, "density": 1.0 },
+    "flamingo":   { "seasonalWetlandsOnly": true, "flocks": 3, "flockSize": 60 }
+  }
+}

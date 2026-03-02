@@ -134,6 +134,9 @@ public class RaceCarConfig
 [Serializable]
 public class PredatorPreyDocuConfig
 {
+    public string mapId = "serengeti_v1";
+    public int startMonth = 1;
+    public int ticksPerMonth = 3600;
     public Season season = new();
     public Map map = new();
     public Population pop = new();
@@ -142,6 +145,10 @@ public class PredatorPreyDocuConfig
 
     public void Normalize()
     {
+        mapId = string.IsNullOrWhiteSpace(mapId) ? "serengeti_v1" : mapId.Trim();
+        startMonth = startMonth < 1 ? 1 : (startMonth > 12 ? 12 : startMonth);
+        ticksPerMonth = ticksPerMonth < 300 ? 300 : ticksPerMonth;
+
         season ??= new Season();
         map ??= new Map();
         pop ??= new Population();

@@ -43,6 +43,16 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         activeConfig = config ?? new ScenarioConfig();
         activeConfig.NormalizeAliases();
 
+        var mapId = activeConfig.predatorPreyDocu?.mapId ?? "serengeti_v1";
+        var mapSpec = SerengetiMapSpecLoader.LoadOrThrow(mapId);
+        if (mapSpec.arena != null &&
+            (mapSpec.arena.width != activeConfig.world.arenaWidth || mapSpec.arena.height != activeConfig.world.arenaHeight))
+        {
+            Debug.LogWarning($"[PredatorPreyDocu] Map '{mapSpec.mapId}' arena={mapSpec.arena.width}x{mapSpec.arena.height} differs from configured world {activeConfig.world.arenaWidth}x{activeConfig.world.arenaHeight}. Preset should match arena size before ArenaBuilder.Build.");
+        }
+
+        Debug.Log($"[PredatorPreyDocu] Loaded map '{mapSpec.mapId}' arena={mapSpec.arena.width}x{mapSpec.arena.height} regions={mapSpec.regions.Count} speciesLegend={mapSpec.legend.species.Count}");
+
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "PredatorPreyDocu");
         halfWidth = Mathf.Max(1f, activeConfig.world.arenaWidth * 0.5f);
         halfHeight = Mathf.Max(1f, activeConfig.world.arenaHeight * 0.5f);
