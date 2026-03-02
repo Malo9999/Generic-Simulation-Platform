@@ -322,74 +322,22 @@ namespace GSP.TrackEditor.Editor
                 return;
             }
 
-            string FindFirstNodeWithDegree(int degree)
+            var forks = pitGraph.Where(kvp => kvp.Value.Count > 2).Select(kvp => kvp.Key).ToList();
+            if (forks.Count > 0)
             {
-                foreach (var kvp in pitGraph)
-                {
-                    if (kvp.Value.Count == degree)
-                    {
-                        return kvp.Key;
-                    }
-                }
-
-                return pitGraph.Keys.First();
-            }
-
-            void ReportAmbiguousPitPath(string node, int degree)
-            {
-                report.Errors.Add($"Pit path is ambiguous (fork). forkNode={node} degree={degree}. Fix layout so pit is one open chain from PitEntry(PitOut) to PitExit(PitIn).");
-            }
-
-            var components = 0;
-            var globalVisited = new HashSet<string>();
-            foreach (var node in pitGraph.Keys)
-            {
-                if (!globalVisited.Add(node))
-                {
-                    continue;
-                }
-
-                components++;
-                var queue = new Queue<string>();
-                queue.Enqueue(node);
-                while (queue.Count > 0)
-                {
-                    var current = queue.Dequeue();
-                    foreach (var next in pitGraph[current])
-                    {
-                        if (!globalVisited.Add(next))
-                        {
-                            continue;
-                        }
-
-                        queue.Enqueue(next);
-                    }
-                }
-            }
-
-            if (components != 1)
-            {
-                var node = pitGraph.Keys.First();
-                ReportAmbiguousPitPath(node, pitGraph[node].Count);
-                return;
-            }
-
-            foreach (var kvp in pitGraph)
-            {
-                if (kvp.Value.Count <= 2)
-                {
-                    continue;
-                }
-
-                ReportAmbiguousPitPath(kvp.Key, kvp.Value.Count);
+                var forkNode = forks[0];
+                report.Errors.Add($"Pit has a fork at {forkNode} degree={pitGraph[forkNode].Count}. Remove branching; pit must be a single open chain.");
                 return;
             }
 
             var endpoints = pitGraph.Where(kvp => kvp.Value.Count == 1).Select(kvp => kvp.Key).ToList();
             if (endpoints.Count != 2)
             {
-                var node = FindFirstNodeWithDegree(endpoints.Count == 0 ? 0 : 1);
-                ReportAmbiguousPitPath(node, pitGraph[node].Count);
+                var endpointPreview = endpoints.Count > 0
+                    ? string.Join(", ", endpoints.Take(4))
+                    : "none";
+                var suffix = endpoints.Count > 4 ? " ..." : string.Empty;
+                report.Errors.Add($"Pit has {endpoints.Count} endpoints (expected 2: PitEntry.PitOut and PitExit.PitIn). Unconnected pit ends: {endpointPreview}{suffix}");
                 return;
             }
 
@@ -404,15 +352,8 @@ namespace GSP.TrackEditor.Editor
             var endpointSet = new HashSet<string>(endpoints);
             if (!endpointSet.Contains(entryPitOutNode) || !endpointSet.Contains(exitPitInNode))
             {
-                var node = endpoints.FirstOrDefault(n => n != entryPitOutNode && n != exitPitInNode) ?? endpoints[0];
-                ReportAmbiguousPitPath(node, pitGraph[node].Count);
+                report.Errors.Add("Pit endpoints are not PitEntry(PitOut) and PitExit(PitIn). Check you used one Entry + one Exit and snapped to PitOut/PitIn.");
                 return;
-            }
-
-            var nonChainNode = pitGraph.FirstOrDefault(kvp => kvp.Value.Count != 2 && !endpointSet.Contains(kvp.Key));
-            if (!string.IsNullOrWhiteSpace(nonChainNode.Key))
-            {
-                ReportAmbiguousPitPath(nonChainNode.Key, nonChainNode.Value.Count);
             }
         }
 
