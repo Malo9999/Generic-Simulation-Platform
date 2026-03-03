@@ -79,6 +79,107 @@ public static class PredatorPreyDocuVisualFactory
         return root;
     }
 
+    public static GameObject BuildLegendAnimal(Transform parent, LegendSpeciesEntry entry, LegendRules rules, float baseScale, bool isMale, bool isChild, bool showAccent, Color accent)
+    {
+        var root = new GameObject("LegendAnimalVisual");
+        root.transform.SetParent(parent, false);
+
+        var fill = ParseHexOrDefault(entry?.fill, new Color(0.75f, 0.75f, 0.75f, 1f));
+        var outline = ParseHexOrDefault(entry?.outline, new Color(0.1f, 0.1f, 0.1f, 1f));
+        var shape = (entry?.shape ?? "circle").Trim().ToLowerInvariant();
+
+        var scale = baseScale;
+        if (isChild)
+        {
+            scale *= rules != null && rules.childScale > 0f ? rules.childScale : 0.7f;
+            fill = Color.Lerp(fill, Color.white, Mathf.Clamp01(rules?.childLighten ?? 0.12f));
+        }
+        else if (isMale)
+        {
+            scale *= rules != null && rules.maleScale > 0f ? rules.maleScale : 1.05f;
+            fill = Color.Lerp(fill, Color.black, Mathf.Clamp01(rules?.maleDarken ?? 0.1f));
+        }
+        else
+        {
+            scale *= rules != null && rules.femaleScale > 0f ? rules.femaleScale : 1f;
+        }
+
+        root.transform.localScale = Vector3.one * scale;
+
+        var fillSprite = PrimitiveSpriteLibrary.CircleFill();
+        var outlineSprite = PrimitiveSpriteLibrary.CircleOutline();
+        var fillScale = Vector3.one;
+        var outlineScale = new Vector3(1.06f, 1.06f, 1f);
+
+        switch (shape)
+        {
+            case "capsule":
+                fillSprite = PrimitiveSpriteLibrary.CapsuleFill();
+                outlineSprite = PrimitiveSpriteLibrary.CapsuleOutline();
+                fillScale = new Vector3(1f, 0.62f, 1f);
+                outlineScale = new Vector3(1.06f, 0.68f, 1f);
+                break;
+            case "capsule_small":
+                fillSprite = PrimitiveSpriteLibrary.CapsuleFill();
+                outlineSprite = PrimitiveSpriteLibrary.CapsuleOutline();
+                fillScale = new Vector3(0.88f, 0.5f, 1f);
+                outlineScale = new Vector3(0.95f, 0.56f, 1f);
+                break;
+            case "capsule_tall":
+                fillSprite = PrimitiveSpriteLibrary.CapsuleFill();
+                outlineSprite = PrimitiveSpriteLibrary.CapsuleOutline();
+                fillScale = new Vector3(0.78f, 0.86f, 1f);
+                outlineScale = new Vector3(0.84f, 0.92f, 1f);
+                break;
+            case "capsule_thin":
+                fillSprite = PrimitiveSpriteLibrary.CapsuleFill();
+                outlineSprite = PrimitiveSpriteLibrary.CapsuleOutline();
+                fillScale = new Vector3(1.15f, 0.46f, 1f);
+                outlineScale = new Vector3(1.22f, 0.52f, 1f);
+                break;
+            case "roundedrect":
+                fillSprite = PrimitiveSpriteLibrary.RoundedRectFill();
+                outlineSprite = PrimitiveSpriteLibrary.RoundedRectOutline();
+                fillScale = new Vector3(1f, 0.68f, 1f);
+                outlineScale = new Vector3(1.08f, 0.74f, 1f);
+                break;
+            case "circle_tiny":
+                fillScale = new Vector3(0.68f, 0.68f, 1f);
+                outlineScale = new Vector3(0.74f, 0.74f, 1f);
+                break;
+            case "circle_rare":
+            case "circle_mane":
+            case "circle":
+            default:
+                break;
+        }
+
+        AddSprite(root.transform, "Body", fillSprite, fill, Vector3.zero, fillScale, 0);
+        AddSprite(root.transform, "Outline", outlineSprite, outline, Vector3.zero, outlineScale, 1);
+
+        if (shape == "circle_mane")
+        {
+            AddSprite(root.transform, "Mane", PrimitiveSpriteLibrary.CircleOutline(), outline * 0.9f, Vector3.zero, new Vector3(1.3f, 1.3f, 1f), 2);
+        }
+
+        if (shape == "circle_rare")
+        {
+            AddSprite(root.transform, "RareSpark", PrimitiveSpriteLibrary.CircleFill(), new Color(1f, 1f, 1f, 0.9f), new Vector3(0.22f, 0.2f, 0f), new Vector3(0.2f, 0.2f, 1f), 2);
+        }
+
+        if (showAccent)
+        {
+            AddSprite(root.transform, "Accent", PrimitiveSpriteLibrary.CircleOutline(), accent, new Vector3(0.26f, 0.15f, 0f), new Vector3(0.28f, 0.28f, 1f), 3);
+        }
+
+        return root;
+    }
+
+    private static Color ParseHexOrDefault(string hex, Color fallback)
+    {
+        return !string.IsNullOrWhiteSpace(hex) && ColorUtility.TryParseHtmlString(hex, out var parsed) ? parsed : fallback;
+    }
+
     private static void AddSprite(Transform parent, string name, Sprite sprite, Color color, Vector3 localPos, Vector3 localScale, int sortingOrder)
     {
         var go = new GameObject(name);

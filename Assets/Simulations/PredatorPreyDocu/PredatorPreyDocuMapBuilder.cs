@@ -171,7 +171,7 @@ public sealed class PredatorPreyDocuMapBuilder
         var dryToneA = c0 + new Vector3(6f, 3f, 1f);
         var dryToneB = c0 - new Vector3(7f, 5f, 3f);
         var moistGrass = new Vector3(154f, 156f, 102f);
-        var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 173);
+        var seedSalt = Mathf.Abs(StableHash.Hash32(spec.mapId ?? "serengeti_v1"));
         var moistureFalloffWorld = 180f;
         var moistureCellSize = moistureFalloffWorld * 0.75f;
         var moistureSources = BuildMoistureSources();
@@ -218,7 +218,7 @@ public sealed class PredatorPreyDocuMapBuilder
         var h = Mathf.Max(256, Mathf.RoundToInt(halfH * 2f * ppu));
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
-        var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 97);
+        var seedSalt = Mathf.Abs(StableHash.Hash32(spec.mapId ?? "serengeti_v1"));
         var warpAmpWorld = 78f;
         var warpFreq = 0.0023f;
         var microWarpAmpWorld = 14f;
@@ -454,30 +454,67 @@ public sealed class PredatorPreyDocuMapBuilder
 
         var bankExtra = Mathf.Max(6f, mainRiver.bankExtra * 0.7f);
         var floodExtra = Mathf.Max(45f, mainRiver.floodplainExtra * 0.55f);
-        var floodRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + floodExtra * 0.5f) * ppu));
-        var bankRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + bankExtra) * ppu));
-        var waterRadiusPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu));
         var floodCol = new Color32(103, 136, 89, 92);
         var bankCol = new Color32(68, 100, 58, 145);
         var waterCol = new Color32(35, 120, 220, 255);
 
+        var min = sampled[0];
+        var max = sampled[0];
         for (var i = 1; i < sampled.Count; i++)
         {
-            var a = sampled[i - 1];
-            var b = sampled[i];
-            var aPx = WorldToPixel(a.x, a.y, halfW, halfH, texW, texH);
-            var bPx = WorldToPixel(b.x, b.y, halfW, halfH, texW, texH);
-            var pixLen = Mathf.Max(1f, Vector2.Distance(new Vector2(aPx.px, aPx.py), new Vector2(bPx.px, bPx.py)));
-            var steps = Mathf.Max(1, Mathf.CeilToInt(pixLen / Mathf.Max(1f, waterRadiusPx * 0.5f)));
-            for (var s = 0; s <= steps; s++)
+            min = Vector2.Min(min, sampled[i]);
+            max = Vector2.Max(max, sampled[i]);
+        }
+
+        var dx = Mathf.Abs(max.x - min.x);
+        var dy = Mathf.Abs(max.y - min.y);
+        var xAxis = dx >= dy;
+        var xLookup = xAxis ? BuildSplineXLookup(sampled) : RiverXLookup.Invalid;
+        var yLookup = xAxis ? RiverYLookup.Invalid : BuildSplineYLookup(sampled);
+
+        if (xAxis && xLookup.Valid)
+        {
+            for (var px = 0; px < texW; px++)
             {
-                var t = s / (float)steps;
-                var p = Vector2.Lerp(a, b, t);
-                var c = WorldToPixel(p.x, p.y, halfW, halfH, texW, texH);
-                FillHorizontalSpan(floodPx, texW, texH, c.py, c.px, floodRadiusPx, floodCol);
-                FillHorizontalSpan(bankPx, texW, texH, c.py, c.px, bankRadiusPx, bankCol);
-                FillHorizontalSpan(waterPx, texW, texH, c.py, c.px, waterRadiusPx, waterCol);
+                var xWorld = Mathf.Lerp(-halfW, halfW, px / Mathf.Max(1f, texW - 1f));
+                if (!xLookup.TryEvalY(xWorld, out var yWorld, out var progress01)) continue;
+                var width = river.width * (1f + Mathf.Sin(progress01 * Mathf.PI * 5f) * 0.1f);
+                var waterHalfPx = Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu));
+                var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + bankExtra) * ppu));
+                var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + floodExtra * 0.5f) * ppu));
+                var centerY = WorldToPixel(0f, yWorld, halfW, halfH, texW, texH).py;
+                FillVerticalSpan(floodPx, texW, texH, px, centerY, floodHalfPx, floodCol);
+                FillVerticalSpan(bankPx, texW, texH, px, centerY, bankHalfPx, bankCol);
+                FillVerticalSpan(waterPx, texW, texH, px, centerY, waterHalfPx, waterCol);
             }
+        }
+        else if (yLookup.Valid)
+        {
+            for (var py = 0; py < texH; py++)
+            {
+                var yWorld = Mathf.Lerp(-halfH, halfH, py / Mathf.Max(1f, texH - 1f));
+                if (!yLookup.TryEvalX(yWorld, out var xWorld, out var progress01)) continue;
+                var width = river.width * (1f + Mathf.Sin(progress01 * Mathf.PI * 5f) * 0.1f);
+                var waterHalfPx = Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu));
+                var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + bankExtra) * ppu));
+                var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + floodExtra * 0.5f) * ppu));
+                var centerX = WorldToPixelX(xWorld, halfW, texW);
+                FillHorizontalSpan(floodPx, texW, texH, py, centerX, floodHalfPx, floodCol);
+                FillHorizontalSpan(bankPx, texW, texH, py, centerX, bankHalfPx, bankCol);
+                FillHorizontalSpan(waterPx, texW, texH, py, centerX, waterHalfPx, waterCol);
+            }
+        }
+
+        var endCaps = new[] { sampled[0], sampled[sampled.Count - 1] };
+        for (var i = 0; i < endCaps.Length; i++)
+        {
+            var c = WorldToPixel(endCaps[i].x, endCaps[i].y, halfW, halfH, texW, texH);
+            var waterHalfPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu));
+            var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + bankExtra) * ppu));
+            var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + floodExtra * 0.5f) * ppu));
+            PaintDisc(floodPx, texW, texH, c, floodHalfPx, floodCol);
+            PaintDisc(bankPx, texW, texH, c, bankHalfPx, bankCol);
+            PaintDisc(waterPx, texW, texH, c, waterHalfPx, waterCol);
         }
 
         for (var i = 0; i < sampled.Count; i += 30)
@@ -496,7 +533,7 @@ public sealed class PredatorPreyDocuMapBuilder
             crossingsGrumeti.Add(node);
         }
 
-        Debug.Log($"[SerengetiConformance] GrumetiVisual: w={river.width:0.##} bankExtra={bankExtra:0.##} floodExtra={floodExtra:0.##} raster={sampled.Count}");
+        Debug.Log($"[SerengetiWater] grumeti axis={(xAxis ? "X" : "Y")} samples={sampled.Count} width={river.width:0.##} floodExtra={floodExtra:0.##} bankExtra={bankExtra:0.##}");
 
         return sampled.Count;
     }
@@ -517,7 +554,7 @@ public sealed class PredatorPreyDocuMapBuilder
             kopjes.Add(data);
             kopjesNodes.Add(data);
             shadeNodes.Add(world);
-            var seed = Mathf.Abs(node.id?.GetHashCode() ?? 29);
+            var seed = Mathf.Abs(StableHash.Hash32(node.id ?? "kopjes"));
             var speckles = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(200f, 600f, Mathf.Clamp01(node.radius / 48f))), 200, 600);
             for (var i = 0; i < speckles; i++)
             {
@@ -746,6 +783,21 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
+    private static void FillVerticalSpan(Color32[] px, int w, int h, int x, int centerY, int halfHeightPx, Color32 col)
+    {
+        if (x < 0 || x >= w)
+        {
+            return;
+        }
+
+        var y0 = Mathf.Clamp(centerY - Mathf.Max(1, halfHeightPx), 0, h - 1);
+        var y1 = Mathf.Clamp(centerY + Mathf.Max(1, halfHeightPx), 0, h - 1);
+        for (var y = y0; y <= y1; y++)
+        {
+            px[x + y * w] = Blend(px[x + y * w], col);
+        }
+    }
+
     private static void PaintDisc(Color32[] px, int w, int h, (int px, int py) c, int r, Color32 col)
     {
         var r2 = r * r;
@@ -765,7 +817,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private static void PaintIrregularWetland(Color32[] px, int w, int h, (int px, int py) c, float worldRadius, float ppu, string id)
     {
-        var seed = Mathf.Abs(id?.GetHashCode() ?? 43);
+        var seed = Mathf.Abs(StableHash.Hash32(id ?? "wetland"));
         var puddles = Mathf.Clamp(Mathf.RoundToInt(worldRadius * 0.12f), 6, 14);
         for (var i = 0; i < puddles; i++)
         {
@@ -988,7 +1040,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private void DrawRegionBoundaryHints(Transform parent, SerengetiMapSpec spec, float halfW, float halfH)
     {
-        var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 97);
+        var seedSalt = Mathf.Abs(StableHash.Hash32(spec.mapId ?? "serengeti_v1"));
         var fields = new List<RegionField>();
         foreach (var region in spec.regions)
         {
@@ -1145,6 +1197,30 @@ public sealed class PredatorPreyDocuMapBuilder
         return new RiverYLookup(samples);
     }
 
+    private static RiverXLookup BuildSplineXLookup(List<Vector2> smooth)
+    {
+        if (smooth == null || smooth.Count < 2)
+        {
+            return RiverXLookup.Invalid;
+        }
+
+        var totalLength = 0f;
+        for (var i = 1; i < smooth.Count; i++) totalLength += Vector2.Distance(smooth[i - 1], smooth[i]);
+
+        var samples = new List<RiverSample>(smooth.Count);
+        var run = 0f;
+        samples.Add(new RiverSample(smooth[0].x, smooth[0].y, 0f));
+        for (var i = 1; i < smooth.Count; i++)
+        {
+            run += Vector2.Distance(smooth[i - 1], smooth[i]);
+            var progress = totalLength <= 0f ? 0f : run / totalLength;
+            samples.Add(new RiverSample(smooth[i].x, smooth[i].y, progress));
+        }
+
+        samples.Sort((a, b) => a.y.CompareTo(b.y));
+        return new RiverXLookup(samples);
+    }
+
     private static void WarnIfNormalizedOutsideRange(float value, string path)
     {
         if (value < 0f || value > 1f)
@@ -1217,6 +1293,53 @@ public sealed class PredatorPreyDocuMapBuilder
             var span = Mathf.Max(0.0001f, b.y - a.y);
             var t = Mathf.Clamp01((yWorld - a.y) / span);
             xWorld = Mathf.Lerp(a.x, b.x, t);
+            progress = Mathf.Lerp(a.progress, b.progress, t);
+            return true;
+        }
+    }
+
+    private readonly struct RiverXLookup
+    {
+        private readonly List<RiverSample> samples;
+
+        public static RiverXLookup Invalid => new(null);
+
+        public bool Valid => samples != null && samples.Count > 1;
+
+        public RiverXLookup(List<RiverSample> samples)
+        {
+            this.samples = samples;
+        }
+
+        public bool TryEvalY(float xWorld, out float yWorld, out float progress)
+        {
+            yWorld = 0f;
+            progress = 0f;
+            if (!Valid || xWorld < samples[0].y || xWorld > samples[samples.Count - 1].y)
+            {
+                return false;
+            }
+
+            var lo = 0;
+            var hi = samples.Count - 1;
+            while (hi - lo > 1)
+            {
+                var mid = (lo + hi) >> 1;
+                if (samples[mid].y <= xWorld)
+                {
+                    lo = mid;
+                }
+                else
+                {
+                    hi = mid;
+                }
+            }
+
+            var a = samples[lo];
+            var b = samples[hi];
+            var span = Mathf.Max(0.0001f, b.y - a.y);
+            var t = Mathf.Clamp01((xWorld - a.y) / span);
+            yWorld = Mathf.Lerp(a.x, b.x, t);
             progress = Mathf.Lerp(a.progress, b.progress, t);
             return true;
         }

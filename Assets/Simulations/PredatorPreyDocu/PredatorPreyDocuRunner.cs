@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Newtonsoft.Json.Linq;
 using UnityEngine;
 
 public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
@@ -18,6 +22,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     private int[] preyHerdId;
     private Vector2[] preyOffset;
     private Transform[] preyTf;
+    private string[] herdSpeciesKey;
 
     private Vector2[] lionPos;
     private Vector2[] lionVel;
@@ -27,6 +32,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     private bool[] lionLeader;
     private bool[] lionRoaming;
     private Transform[] lionTf;
+    private string[] prideSpeciesKey;
 
     private Vector2[] herdCenter;
     private Vector2[] herdGoal;
@@ -118,6 +124,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         preyVel = null;
         preyHerdId = null;
         preyOffset = null;
+        herdSpeciesKey = null;
 
         lionPos = null;
         lionVel = null;
@@ -126,6 +133,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         lionYoung = null;
         lionLeader = null;
         lionRoaming = null;
+        prideSpeciesKey = null;
 
         herdCenter = null;
         herdGoal = null;
@@ -172,8 +180,19 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         var lionRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, 1);
 
         var rngPop = RngService.Fork("SIM:PredatorPreyDocu:POP");
+        var spawnSeed = activeConfig.seed ^ StableHash.Hash32(loadedMapSpec?.mapId ?? "serengeti_v1") ^ unchecked((int)0x6D2B79F5u);
+        var speciesRng = new SeededRng(spawnSeed);
+
+        var herbivoreWeights = BuildHerbivoreSpawnWeights(loadedMapSpec);
+        var predatorWeights = BuildPredatorSpawnWeights(loadedMapSpec);
+        var useLegendSpecies = herbivoreWeights.Count > 0 && predatorWeights.Count > 0;
 
         var herdCount = pop.herdCount;
+        herdSpeciesKey = new string[Mathf.Max(0, herdCount)];
+        for (var h = 0; h < herdSpeciesKey.Length; h++)
+        {
+            herdSpeciesKey[h] = useLegendSpecies ? PickWeightedSpecies(speciesRng, herbivoreWeights, "wildebeest") : "generic_prey";
+        }
         herdCenter = new Vector2[herdCount];
         herdGoal = new Vector2[herdCount];
         herdGoalTick = new int[herdCount];
@@ -206,11 +225,26 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             root.transform.SetParent(preyRoot, false);
             root.transform.localPosition = new Vector3(preyPos[i].x, preyPos[i].y, 0f);
             var accent = PredatorPreyDocuVisualFactory.HerdAccentColor(herdId);
-            PredatorPreyDocuVisualFactory.BuildPrey(root.transform, accent, visuals.preyScale, visuals.showPackAccent);
+            var speciesKey = herdSpeciesKey != null && herdId >= 0 && herdId < herdSpeciesKey.Length ? herdSpeciesKey[herdId] : "generic_prey";
+            if (useLegendSpecies && TryGetLegendSpecies(speciesKey, out var entry))
+            {
+                var isMale = ((i + herdId) % 2) == 0;
+                var isChild = ((i + herdId) % 7) == 0;
+                PredatorPreyDocuVisualFactory.BuildLegendAnimal(root.transform, entry, loadedMapSpec.legend.sexAgeRules, visuals.preyScale, isMale, isChild, visuals.showPackAccent, accent);
+            }
+            else
+            {
+                PredatorPreyDocuVisualFactory.BuildPrey(root.transform, accent, visuals.preyScale, visuals.showPackAccent);
+            }
             preyTf[i] = root.transform;
         }
 
         var prideCount = pop.prideCount;
+        prideSpeciesKey = new string[Mathf.Max(0, prideCount)];
+        for (var p = 0; p < prideSpeciesKey.Length; p++)
+        {
+            prideSpeciesKey[p] = useLegendSpecies ? PickWeightedSpecies(speciesRng, predatorWeights, "lion") : "lion";
+        }
         prideCenter = new Vector2[prideCount];
         prideShadeIndex = new int[prideCount];
 
@@ -244,7 +278,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         {
             for (var i = 0; i < pop.lionsPerPride; i++)
             {
-                SpawnLion(lionRoot, rngPop, visuals, lionIndex, p, false, coalitionSlot: i);
+                SpawnLion(lionRoot, rngPop, visuals, lionIndex, p, false, coalitionSlot: i, useLegendSpecies);
                 lionIndex++;
             }
         }
@@ -253,13 +287,15 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         {
             for (var i = 0; i < pop.coalitionSize; i++)
             {
-                SpawnLion(lionRoot, rngPop, visuals, lionIndex, c % Mathf.Max(1, pop.prideCount), true, coalitionSlot: i);
+                SpawnLion(lionRoot, rngPop, visuals, lionIndex, c % Mathf.Max(1, pop.prideCount), true, coalitionSlot: i, useLegendSpecies);
                 lionIndex++;
             }
         }
+
+        Debug.Log($"[SerengetiSpawn] mapId={loadedMapSpec?.mapId} herds={herdCount} herdSpecies={SummarizeSpecies(herdSpeciesKey)} predators={lionCountTotal} predatorSpecies={SummarizeSpecies(prideSpeciesKey)}");
     }
 
-    private void SpawnLion(Transform lionRoot, IRng rngPop, Visuals visuals, int lionIndex, int prideId, bool roaming, int coalitionSlot)
+    private void SpawnLion(Transform lionRoot, IRng rngPop, Visuals visuals, int lionIndex, int prideId, bool roaming, int coalitionSlot, bool useLegendSpecies)
     {
         var isLeader = !roaming && coalitionSlot == 0;
         var isMale = roaming || isLeader || (coalitionSlot == 1 && (prideId % 3 == 0));
@@ -288,7 +324,15 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         root.transform.SetParent(lionRoot, false);
         root.transform.localPosition = new Vector3(spawn.x, spawn.y, 0f);
         var accent = PredatorPreyDocuVisualFactory.PrideAccentColor(prideId);
-        PredatorPreyDocuVisualFactory.BuildLion(root.transform, accent, visuals.lionScale, isMale, isYoung, isLeader, visuals.showPackAccent, visuals.showMaleRing, roaming);
+        var speciesKey = prideSpeciesKey != null && prideId >= 0 && prideId < prideSpeciesKey.Length ? prideSpeciesKey[prideId] : "lion";
+        if (useLegendSpecies && TryGetLegendSpecies(speciesKey, out var entry))
+        {
+            PredatorPreyDocuVisualFactory.BuildLegendAnimal(root.transform, entry, loadedMapSpec.legend.sexAgeRules, visuals.lionScale, isMale, isYoung, visuals.showPackAccent, accent);
+        }
+        else
+        {
+            PredatorPreyDocuVisualFactory.BuildLion(root.transform, accent, visuals.lionScale, isMale, isYoung, isLeader, visuals.showPackAccent, visuals.showMaleRing, roaming);
+        }
         lionTf[lionIndex] = root.transform;
     }
 
@@ -493,6 +537,170 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             {
                 Object.Destroy(transforms[i].gameObject);
             }
+        }
+    }
+
+    private bool TryGetLegendSpecies(string key, out LegendSpeciesEntry entry)
+    {
+        entry = null;
+        var species = loadedMapSpec?.legend?.species;
+        return !string.IsNullOrWhiteSpace(key) && species != null && species.TryGetValue(key, out entry) && entry != null;
+    }
+
+    private static List<WeightedSpecies> BuildHerbivoreSpawnWeights(SerengetiMapSpec spec)
+    {
+        var result = new List<WeightedSpecies>();
+        if (spec?.spawnHints?.entries == null) return result;
+        foreach (var pair in spec.spawnHints.entries.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            if (pair.Value == null || pair.Value.Type != JTokenType.Object) continue;
+            if (!TryGetInt(pair.Value, "baseHerds", out var baseHerds) || !TryGetInt(pair.Value, "herdSize", out var herdSize)) continue;
+            var weight = Mathf.Max(1f, baseHerds * Mathf.Max(1, herdSize));
+            result.Add(new WeightedSpecies(pair.Key, weight));
+        }
+
+        return result;
+    }
+
+    private static List<WeightedSpecies> BuildPredatorSpawnWeights(SerengetiMapSpec spec)
+    {
+        var result = new List<WeightedSpecies>();
+        if (spec?.spawnHints?.entries == null) return result;
+        foreach (var pair in spec.spawnHints.entries.OrderBy(p => p.Key, StringComparer.Ordinal))
+        {
+            if (pair.Value == null || pair.Value.Type != JTokenType.Object) continue;
+
+            var weight = 0f;
+            if (TryGetInt(pair.Value, "prides", out var prides))
+            {
+                var prideSize = TryGetInt(pair.Value, "prideSize", out var value) ? value : 1;
+                weight = Mathf.Max(weight, prides * Mathf.Max(1, prideSize));
+            }
+
+            if (TryGetInt(pair.Value, "clans", out var clans))
+            {
+                var clanSize = TryGetInt(pair.Value, "clanSize", out var value) ? value : 1;
+                weight = Mathf.Max(weight, clans * Mathf.Max(1, clanSize));
+            }
+
+            if (TryGetInt(pair.Value, "solitary", out var solitary))
+            {
+                weight = Mathf.Max(weight, solitary);
+            }
+
+            if (TryGetInt(pair.Value, "rarePacksCount", out var rarePacksCount) || TryGetArrayCount(pair.Value, "rarePacks", out rarePacksCount))
+            {
+                var packSize = TryGetInt(pair.Value, "packSize", out var value) ? value : 1;
+                weight = Mathf.Max(weight, rarePacksCount * Mathf.Max(1, packSize));
+            }
+
+            if (weight > 0f)
+            {
+                result.Add(new WeightedSpecies(pair.Key, weight));
+            }
+        }
+
+        return result;
+    }
+
+    private static string PickWeightedSpecies(IRng rng, IReadOnlyList<WeightedSpecies> weighted, string fallback)
+    {
+        if (rng == null || weighted == null || weighted.Count == 0)
+        {
+            return fallback;
+        }
+
+        var total = 0f;
+        for (var i = 0; i < weighted.Count; i++) total += Mathf.Max(0f, weighted[i].weight);
+        if (total <= 0f) return fallback;
+
+        var pick = rng.Range(0f, total);
+        var run = 0f;
+        for (var i = 0; i < weighted.Count; i++)
+        {
+            run += Mathf.Max(0f, weighted[i].weight);
+            if (pick <= run) return weighted[i].key;
+        }
+
+        return weighted[weighted.Count - 1].key;
+    }
+
+    private static string SummarizeSpecies(IEnumerable<string> keys)
+    {
+        if (keys == null) return "none";
+        var summary = keys.Where(k => !string.IsNullOrWhiteSpace(k))
+            .GroupBy(k => k)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => $"{g.Key}:{g.Count()}");
+        var text = string.Join(",", summary);
+        return string.IsNullOrEmpty(text) ? "none" : text;
+    }
+
+    private static bool TryGetInt(JToken token, string key, out int value)
+    {
+        value = 0;
+        if (token == null || token.Type != JTokenType.Object || string.IsNullOrWhiteSpace(key)) return false;
+        if (!((JObject)token).TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child) || child == null) return false;
+        if (child.Type == JTokenType.Integer) { value = child.Value<int>(); return true; }
+        if (child.Type == JTokenType.Boolean) { value = child.Value<bool>() ? 1 : 0; return true; }
+        if (child.Type == JTokenType.String && int.TryParse(child.Value<string>(), out value)) return true;
+        if ((child.Type == JTokenType.Float || child.Type == JTokenType.Integer) && float.TryParse(child.ToString(), out var f)) { value = Mathf.RoundToInt(f); return true; }
+        return false;
+    }
+
+    private static bool TryGetFloat(JToken token, string key, out float value)
+    {
+        value = 0f;
+        if (token == null || token.Type != JTokenType.Object || string.IsNullOrWhiteSpace(key)) return false;
+        if (!((JObject)token).TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child) || child == null) return false;
+        if (child.Type == JTokenType.Float || child.Type == JTokenType.Integer) { value = child.Value<float>(); return true; }
+        if (child.Type == JTokenType.String && float.TryParse(child.Value<string>(), out value)) return true;
+        return false;
+    }
+
+    private static bool TryGetBool(JToken token, string key, out bool value)
+    {
+        value = false;
+        if (token == null || token.Type != JTokenType.Object || string.IsNullOrWhiteSpace(key)) return false;
+        if (!((JObject)token).TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child) || child == null) return false;
+        if (child.Type == JTokenType.Boolean) { value = child.Value<bool>(); return true; }
+        if (child.Type == JTokenType.Integer) { value = child.Value<int>() != 0; return true; }
+        if (child.Type == JTokenType.String && bool.TryParse(child.Value<string>(), out value)) return true;
+        return false;
+    }
+
+    private static bool TryGetString(JToken token, string key, out string value)
+    {
+        value = null;
+        if (token == null || token.Type != JTokenType.Object || string.IsNullOrWhiteSpace(key)) return false;
+        if (!((JObject)token).TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child) || child == null) return false;
+        if (child.Type == JTokenType.String)
+        {
+            value = child.Value<string>();
+            return !string.IsNullOrWhiteSpace(value);
+        }
+
+        return false;
+    }
+
+    private static bool TryGetArrayCount(JToken token, string key, out int count)
+    {
+        count = 0;
+        if (token == null || token.Type != JTokenType.Object || string.IsNullOrWhiteSpace(key)) return false;
+        if (!((JObject)token).TryGetValue(key, StringComparison.OrdinalIgnoreCase, out var child) || child == null || child.Type != JTokenType.Array) return false;
+        count = child.Count();
+        return true;
+    }
+
+    private readonly struct WeightedSpecies
+    {
+        public readonly string key;
+        public readonly float weight;
+
+        public WeightedSpecies(string key, float weight)
+        {
+            this.key = key;
+            this.weight = weight;
         }
     }
 
