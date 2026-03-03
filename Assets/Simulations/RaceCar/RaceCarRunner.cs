@@ -30,6 +30,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private bool trackRootAttempted;
     private bool boundsAppliedAfterStart;
     private bool runtimeTrackBannerLogged;
+    [SerializeField] private bool debugTrackSetupLogs;
     [SerializeField] private bool ReverseDirection;
     private TrackPathSampler pathSampler;
 
@@ -337,18 +338,29 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (sceneGraph == null)
         {
-            Debug.LogWarning($"RaceCarRunner[{name}]: SetupTrackRoot skipped because sceneGraph is null.");
-            return;
+            sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
         }
 
-        Transform parent = sceneGraph.ArenaRoot;
-        var parentPath = "ArenaRoot";
-        if (parent == null)
+        var simulationRoot = SceneGraphUtil.ResolveSimulationRoot(transform);
+        var world = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot : simulationRoot.Find("WorldRoot");
+        var arena = sceneGraph.ArenaRoot;
+        if (arena == null && world != null)
         {
-            parent = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot : transform;
-            parentPath = sceneGraph.WorldRoot != null ? "WorldRoot (ArenaRoot missing)" : "Runner transform (ArenaRoot/WorldRoot missing)";
-            Debug.LogWarning($"RaceCarRunner[{name}]: sceneGraph.ArenaRoot is null. Falling back to {parentPath}.");
+            arena = world.Find("ArenaRoot");
         }
+
+        if (arena == null && world != null)
+        {
+            var arenaRootGo = new GameObject("ArenaRoot");
+            arena = arenaRootGo.transform;
+            arena.SetParent(world, false);
+            arena.localPosition = Vector3.zero;
+            arena.localRotation = Quaternion.identity;
+            arena.localScale = Vector3.one;
+        }
+
+        Transform parent = arena != null ? arena : (world != null ? world : transform);
+        var parentPath = arena != null ? "ArenaRoot" : (world != null ? "WorldRoot" : "Runner transform");
 
         var root = new GameObject("TrackRoot");
         root.transform.SetParent(parent, false);
@@ -356,6 +368,14 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         trackRoot.localPosition = Vector3.zero;
         trackRoot.localRotation = Quaternion.identity;
         trackRoot.localScale = Vector3.one;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (debugTrackSetupLogs)
+        {
+            Debug.Log(
+                $"RaceCarRunner[{name}]: TrackRoot parentPath='{BuildTransformPath(parent)}', parentLocalRotation={parent.localRotation.eulerAngles}, parentLocalScale={parent.localScale}, arenaPath='{BuildTransformPath(arena)}'.");
+        }
+#endif
 
         var renderer = root.AddComponent<TrackRendererV1>();
         renderer.Render(track);

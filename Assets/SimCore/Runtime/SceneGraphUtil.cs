@@ -39,7 +39,7 @@ public static class SceneGraphUtil
         return EnsureEntityGroup(entitiesRoot, 1);
     }
 
-    private static Transform ResolveSimulationRoot(Transform runnerTransform)
+    public static Transform ResolveSimulationRoot(Transform runnerTransform)
     {
         var current = runnerTransform;
         while (current != null)
