@@ -12,7 +12,7 @@ public sealed class PredatorPreyDocuMapBuilder
     private const int PermanentWaterOrder = -180;
     private const int SeasonalWaterOrder = -175;
     private const int KopjesOverlayOrder = -170;
-    private const int DebugOverlayOrder = -150;
+    private const int DebugOverlayOrder = -20;
 
     private Transform mapRoot;
     private SpriteRenderer terrainSR;
@@ -22,6 +22,8 @@ public sealed class PredatorPreyDocuMapBuilder
     private SpriteRenderer bankSR;
     private SpriteRenderer permanentWaterSR;
     private SpriteRenderer seasonalWaterSR;
+    private int mainRiverRasterSamples;
+    private int grumetiRasterSamples;
 
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
@@ -71,7 +73,9 @@ public sealed class PredatorPreyDocuMapBuilder
         BuildKopjes(spec, halfW, halfH);
         BuildDebugOverlays(spec, config, halfW, halfH);
 
-        Debug.Log($"[SerengetiConformance] mapId={spec.mapId} arena={spec.arena.width}x{spec.arena.height} regions={spec.regions.Count} mainRiverSamples={spec.water.mainRiver.centerline.Count} grumetiSamples={spec.water.grumeti.centerline.Count} pools={spec.water.pools.Count} kopjes={spec.landmarks.kopjes.Count} wetlands={spec.landmarks.wetlands.Count}");
+        var mainRiverControlPoints = spec.water.mainRiver.centerline.Count;
+        var grumetiControlPoints = spec.water.grumeti.centerline.Count;
+        Debug.Log($"[SerengetiConformance] mapId={spec.mapId} arena={spec.arena.width}x{spec.arena.height} regions={spec.regions.Count} mainRiverControlPoints={mainRiverControlPoints} mainRiverRasterSamples={mainRiverRasterSamples} grumetiControlPoints={grumetiControlPoints} grumetiRasterSamples={grumetiRasterSamples} pools={spec.water.pools.Count} kopjes={spec.landmarks.kopjes.Count} wetlands={spec.landmarks.wetlands.Count}");
     }
 
     public void UpdateSeasonVisuals(float seasonalPresence01)
@@ -104,6 +108,8 @@ public sealed class PredatorPreyDocuMapBuilder
         bankSR = null;
         permanentWaterSR = null;
         seasonalWaterSR = null;
+        mainRiverRasterSamples = 0;
+        grumetiRasterSamples = 0;
 
         waterNodes.Clear();
         shadeNodes.Clear();
@@ -149,7 +155,7 @@ public sealed class PredatorPreyDocuMapBuilder
         var h = Mathf.Max(256, Mathf.RoundToInt(halfH * 2f * ppu));
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
-        var feather = Mathf.Clamp(12f, 8f, 20f);
+        var feather = Mathf.Clamp(18f, 12f, 24f);
         var regions = new List<(RegionSpec region, float x0, float x1, float y0, float y1)>();
         foreach (var region in spec.regions)
         {
@@ -186,7 +192,7 @@ public sealed class PredatorPreyDocuMapBuilder
                 }
 
                 if (chosen == null) continue;
-                var alpha = Mathf.Lerp(25f, 55f, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dist / feather)));
+                var alpha = Mathf.Lerp(30f, 60f, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dist / feather)));
                 var noise = Hash01(x, y, 17) * 0.16f - 0.08f;
                 alpha *= 1f + noise;
                 var tint = RegionTint(chosen.biome);
@@ -208,8 +214,8 @@ public sealed class PredatorPreyDocuMapBuilder
         var permPx = new Color32[w * h];
         var seasonPx = new Color32[w * h];
 
-        PaintRiver(spec.water.mainRiver, true, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
-        PaintRiver(spec.water.grumeti, false, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
+        mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
+        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
 
         foreach (var pool in spec.water.pools)
         {
@@ -243,7 +249,7 @@ public sealed class PredatorPreyDocuMapBuilder
         Debug.Log($"[SerengetiConformance] WaterTex={w}x{h}@{ppu:0.###}PPU");
     }
 
-    private void PaintRiver(RiverSpec river, bool tapered, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx)
+    private int PaintMainRiverScanline(RiverSpec river, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx)
     {
         var worldPoints = new List<Vector2>();
         foreach (var p in river.centerline)
@@ -255,53 +261,38 @@ public sealed class PredatorPreyDocuMapBuilder
             worldPoints.Add(world);
         }
 
-        var sampled = SampleCatmullRom(worldPoints, 20);
-        if (sampled.Count < 2)
+        var sampled = SampleCatmullRom(worldPoints, 60);
+        sampled = UpsamplePolyline(sampled, 3);
+        var lookup = BuildSplineYLookup(sampled);
+        if (sampled.Count < 2 || !lookup.Valid)
         {
-            return;
+            return 0;
         }
 
-        var totalLength = 0f;
-        for (var i = 1; i < sampled.Count; i++) totalLength += Vector2.Distance(sampled[i - 1], sampled[i]);
-        var run = 0f;
-        var floodMul = tapered ? 1f : 0.62f;
-        var bankMul = tapered ? 1f : 0.65f;
-        var waterMul = tapered ? 1f : 0.82f;
-        var floodCol = tapered ? new Color32(108, 145, 92, 120) : new Color32(103, 136, 89, 78);
-        var bankCol = tapered ? new Color32(73, 108, 61, 170) : new Color32(68, 100, 58, 112);
+        var floodCol = new Color32(108, 145, 92, 120);
+        var bankCol = new Color32(73, 108, 61, 170);
         var waterCol = new Color32(35, 120, 220, 255);
 
-        for (var i = 1; i < sampled.Count; i++)
+        for (var py = 0; py < texH; py++)
         {
-            var a = sampled[i - 1];
-            var b = sampled[i];
-            var segLen = Vector2.Distance(a, b);
-            if (segLen <= 0.001f)
+            var yWorld = Mathf.Lerp(-halfH, halfH, py / Mathf.Max(1f, texH - 1f));
+            if (!lookup.TryEvalX(yWorld, out var xWorld, out var progress01))
             {
                 continue;
             }
 
-            var stampCount = Mathf.Max(1, Mathf.CeilToInt(segLen * ppu * 1.4f));
-            for (var s = 0; s <= stampCount; s++)
-            {
-                var t = s / (float)Mathf.Max(1, stampCount);
-                var pos = Vector2.Lerp(a, b, t);
-                var progress01 = totalLength <= 0.001f ? 0f : Mathf.Clamp01((run + segLen * t) / totalLength);
-                var width = tapered ? Mathf.Lerp(river.widthNorth, river.widthSouth, progress01) : river.width;
-                var center = WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH);
-                PaintDisc(floodPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu * floodMul)), floodCol);
-                PaintDisc(bankPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.bankExtra) * ppu * bankMul)), bankCol);
-                PaintDisc(waterPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu * waterMul)), waterCol);
-                if ((i + s) % 40 == 0)
-                {
-                    waterNodes.Add(pos);
-                }
-            }
-
-            run += segLen;
+            var width = Mathf.Lerp(river.widthNorth, river.widthSouth, progress01);
+            FillHorizontalSpan(floodPx, texW, texH, py, WorldToPixelX(xWorld, halfW, texW), Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu), floodCol);
+            FillHorizontalSpan(bankPx, texW, texH, py, WorldToPixelX(xWorld, halfW, texW), Mathf.RoundToInt((width * 0.5f + river.bankExtra) * ppu), bankCol);
+            FillHorizontalSpan(waterPx, texW, texH, py, WorldToPixelX(xWorld, halfW, texW), Mathf.RoundToInt(width * 0.5f * ppu), waterCol);
         }
 
-        var dest = tapered ? crossingsMain : crossingsGrumeti;
+        for (var i = 0; i < sampled.Count; i += 40)
+        {
+            waterNodes.Add(sampled[i]);
+        }
+
+        var dest = crossingsMain;
         foreach (var c in river.crossings)
         {
             WarnIfNormalizedOutsideRange(c.x, $"water.{river.id}.crossings.x");
@@ -312,6 +303,71 @@ public sealed class PredatorPreyDocuMapBuilder
             crossingNodes.Add(node);
             dest.Add(node);
         }
+
+        return sampled.Count;
+    }
+
+    private int PaintGrumetiPolyline(RiverSpec river, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx)
+    {
+        var worldPoints = new List<Vector2>();
+        foreach (var p in river.centerline)
+        {
+            WarnIfNormalizedOutsideRange(p.x, $"water.{river.id}.centerline.x");
+            WarnIfNormalizedOutsideRange(p.y, $"water.{river.id}.centerline.y");
+            var world = ToWorld(p.x, p.y, halfW, halfH);
+            WarnIfWorldOutsideBounds(world, halfW, halfH, $"water.{river.id}.centerline");
+            worldPoints.Add(world);
+        }
+
+        var sampled = SampleCatmullRom(worldPoints, 150);
+        if (sampled.Count < 2)
+        {
+            return 0;
+        }
+
+        var floodRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.28f + river.floodplainExtra * 0.2f) * ppu));
+        var bankRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.42f + river.bankExtra * 0.55f) * ppu));
+        var waterRadiusPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu));
+        var floodCol = new Color32(103, 136, 89, 78);
+        var bankCol = new Color32(68, 100, 58, 112);
+        var waterCol = new Color32(35, 120, 220, 255);
+
+        for (var i = 1; i < sampled.Count; i++)
+        {
+            var a = sampled[i - 1];
+            var b = sampled[i];
+            var aPx = WorldToPixel(a.x, a.y, halfW, halfH, texW, texH);
+            var bPx = WorldToPixel(b.x, b.y, halfW, halfH, texW, texH);
+            var pixLen = Mathf.Max(1f, Vector2.Distance(new Vector2(aPx.px, aPx.py), new Vector2(bPx.px, bPx.py)));
+            var steps = Mathf.Max(1, Mathf.CeilToInt(pixLen / Mathf.Max(1f, waterRadiusPx * 0.5f)));
+            for (var s = 0; s <= steps; s++)
+            {
+                var t = s / (float)steps;
+                var p = Vector2.Lerp(a, b, t);
+                var c = WorldToPixel(p.x, p.y, halfW, halfH, texW, texH);
+                FillHorizontalSpan(floodPx, texW, texH, c.py, c.px, floodRadiusPx, floodCol);
+                FillHorizontalSpan(bankPx, texW, texH, c.py, c.px, bankRadiusPx, bankCol);
+                FillHorizontalSpan(waterPx, texW, texH, c.py, c.px, waterRadiusPx, waterCol);
+            }
+        }
+
+        for (var i = 0; i < sampled.Count; i += 30)
+        {
+            waterNodes.Add(sampled[i]);
+        }
+
+        foreach (var c in river.crossings)
+        {
+            WarnIfNormalizedOutsideRange(c.x, $"water.{river.id}.crossings.x");
+            WarnIfNormalizedOutsideRange(c.y, $"water.{river.id}.crossings.y");
+            var pos = ToWorld(c.x, c.y, halfW, halfH);
+            WarnIfWorldOutsideBounds(pos, halfW, halfH, $"water.{river.id}.crossings");
+            var node = new CrossingNodeData { worldPos = pos, worldRadius = c.radius, crocRisk = c.crocRisk };
+            crossingNodes.Add(node);
+            crossingsGrumeti.Add(node);
+        }
+
+        return sampled.Count;
     }
 
     private void BuildKopjes(SerengetiMapSpec spec, float halfW, float halfH)
@@ -357,6 +413,13 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private void BuildDebugOverlays(SerengetiMapSpec spec, ScenarioConfig config, float halfW, float halfH)
     {
+        var existing = mapRoot.Find("DebugOverlays");
+        if (existing != null)
+        {
+            if (Application.isPlaying) UnityEngine.Object.Destroy(existing.gameObject);
+            else UnityEngine.Object.DestroyImmediate(existing.gameObject);
+        }
+
         if (config?.predatorPreyDocu == null || !config.predatorPreyDocu.debugShowMapOverlays)
         {
             return;
@@ -370,21 +433,18 @@ public sealed class PredatorPreyDocuMapBuilder
             var x1 = Mathf.Lerp(-halfW, halfW, r.shape.xMax);
             var y0 = Mathf.Lerp(-halfH, halfH, r.shape.yMin);
             var y1 = Mathf.Lerp(-halfH, halfH, r.shape.yMax);
-            var color = new Color(1f, 1f, 1f, 0.7f);
-            CreateLine(debugRoot, new Vector2(x0, y0), new Vector2(x1, y0), color, 1.25f);
-            CreateLine(debugRoot, new Vector2(x1, y0), new Vector2(x1, y1), color, 1.25f);
-            CreateLine(debugRoot, new Vector2(x1, y1), new Vector2(x0, y1), color, 1.25f);
-            CreateLine(debugRoot, new Vector2(x0, y1), new Vector2(x0, y0), color, 1.25f);
+            var color = new Color(1f, 1f, 1f, 0.75f);
+            CreateRectOutline(debugRoot, x0, x1, y0, y1, color, 0.7f);
         }
 
         foreach (var c in crossingNodes)
         {
-            CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, new Color(1f, 1f, 1f, 0.7f));
+            CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, new Color(1f, 1f, 1f, 0.82f));
         }
 
         foreach (var pool in pools)
         {
-            CreateCircleOutline(debugRoot, pool.worldPos, pool.worldRadius, new Color(0.5f, 0.8f, 1f, 0.6f));
+            CreateCircleOutline(debugRoot, pool.worldPos, pool.worldRadius, new Color(0.5f, 0.8f, 1f, 0.62f));
         }
 
         foreach (var node in kopjes)
@@ -393,23 +453,24 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
+    private static void CreateRectOutline(Transform parent, float x0, float x1, float y0, float y1, Color color, float thickness)
+    {
+        CreateLine(parent, new Vector2(x0, y0), new Vector2(x1, y0), color, thickness);
+        CreateLine(parent, new Vector2(x1, y0), new Vector2(x1, y1), color, thickness);
+        CreateLine(parent, new Vector2(x1, y1), new Vector2(x0, y1), color, thickness);
+        CreateLine(parent, new Vector2(x0, y1), new Vector2(x0, y0), color, thickness);
+    }
+
     private static void CreateCircleOutline(Transform parent, Vector2 center, float radius, Color color)
     {
-        const int segments = 40;
-        var prev = center + Vector2.right * radius;
-        for (var i = 1; i <= segments; i++)
-        {
-            var t = (i / (float)segments) * Mathf.PI * 2f;
-            var next = center + new Vector2(Mathf.Cos(t), Mathf.Sin(t)) * radius;
-            CreateLine(parent, prev, next, color, 1f);
-            prev = next;
-        }
+        var sr = CreateDebugSprite(parent, PrimitiveSpriteLibrary.CircleOutline(64), center, new Vector2(radius * 2f, radius * 2f));
+        sr.color = color;
     }
 
     private static void CreateLine(Transform parent, Vector2 a, Vector2 b, Color color, float thickness)
     {
         var d = b - a;
-        var sr = CreateDebugSprite(parent, PrimitiveSpriteLibrary.CircleFill(8), a + d * 0.5f, new Vector2(d.magnitude, thickness));
+        var sr = CreateDebugSprite(parent, PrimitiveSpriteLibrary.RoundedRectFill(64), a + d * 0.5f, new Vector2(d.magnitude, thickness));
         sr.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
         sr.color = color;
     }
@@ -486,6 +547,27 @@ public sealed class PredatorPreyDocuMapBuilder
         var u = (x + halfW) / (2f * halfW);
         var v = (y + halfH) / (2f * halfH);
         return (Mathf.Clamp(Mathf.RoundToInt(u * (texW - 1)), 0, texW - 1), Mathf.Clamp(Mathf.RoundToInt(v * (texH - 1)), 0, texH - 1));
+    }
+
+    private static int WorldToPixelX(float x, float halfW, int texW)
+    {
+        var u = (x + halfW) / (2f * halfW);
+        return Mathf.Clamp(Mathf.RoundToInt(u * (texW - 1)), 0, texW - 1);
+    }
+
+    private static void FillHorizontalSpan(Color32[] px, int w, int h, int y, int centerX, int halfWidthPx, Color32 col)
+    {
+        if (y < 0 || y >= h)
+        {
+            return;
+        }
+
+        var x0 = Mathf.Clamp(centerX - Mathf.Max(1, halfWidthPx), 0, w - 1);
+        var x1 = Mathf.Clamp(centerX + Mathf.Max(1, halfWidthPx), 0, w - 1);
+        for (var x = x0; x <= x1; x++)
+        {
+            px[x + y * w] = Blend(px[x + y * w], col);
+        }
     }
 
     private static void PaintDisc(Color32[] px, int w, int h, (int px, int py) c, int r, Color32 col)
@@ -587,16 +669,34 @@ public sealed class PredatorPreyDocuMapBuilder
         return result;
     }
 
-    private static RiverYLookup BuildSplineYLookup(List<Vector2> worldPoints, int targetSamples)
+
+
+    private static List<Vector2> UpsamplePolyline(List<Vector2> points, int factor)
     {
-        if (worldPoints == null || worldPoints.Count < 2)
+        if (points == null || points.Count < 2 || factor <= 1)
         {
-            return RiverYLookup.Invalid;
+            return points ?? new List<Vector2>();
         }
 
-        var samplesPerSegment = Mathf.Max(8, Mathf.CeilToInt(targetSamples / (float)Mathf.Max(1, worldPoints.Count - 1)));
-        var smooth = SampleCatmullRom(worldPoints, samplesPerSegment);
-        if (smooth.Count < 2)
+        var result = new List<Vector2>((points.Count - 1) * factor + 1);
+        for (var i = 1; i < points.Count; i++)
+        {
+            var a = points[i - 1];
+            var b = points[i];
+            for (var s = 0; s < factor; s++)
+            {
+                var t = s / (float)factor;
+                result.Add(Vector2.Lerp(a, b, t));
+            }
+        }
+
+        result.Add(points[points.Count - 1]);
+        return result;
+    }
+
+    private static RiverYLookup BuildSplineYLookup(List<Vector2> smooth)
+    {
+        if (smooth == null || smooth.Count < 2)
         {
             return RiverYLookup.Invalid;
         }
