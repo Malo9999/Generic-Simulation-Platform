@@ -2818,23 +2818,23 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     {
         if (!enableTactics)
         {
-            var keeper = IsGoalkeeper(i);
-            var maxSpeedLite = keeper ? 4.5f : 5.5f;
-            Vector2 objective;
+            var keeperAthlete = IsGoalkeeper(i);
+            var maxSpeedLite = keeperAthlete ? 4.5f : 5.5f;
+            Vector2 desiredObjective;
             if (i == kickoffDuelA || i == kickoffDuelB)
             {
-                objective = ballOwnerIndex >= 0 ? positions[ballOwnerIndex] : ballPos;
+                desiredObjective = ballOwnerIndex >= 0 ? positions[ballOwnerIndex] : ballPos;
             }
-            else if (keeper)
+            else if (keeperAthlete)
             {
-                objective = ComputeGoalkeeperTarget(i);
+                desiredObjective = ComputeGoalkeeperTarget(i);
             }
             else
             {
-                objective = kickoffHomePos != null && i < kickoffHomePos.Length ? kickoffHomePos[i] : ComputeHomePosition(i);
+                desiredObjective = kickoffHomePos != null && i < kickoffHomePos.Length ? kickoffHomePos[i] : ComputeHomePosition(i);
             }
 
-            var toObj = objective - positions[i];
+            var toObj = desiredObjective - positions[i];
             return toObj.sqrMagnitude > 0.0001f ? toObj.normalized * Mathf.Min(maxSpeedLite, toObj.magnitude) : Vector2.zero;
         }
         var keeper = IsGoalkeeper(i);
