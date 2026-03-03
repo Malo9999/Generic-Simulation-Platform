@@ -34,9 +34,14 @@
     "grumeti": {
       "id": "grumeti_belt",
       "centerline": [
-        { "x": 0.06, "y": 0.63 },
-        { "x": 0.18, "y": 0.60 },
-        { "x": 0.30, "y": 0.56 }
+        { "x": 0.00, "y": 0.66 },
+        { "x": 0.07, "y": 0.69 },
+        { "x": 0.13, "y": 0.64 },
+        { "x": 0.20, "y": 0.67 },
+        { "x": 0.27, "y": 0.61 },
+        { "x": 0.34, "y": 0.64 },
+        { "x": 0.41, "y": 0.58 },
+        { "x": 0.46, "y": 0.60 }
       ],
       "width": 12,
       "crossings": [
@@ -48,7 +53,8 @@
       { "id": "seronera_pool_1", "x": 0.54, "y": 0.56, "radius": 18, "permanent": true },
       { "id": "seronera_pool_2", "x": 0.59, "y": 0.52, "radius": 16, "permanent": true },
       { "id": "seronera_pool_3", "x": 0.50, "y": 0.50, "radius": 14, "permanent": true },
-      { "id": "seronera_pool_4", "x": 0.62, "y": 0.58, "radius": 12, "permanent": true }
+      { "id": "seronera_pool_4", "x": 0.62, "y": 0.58, "radius": 12, "permanent": true },
+      { "id": "grumeti_basin", "x": 0.46, "y": 0.60, "radius": 38, "permanent": true }
     ],
 
     "seasonal": {
@@ -61,7 +67,11 @@
   "landmarks": {
     "kopjes": [
       { "id": "kopjes_1", "x": 0.88, "y": 0.62, "radius": 42, "cover": 0.85 },
-      { "id": "kopjes_2", "x": 0.92, "y": 0.74, "radius": 34, "cover": 0.80 }
+      { "id": "kopjes_2", "x": 0.92, "y": 0.74, "radius": 34, "cover": 0.80 },
+      { "id": "grumeti_ridge_1", "x": 0.44, "y": 0.56, "radius": 24, "cover": 0.88 },
+      { "id": "grumeti_ridge_2", "x": 0.47, "y": 0.53, "radius": 26, "cover": 0.85 },
+      { "id": "grumeti_ridge_3", "x": 0.50, "y": 0.50, "radius": 22, "cover": 0.82 },
+      { "id": "grumeti_ridge_4", "x": 0.53, "y": 0.47, "radius": 20, "cover": 0.80 }
     ],
     "wetlands": [
       { "id": "ndutu_wetland_1", "x": 0.55, "y": 0.16, "radius": 50 }
