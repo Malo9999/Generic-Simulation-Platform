@@ -7,6 +7,14 @@ public static class SceneGraphUtil
         var simulationRoot = ResolveSimulationRoot(runnerTransform);
         var graph = SimulationSceneGraph.Ensure(simulationRoot);
 
+        ResetLocal(simulationRoot);
+        ResetLocal(graph.WorldRoot);
+        ResetLocal(graph.ArenaRootParent);
+        ResetLocal(graph.ArenaRoot);
+        ResetLocal(graph.EntitiesRoot);
+        ResetLocal(graph.DecorRoot);
+        ResetLocal(graph.DebugRoot);
+
         runnerTransform.SetParent(graph.RunnerRoot, false);
         runnerTransform.name = "Runner";
 
@@ -66,6 +74,13 @@ public static class SceneGraphUtil
         go.transform.localRotation = Quaternion.identity;
         go.transform.localScale = Vector3.one;
         return go.transform;
+    }
+
+    private static void ResetLocal(Transform transform)
+    {
+        transform.localPosition = Vector3.zero;
+        transform.localRotation = Quaternion.identity;
+        transform.localScale = Vector3.one;
     }
 }
 
