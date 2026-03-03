@@ -4,6 +4,32 @@ using UnityEngine;
 
 public sealed class PredatorPreyDocuMapBuilder
 {
+    private readonly struct RegionField
+    {
+        public RegionField(RegionSpec region, float x0, float x1, float y0, float y1)
+        {
+            this.region = region;
+            this.x0 = Mathf.Min(x0, x1);
+            this.x1 = Mathf.Max(x0, x1);
+            this.y0 = Mathf.Min(y0, y1);
+            this.y1 = Mathf.Max(y0, y1);
+            cx = (this.x0 + this.x1) * 0.5f;
+            cy = (this.y0 + this.y1) * 0.5f;
+            ex = Mathf.Max(4f, (this.x1 - this.x0) * 0.5f);
+            ey = Mathf.Max(4f, (this.y1 - this.y0) * 0.5f);
+        }
+
+        public readonly RegionSpec region;
+        public readonly float x0;
+        public readonly float x1;
+        public readonly float y0;
+        public readonly float y1;
+        public readonly float cx;
+        public readonly float cy;
+        public readonly float ex;
+        public readonly float ey;
+    }
+
     private const string SortingLayerDefault = "Default";
     private const int TerrainBaseOrder = -200;
     private const int RegionOverlayOrder = -198;
@@ -67,7 +93,7 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(worldObjectsRoot, false);
 
         ValidateSpecConformance(spec, halfW, halfH);
-        BuildTerrain(halfW, halfH);
+        BuildTerrain(spec, halfW, halfH);
         BuildRegions(spec, halfW, halfH);
         BuildWater(spec, halfW, halfH);
         BuildKopjes(spec, halfW, halfH);
@@ -136,13 +162,31 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-    private void BuildTerrain(float halfW, float halfH)
+    private void BuildTerrain(SerengetiMapSpec spec, float halfW, float halfH)
     {
         var (w, h, ppu) = PickTextureSize(halfW * 2f, halfH * 2f, 3f, 1_800_000);
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
-        var c0 = new Color32(173, 152, 96, 255);
-        for (var i = 0; i < px.Length; i++) px[i] = c0;
+        var c0 = new Vector3(173f, 152f, 96f);
+        var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 173);
+        for (var y = 0; y < h; y++)
+        {
+            var wy = Mathf.Lerp(-halfH, halfH, y / Mathf.Max(1f, h - 1f));
+            for (var x = 0; x < w; x++)
+            {
+                var wx = Mathf.Lerp(-halfW, halfW, x / Mathf.Max(1f, w - 1f));
+                var low = Noise2D(wx * 0.0009f + 37f, wy * 0.0009f + 53f, seedSalt) * 0.6f;
+                var mid = Noise2D(wx * 0.0024f + 11f, wy * 0.0024f + 23f, seedSalt) * 0.3f;
+                var high = Noise2D(wx * 0.0058f + 71f, wy * 0.0058f + 89f, seedSalt) * 0.1f;
+                var fbm = low + mid + high;
+                var brightness = 1f + fbm * 0.065f;
+                var r = Mathf.Clamp(Mathf.RoundToInt(c0.x * brightness), 0, 255);
+                var g = Mathf.Clamp(Mathf.RoundToInt(c0.y * brightness), 0, 255);
+                var b = Mathf.Clamp(Mathf.RoundToInt(c0.z * brightness), 0, 255);
+                px[x + y * w] = new Color32((byte)r, (byte)g, (byte)b, 255);
+            }
+        }
+
         tex.SetPixels32(px);
         tex.Apply(false, false);
         terrainSR = CreateSprite("TerrainBaseTexture", tex, ppu, TerrainBaseOrder);
@@ -156,14 +200,20 @@ public sealed class PredatorPreyDocuMapBuilder
         var h = Mathf.Max(256, Mathf.RoundToInt(halfH * 2f * ppu));
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
-        var featherWidthWorld = Mathf.Clamp(80f, 60f, 110f);
-        var warpAmplitudeWorld = 35f;
         var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 97);
+        var warpAmpWorld = 78f;
+        var warpFreq = 0.0023f;
+        var microWarpAmpWorld = 14f;
+        var microWarpFreq = 0.01f;
+        var bonusPadding = 45f;
+        var bonusFalloff = 220f;
+        var bonusScale = 0.46f;
+        var weightPower = 1.9f;
         var alphaMax = 0f;
-        var regions = new List<(RegionSpec region, float x0, float x1, float y0, float y1)>();
+        var regions = new List<RegionField>();
         foreach (var region in spec.regions)
         {
-            regions.Add((
+            regions.Add(new RegionField(
                 region,
                 Mathf.Lerp(-halfW, halfW, region.shape.xMin),
                 Mathf.Lerp(-halfW, halfW, region.shape.xMax),
@@ -171,47 +221,97 @@ public sealed class PredatorPreyDocuMapBuilder
                 Mathf.Lerp(-halfH, halfH, region.shape.yMax)));
         }
 
+        var weights = new float[regions.Count];
         for (var y = 0; y < h; y++)
         {
             var wy = Mathf.Lerp(-halfH, halfH, y / Mathf.Max(1f, h - 1f));
             for (var x = 0; x < w; x++)
             {
                 var wx = Mathf.Lerp(-halfW, halfW, x / Mathf.Max(1f, w - 1f));
-                var chosen = default(RegionSpec);
-                var dist = -1f;
-                foreach (var entry in regions)
+
+                var warpX = Noise2D(wx * warpFreq + 11f, wy * warpFreq + 17f, seedSalt) * warpAmpWorld +
+                            Noise2D(wx * microWarpFreq + 101f, wy * microWarpFreq + 131f, seedSalt) * microWarpAmpWorld;
+                var warpY = Noise2D(wx * warpFreq + 23f, wy * warpFreq + 29f, seedSalt) * warpAmpWorld +
+                            Noise2D(wx * microWarpFreq + 149f, wy * microWarpFreq + 173f, seedSalt) * microWarpAmpWorld;
+                var warpedX = wx + warpX;
+                var warpedY = wy + warpY;
+
+                var sumWeights = 0f;
+                var bestInfluence = float.NegativeInfinity;
+                var secondInfluence = float.NegativeInfinity;
+                var nearest = 0;
+                var nearestD2 = float.PositiveInfinity;
+                var alphaWeighted = 0f;
+                var rWeighted = 0f;
+                var gWeighted = 0f;
+                var bWeighted = 0f;
+
+                for (var i = 0; i < regions.Count; i++)
                 {
-                    var region = entry.region;
-                    var rx0 = entry.x0;
-                    var rx1 = entry.x1;
-                    var ry0 = entry.y0;
-                    var ry1 = entry.y1;
-                    if (wx < rx0 || wx > rx1 || wy < ry0 || wy > ry1) continue;
-                    var edge = Mathf.Min(wx - rx0, rx1 - wx, wy - ry0, ry1 - wy);
-                    if (edge > dist)
+                    var entry = regions[i];
+                    var influence = ComputeRegionInfluence(entry, warpedX, warpedY, seedSalt, x, y, bonusPadding, bonusFalloff, bonusScale);
+                    if (influence > bestInfluence)
                     {
-                        dist = edge;
-                        chosen = region;
+                        secondInfluence = bestInfluence;
+                        bestInfluence = influence;
                     }
+                    else if (influence > secondInfluence)
+                    {
+                        secondInfluence = influence;
+                    }
+
+                    var dxC = warpedX - entry.cx;
+                    var dyC = warpedY - entry.cy;
+                    var d2 = dxC * dxC + dyC * dyC;
+                    if (d2 < nearestD2)
+                    {
+                        nearestD2 = d2;
+                        nearest = i;
+                    }
+
+                    var weight = influence > 0f ? Mathf.Pow(influence, weightPower) : 0f;
+                    weights[i] = weight;
+                    sumWeights += weight;
                 }
 
-                if (chosen == null) continue;
-                var n = Noise2D(wx * 0.0025f, wy * 0.0025f, seedSalt);
-                var edgeDistWorld = Mathf.Max(0f, dist + n * warpAmplitudeWorld);
-                var edgeFeather = Mathf.SmoothStep(0f, featherWidthWorld, edgeDistWorld);
-                var alpha = RegionBaseAlpha(chosen.biome) * edgeFeather;
-                var noise = Hash01(x, y, 17) * 0.12f - 0.06f;
-                alpha *= 1f + noise;
+                if (sumWeights < 0.0001f && regions.Count > 0)
+                {
+                    for (var i = 0; i < regions.Count; i++) weights[i] = 0f;
+                    weights[nearest] = 1f;
+                    sumWeights = 1f;
+                }
+
+                for (var i = 0; i < regions.Count; i++)
+                {
+                    var entry = regions[i];
+                    var weight = weights[i];
+                    if (weight <= 0f) continue;
+                    var tint = RegionTintWithTraits(entry.region);
+                    rWeighted += tint.r * weight;
+                    gWeighted += tint.g * weight;
+                    bWeighted += tint.b * weight;
+                    alphaWeighted += RegionBaseAlpha(entry.region.biome) * weight;
+                }
+
+                var inv = sumWeights > 0f ? 1f / sumWeights : 0f;
+                var boundaryFactor = 0.65f + 0.35f * Mathf.SmoothStep(0f, 0.35f, bestInfluence - secondInfluence);
+                var alpha = alphaWeighted * inv * boundaryFactor;
+                alpha *= 1f + (Hash01(x, y, seedSalt ^ 433) - 0.5f) * 0.06f;
+                alpha = Mathf.Clamp(alpha, 8f, 35f);
                 alphaMax = Mathf.Max(alphaMax, alpha);
-                var tint = RegionTint(chosen.biome);
-                px[x + y * w] = new Color32(tint.r, tint.g, tint.b, (byte)Mathf.Clamp(Mathf.RoundToInt(alpha), 0, 255));
+
+                px[x + y * w] = new Color32(
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(rWeighted * inv), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(gWeighted * inv), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(bWeighted * inv), 0, 255),
+                    (byte)Mathf.Clamp(Mathf.RoundToInt(alpha), 0, 255));
             }
         }
 
         tex.SetPixels32(px);
         tex.Apply(false, false);
         regionSR = CreateSprite("RegionOverlayTexture", tex, ppu, RegionOverlayOrder);
-        Debug.Log($"[SerengetiConformance] Regions: alphaMax={alphaMax:0.##} featherWorld={featherWidthWorld:0.#} warpAmp=35 PPU={ppu:0.###} tex={w}x{h}");
+        Debug.Log($"[SerengetiConformance] Regions: alphaMax={alphaMax:0.##} warpAmp={warpAmpWorld:0.#} warpFreq={warpFreq:0.####} blendP={weightPower:0.##} PPU={ppu:0.###} tex={w}x{h}");
     }
 
     private void BuildWater(SerengetiMapSpec spec, float halfW, float halfH)
@@ -449,7 +549,12 @@ public sealed class PredatorPreyDocuMapBuilder
             var color = new Color(0f, 1f, 0f, 0.9f);
             CreateRectOutline(debugRoot, xMinW, xMaxW, yMinW, yMaxW, color, 2f);
             CreateDebugLabel(debugRoot, new Vector2((xMinW + xMaxW) * 0.5f, (yMinW + yMaxW) * 0.5f), r.id, color);
+            var center = new Vector2((xMinW + xMaxW) * 0.5f, (yMinW + yMaxW) * 0.5f);
+            CreateRectStrip(debugRoot, center, new Vector2(4f, 0.8f), color);
+            CreateRectStrip(debugRoot, center, new Vector2(0.8f, 4f), color);
         }
+
+        DrawRegionBoundaryHints(debugRoot, spec, halfW, halfH);
 
         foreach (var c in crossingsMain)
         {
@@ -694,6 +799,22 @@ public sealed class PredatorPreyDocuMapBuilder
         return new Color32(145, 137, 106, 255);
     }
 
+    private static Color32 RegionTintWithTraits(RegionSpec region)
+    {
+        var tint = RegionTint(region.biome);
+        var greenness = Mathf.Clamp(region.baseGreenness, -1f, 1f);
+        var cover = Mathf.Clamp01(region.cover);
+        var r = tint.r - greenness * 7f - cover * 3f;
+        var g = tint.g + greenness * 12f + cover * 4f;
+        var b = tint.b - greenness * 4f - cover * 2f;
+        var darken = 1f - cover * 0.04f;
+        return new Color32(
+            (byte)Mathf.Clamp(Mathf.RoundToInt(r * darken), 0, 255),
+            (byte)Mathf.Clamp(Mathf.RoundToInt(g * darken), 0, 255),
+            (byte)Mathf.Clamp(Mathf.RoundToInt(b * darken), 0, 255),
+            255);
+    }
+
     private static float RegionBaseAlpha(string biome)
     {
         if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return 28f;
@@ -727,6 +848,88 @@ public sealed class PredatorPreyDocuMapBuilder
         var h = (uint)(x * 374761393 + y * 668265263 + seed * 2246822519);
         h = (h ^ (h >> 13)) * 1274126177;
         return (h & 0xFFFF) / 65535f;
+    }
+
+    private static float ComputeRegionInfluence(RegionField field, float x, float y, int seedSalt, int px, int py, float bonusPadding, float bonusFalloff, float bonusScale)
+    {
+        var dx = (x - field.cx) / field.ex;
+        var dy = (y - field.cy) / field.ey;
+        var d = Mathf.Sqrt(dx * dx + dy * dy);
+        var baseInfluence = 1f - d;
+        var signedDist = SignedDistanceToRect(field.x0, field.x1, field.y0, field.y1, x, y);
+        var bonus = Mathf.Clamp01((signedDist + bonusPadding) / Mathf.Max(1f, bonusFalloff)) * bonusScale;
+        var tinyNoise = (Noise2D(x * 0.016f + 7f, y * 0.016f + 13f, seedSalt ^ 719) + (Hash01(px, py, seedSalt ^ 887) - 0.5f)) * 0.02f;
+        return baseInfluence + bonus + tinyNoise;
+    }
+
+    private static float SignedDistanceToRect(float x0, float x1, float y0, float y1, float x, float y)
+    {
+        var insideX = x >= x0 && x <= x1;
+        var insideY = y >= y0 && y <= y1;
+        if (insideX && insideY)
+        {
+            return Mathf.Min(x - x0, x1 - x, y - y0, y1 - y);
+        }
+
+        var dx = x < x0 ? x0 - x : (x > x1 ? x - x1 : 0f);
+        var dy = y < y0 ? y0 - y : (y > y1 ? y - y1 : 0f);
+        return -Mathf.Sqrt(dx * dx + dy * dy);
+    }
+
+    private void DrawRegionBoundaryHints(Transform parent, SerengetiMapSpec spec, float halfW, float halfH)
+    {
+        var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 97);
+        var fields = new List<RegionField>();
+        foreach (var region in spec.regions)
+        {
+            fields.Add(new RegionField(
+                region,
+                Mathf.Lerp(-halfW, halfW, region.shape.xMin),
+                Mathf.Lerp(-halfW, halfW, region.shape.xMax),
+                Mathf.Lerp(-halfH, halfH, region.shape.yMin),
+                Mathf.Lerp(-halfH, halfH, region.shape.yMax)));
+        }
+
+        const float spacing = 120f;
+        const float warpAmpWorld = 78f;
+        const float warpFreq = 0.0023f;
+        const float microWarpAmpWorld = 14f;
+        const float microWarpFreq = 0.01f;
+        for (var y = -halfH; y <= halfH; y += spacing)
+        {
+            for (var x = -halfW; x <= halfW; x += spacing)
+            {
+                var wx = x;
+                var wy = y;
+                var warpX = Noise2D(wx * warpFreq + 11f, wy * warpFreq + 17f, seedSalt) * warpAmpWorld +
+                            Noise2D(wx * microWarpFreq + 101f, wy * microWarpFreq + 131f, seedSalt) * microWarpAmpWorld;
+                var warpY = Noise2D(wx * warpFreq + 23f, wy * warpFreq + 29f, seedSalt) * warpAmpWorld +
+                            Noise2D(wx * microWarpFreq + 149f, wy * microWarpFreq + 173f, seedSalt) * microWarpAmpWorld;
+                var tx = wx + warpX;
+                var ty = wy + warpY;
+
+                var best = float.NegativeInfinity;
+                var second = float.NegativeInfinity;
+                for (var i = 0; i < fields.Count; i++)
+                {
+                    var influence = ComputeRegionInfluence(fields[i], tx, ty, seedSalt, Mathf.RoundToInt(x), Mathf.RoundToInt(y), 45f, 220f, 0.46f);
+                    if (influence > best)
+                    {
+                        second = best;
+                        best = influence;
+                    }
+                    else if (influence > second)
+                    {
+                        second = influence;
+                    }
+                }
+
+                if (best - second < 0.08f)
+                {
+                    CreateRectStrip(parent, new Vector2(wx, wy), new Vector2(2.2f, 2.2f), new Color(0.1f, 1f, 0.35f, 0.8f));
+                }
+            }
+        }
     }
 
     private static List<Vector2> SampleCatmullRom(List<Vector2> points, int samplesPerSegment)
