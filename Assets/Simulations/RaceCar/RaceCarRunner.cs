@@ -8,6 +8,9 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
 
     [SerializeField] private bool logSpawnIdentity = true;
     [SerializeField] private TrackBakedData track;
+    [SerializeField] private bool autoFitTrackToArena = true;
+    [SerializeField] private float trackFitPadding = 2f;
+    [SerializeField] private bool autoRotateTrackToStartGrid = true;
 
     private Transform[] cars;
     private EntityIdentity[] identities;
@@ -27,15 +30,23 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
     private SimulationSceneGraph sceneGraph;
     private TrackRuntime trackRuntime;
     private Transform trackRoot;
+    private Transform raceCarSpace;
     private bool trackRootAttempted;
     private bool boundsAppliedAfterStart;
     private bool runtimeTrackBannerLogged;
+    private ScenarioConfig activeConfig;
+    private float arenaWidth = 64f;
+    private float arenaHeight = 64f;
     [SerializeField] private bool debugTrackSetupLogs;
     [SerializeField] private bool ReverseDirection;
     private TrackPathSampler pathSampler;
 
     public void Initialize(ScenarioConfig config)
     {
+        activeConfig = config;
+        arenaWidth = Mathf.Max(1f, config?.world?.arenaWidth ?? 64f);
+        arenaHeight = Mathf.Max(1f, config?.world?.arenaHeight ?? 64f);
+
         sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
         trackRootAttempted = false;
         boundsAppliedAfterStart = false;
@@ -54,11 +65,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             SetupTrackRoot();
         }
 
-        if (track != null && trackRoot != null && !boundsAppliedAfterStart)
+        if (!boundsAppliedAfterStart)
         {
             boundsAppliedAfterStart = true;
-            var bounds = ComputePaddedTrackBounds(track);
-            PresentationBoundsSync.Apply(bounds);
+            if (activeConfig != null)
+            {
+                PresentationBoundsSync.ApplyFromConfig(activeConfig);
+            }
         }
 
         if (cars == null)
@@ -149,6 +162,13 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         trackRuntime = null;
         pathSampler = null;
         trackRootAttempted = false;
+        if (raceCarSpace != null)
+        {
+            raceCarSpace.localPosition = Vector3.zero;
+            raceCarSpace.localRotation = Quaternion.identity;
+            raceCarSpace.localScale = Vector3.one;
+        }
+
         Debug.Log("RaceCarRunner Shutdown");
     }
 
@@ -208,6 +228,8 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             pathSampler = new TrackPathSampler(track.mainCenterline);
         }
 
+        var entityParent = raceCarSpace != null ? raceCarSpace : sceneGraph.EntitiesRoot;
+
         for (var i = 0; i < carCount; i++)
         {
             var identity = IdentityService.Create(
@@ -218,7 +240,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                 scenarioSeed: config?.seed ?? 0,
                 simIdOrSalt: "RaceCar");
 
-            var groupRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, identity.teamId);
+            var groupRoot = SceneGraphUtil.EnsureEntityGroup(entityParent, identity.teamId);
 
             var car = new GameObject($"Sim_{identity.entityId:0000}");
             car.transform.SetParent(groupRoot, false);
@@ -301,6 +323,7 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
                     car.transform.right = new Vector2(Mathf.Sign(carSpeed), 0f);
                 }
             }
+
             cars[i] = car.transform;
             identities[i] = identity;
             visualKeys[i] = visualKey;
@@ -323,6 +346,16 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
         trackRuntime = null;
         pathSampler = null;
 
+        if (sceneGraph == null)
+        {
+            sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
+        }
+
+        raceCarSpace = EnsureRaceCarSpace();
+        raceCarSpace.localPosition = Vector3.zero;
+        raceCarSpace.localRotation = Quaternion.identity;
+        raceCarSpace.localScale = Vector3.one;
+
         if (track == null)
         {
             Debug.LogWarning("RaceCarRunner.Track is NULL");
@@ -336,11 +369,82 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        if (sceneGraph == null)
+        if (autoFitTrackToArena)
         {
-            sceneGraph = SceneGraphUtil.PrepareRunner(transform, "RaceCar");
+            var fitOk = TrackFitUtil.TryComputeFit(
+                track,
+                arenaWidth,
+                arenaHeight,
+                trackFitPadding,
+                autoRotateTrackToStartGrid,
+                out var fitResult);
+
+            if (fitOk)
+            {
+                raceCarSpace.localRotation = Quaternion.Euler(0f, 0f, fitResult.rotationDeg);
+                raceCarSpace.localScale = Vector3.one * fitResult.scale;
+                raceCarSpace.localPosition = new Vector3(fitResult.offset.x, fitResult.offset.y, 0f);
+            }
+
+            var raw = fitResult.rawBounds;
+            var rotated = fitResult.rotatedBounds;
+            var offset = raceCarSpace.localPosition;
+            Debug.Log(
+                $"[RaceCarTrackFit] track={track.name} angleDeg={fitResult.rotationDeg:F3} " +
+                $"rawBounds=({raw.xMin:F3},{raw.yMin:F3})..({raw.xMax:F3},{raw.yMax:F3}) " +
+                $"rotatedBounds=({rotated.xMin:F3},{rotated.yMin:F3})..({rotated.xMax:F3},{rotated.yMax:F3}) " +
+                $"scale={raceCarSpace.localScale.x:F4} offset=({offset.x:F3},{offset.y:F3}) " +
+                $"arena=({arenaWidth:F2}x{arenaHeight:F2})");
         }
 
+        var root = new GameObject("TrackRoot");
+        root.transform.SetParent(raceCarSpace, false);
+        trackRoot = root.transform;
+        trackRoot.localPosition = Vector3.zero;
+        trackRoot.localRotation = Quaternion.identity;
+        trackRoot.localScale = Vector3.one;
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        if (debugTrackSetupLogs)
+        {
+            Debug.Log(
+                $"RaceCarRunner[{name}]: TrackRoot parentPath='{BuildTransformPath(raceCarSpace)}', parentLocalRotation={raceCarSpace.localRotation.eulerAngles}, parentLocalScale={raceCarSpace.localScale}.");
+        }
+#endif
+
+        var renderer = root.AddComponent<TrackRendererV1>();
+        renderer.Render(track);
+
+        trackRuntime = root.AddComponent<TrackRuntime>();
+        trackRuntime.Initialize(track);
+
+        var overlay = root.AddComponent<TrackStartFinishOverlay>();
+        overlay.Render(track);
+
+        if (!runtimeTrackBannerLogged)
+        {
+            runtimeTrackBannerLogged = true;
+            LogRuntimeTrackBanner(track);
+        }
+
+        Debug.Log(track.BuildDebugReport());
+
+        var parentTransformPath = BuildTransformPath(raceCarSpace);
+        Debug.Log(
+            $"RaceCarRunner[{name}]: TrackRoot parent='{raceCarSpace.name}', path='{parentTransformPath}', worldPosition={raceCarSpace.position}.");
+
+        var spriteRendererCount = root.GetComponentsInChildren<SpriteRenderer>(true).Length;
+        var lineRendererCount = root.GetComponentsInChildren<LineRenderer>(true).Length;
+        Debug.Log(
+            $"RaceCarRunner[{name}]: TrackRoot renderers SpriteRenderer={spriteRendererCount}, LineRenderer={lineRendererCount}.");
+
+        Debug.Log(
+            $"RaceCarRunner[{name}]: TrackRoot created for '{track.name}' " +
+            $"(centerline={track.mainCenterline?.Length ?? 0}, position={trackRoot.position}).");
+    }
+
+    private Transform EnsureRaceCarSpace()
+    {
         var simulationRoot = SceneGraphUtil.ResolveSimulationRoot(transform);
         var world = sceneGraph.WorldRoot != null ? sceneGraph.WorldRoot : simulationRoot.Find("WorldRoot");
         var arena = sceneGraph.ArenaRoot;
@@ -359,80 +463,16 @@ public class RaceCarRunner : MonoBehaviour, ITickableSimulationRunner
             arena.localScale = Vector3.one;
         }
 
-        Transform parent = arena != null ? arena : (world != null ? world : transform);
-        var parentPath = arena != null ? "ArenaRoot" : (world != null ? "WorldRoot" : "Runner transform");
-
-        var root = new GameObject("TrackRoot");
-        root.transform.SetParent(parent, false);
-        trackRoot = root.transform;
-        trackRoot.localPosition = Vector3.zero;
-        trackRoot.localRotation = Quaternion.identity;
-        trackRoot.localScale = Vector3.one;
-
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
-        if (debugTrackSetupLogs)
+        var parent = arena != null ? arena : (world != null ? world : transform);
+        var space = parent.Find("RaceCarSpace");
+        if (space == null)
         {
-            Debug.Log(
-                $"RaceCarRunner[{name}]: TrackRoot parentPath='{BuildTransformPath(parent)}', parentLocalRotation={parent.localRotation.eulerAngles}, parentLocalScale={parent.localScale}, arenaPath='{BuildTransformPath(arena)}'.");
-        }
-#endif
-
-        var renderer = root.AddComponent<TrackRendererV1>();
-        renderer.Render(track);
-
-        trackRuntime = root.AddComponent<TrackRuntime>();
-        trackRuntime.Initialize(track);
-
-        var overlay = root.AddComponent<TrackStartFinishOverlay>();
-        overlay.Render(track);
-
-        var bounds = ComputePaddedTrackBounds(track);
-        PresentationBoundsSync.Apply(bounds);
-        halfWidth = bounds.width * 0.5f;
-        halfHeight = bounds.height * 0.5f;
-
-        if (!runtimeTrackBannerLogged)
-        {
-            runtimeTrackBannerLogged = true;
-            LogRuntimeTrackBanner(track);
+            var spaceGo = new GameObject("RaceCarSpace");
+            space = spaceGo.transform;
+            space.SetParent(parent, false);
         }
 
-        Debug.Log(track.BuildDebugReport());
-        Debug.Log($"RaceCarRunner[{name}]: framing bounds rect min={bounds.min}, max={bounds.max}, center={bounds.center}, size={bounds.size}.");
-
-        var parentTransformPath = BuildTransformPath(parent);
-        Debug.Log(
-            $"RaceCarRunner[{name}]: TrackRoot parent='{parent.name}', path='{parentTransformPath}', worldPosition={parent.position}.");
-
-        var spriteRendererCount = root.GetComponentsInChildren<SpriteRenderer>(true).Length;
-        var lineRendererCount = root.GetComponentsInChildren<LineRenderer>(true).Length;
-        Debug.Log(
-            $"RaceCarRunner[{name}]: TrackRoot renderers SpriteRenderer={spriteRendererCount}, LineRenderer={lineRendererCount}.");
-
-        Debug.Log($"RaceCarRunner[{name}]: using track bounds center={bounds.center}, size={bounds.size}.");
-        Debug.Log(
-            $"RaceCarRunner[{name}]: TrackRoot created for '{track.name}' " +
-            $"(centerline={track.mainCenterline?.Length ?? 0}, parent={parentPath}, position={trackRoot.position}).");
-    }
-
-    private static Rect ComputePaddedTrackBounds(TrackBakedData trackData)
-    {
-        var debugBounds = TrackBakedData.ComputeDebugMainBounds(trackData);
-        var padding = Mathf.Max(1f, (trackData != null ? trackData.trackWidth : 8f) * 1.25f);
-        var min = debugBounds.min - Vector2.one * padding;
-        var max = debugBounds.max + Vector2.one * padding;
-
-        if (max.x <= min.x)
-        {
-            max.x = min.x + 1f;
-        }
-
-        if (max.y <= min.y)
-        {
-            max.y = min.y + 1f;
-        }
-
-        return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
+        return space;
     }
 
     private void LogRuntimeTrackBanner(TrackBakedData trackData)

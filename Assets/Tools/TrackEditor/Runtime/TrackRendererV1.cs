@@ -26,6 +26,16 @@ namespace GSP.TrackEditor
                 CreateLine("PitCenter", data.pitCenterline, new Color(0.35f, 0.35f, 0.35f), data.trackWidth * 0.6f);
             }
 
+            if (data.pitLeftBoundary != null && data.pitLeftBoundary.Length > 1)
+            {
+                CreateLine("PitBorderLeft", data.pitLeftBoundary, Color.white, 0.2f);
+            }
+
+            if (data.pitRightBoundary != null && data.pitRightBoundary.Length > 1)
+            {
+                CreateLine("PitBorderRight", data.pitRightBoundary, Color.white, 0.2f);
+            }
+
             if (data.startFinishDir.sqrMagnitude > Epsilon)
             {
                 var right = new Vector2(-data.startFinishDir.y, data.startFinishDir.x).normalized * (data.trackWidth * 0.5f);
