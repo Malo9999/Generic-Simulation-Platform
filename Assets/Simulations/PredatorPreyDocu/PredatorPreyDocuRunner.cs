@@ -221,11 +221,12 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             preyOffset[i] = rngPop.InsideUnitCircle() * movement.herdRadius;
             preyPos[i] = herdCenter[herdId] + preyOffset[i];
 
-            var root = new GameObject($"Prey_{i:0000}");
+            var speciesKey = herdSpeciesKey != null && herdId >= 0 && herdId < herdSpeciesKey.Length ? herdSpeciesKey[herdId] : "generic_prey";
+
+            var root = new GameObject($"Prey_{speciesKey}_{i:0000}");
             root.transform.SetParent(preyRoot, false);
             root.transform.localPosition = new Vector3(preyPos[i].x, preyPos[i].y, 0f);
             var accent = PredatorPreyDocuVisualFactory.HerdAccentColor(herdId);
-            var speciesKey = herdSpeciesKey != null && herdId >= 0 && herdId < herdSpeciesKey.Length ? herdSpeciesKey[herdId] : "generic_prey";
             if (useLegendSpecies && TryGetLegendSpecies(speciesKey, out var entry))
             {
                 var isMale = ((i + herdId) % 2) == 0;
@@ -236,6 +237,8 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             {
                 PredatorPreyDocuVisualFactory.BuildPrey(root.transform, accent, visuals.preyScale, visuals.showPackAccent);
             }
+
+            AttachSpeciesLabel(root.transform, speciesKey, visuals.preyScale);
             preyTf[i] = root.transform;
         }
 
@@ -292,7 +295,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        Debug.Log($"[SerengetiSpawn] mapId={loadedMapSpec?.mapId} herds={herdCount} herdSpecies={SummarizeSpecies(herdSpeciesKey)} predators={lionCountTotal} predatorSpecies={SummarizeSpecies(prideSpeciesKey)}");
+        Debug.Log($"[SerengetiSpawn] mapId={loadedMapSpec?.mapId} herds={herdCount} herdSpecies={SummarizeSpecies(herdSpeciesKey)} predators={lionCountTotal} predatorSpecies={SummarizeSpecies(prideSpeciesKey)} useLegend={useLegendSpecies}");
     }
 
     private void SpawnLion(Transform lionRoot, IRng rngPop, Visuals visuals, int lionIndex, int prideId, bool roaming, int coalitionSlot, bool useLegendSpecies)
@@ -320,11 +323,11 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
 
         lionPos[lionIndex] = spawn;
 
-        var root = new GameObject($"Lion_{lionIndex:0000}");
+        var speciesKey = prideSpeciesKey != null && prideId >= 0 && prideId < prideSpeciesKey.Length ? prideSpeciesKey[prideId] : "lion";
+        var root = new GameObject($"Predator_{speciesKey}_{lionIndex:0000}");
         root.transform.SetParent(lionRoot, false);
         root.transform.localPosition = new Vector3(spawn.x, spawn.y, 0f);
         var accent = PredatorPreyDocuVisualFactory.PrideAccentColor(prideId);
-        var speciesKey = prideSpeciesKey != null && prideId >= 0 && prideId < prideSpeciesKey.Length ? prideSpeciesKey[prideId] : "lion";
         if (useLegendSpecies && TryGetLegendSpecies(speciesKey, out var entry))
         {
             PredatorPreyDocuVisualFactory.BuildLegendAnimal(root.transform, entry, loadedMapSpec.legend.sexAgeRules, visuals.lionScale, isMale, isYoung, visuals.showPackAccent, accent);
@@ -333,7 +336,29 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         {
             PredatorPreyDocuVisualFactory.BuildLion(root.transform, accent, visuals.lionScale, isMale, isYoung, isLeader, visuals.showPackAccent, visuals.showMaleRing, roaming);
         }
+
+        AttachSpeciesLabel(root.transform, speciesKey, visuals.lionScale);
         lionTf[lionIndex] = root.transform;
+    }
+
+    private void AttachSpeciesLabel(Transform parent, string speciesKey, float scale)
+    {
+        if (activeConfig?.predatorPreyDocu == null || !activeConfig.predatorPreyDocu.debugShowMapOverlays || parent == null || string.IsNullOrWhiteSpace(speciesKey))
+        {
+            return;
+        }
+
+        var label = new GameObject("SpeciesLabel");
+        label.transform.SetParent(parent, false);
+        label.transform.localPosition = new Vector3(0f, Mathf.Max(1f, scale * 1.9f), 0f);
+
+        var text = label.AddComponent<TextMesh>();
+        text.text = speciesKey;
+        text.fontSize = 24;
+        text.characterSize = Mathf.Clamp(0.08f * scale, 0.06f, 0.14f);
+        text.anchor = TextAnchor.LowerCenter;
+        text.alignment = TextAlignment.Center;
+        text.color = new Color(0.92f, 0.95f, 0.98f, 0.92f);
     }
 
     private void UpdateHerdCenters(int tickIndex, float dt, float dryness01)
