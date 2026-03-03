@@ -505,7 +505,17 @@ public sealed class PredatorPreyDocuMapBuilder
             }
         }
 
-        var endCaps = new[] { sampled[0], sampled[sampled.Count - 1] };
+        var startCap = sampled[0];
+        var endCap = sampled[sampled.Count - 1];
+        var confluenceThreshold = 35f;
+        var endDist = float.MaxValue;
+        for (var i = 0; i < waterNodes.Count; i++)
+        {
+            endDist = Mathf.Min(endDist, Vector2.Distance(endCap, waterNodes[i]));
+        }
+
+        var confluenceSkipEndCap = endDist <= confluenceThreshold;
+        var endCaps = confluenceSkipEndCap ? new[] { startCap } : new[] { startCap, endCap };
         for (var i = 0; i < endCaps.Length; i++)
         {
             var c = WorldToPixel(endCaps[i].x, endCaps[i].y, halfW, halfH, texW, texH);
@@ -533,6 +543,7 @@ public sealed class PredatorPreyDocuMapBuilder
             crossingsGrumeti.Add(node);
         }
 
+        Debug.Log($"[SerengetiWater] grumeti confluenceSkipEndCap={confluenceSkipEndCap} endDist={endDist:0.##}");
         Debug.Log($"[SerengetiWater] grumeti axis={(xAxis ? "X" : "Y")} samples={sampled.Count} width={river.width:0.##} floodExtra={floodExtra:0.##} bankExtra={bankExtra:0.##}");
 
         return sampled.Count;
