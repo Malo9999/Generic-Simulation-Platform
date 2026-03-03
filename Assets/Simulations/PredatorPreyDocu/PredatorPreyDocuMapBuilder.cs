@@ -64,13 +64,14 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot = new GameObject("PredatorPreyDocuMap").transform;
         mapRoot.SetParent(worldObjectsRoot, false);
 
+        ValidateSpecConformance(spec, halfW, halfH);
         BuildTerrain(halfW, halfH);
         BuildRegions(spec, halfW, halfH);
         BuildWater(spec, halfW, halfH);
         BuildKopjes(spec, halfW, halfH);
         BuildDebugOverlays(spec, config, halfW, halfH);
 
-        Debug.Log($"[SerengetiMap] mapId={spec.mapId} arena={spec.arena.width}x{spec.arena.height} regions={spec.regions.Count} mainPts={spec.water.mainRiver.centerline.Count} grumetiPts={spec.water.grumeti.centerline.Count} pools={spec.water.pools.Count} kopjes={spec.landmarks.kopjes.Count} wetlands={spec.landmarks.wetlands.Count} crossingsMain={spec.water.mainRiver.crossings.Count} crossingsGrumeti={spec.water.grumeti.crossings.Count}");
+        Debug.Log($"[SerengetiConformance] mapId={spec.mapId} arena={spec.arena.width}x{spec.arena.height} regions={spec.regions.Count} mainRiverSamples={spec.water.mainRiver.centerline.Count} grumetiSamples={spec.water.grumeti.centerline.Count} pools={spec.water.pools.Count} kopjes={spec.landmarks.kopjes.Count} wetlands={spec.landmarks.wetlands.Count}");
     }
 
     public void UpdateSeasonVisuals(float seasonalPresence01)
@@ -115,6 +116,19 @@ public sealed class PredatorPreyDocuMapBuilder
         wetlands.Clear();
     }
 
+    private static void ValidateSpecConformance(SerengetiMapSpec spec, float halfW, float halfH)
+    {
+        foreach (var region in spec.regions)
+        {
+            WarnIfNormalizedOutsideRange(region.shape.xMin, $"regions.{region.id}.shape.xMin");
+            WarnIfNormalizedOutsideRange(region.shape.xMax, $"regions.{region.id}.shape.xMax");
+            WarnIfNormalizedOutsideRange(region.shape.yMin, $"regions.{region.id}.shape.yMin");
+            WarnIfNormalizedOutsideRange(region.shape.yMax, $"regions.{region.id}.shape.yMax");
+            WarnIfWorldOutsideBounds(ToWorld(region.shape.xMin, region.shape.yMin, halfW, halfH), halfW, halfH, $"regions.{region.id}.shape.min");
+            WarnIfWorldOutsideBounds(ToWorld(region.shape.xMax, region.shape.yMax, halfW, halfH), halfW, halfH, $"regions.{region.id}.shape.max");
+        }
+    }
+
     private void BuildTerrain(float halfW, float halfH)
     {
         var (w, h, ppu) = PickTextureSize(halfW * 2f, halfH * 2f, 3f, 1_800_000);
@@ -125,6 +139,7 @@ public sealed class PredatorPreyDocuMapBuilder
         tex.SetPixels32(px);
         tex.Apply(false, false);
         terrainSR = CreateSprite("TerrainBaseTexture", tex, ppu, TerrainBaseOrder);
+        Debug.Log($"[SerengetiConformance] TerrainTex={w}x{h}@{ppu:0.###}PPU");
     }
 
     private void BuildRegions(SerengetiMapSpec spec, float halfW, float halfH)
@@ -170,6 +185,7 @@ public sealed class PredatorPreyDocuMapBuilder
         tex.SetPixels32(px);
         tex.Apply(false, false);
         regionSR = CreateSprite("RegionOverlayTexture", tex, ppu, RegionOverlayOrder);
+        Debug.Log($"[SerengetiConformance] RegionTex={w}x{h}@{ppu:0.###}PPU");
     }
 
     private void BuildWater(SerengetiMapSpec spec, float halfW, float halfH)
@@ -185,17 +201,22 @@ public sealed class PredatorPreyDocuMapBuilder
 
         foreach (var pool in spec.water.pools)
         {
+            WarnIfNormalizedOutsideRange(pool.x, "water.pools.x");
+            WarnIfNormalizedOutsideRange(pool.y, "water.pools.y");
             var wp = ToWorld(pool.x, pool.y, halfW, halfH);
+            WarnIfWorldOutsideBounds(wp, halfW, halfH, "water.pools");
             pools.Add(new PoolNodeData { id = pool.id, worldPos = wp, worldRadius = pool.radius, permanent = pool.permanent });
             waterNodes.Add(wp);
             shadeNodes.Add(wp);
             PaintDisc(permPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), Mathf.Max(1, Mathf.RoundToInt(pool.radius * ppu * 0.5f)), new Color32(44, 126, 218, 235));
-            PaintRing(bankPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), Mathf.Max(2, Mathf.RoundToInt(pool.radius * ppu * 0.5f) + 2), 2, new Color32(58, 95, 55, 170));
         }
 
         foreach (var wetland in spec.landmarks.wetlands)
         {
+            WarnIfNormalizedOutsideRange(wetland.x, "landmarks.wetlands.x");
+            WarnIfNormalizedOutsideRange(wetland.y, "landmarks.wetlands.y");
             var wp = ToWorld(wetland.x, wetland.y, halfW, halfH);
+            WarnIfWorldOutsideBounds(wp, halfW, halfH, "landmarks.wetlands");
             wetlands.Add(new WetlandNodeData { id = wetland.id, worldPos = wp, worldRadius = wetland.radius });
             PaintDisc(seasonPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), Mathf.Max(1, Mathf.RoundToInt(wetland.radius * ppu * 0.45f)), new Color32(85, 150, 220, 95));
         }
@@ -204,39 +225,53 @@ public sealed class PredatorPreyDocuMapBuilder
         bankSR = CreateSprite("BankOverlayTexture", ToTex(w, h, bankPx), ppu, BankOrder);
         permanentWaterSR = CreateSprite("PermanentWaterOverlay", ToTex(w, h, permPx), ppu, PermanentWaterOrder);
         seasonalWaterSR = CreateSprite("SeasonalWaterOverlay", ToTex(w, h, seasonPx), ppu, SeasonalWaterOrder);
+        Debug.Log($"[SerengetiConformance] WaterTex={w}x{h}@{ppu:0.###}PPU");
     }
 
     private void PaintRiver(RiverSpec river, bool tapered, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx)
     {
         var worldPoints = new List<Vector2>();
-        foreach (var p in river.centerline) worldPoints.Add(ToWorld(p.x, p.y, halfW, halfH));
-        var smooth = SampleCatmullRom(worldPoints, 24);
-        if (smooth.Count < 2) return;
-        var total = 0f;
-        for (var i = 1; i < smooth.Count; i++) total += Vector2.Distance(smooth[i - 1], smooth[i]);
-        var d = 0f;
-        for (var i = 0; i < smooth.Count; i++)
+        foreach (var p in river.centerline)
         {
-            if (i > 0) d += Vector2.Distance(smooth[i - 1], smooth[i]);
-            var t = total <= 0f ? 0f : d / total;
-            var width = tapered ? Mathf.Lerp(river.widthNorth, river.widthSouth, t) : river.width;
-            var p = smooth[i];
-            if (Mathf.Abs(p.x) > halfW || Mathf.Abs(p.y) > halfH)
+            WarnIfNormalizedOutsideRange(p.x, $"water.{river.id}.centerline.x");
+            WarnIfNormalizedOutsideRange(p.y, $"water.{river.id}.centerline.y");
+            var world = ToWorld(p.x, p.y, halfW, halfH);
+            WarnIfWorldOutsideBounds(world, halfW, halfH, $"water.{river.id}.centerline");
+            worldPoints.Add(world);
+        }
+
+        var spline = BuildSplineYLookup(worldPoints, 2000);
+        if (!spline.Valid)
+        {
+            return;
+        }
+
+        for (var py = 0; py < texH; py++)
+        {
+            var yWorld = Mathf.Lerp(-halfH, halfH, py / Mathf.Max(1f, texH - 1f));
+            if (!spline.TryEvalX(yWorld, out var xWorld, out var progress01))
             {
-                Debug.LogWarning("[SerengetiMap] River point outside world bounds before clamping.");
+                continue;
             }
 
-            var center = WorldToPixel(p.x, p.y, halfW, halfH, texW, texH);
-            PaintDisc(floodPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu)), new Color32(108, 145, 92, 120));
-            PaintDisc(bankPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.bankExtra) * ppu)), new Color32(73, 108, 61, 170));
-            PaintDisc(waterPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu)), new Color32(35, 120, 220, 255));
-            if ((i % 16) == 0) waterNodes.Add(p);
+            var width = tapered ? Mathf.Lerp(river.widthNorth, river.widthSouth, progress01) : river.width;
+            var center = WorldToPixel(xWorld, yWorld, halfW, halfH, texW, texH);
+            PaintScanline(floodPx, texW, texH, center.py, center.px, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu)), new Color32(108, 145, 92, 120));
+            PaintScanline(bankPx, texW, texH, center.py, center.px, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.bankExtra) * ppu)), new Color32(73, 108, 61, 170));
+            PaintScanline(waterPx, texW, texH, center.py, center.px, Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu)), new Color32(35, 120, 220, 255));
+            if ((py % 16) == 0)
+            {
+                waterNodes.Add(new Vector2(xWorld, yWorld));
+            }
         }
 
         var dest = tapered ? crossingsMain : crossingsGrumeti;
         foreach (var c in river.crossings)
         {
+            WarnIfNormalizedOutsideRange(c.x, $"water.{river.id}.crossings.x");
+            WarnIfNormalizedOutsideRange(c.y, $"water.{river.id}.crossings.y");
             var pos = ToWorld(c.x, c.y, halfW, halfH);
+            WarnIfWorldOutsideBounds(pos, halfW, halfH, $"water.{river.id}.crossings");
             var node = new CrossingNodeData { worldPos = pos, worldRadius = c.radius, crocRisk = c.crocRisk };
             crossingNodes.Add(node);
             dest.Add(node);
@@ -250,12 +285,14 @@ public sealed class PredatorPreyDocuMapBuilder
         var rng = RngService.Fork("SERENGETI:KOPJES");
         foreach (var node in spec.landmarks.kopjes)
         {
+            WarnIfNormalizedOutsideRange(node.x, "landmarks.kopjes.x");
+            WarnIfNormalizedOutsideRange(node.y, "landmarks.kopjes.y");
             var world = ToWorld(node.x, node.y, halfW, halfH);
+            WarnIfWorldOutsideBounds(world, halfW, halfH, "landmarks.kopjes");
             var data = new KopjesNodeData(node.id, world, node.radius, node.cover);
             kopjes.Add(data);
             kopjesNodes.Add(data);
             shadeNodes.Add(world);
-            var center = WorldToPixel(world.x, world.y, halfW, halfH, w, h);
             var clusterCount = Mathf.Clamp(Mathf.RoundToInt(node.radius * 0.25f), 8, 24);
             for (var i = 0; i < clusterCount; i++)
             {
@@ -265,7 +302,6 @@ public sealed class PredatorPreyDocuMapBuilder
                 PaintDisc(px, w, h, p, rad, new Color32(65, 60, 55, (byte)rng.NextInt(80, 141)));
             }
 
-            PaintRing(px, w, h, center, Mathf.Max(2, Mathf.RoundToInt(node.radius * ppu * 0.2f)), 1, new Color32(48, 44, 40, 120));
         }
 
         kopjesSR = CreateSprite("KopjesOverlayTexture", ToTex(w, h, px), ppu, KopjesOverlayOrder);
@@ -382,6 +418,23 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
+
+    private static void PaintScanline(Color32[] px, int w, int h, int y, int cx, int halfW, Color32 col)
+    {
+        if (y < 0 || y >= h)
+        {
+            return;
+        }
+
+        var x0 = Mathf.Clamp(cx - halfW, 0, w - 1);
+        var x1 = Mathf.Clamp(cx + halfW, 0, w - 1);
+        var row = y * w;
+        for (var x = x0; x <= x1; x++)
+        {
+            px[row + x] = Blend(px[row + x], col);
+        }
+    }
+
     private static void PaintRing(Color32[] px, int w, int h, (int px, int py) c, int r, int th, Color32 col)
     {
         var inner = Mathf.Max(0, r - th);
@@ -447,6 +500,114 @@ public sealed class PredatorPreyDocuMapBuilder
 
         result.Add(points[points.Count - 1]);
         return result;
+    }
+
+    private static RiverYLookup BuildSplineYLookup(List<Vector2> worldPoints, int targetSamples)
+    {
+        if (worldPoints == null || worldPoints.Count < 2)
+        {
+            return RiverYLookup.Invalid;
+        }
+
+        var samplesPerSegment = Mathf.Max(8, Mathf.CeilToInt(targetSamples / (float)Mathf.Max(1, worldPoints.Count - 1)));
+        var smooth = SampleCatmullRom(worldPoints, samplesPerSegment);
+        if (smooth.Count < 2)
+        {
+            return RiverYLookup.Invalid;
+        }
+
+        var totalLength = 0f;
+        for (var i = 1; i < smooth.Count; i++) totalLength += Vector2.Distance(smooth[i - 1], smooth[i]);
+
+        var samples = new List<RiverSample>(smooth.Count);
+        var run = 0f;
+        samples.Add(new RiverSample(smooth[0].y, smooth[0].x, 0f));
+        for (var i = 1; i < smooth.Count; i++)
+        {
+            run += Vector2.Distance(smooth[i - 1], smooth[i]);
+            var progress = totalLength <= 0f ? 0f : run / totalLength;
+            samples.Add(new RiverSample(smooth[i].y, smooth[i].x, progress));
+        }
+
+        samples.Sort((a, b) => a.y.CompareTo(b.y));
+        return new RiverYLookup(samples);
+    }
+
+    private static void WarnIfNormalizedOutsideRange(float value, string path)
+    {
+        if (value < 0f || value > 1f)
+        {
+            Debug.LogWarning($"[SerengetiConformance] Coordinate outside [0..1] at {path}: {value:0.###}");
+        }
+    }
+
+    private static void WarnIfWorldOutsideBounds(Vector2 world, float halfW, float halfH, string path)
+    {
+        if (Mathf.Abs(world.x) > halfW || Mathf.Abs(world.y) > halfH)
+        {
+            Debug.LogWarning($"[SerengetiConformance] World coordinate outside arena at {path}: ({world.x:0.##}, {world.y:0.##}) bounds=({halfW:0.##}, {halfH:0.##})");
+        }
+    }
+
+    private readonly struct RiverSample
+    {
+        public readonly float y;
+        public readonly float x;
+        public readonly float progress;
+
+        public RiverSample(float y, float x, float progress)
+        {
+            this.y = y;
+            this.x = x;
+            this.progress = progress;
+        }
+    }
+
+    private readonly struct RiverYLookup
+    {
+        private readonly List<RiverSample> samples;
+
+        public static RiverYLookup Invalid => new(null);
+
+        public bool Valid => samples != null && samples.Count > 1;
+
+        public RiverYLookup(List<RiverSample> samples)
+        {
+            this.samples = samples;
+        }
+
+        public bool TryEvalX(float yWorld, out float xWorld, out float progress)
+        {
+            xWorld = 0f;
+            progress = 0f;
+            if (!Valid || yWorld < samples[0].y || yWorld > samples[samples.Count - 1].y)
+            {
+                return false;
+            }
+
+            var lo = 0;
+            var hi = samples.Count - 1;
+            while (hi - lo > 1)
+            {
+                var mid = (lo + hi) >> 1;
+                if (samples[mid].y <= yWorld)
+                {
+                    lo = mid;
+                }
+                else
+                {
+                    hi = mid;
+                }
+            }
+
+            var a = samples[lo];
+            var b = samples[hi];
+            var span = Mathf.Max(0.0001f, b.y - a.y);
+            var t = Mathf.Clamp01((yWorld - a.y) / span);
+            xWorld = Mathf.Lerp(a.x, b.x, t);
+            progress = Mathf.Lerp(a.progress, b.progress, t);
+            return true;
+        }
     }
 
     public struct CrossingNodeData
