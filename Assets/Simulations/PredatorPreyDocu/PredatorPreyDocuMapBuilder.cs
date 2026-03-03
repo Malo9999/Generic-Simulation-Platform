@@ -168,6 +168,8 @@ public sealed class PredatorPreyDocuMapBuilder
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
         var c0 = new Vector3(173f, 152f, 96f);
+        var dryToneA = c0 + new Vector3(6f, 3f, 1f);
+        var dryToneB = c0 - new Vector3(7f, 5f, 3f);
         var moistGrass = new Vector3(154f, 156f, 102f);
         var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 173);
         var moistureFalloffWorld = 180f;
@@ -185,12 +187,15 @@ public sealed class PredatorPreyDocuMapBuilder
                 var low = Noise2D(wx * 0.0009f + 37f, wy * 0.0009f + 53f, seedSalt) * 0.6f;
                 var mid = Noise2D(wx * 0.0024f + 11f, wy * 0.0024f + 23f, seedSalt) * 0.3f;
                 var high = Noise2D(wx * 0.0058f + 71f, wy * 0.0058f + 89f, seedSalt) * 0.1f;
+                var macroPatch = Noise2D(wx * 0.0003f + 5f, wy * 0.0003f + 13f, seedSalt);
                 var fbm = low + mid + high;
                 var brightness = 1f + fbm * 0.065f;
-                var dryColor = c0 * brightness;
+                var patchBlend = Mathf.Clamp01((macroPatch + 1f) * 0.5f);
+                var macroDryColor = Vector3.Lerp(dryToneA, dryToneB, patchBlend);
+                var dryColor = macroDryColor * brightness;
                 var nearestWater = ApproxNearestPointDistance(wx, wy, moistureSources, moistureGrid, halfW, halfH, moistureCellSize, cellsX, cellsY);
                 var moisture = Mathf.Exp(-nearestWater / Mathf.Max(1f, moistureFalloffWorld));
-                var moistureStrength = Mathf.Clamp01(moisture * 0.28f);
+                var moistureStrength = Mathf.Clamp01(Mathf.Pow(moisture, 0.65f) * 0.45f);
                 var wetColor = moistGrass * (0.985f + fbm * 0.015f);
                 var finalColor = Vector3.Lerp(dryColor, wetColor, moistureStrength);
                 var r = Mathf.Clamp(Mathf.RoundToInt(finalColor.x), 0, 255);
@@ -310,7 +315,7 @@ public sealed class PredatorPreyDocuMapBuilder
                 var boundaryFactor = 0.8f + 0.2f * Mathf.SmoothStep(0f, 0.35f, bestInfluence - secondInfluence);
                 var alpha = alphaWeighted * inv * boundaryFactor;
                 alpha *= 1f + (Hash01(x, y, seedSalt ^ 433) - 0.5f) * 0.06f;
-                alpha = Mathf.Clamp(alpha, 16f, 62f);
+                alpha = Mathf.Clamp(alpha, 20f, 75f);
                 alphaMax = Mathf.Max(alphaMax, alpha);
 
                 px[x + y * w] = new Color32(
@@ -806,10 +811,10 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private static Color32 RegionTint(string biome)
     {
-        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return new Color32(142, 143, 108, 255);
-        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(136, 134, 103, 255);
-        if (string.Equals(biome, "plains", StringComparison.OrdinalIgnoreCase)) return new Color32(154, 142, 101, 255);
-        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return new Color32(141, 134, 107, 255);
+        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return new Color32(138, 142, 101, 255);
+        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(122, 133, 96, 255);
+        if (string.Equals(biome, "plains", StringComparison.OrdinalIgnoreCase)) return new Color32(166, 149, 106, 255);
+        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return new Color32(132, 130, 115, 255);
         return new Color32(145, 137, 106, 255);
     }
 
