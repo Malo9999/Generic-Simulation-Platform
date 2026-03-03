@@ -163,6 +163,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     [SerializeField] private bool showLinesDebug;
     [SerializeField] private bool showTacticsDebug;
     [SerializeField] private bool showDebugGoalRects;
+    [SerializeField] private bool debugDrawRules;
+    [SerializeField] private bool enableTactics = false;
 
     private Transform[] athletes;
     private Transform[] athleteIconRoots;
@@ -209,7 +211,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private SimulationSceneGraph sceneGraph;
     private Transform ballTransform;
     private Vector2 ballPos;
-    private Vector2 previousEffectiveBallPos;
+    private Vector2 prevEffectiveBallPos;
+    private FantasySportRules.FieldGeometry fieldGeometry;
     private Vector2 ballVel;
     private int ballOwnerIndex = -1;
     private int ballOwnerTeam = -1;
@@ -305,6 +308,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         EnsureScoreboardText();
         SetScoreboardVisible(true);
         ApplySimulationConfig(config);
+        fieldGeometry = FantasySportRules.Compute(config, halfWidth, halfHeight);
         BuildAthletes(config);
         EnsureBall();
         BuildHazards();
@@ -314,6 +318,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         ResetMatchState();
         ResetKickoff();
         LogGoalRectsForDebug();
+        Debug.Log($"[FS RULES] playable={fieldGeometry.playable} goalL={fieldGeometry.goalLeft} goalR={fieldGeometry.goalRight}");
         UpdateHud(force: true);
         UpdateScoreboardUI(force: true);
     }
@@ -351,24 +356,31 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
         UpdateKeeperAI(0, dt);
         UpdateKeeperAI(1, dt);
-        RefreshAssignments();
-        UpdatePossessionProgress(dt);
-        ResolveScrumBreaker(dt);
-        UpdateShotClock(dt);
-        ResolveBallCarrierDecision();
+        if (enableTactics)
+        {
+            RefreshAssignments();
+            UpdatePossessionProgress(dt);
+            ResolveScrumBreaker(dt);
+            UpdateShotClock(dt);
+            ResolveBallCarrierDecision();
+        }
         UpdateAthletes(dt);
         DetectAthleteTeleports();
         ResolveTackleEvents();
         UpdateBall(dt);
         ResolvePickup(dt);
         ResolveGoal(tickIndex);
-        previousEffectiveBallPos = GetEffectiveBallPos();
+        prevEffectiveBallPos = GetEffectiveBallPos();
         UpdateFacingDirections(dt);
         ApplyTransforms(dt);
+        DrawRuleDebug();
         LogPickupDebugOncePerSecond();
         UpdateHud(force: false);
         UpdateScoreboardUI(force: false);
-        UpdateTacticsDebug();
+        if (enableTactics)
+        {
+            UpdateTacticsDebug();
+        }
     }
 
     public void Shutdown()
@@ -473,6 +485,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         EnsureArrays(TotalPlayers);
         halfWidth = Mathf.Max(1f, (config?.world?.arenaWidth ?? 64f) * 0.5f);
         halfHeight = Mathf.Max(1f, (config?.world?.arenaHeight ?? 64f) * 0.5f);
+        fieldGeometry = FantasySportRules.Compute(config, halfWidth, halfHeight);
         Debug.Log($"[FS] Arena bounds init halfWidth={halfWidth:F2} halfHeight={halfHeight:F2} inset={AthleteBoundsMargin:F2} yMin={(-halfHeight + AthleteBoundsMargin):F2} yMax={(halfHeight - AthleteBoundsMargin):F2}");
 
         ResolveArtPipeline();
@@ -688,7 +701,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
     private void BuildHazards()
     {
         var rng = RngService.Fork("SIM:FantasySport:HAZARDS");
-        ComputeGoalRects(out var leftRect, out var rightRect);
+        var leftRect = fieldGeometry.goalLeft;
+        var rightRect = fieldGeometry.goalRight;
         var endzoneDepth = leftRect.width;
         var endzoneHalfHeight = leftRect.height * 0.5f;
         if (!endzoneDebugLogged)
@@ -771,7 +785,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         lastScoreboardSecond = -1;
         lastScoreboardTeam0 = int.MinValue;
         lastScoreboardTeam1 = int.MinValue;
-        previousEffectiveBallPos = Vector2.zero;
+        prevEffectiveBallPos = Vector2.zero;
         scoreboardMissingLogged = false;
         goalCooldownUntilTick = -999;
         currentTickIndex = 0;
@@ -839,22 +853,27 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         RefreshGoalVisuals();
     }
 
-    private void ResetKickoff()
+    private void ResetKickoffBaseline()
     {
         ResetAthleteFormationAndVelocities();
-        kickoffSanityLogPending = true;
         ballPos = Vector2.zero;
-        previousEffectiveBallPos = Vector2.zero;
+        prevEffectiveBallPos = Vector2.zero;
         ballVel = Vector2.zero;
-        freeBallTime = 0f;
         ballOwnerIndex = -1;
         ballOwnerTeam = -1;
+        kickoffHoldUntilTime = matchTimeSeconds + KickoffHoldSeconds;
+    }
+
+    private void ResetKickoff()
+    {
+        ResetKickoffBaseline();
+        kickoffSanityLogPending = true;
+        freeBallTime = 0f;
         intendedReceiverIndex = -1;
         receiverLockUntilTime = -999f;
         lastThrowTeam = -1;
         lastThrowTime = -999f;
         matchTimeSeconds = elapsedMatchTime;
-        kickoffHoldUntilTime = matchTimeSeconds + KickoffHoldSeconds;
         lastPickupDebugSecond = -1;
         previousPossessionTeam = int.MinValue;
         possessingTeam = -1;
@@ -923,13 +942,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         ballOwnerIndex = -1;
         ballOwnerTeam = -1;
         ballPos = Vector2.zero;
-        previousEffectiveBallPos = Vector2.zero;
+        prevEffectiveBallPos = Vector2.zero;
         ballVel = Vector2.zero;
         freeBallTime = 0f;
         teamPhase[0] = TeamPhase.Transition;
         teamPhase[1] = TeamPhase.Transition;
 
-        ResetAthleteFormationAndVelocities();
+        ResetKickoffBaseline();
         kickoffSanityLogPending = true;
 
         intendedReceiverIndex = -1;
@@ -960,7 +979,6 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
         scrumBreakerArmedByTeam[0] = false;
         scrumBreakerArmedByTeam[1] = false;
 
-        kickoffHoldUntilTime = matchTimeSeconds + KickoffHoldSeconds;
         DrawKickoffSpotDebugOnce();
         RefreshGoalVisuals();
     }
@@ -2792,24 +2810,33 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             ResolveAthleteBumperCollision(i, dt);
             ClampAthlete(i);
 
-            var deltaY = Mathf.Abs(positions[i].y - prevPosByAthlete[i].y);
-            if (matchTimeSeconds >= kickoffHoldUntilTime && deltaY > 8f)
-            {
-                positions[i] = prevPosByAthlete[i];
-                velocities[i] = Vector2.zero;
-                if (!safetyGuardLogByAthlete[i])
-                {
-                    Debug.LogWarning($"[FS] SAFETY_REVERT_Y i={i} deltaY={deltaY:F2} prev={prevPosByAthlete[i]} revertedPos={positions[i]} tick={currentTickIndex}");
-                    safetyGuardLogByAthlete[i] = true;
-                }
-            }
-
             UpdateStamina(i, desired, dt);
         }
     }
 
     private Vector2 ComputeDesiredVelocity(int i)
     {
+        if (!enableTactics)
+        {
+            var keeper = IsGoalkeeper(i);
+            var maxSpeedLite = keeper ? 4.5f : 5.5f;
+            Vector2 objective;
+            if (i == kickoffDuelA || i == kickoffDuelB)
+            {
+                objective = ballOwnerIndex >= 0 ? positions[ballOwnerIndex] : ballPos;
+            }
+            else if (keeper)
+            {
+                objective = ComputeGoalkeeperTarget(i);
+            }
+            else
+            {
+                objective = kickoffHomePos != null && i < kickoffHomePos.Length ? kickoffHomePos[i] : ComputeHomePosition(i);
+            }
+
+            var toObj = objective - positions[i];
+            return toObj.sqrMagnitude > 0.0001f ? toObj.normalized * Mathf.Min(maxSpeedLite, toObj.magnitude) : Vector2.zero;
+        }
         var keeper = IsGoalkeeper(i);
         var baseMaxSpeed = keeper ? Mathf.Lerp(4.5f, 7.5f, profiles[i].speed) * 0.9f : Mathf.Lerp(4.5f, 7.5f, profiles[i].speed);
         var fatigue = GetFatigue01(i);
@@ -3700,11 +3727,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             return;
         }
 
-        ComputeGoalRects(out var leftEndzone, out var rightEndzone);
         var effectiveBallPos = GetEffectiveBallPos();
 
-        var enteredLeftEndzone = !leftEndzone.Contains(previousEffectiveBallPos) && leftEndzone.Contains(effectiveBallPos);
-        var enteredRightEndzone = !rightEndzone.Contains(previousEffectiveBallPos) && rightEndzone.Contains(effectiveBallPos);
+        var enteredLeftEndzone = FantasySportRules.IsGoal(fieldGeometry.goalLeft, prevEffectiveBallPos, effectiveBallPos);
+        var enteredRightEndzone = FantasySportRules.IsGoal(fieldGeometry.goalRight, prevEffectiveBallPos, effectiveBallPos);
 
         if (enteredLeftEndzone)
         {
@@ -3724,6 +3750,31 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             UpdateHud(force: true);
             UpdateScoreboardUI(force: true);
         }
+    }
+
+
+    private void DrawRuleDebug()
+    {
+        if (!debugDrawRules)
+        {
+            return;
+        }
+
+        DrawRectOutline(fieldGeometry.playable, Color.green);
+        DrawRectOutline(fieldGeometry.goalLeft, Color.yellow);
+        DrawRectOutline(fieldGeometry.goalRight, Color.yellow);
+    }
+
+    private static void DrawRectOutline(Rect rect, Color color)
+    {
+        var a = new Vector3(rect.xMin, rect.yMin, 0f);
+        var b = new Vector3(rect.xMax, rect.yMin, 0f);
+        var c = new Vector3(rect.xMax, rect.yMax, 0f);
+        var d = new Vector3(rect.xMin, rect.yMax, 0f);
+        Debug.DrawLine(a, b, color, 0f, false);
+        Debug.DrawLine(b, c, color, 0f, false);
+        Debug.DrawLine(c, d, color, 0f, false);
+        Debug.DrawLine(d, a, color, 0f, false);
     }
 
     private void ApplyTransforms(float dt)
@@ -5082,14 +5133,10 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             : new Rect(halfWidth - keeperBoxDepth, -keeperBoxYHalf, keeperBoxDepth, keeperBoxYHalf * 2f);
     }
 
-    private float GetGoalMouthHalfHeight()
-    {
-        ComputeGoalRects(out var leftRect, out _);
-        return leftRect.height * 0.5f;
-    }
+    private float GetGoalMouthHalfHeight() => fieldGeometry.goalMouthHalfH;
     private float GetGoalHeight() => GetGoalMouthHalfHeight() * 2f;
-    private float GetEndzoneDepth() => Mathf.Clamp(halfWidth * 0.12f, 5.5f, 8.5f);
-    private float GetEndzoneHalfHeight() => GetGoalMouthHalfHeight() * 1.5f;
+    private float GetEndzoneDepth() => fieldGeometry.goalDepth;
+    private float GetEndzoneHalfHeight() => fieldGeometry.goalLeft.height * 0.5f;
 
     private float GetLaneWideY() => GetLaneWideY(ballOwnerTeam);
     private float GetLaneNarrowY() => GetLaneNarrowY(ballOwnerTeam);
@@ -5107,17 +5154,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private Rect GetEndzoneRect(int teamId)
     {
-        ComputeGoalRects(out var leftRect, out var rightRect);
-        return teamId == 0 ? leftRect : rightRect;
+        return teamId == 0 ? fieldGeometry.goalLeft : fieldGeometry.goalRight;
     }
 
     private void ComputeGoalRects(out Rect leftRect, out Rect rightRect)
     {
-        var goalMouthHalfH = Mathf.Clamp(halfHeight * 0.18f, 3.5f, 5.0f);
-        var endzoneHalfH = goalMouthHalfH * 1.5f;
-        var endzoneDepth = Mathf.Clamp(halfWidth * 0.12f, 5.5f, 8.5f);
-        leftRect = new Rect(-halfWidth, -endzoneHalfH, endzoneDepth, endzoneHalfH * 2f);
-        rightRect = new Rect(halfWidth - endzoneDepth, -endzoneHalfH, endzoneDepth, endzoneHalfH * 2f);
+        leftRect = fieldGeometry.goalLeft;
+        rightRect = fieldGeometry.goalRight;
     }
 
     private Vector2 GetOwnGoalCenter(int teamId) => new Vector2(GetOwnBacklineX(teamId), 0f);
@@ -5161,64 +5204,13 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
             velocities[athleteIndex] = vel;
         }
-
-        var minX = -halfWidth + AthleteBoundsMargin;
-        var maxX = halfWidth - AthleteBoundsMargin;
-        var minY = -halfHeight + AthleteBoundsMargin;
-        var maxY = halfHeight - AthleteBoundsMargin;
-
-        var clampedX = false;
-        var clampedY = false;
-        if (p.x < minX || p.x > maxX)
-        {
-            p.x = Mathf.Clamp(p.x, minX, maxX);
-            clampedX = true;
-        }
-
-        if (p.y < minY || p.y > maxY)
-        {
-            p.y = Mathf.Clamp(p.y, minY, maxY);
-            clampedY = true;
-        }
-
-        var v = velocities[athleteIndex];
-        if (clampedX)
-        {
-            v.x *= -0.25f;
-        }
-
-        if (clampedY)
-        {
-            v.y *= -0.25f;
-        }
-
-        if (Mathf.Abs(p.x) > halfWidth - AthleteEdgeRecoveryBand)
-        {
-            v.x += p.x > 0f ? -AthleteEdgePushStrength : AthleteEdgePushStrength;
-        }
-
-        if (Mathf.Abs(p.y) > halfHeight - AthleteEdgeRecoveryBand)
-        {
-            v.y += p.y > 0f ? -AthleteEdgePushStrength : AthleteEdgePushStrength;
-        }
-
-        velocities[athleteIndex] = v;
+        FantasySportRules.ClampToPlayable(ref p, ref velocities[athleteIndex], fieldGeometry.playable);
         positions[athleteIndex] = p;
     }
 
     private void ClampBall()
     {
-        if (ballPos.x < -halfWidth || ballPos.x > halfWidth)
-        {
-            ballPos.x = Mathf.Clamp(ballPos.x, -halfWidth, halfWidth);
-            ballVel.x *= -rules.ballBounce;
-        }
-
-        if (ballPos.y < -halfHeight || ballPos.y > halfHeight)
-        {
-            ballPos.y = Mathf.Clamp(ballPos.y, -halfHeight, halfHeight);
-            ballVel.y *= -rules.ballBounce;
-        }
+        FantasySportRules.ClampToPlayable(ref ballPos, ref ballVel, fieldGeometry.playable);
     }
 
     private void UpdateFacingDirections(float dt)
@@ -5421,9 +5413,8 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
             Destroy(existingRight.gameObject);
         }
 
-        ComputeGoalRects(out var leftRect, out var rightRect);
-        BuildEndzoneVisual(root, 0, leftRect);
-        BuildEndzoneVisual(root, 1, rightRect);
+        BuildEndzoneVisual(root, 0, fieldGeometry.goalLeft);
+        BuildEndzoneVisual(root, 1, fieldGeometry.goalRight);
     }
 
     private void BuildEndzoneVisual(Transform parent, int teamId, Rect rect)
@@ -5681,6 +5672,7 @@ public class FantasySportRunner : MonoBehaviour, ITickableSimulationRunner
 
     private void EnsureArenaBoundsAndCameraFit()
     {
+        fieldGeometry = FantasySportRules.Compute(null, halfWidth, halfHeight);
         if (sceneGraph?.WorldRoot == null)
         {
             return;
