@@ -64,14 +64,14 @@ public sealed class SimulationSceneGraph
         var existing = parent.Find(name);
         if (existing != null)
         {
+            ResetLocal(existing);
+            existing.gameObject.hideFlags = HideFlags.None;
             return existing;
         }
 
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localRotation = Quaternion.identity;
-        go.transform.localScale = Vector3.one;
+        ResetLocal(go.transform);
         return go.transform;
     }
 
@@ -89,9 +89,14 @@ public sealed class SimulationSceneGraph
 
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localRotation = Quaternion.identity;
-        go.transform.localScale = Vector3.one;
+        ResetLocal(go.transform);
         return go.transform;
+    }
+
+    private static void ResetLocal(Transform transform)
+    {
+        transform.localPosition = Vector3.zero;
+        transform.localRotation = Quaternion.identity;
+        transform.localScale = Vector3.one;
     }
 }
