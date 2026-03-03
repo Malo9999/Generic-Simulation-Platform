@@ -144,10 +144,22 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private void BuildRegions(SerengetiMapSpec spec, float halfW, float halfH)
     {
-        var (w, h, ppu) = PickTextureSize(halfW * 2f, halfH * 2f, 3f, 1_800_000);
+        var ppu = PickBoundedPpu(halfW * 2f, halfH * 2f, 2f, 3f, 1_800_000);
+        var w = Mathf.Max(256, Mathf.RoundToInt(halfW * 2f * ppu));
+        var h = Mathf.Max(256, Mathf.RoundToInt(halfH * 2f * ppu));
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
-        var feather = Mathf.Clamp((halfW * 2f) * 0.01f, 8f, 20f);
+        var feather = Mathf.Clamp(12f, 8f, 20f);
+        var regions = new List<(RegionSpec region, float x0, float x1, float y0, float y1)>();
+        foreach (var region in spec.regions)
+        {
+            regions.Add((
+                region,
+                Mathf.Lerp(-halfW, halfW, region.shape.xMin),
+                Mathf.Lerp(-halfW, halfW, region.shape.xMax),
+                Mathf.Lerp(-halfH, halfH, region.shape.yMin),
+                Mathf.Lerp(-halfH, halfH, region.shape.yMax)));
+        }
 
         for (var y = 0; y < h; y++)
         {
@@ -157,12 +169,13 @@ public sealed class PredatorPreyDocuMapBuilder
                 var wx = Mathf.Lerp(-halfW, halfW, x / Mathf.Max(1f, w - 1f));
                 var chosen = default(RegionSpec);
                 var dist = -1f;
-                foreach (var region in spec.regions)
+                foreach (var entry in regions)
                 {
-                    var rx0 = Mathf.Lerp(-halfW, halfW, region.shape.xMin);
-                    var rx1 = Mathf.Lerp(-halfW, halfW, region.shape.xMax);
-                    var ry0 = Mathf.Lerp(-halfH, halfH, region.shape.yMin);
-                    var ry1 = Mathf.Lerp(-halfH, halfH, region.shape.yMax);
+                    var region = entry.region;
+                    var rx0 = entry.x0;
+                    var rx1 = entry.x1;
+                    var ry0 = entry.y0;
+                    var ry1 = entry.y1;
                     if (wx < rx0 || wx > rx1 || wy < ry0 || wy > ry1) continue;
                     var edge = Mathf.Min(wx - rx0, rx1 - wx, wy - ry0, ry1 - wy);
                     if (edge > dist)
@@ -173,8 +186,7 @@ public sealed class PredatorPreyDocuMapBuilder
                 }
 
                 if (chosen == null) continue;
-                var t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dist / feather));
-                var alpha = Mathf.Lerp(25f, 55f, t);
+                var alpha = Mathf.Lerp(25f, 55f, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dist / feather)));
                 var noise = Hash01(x, y, 17) * 0.16f - 0.08f;
                 alpha *= 1f + noise;
                 var tint = RegionTint(chosen.biome);
@@ -208,7 +220,10 @@ public sealed class PredatorPreyDocuMapBuilder
             pools.Add(new PoolNodeData { id = pool.id, worldPos = wp, worldRadius = pool.radius, permanent = pool.permanent });
             waterNodes.Add(wp);
             shadeNodes.Add(wp);
-            PaintDisc(permPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), Mathf.Max(1, Mathf.RoundToInt(pool.radius * ppu * 0.5f)), new Color32(44, 126, 218, 235));
+            var center = WorldToPixel(wp.x, wp.y, halfW, halfH, w, h);
+            var waterRadius = Mathf.Max(1, Mathf.RoundToInt(pool.radius * ppu * 0.5f));
+            PaintDisc(permPx, w, h, center, waterRadius, new Color32(44, 126, 218, 220));
+            PaintRing(bankPx, w, h, center, waterRadius + Mathf.Max(1, Mathf.RoundToInt(2.5f * ppu)), Mathf.Max(1, Mathf.RoundToInt(2f * ppu)), new Color32(66, 103, 58, 95));
         }
 
         foreach (var wetland in spec.landmarks.wetlands)
@@ -218,7 +233,7 @@ public sealed class PredatorPreyDocuMapBuilder
             var wp = ToWorld(wetland.x, wetland.y, halfW, halfH);
             WarnIfWorldOutsideBounds(wp, halfW, halfH, "landmarks.wetlands");
             wetlands.Add(new WetlandNodeData { id = wetland.id, worldPos = wp, worldRadius = wetland.radius });
-            PaintDisc(seasonPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), Mathf.Max(1, Mathf.RoundToInt(wetland.radius * ppu * 0.45f)), new Color32(85, 150, 220, 95));
+            PaintIrregularWetland(seasonPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), wetland.radius, ppu, wetland.id);
         }
 
         floodplainSR = CreateSprite("FloodplainOverlayTexture", ToTex(w, h, floodPx), ppu, FloodplainOrder);
@@ -240,29 +255,50 @@ public sealed class PredatorPreyDocuMapBuilder
             worldPoints.Add(world);
         }
 
-        var spline = BuildSplineYLookup(worldPoints, 2000);
-        if (!spline.Valid)
+        var sampled = SampleCatmullRom(worldPoints, 20);
+        if (sampled.Count < 2)
         {
             return;
         }
 
-        for (var py = 0; py < texH; py++)
+        var totalLength = 0f;
+        for (var i = 1; i < sampled.Count; i++) totalLength += Vector2.Distance(sampled[i - 1], sampled[i]);
+        var run = 0f;
+        var floodMul = tapered ? 1f : 0.62f;
+        var bankMul = tapered ? 1f : 0.65f;
+        var waterMul = tapered ? 1f : 0.82f;
+        var floodCol = tapered ? new Color32(108, 145, 92, 120) : new Color32(103, 136, 89, 78);
+        var bankCol = tapered ? new Color32(73, 108, 61, 170) : new Color32(68, 100, 58, 112);
+        var waterCol = new Color32(35, 120, 220, 255);
+
+        for (var i = 1; i < sampled.Count; i++)
         {
-            var yWorld = Mathf.Lerp(-halfH, halfH, py / Mathf.Max(1f, texH - 1f));
-            if (!spline.TryEvalX(yWorld, out var xWorld, out var progress01))
+            var a = sampled[i - 1];
+            var b = sampled[i];
+            var segLen = Vector2.Distance(a, b);
+            if (segLen <= 0.001f)
             {
                 continue;
             }
 
-            var width = tapered ? Mathf.Lerp(river.widthNorth, river.widthSouth, progress01) : river.width;
-            var center = WorldToPixel(xWorld, yWorld, halfW, halfH, texW, texH);
-            PaintScanline(floodPx, texW, texH, center.py, center.px, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu)), new Color32(108, 145, 92, 120));
-            PaintScanline(bankPx, texW, texH, center.py, center.px, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.bankExtra) * ppu)), new Color32(73, 108, 61, 170));
-            PaintScanline(waterPx, texW, texH, center.py, center.px, Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu)), new Color32(35, 120, 220, 255));
-            if ((py % 16) == 0)
+            var stampCount = Mathf.Max(1, Mathf.CeilToInt(segLen * ppu * 1.4f));
+            for (var s = 0; s <= stampCount; s++)
             {
-                waterNodes.Add(new Vector2(xWorld, yWorld));
+                var t = s / (float)Mathf.Max(1, stampCount);
+                var pos = Vector2.Lerp(a, b, t);
+                var progress01 = totalLength <= 0.001f ? 0f : Mathf.Clamp01((run + segLen * t) / totalLength);
+                var width = tapered ? Mathf.Lerp(river.widthNorth, river.widthSouth, progress01) : river.width;
+                var center = WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH);
+                PaintDisc(floodPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu * floodMul)), floodCol);
+                PaintDisc(bankPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + river.bankExtra) * ppu * bankMul)), bankCol);
+                PaintDisc(waterPx, texW, texH, center, Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu * waterMul)), waterCol);
+                if ((i + s) % 40 == 0)
+                {
+                    waterNodes.Add(pos);
+                }
             }
+
+            run += segLen;
         }
 
         var dest = tapered ? crossingsMain : crossingsGrumeti;
@@ -280,9 +316,10 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private void BuildKopjes(SerengetiMapSpec spec, float halfW, float halfH)
     {
-        var (w, h, ppu) = PickTextureSize(halfW * 2f, halfH * 2f, 3f, 1_800_000);
+        var ppu = PickBoundedPpu(halfW * 2f, halfH * 2f, 2f, 3f, 1_800_000);
+        var w = Mathf.Max(256, Mathf.RoundToInt(halfW * 2f * ppu));
+        var h = Mathf.Max(256, Mathf.RoundToInt(halfH * 2f * ppu));
         var px = new Color32[w * h];
-        var rng = RngService.Fork("SERENGETI:KOPJES");
         foreach (var node in spec.landmarks.kopjes)
         {
             WarnIfNormalizedOutsideRange(node.x, "landmarks.kopjes.x");
@@ -293,15 +330,26 @@ public sealed class PredatorPreyDocuMapBuilder
             kopjes.Add(data);
             kopjesNodes.Add(data);
             shadeNodes.Add(world);
-            var clusterCount = Mathf.Clamp(Mathf.RoundToInt(node.radius * 0.25f), 8, 24);
-            for (var i = 0; i < clusterCount; i++)
+            var seed = Mathf.Abs(node.id?.GetHashCode() ?? 29);
+            var speckles = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(200f, 600f, Mathf.Clamp01(node.radius / 48f))), 200, 600);
+            for (var i = 0; i < speckles; i++)
             {
-                var off = rng.InsideUnitCircle() * node.radius;
-                var p = WorldToPixel(world.x + off.x, world.y + off.y, halfW, halfH, w, h);
-                var rad = Mathf.Max(1, Mathf.RoundToInt(rng.Range(0.5f, 2f) * ppu));
-                PaintDisc(px, w, h, p, rad, new Color32(65, 60, 55, (byte)rng.NextInt(80, 141)));
+                var ang = Hash01(seed, i, 83) * Mathf.PI * 2f;
+                var mag = Mathf.Sqrt(Hash01(seed, i, 107)) * node.radius;
+                var p = WorldToPixel(world.x + Mathf.Cos(ang) * mag, world.y + Mathf.Sin(ang) * mag, halfW, halfH, w, h);
+                var alpha = Mathf.RoundToInt(Mathf.Lerp(90f, 150f, Hash01(seed, i, 149)));
+                px[p.px + p.py * w] = Blend(px[p.px + p.py * w], new Color32(63, 62, 58, (byte)alpha));
             }
 
+            var blobCount = Mathf.Clamp(Mathf.RoundToInt(node.radius * 0.06f), 3, 8);
+            for (var i = 0; i < blobCount; i++)
+            {
+                var ang = Hash01(seed, i, 211) * Mathf.PI * 2f;
+                var mag = Mathf.Sqrt(Hash01(seed, i, 239)) * node.radius * 0.85f;
+                var p = WorldToPixel(world.x + Mathf.Cos(ang) * mag, world.y + Mathf.Sin(ang) * mag, halfW, halfH, w, h);
+                var rad = Mathf.Max(1, Mathf.RoundToInt(Mathf.Lerp(1.2f, 2.8f, Hash01(seed, i, 271)) * ppu));
+                PaintDisc(px, w, h, p, rad, new Color32(70, 69, 65, (byte)Mathf.RoundToInt(Mathf.Lerp(100f, 140f, Hash01(seed, i, 307)))));
+            }
         }
 
         kopjesSR = CreateSprite("KopjesOverlayTexture", ToTex(w, h, px), ppu, KopjesOverlayOrder);
@@ -322,25 +370,48 @@ public sealed class PredatorPreyDocuMapBuilder
             var x1 = Mathf.Lerp(-halfW, halfW, r.shape.xMax);
             var y0 = Mathf.Lerp(-halfH, halfH, r.shape.yMin);
             var y1 = Mathf.Lerp(-halfH, halfH, r.shape.yMax);
-            CreateLine(debugRoot, new Vector2(x0, y0), new Vector2(x1, y0));
-            CreateLine(debugRoot, new Vector2(x1, y0), new Vector2(x1, y1));
-            CreateLine(debugRoot, new Vector2(x1, y1), new Vector2(x0, y1));
-            CreateLine(debugRoot, new Vector2(x0, y1), new Vector2(x0, y0));
+            var color = new Color(1f, 1f, 1f, 0.7f);
+            CreateLine(debugRoot, new Vector2(x0, y0), new Vector2(x1, y0), color, 1.25f);
+            CreateLine(debugRoot, new Vector2(x1, y0), new Vector2(x1, y1), color, 1.25f);
+            CreateLine(debugRoot, new Vector2(x1, y1), new Vector2(x0, y1), color, 1.25f);
+            CreateLine(debugRoot, new Vector2(x0, y1), new Vector2(x0, y0), color, 1.25f);
         }
 
         foreach (var c in crossingNodes)
         {
-            var sr = CreateDebugSprite(debugRoot, PrimitiveSpriteLibrary.CircleOutline(48), c.worldPos, Vector2.one * (c.worldRadius * 0.02f));
-            sr.color = new Color(1f, 1f, 1f, 0.7f);
+            CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, new Color(1f, 1f, 1f, 0.7f));
+        }
+
+        foreach (var pool in pools)
+        {
+            CreateCircleOutline(debugRoot, pool.worldPos, pool.worldRadius, new Color(0.5f, 0.8f, 1f, 0.6f));
+        }
+
+        foreach (var node in kopjes)
+        {
+            CreateCircleOutline(debugRoot, node.position, node.radius, new Color(0.7f, 0.7f, 0.7f, 0.55f));
         }
     }
 
-    private static void CreateLine(Transform parent, Vector2 a, Vector2 b)
+    private static void CreateCircleOutline(Transform parent, Vector2 center, float radius, Color color)
+    {
+        const int segments = 40;
+        var prev = center + Vector2.right * radius;
+        for (var i = 1; i <= segments; i++)
+        {
+            var t = (i / (float)segments) * Mathf.PI * 2f;
+            var next = center + new Vector2(Mathf.Cos(t), Mathf.Sin(t)) * radius;
+            CreateLine(parent, prev, next, color, 1f);
+            prev = next;
+        }
+    }
+
+    private static void CreateLine(Transform parent, Vector2 a, Vector2 b, Color color, float thickness)
     {
         var d = b - a;
-        var sr = CreateDebugSprite(parent, PrimitiveSpriteLibrary.CircleFill(8), a + d * 0.5f, new Vector2(d.magnitude, 0.25f));
+        var sr = CreateDebugSprite(parent, PrimitiveSpriteLibrary.CircleFill(8), a + d * 0.5f, new Vector2(d.magnitude, thickness));
         sr.transform.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(d.y, d.x) * Mathf.Rad2Deg);
-        sr.color = new Color(1f, 1f, 1f, 0.7f);
+        sr.color = color;
     }
 
     private static SpriteRenderer CreateDebugSprite(Transform parent, Sprite sprite, Vector2 pos, Vector2 scale)
@@ -375,7 +446,23 @@ public sealed class PredatorPreyDocuMapBuilder
         return tex;
     }
 
-    private static Texture2D NewTex(int w, int h) => new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+    private static Texture2D NewTex(int w, int h) => new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+
+    private static float PickBoundedPpu(float arenaW, float arenaH, float minPpu, float maxPpu, int maxPixels)
+    {
+        var choices = new[] { maxPpu, (maxPpu + minPpu) * 0.5f, minPpu };
+        foreach (var ppu in choices)
+        {
+            var w = Mathf.RoundToInt(arenaW * ppu);
+            var h = Mathf.RoundToInt(arenaH * ppu);
+            if ((long)w * h <= maxPixels)
+            {
+                return ppu;
+            }
+        }
+
+        return minPpu;
+    }
 
     private static (int w, int h, float ppu) PickTextureSize(float arenaW, float arenaH, float preferredPPU, int maxPixels)
     {
@@ -418,22 +505,21 @@ public sealed class PredatorPreyDocuMapBuilder
         }
     }
 
-
-    private static void PaintScanline(Color32[] px, int w, int h, int y, int cx, int halfW, Color32 col)
+    private static void PaintIrregularWetland(Color32[] px, int w, int h, (int px, int py) c, float worldRadius, float ppu, string id)
     {
-        if (y < 0 || y >= h)
+        var seed = Mathf.Abs(id?.GetHashCode() ?? 43);
+        var puddles = Mathf.Clamp(Mathf.RoundToInt(worldRadius * 0.12f), 6, 14);
+        for (var i = 0; i < puddles; i++)
         {
-            return;
-        }
-
-        var x0 = Mathf.Clamp(cx - halfW, 0, w - 1);
-        var x1 = Mathf.Clamp(cx + halfW, 0, w - 1);
-        var row = y * w;
-        for (var x = x0; x <= x1; x++)
-        {
-            px[row + x] = Blend(px[row + x], col);
+            var ang = Hash01(seed, i, 401) * Mathf.PI * 2f;
+            var mag = Mathf.Sqrt(Hash01(seed, i, 433)) * worldRadius * 0.75f;
+            var center = (c.px + Mathf.RoundToInt(Mathf.Cos(ang) * mag * ppu), c.py + Mathf.RoundToInt(Mathf.Sin(ang) * mag * ppu));
+            var rad = Mathf.Max(1, Mathf.RoundToInt(Mathf.Lerp(3f, 9f, Hash01(seed, i, 461)) * ppu));
+            var alpha = Mathf.RoundToInt(Mathf.Lerp(60f, 120f, Hash01(seed, i, 487)));
+            PaintDisc(px, w, h, center, rad, new Color32(80, 152, 198, (byte)alpha));
         }
     }
+
 
     private static void PaintRing(Color32[] px, int w, int h, (int px, int py) c, int r, int th, Color32 col)
     {
@@ -467,11 +553,10 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private static Color32 RegionTint(string biome)
     {
-        if (string.Equals(biome, "wetland", StringComparison.OrdinalIgnoreCase)) return new Color32(95, 132, 98, 255);
-        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return new Color32(112, 147, 101, 255);
-        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return new Color32(132, 124, 103, 255);
-        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(108, 128, 92, 255);
-        return new Color32(140, 132, 100, 255);
+        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return new Color32(108, 145, 99, 255);
+        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(96, 116, 82, 255);
+        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return new Color32(126, 123, 102, 255);
+        return new Color32(145, 133, 96, 255);
     }
 
     private static float Hash01(int x, int y, int seed)
