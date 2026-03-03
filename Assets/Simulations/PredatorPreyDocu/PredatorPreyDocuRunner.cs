@@ -535,7 +535,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         {
             if (transforms[i] != null)
             {
-                Object.Destroy(transforms[i].gameObject);
+                UnityEngine.Object.Destroy(transforms[i].gameObject);
             }
         }
     }
@@ -717,7 +717,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         var cam = cameraObject.AddComponent<Camera>();
         cam.orthographic = true;
         var initialOrtho = Mathf.Max(halfHeight + 6f, 10f);
-        var arenaCameraPolicy = Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
         if (arenaCameraPolicy != null && arenaCameraPolicy.targetCamera == cam)
         {
             arenaCameraPolicy.SetOrthoFromExternal(initialOrtho, "PredatorPreyDocuRunner.EnsureMainCamera", syncZoomLevel: true);
