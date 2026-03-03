@@ -93,9 +93,9 @@ public sealed class PredatorPreyDocuMapBuilder
         mapRoot.SetParent(worldObjectsRoot, false);
 
         ValidateSpecConformance(spec, halfW, halfH);
+        BuildWater(spec, halfW, halfH);
         BuildTerrain(spec, halfW, halfH);
         BuildRegions(spec, halfW, halfH);
-        BuildWater(spec, halfW, halfH);
         BuildKopjes(spec, halfW, halfH);
         BuildDebugOverlays(spec, config, halfW, halfH);
 
@@ -168,7 +168,14 @@ public sealed class PredatorPreyDocuMapBuilder
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
         var c0 = new Vector3(173f, 152f, 96f);
+        var moistGrass = new Vector3(154f, 156f, 102f);
         var seedSalt = Mathf.Abs(spec.mapId?.GetHashCode() ?? 173);
+        var moistureFalloffWorld = 180f;
+        var moistureCellSize = moistureFalloffWorld * 0.75f;
+        var moistureSources = BuildMoistureSources();
+        var moistureGrid = BuildPointGrid(moistureSources, halfW, halfH, moistureCellSize, out var cellsX, out var cellsY);
+        Debug.Log($"[SerengetiTerrain] mapId={spec.mapId} terrainTex={w}x{h}@{ppu:0.###} waterNodes={moistureSources.Count} moistureFalloff={moistureFalloffWorld:0.#} grid={cellsX}x{cellsY}");
+
         for (var y = 0; y < h; y++)
         {
             var wy = Mathf.Lerp(-halfH, halfH, y / Mathf.Max(1f, h - 1f));
@@ -180,9 +187,15 @@ public sealed class PredatorPreyDocuMapBuilder
                 var high = Noise2D(wx * 0.0058f + 71f, wy * 0.0058f + 89f, seedSalt) * 0.1f;
                 var fbm = low + mid + high;
                 var brightness = 1f + fbm * 0.065f;
-                var r = Mathf.Clamp(Mathf.RoundToInt(c0.x * brightness), 0, 255);
-                var g = Mathf.Clamp(Mathf.RoundToInt(c0.y * brightness), 0, 255);
-                var b = Mathf.Clamp(Mathf.RoundToInt(c0.z * brightness), 0, 255);
+                var dryColor = c0 * brightness;
+                var nearestWater = ApproxNearestPointDistance(wx, wy, moistureSources, moistureGrid, halfW, halfH, moistureCellSize, cellsX, cellsY);
+                var moisture = Mathf.Exp(-nearestWater / Mathf.Max(1f, moistureFalloffWorld));
+                var moistureStrength = Mathf.Clamp01(moisture * 0.28f);
+                var wetColor = moistGrass * (0.985f + fbm * 0.015f);
+                var finalColor = Vector3.Lerp(dryColor, wetColor, moistureStrength);
+                var r = Mathf.Clamp(Mathf.RoundToInt(finalColor.x), 0, 255);
+                var g = Mathf.Clamp(Mathf.RoundToInt(finalColor.y), 0, 255);
+                var b = Mathf.Clamp(Mathf.RoundToInt(finalColor.z), 0, 255);
                 px[x + y * w] = new Color32((byte)r, (byte)g, (byte)b, 255);
             }
         }
@@ -290,14 +303,14 @@ public sealed class PredatorPreyDocuMapBuilder
                     rWeighted += tint.r * weight;
                     gWeighted += tint.g * weight;
                     bWeighted += tint.b * weight;
-                    alphaWeighted += RegionBaseAlpha(entry.region.biome) * weight;
+                    alphaWeighted += RegionBaseAlpha(entry.region) * weight;
                 }
 
                 var inv = sumWeights > 0f ? 1f / sumWeights : 0f;
-                var boundaryFactor = 0.65f + 0.35f * Mathf.SmoothStep(0f, 0.35f, bestInfluence - secondInfluence);
+                var boundaryFactor = 0.8f + 0.2f * Mathf.SmoothStep(0f, 0.35f, bestInfluence - secondInfluence);
                 var alpha = alphaWeighted * inv * boundaryFactor;
                 alpha *= 1f + (Hash01(x, y, seedSalt ^ 433) - 0.5f) * 0.06f;
-                alpha = Mathf.Clamp(alpha, 8f, 35f);
+                alpha = Mathf.Clamp(alpha, 16f, 62f);
                 alphaMax = Mathf.Max(alphaMax, alpha);
 
                 px[x + y * w] = new Color32(
@@ -794,7 +807,8 @@ public sealed class PredatorPreyDocuMapBuilder
     private static Color32 RegionTint(string biome)
     {
         if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return new Color32(142, 143, 108, 255);
-        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(137, 131, 102, 255);
+        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(136, 134, 103, 255);
+        if (string.Equals(biome, "plains", StringComparison.OrdinalIgnoreCase)) return new Color32(154, 142, 101, 255);
         if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return new Color32(141, 134, 107, 255);
         return new Color32(145, 137, 106, 255);
     }
@@ -815,12 +829,103 @@ public sealed class PredatorPreyDocuMapBuilder
             255);
     }
 
-    private static float RegionBaseAlpha(string biome)
+    private static float RegionBaseAlpha(RegionSpec region)
     {
-        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return 28f;
-        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return 18f;
-        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return 14f;
-        return 10f;
+        var baseBiomeAlpha = 20f;
+        if (string.Equals(region.biome, "riverine", StringComparison.OrdinalIgnoreCase)) baseBiomeAlpha = 27f;
+        else if (string.Equals(region.biome, "woodland", StringComparison.OrdinalIgnoreCase)) baseBiomeAlpha = 23f;
+        else if (string.Equals(region.biome, "kopjes", StringComparison.OrdinalIgnoreCase)) baseBiomeAlpha = 21f;
+        else if (string.Equals(region.biome, "plains", StringComparison.OrdinalIgnoreCase)) baseBiomeAlpha = 18f;
+
+        var cover = Mathf.Clamp01(region.cover);
+        var greenness = Mathf.Clamp(region.baseGreenness, -1f, 1f);
+        var alpha = baseBiomeAlpha + cover * 18f + greenness * 6f;
+        return Mathf.Clamp(alpha, 14f, 70f);
+    }
+
+    private List<Vector2> BuildMoistureSources()
+    {
+        var sources = new List<Vector2>(waterNodes.Count + pools.Count + wetlands.Count);
+        sources.AddRange(waterNodes);
+        for (var i = 0; i < pools.Count; i++)
+        {
+            sources.Add(pools[i].worldPos);
+        }
+
+        for (var i = 0; i < wetlands.Count; i++)
+        {
+            sources.Add(wetlands[i].worldPos);
+        }
+
+        return sources;
+    }
+
+    private static Dictionary<int, List<int>> BuildPointGrid(List<Vector2> points, float halfW, float halfH, float cellSizeWorld, out int cellsX, out int cellsY)
+    {
+        cellsX = Mathf.Max(1, Mathf.CeilToInt((halfW * 2f) / Mathf.Max(1f, cellSizeWorld)));
+        cellsY = Mathf.Max(1, Mathf.CeilToInt((halfH * 2f) / Mathf.Max(1f, cellSizeWorld)));
+        var grid = new Dictionary<int, List<int>>();
+        for (var i = 0; i < points.Count; i++)
+        {
+            var p = points[i];
+            var cx = Mathf.Clamp(Mathf.FloorToInt((p.x + halfW) / cellSizeWorld), 0, cellsX - 1);
+            var cy = Mathf.Clamp(Mathf.FloorToInt((p.y + halfH) / cellSizeWorld), 0, cellsY - 1);
+            var key = cx + cy * cellsX;
+            if (!grid.TryGetValue(key, out var list))
+            {
+                list = new List<int>();
+                grid[key] = list;
+            }
+
+            list.Add(i);
+        }
+
+        return grid;
+    }
+
+    private static float ApproxNearestPointDistance(float wx, float wy, List<Vector2> points, Dictionary<int, List<int>> grid, float halfW, float halfH, float cellSizeWorld, int cellsX, int cellsY)
+    {
+        if (points.Count == 0)
+        {
+            return halfW + halfH;
+        }
+
+        var centerX = Mathf.Clamp(Mathf.FloorToInt((wx + halfW) / cellSizeWorld), 0, cellsX - 1);
+        var centerY = Mathf.Clamp(Mathf.FloorToInt((wy + halfH) / cellSizeWorld), 0, cellsY - 1);
+        var bestD2 = float.PositiveInfinity;
+
+        for (var ring = 0; ring <= 2; ring++)
+        {
+            var foundAny = false;
+            for (var oy = -ring; oy <= ring; oy++)
+            {
+                var cy = centerY + oy;
+                if (cy < 0 || cy >= cellsY) continue;
+                for (var ox = -ring; ox <= ring; ox++)
+                {
+                    var cx = centerX + ox;
+                    if (cx < 0 || cx >= cellsX) continue;
+                    var key = cx + cy * cellsX;
+                    if (!grid.TryGetValue(key, out var list)) continue;
+                    foundAny = true;
+                    for (var i = 0; i < list.Count; i++)
+                    {
+                        var p = points[list[i]];
+                        var dx = p.x - wx;
+                        var dy = p.y - wy;
+                        var d2 = dx * dx + dy * dy;
+                        if (d2 < bestD2) bestD2 = d2;
+                    }
+                }
+            }
+
+            if (foundAny && bestD2 < float.PositiveInfinity)
+            {
+                return Mathf.Sqrt(bestD2);
+            }
+        }
+
+        return Mathf.Sqrt((halfW * 2f) * (halfW * 2f) + (halfH * 2f) * (halfH * 2f));
     }
 
     private static float Noise2D(float x, float y, int seedSalt)
@@ -890,7 +995,7 @@ public sealed class PredatorPreyDocuMapBuilder
                 Mathf.Lerp(-halfH, halfH, region.shape.yMax)));
         }
 
-        const float spacing = 120f;
+        const float spacing = 72f;
         const float warpAmpWorld = 78f;
         const float warpFreq = 0.0023f;
         const float microWarpAmpWorld = 14f;
@@ -910,26 +1015,48 @@ public sealed class PredatorPreyDocuMapBuilder
 
                 var best = float.NegativeInfinity;
                 var second = float.NegativeInfinity;
+                var bestIndex = -1;
+                var secondIndex = -1;
                 for (var i = 0; i < fields.Count; i++)
                 {
                     var influence = ComputeRegionInfluence(fields[i], tx, ty, seedSalt, Mathf.RoundToInt(x), Mathf.RoundToInt(y), 45f, 220f, 0.46f);
                     if (influence > best)
                     {
                         second = best;
+                        secondIndex = bestIndex;
                         best = influence;
+                        bestIndex = i;
                     }
                     else if (influence > second)
                     {
                         second = influence;
+                        secondIndex = i;
                     }
                 }
 
-                if (best - second < 0.08f)
+                var delta = best - second;
+                if (delta < 0.12f && bestIndex >= 0)
                 {
-                    CreateRectStrip(parent, new Vector2(wx, wy), new Vector2(2.2f, 2.2f), new Color(0.1f, 1f, 0.35f, 0.8f));
+                    var bestColor = RegionDebugColor(fields[bestIndex].region.biome);
+                    var secondColor = secondIndex >= 0 ? RegionDebugColor(fields[secondIndex].region.biome) : bestColor;
+                    var dotColor = Color.Lerp(bestColor, secondColor, 0.5f);
+                    dotColor.a = 0.85f;
+                    CreateRectStrip(parent, new Vector2(wx, wy), new Vector2(2.5f, 2.5f), dotColor);
+                }
+                else if (delta < 0.2f && bestIndex >= 0)
+                {
+                    var color = RegionDebugColor(fields[bestIndex].region.biome);
+                    color.a = 0.62f;
+                    CreateRectStrip(parent, new Vector2(wx, wy), new Vector2(1.8f, 1.8f), color);
                 }
             }
         }
+    }
+
+    private static Color RegionDebugColor(string biome)
+    {
+        var tint = RegionTint(biome);
+        return new Color(tint.r / 255f, tint.g / 255f, tint.b / 255f, 0.8f);
     }
 
     private static List<Vector2> SampleCatmullRom(List<Vector2> points, int samplesPerSegment)
