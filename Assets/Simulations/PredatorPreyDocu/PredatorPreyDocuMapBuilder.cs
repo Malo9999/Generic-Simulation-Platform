@@ -75,7 +75,8 @@ public sealed class PredatorPreyDocuMapBuilder
 
         var mainRiverControlPoints = spec.water.mainRiver.centerline.Count;
         var grumetiControlPoints = spec.water.grumeti.centerline.Count;
-        Debug.Log($"[SerengetiConformance] mapId={spec.mapId} arena={spec.arena.width}x{spec.arena.height} regions={spec.regions.Count} mainRiverControlPoints={mainRiverControlPoints} mainRiverRasterSamples={mainRiverRasterSamples} grumetiControlPoints={grumetiControlPoints} grumetiRasterSamples={grumetiRasterSamples} pools={spec.water.pools.Count} kopjes={spec.landmarks.kopjes.Count} wetlands={spec.landmarks.wetlands.Count}");
+        var overlaysEnabled = config?.predatorPreyDocu != null && config.predatorPreyDocu.debugShowMapOverlays;
+        Debug.Log($"[SerengetiConformance] mapId={spec.mapId} mainRiver(controlPts={mainRiverControlPoints} raster={mainRiverRasterSamples}) grumeti(controlPts={grumetiControlPoints} raster={grumetiRasterSamples}) regions={spec.regions.Count} pools={spec.water.pools.Count} kopjes={spec.landmarks.kopjes.Count} wetlands={spec.landmarks.wetlands.Count} debugOverlays={(overlaysEnabled ? "ON" : "OFF")}");
     }
 
     public void UpdateSeasonVisuals(float seasonalPresence01)
@@ -204,7 +205,7 @@ public sealed class PredatorPreyDocuMapBuilder
         tex.SetPixels32(px);
         tex.Apply(false, false);
         regionSR = CreateSprite("RegionOverlayTexture", tex, ppu, RegionOverlayOrder);
-        Debug.Log($"[SerengetiConformance] RegionTex={w}x{h}@{ppu:0.###}PPU");
+        Debug.Log($"[SerengetiConformance] Regions: baseAlphaRange=18..40 feather=18px(PPU world-derived) regionTex={w}x{h}@{ppu:0.###}");
     }
 
     private void BuildWater(SerengetiMapSpec spec, float halfW, float halfH)
@@ -330,8 +331,8 @@ public sealed class PredatorPreyDocuMapBuilder
         var floodRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + river.floodplainExtra * 0.35f) * ppu));
         var bankRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + river.bankExtra * 0.6f) * ppu));
         var waterRadiusPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu));
-        var floodCol = new Color32(103, 136, 89, 68);
-        var bankCol = new Color32(68, 100, 58, 104);
+        var floodCol = new Color32(103, 136, 89, 78);
+        var bankCol = new Color32(68, 100, 58, 128);
         var waterCol = new Color32(35, 120, 220, 255);
 
         for (var i = 1; i < sampled.Count; i++)
@@ -368,6 +369,8 @@ public sealed class PredatorPreyDocuMapBuilder
             crossingNodes.Add(node);
             crossingsGrumeti.Add(node);
         }
+
+        Debug.Log($"[SerengetiConformance] Grumeti: controlPts={worldPoints.Count} splineSamples={sampled.Count} width={river.width:0.##} floodScale=0.35 bankScale=0.60");
 
         return sampled.Count;
     }
@@ -435,40 +438,40 @@ public sealed class PredatorPreyDocuMapBuilder
             var x1 = Mathf.Lerp(-halfW, halfW, r.shape.xMax);
             var y0 = Mathf.Lerp(-halfH, halfH, r.shape.yMin);
             var y1 = Mathf.Lerp(-halfH, halfH, r.shape.yMax);
-            var color = new Color(0.2f, 1f, 0.2f, 0.88f);
-            CreateRectOutline(debugRoot, x0, x1, y0, y1, color, 0.7f);
+            var color = new Color(0f, 1f, 0f, 0.9f);
+            CreateRectOutline(debugRoot, x0, x1, y0, y1, color, 2.5f);
             CreateDebugLabel(debugRoot, new Vector2((x0 + x1) * 0.5f, (y0 + y1) * 0.5f), r.id, color);
         }
 
         foreach (var c in crossingsMain)
         {
-            var color = new Color(1f, 0.2f, 0.2f, 0.9f);
+            var color = new Color(1f, 0f, 0f, 0.9f);
             CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, color);
             CreateDebugLabel(debugRoot, c.worldPos + new Vector2(c.worldRadius + 1.4f, c.worldRadius + 0.8f), "MaraCrossing", color);
         }
 
         foreach (var c in crossingsGrumeti)
         {
-            var color = new Color(1f, 0.62f, 0.17f, 0.9f);
+            var color = new Color(1f, 0.55f, 0f, 0.9f);
             CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, color);
             CreateDebugLabel(debugRoot, c.worldPos + new Vector2(c.worldRadius + 1.4f, c.worldRadius + 0.8f), "GrumetiCrossing", color);
         }
 
         foreach (var pool in pools)
         {
-            var color = new Color(0.3f, 0.92f, 1f, 0.82f);
+            var color = new Color(0f, 1f, 1f, 0.85f);
             CreateCircleOutline(debugRoot, pool.worldPos, pool.worldRadius, color);
             CreateDebugLabel(debugRoot, pool.worldPos + new Vector2(pool.worldRadius + 1.4f, pool.worldRadius + 0.8f), "Pool", color);
         }
 
         foreach (var node in kopjes)
         {
-            var color = new Color(0.66f, 0.66f, 0.66f, 0.82f);
+            var color = new Color(0.62f, 0.62f, 0.62f, 0.85f);
             CreateCircleOutline(debugRoot, node.position, node.radius, color);
             CreateDebugLabel(debugRoot, node.position + new Vector2(node.radius + 1.4f, node.radius + 0.8f), "Kopjes", color);
         }
 
-        Debug.Log($"[SerengetiDebug] regions={spec.regions.Count} crossingsMain={crossingsMain.Count} crossingsGrumeti={crossingsGrumeti.Count} pools={pools.Count} kopjes={kopjes.Count} wetlands={wetlands.Count}");
+        Debug.Log($"[SerengetiDebug] overlays=ON regions={spec.regions.Count} mainCross={crossingsMain.Count} grumetiCross={crossingsGrumeti.Count} pools={pools.Count} kopjes={kopjes.Count} wetlands={wetlands.Count}");
     }
 
     private static void CreateRectOutline(Transform parent, float x0, float x1, float y0, float y1, Color color, float thickness)
@@ -681,10 +684,10 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private static float RegionBaseAlpha(string biome)
     {
-        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return 42f;
-        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return 36f;
-        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return 30f;
-        return 28f;
+        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return 40f;
+        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return 34f;
+        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return 28f;
+        return 22f;
     }
 
     private static float Hash01(int x, int y, int seed)
