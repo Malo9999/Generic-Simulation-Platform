@@ -34,6 +34,9 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     private Transform[] lionTf;
     private string[] prideSpeciesKey;
 
+    private Transform[] specialTf;
+    private int specialCountTotal;
+
     private Vector2[] herdCenter;
     private Vector2[] herdGoal;
     private int[] herdGoalTick;
@@ -116,9 +119,11 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
     {
         DestroyTransforms(preyTf);
         DestroyTransforms(lionTf);
+        DestroyTransforms(specialTf);
 
         preyTf = null;
         lionTf = null;
+        specialTf = null;
 
         preyPos = null;
         preyVel = null;
@@ -144,6 +149,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
 
         preyCountTotal = 0;
         lionCountTotal = 0;
+        specialCountTotal = 0;
 
         if (map != null)
         {
@@ -178,6 +184,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
 
         var preyRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, 0);
         var lionRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, 1);
+        var specialRoot = SceneGraphUtil.EnsureEntityGroup(sceneGraph.EntitiesRoot, 2);
 
         var rngPop = RngService.Fork("SIM:PredatorPreyDocu:POP");
         var spawnSeed = activeConfig.seed ^ StableHash.Hash32(loadedMapSpec?.mapId ?? "serengeti_v1") ^ unchecked((int)0x6D2B79F5u);
@@ -187,17 +194,15 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         var predatorWeights = BuildPredatorSpawnWeights(loadedMapSpec);
         var useLegendSpecies = herbivoreWeights.Count > 0 && predatorWeights.Count > 0;
 
-        var herdCount = pop.herdCount;
-        herdSpeciesKey = new string[Mathf.Max(0, herdCount)];
-        for (var h = 0; h < herdSpeciesKey.Length; h++)
-        {
-            herdSpeciesKey[h] = useLegendSpecies ? PickWeightedSpecies(speciesRng, herbivoreWeights, "wildebeest") : "generic_prey";
-        }
-        herdCenter = new Vector2[herdCount];
-        herdGoal = new Vector2[herdCount];
-        herdGoalTick = new int[herdCount];
+        var herdCountUsed = useLegendSpecies ? Mathf.Max(pop.herdCount, Mathf.Min(8, herbivoreWeights.Count)) : pop.herdCount;
+        var prideCountUsed = useLegendSpecies ? Mathf.Max(pop.prideCount, Mathf.Min(6, predatorWeights.Count)) : pop.prideCount;
 
-        for (var h = 0; h < herdCount; h++)
+        herdSpeciesKey = AssignCoverageFirstSpecies(speciesRng, herbivoreWeights, herdCountUsed, "wildebeest");
+        herdCenter = new Vector2[herdCountUsed];
+        herdGoal = new Vector2[herdCountUsed];
+        herdGoalTick = new int[herdCountUsed];
+
+        for (var h = 0; h < herdCountUsed; h++)
         {
             var side = h % 2 == 0 ? -1f : 1f;
             var x = side * rngPop.Range(docu.map.floodplainWidth * 0.8f, halfWidth * 0.92f);
@@ -207,7 +212,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             herdGoalTick[h] = 0;
         }
 
-        preyCountTotal = pop.herdCount * pop.preyPerHerd;
+        preyCountTotal = herdCountUsed * pop.preyPerHerd;
         preyTf = new Transform[preyCountTotal];
         preyPos = new Vector2[preyCountTotal];
         preyVel = new Vector2[preyCountTotal];
@@ -216,7 +221,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
 
         for (var i = 0; i < preyCountTotal; i++)
         {
-            var herdId = i % herdCount;
+            var herdId = i % Mathf.Max(1, herdCountUsed);
             preyHerdId[i] = herdId;
             preyOffset[i] = rngPop.InsideUnitCircle() * movement.herdRadius;
             preyPos[i] = herdCenter[herdId] + preyOffset[i];
@@ -242,20 +247,15 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             preyTf[i] = root.transform;
         }
 
-        var prideCount = pop.prideCount;
-        prideSpeciesKey = new string[Mathf.Max(0, prideCount)];
-        for (var p = 0; p < prideSpeciesKey.Length; p++)
-        {
-            prideSpeciesKey[p] = useLegendSpecies ? PickWeightedSpecies(speciesRng, predatorWeights, "lion") : "lion";
-        }
-        prideCenter = new Vector2[prideCount];
-        prideShadeIndex = new int[prideCount];
+        prideSpeciesKey = AssignCoverageFirstSpecies(speciesRng, predatorWeights, prideCountUsed, "lion", "lion");
+        prideCenter = new Vector2[prideCountUsed];
+        prideShadeIndex = new int[prideCountUsed];
 
-        for (var p = 0; p < prideCount; p++)
+        for (var p = 0; p < prideCountUsed; p++)
         {
             if (map.ShadeNodes.Count > 0)
             {
-                var idx = (p * Mathf.Max(1, map.ShadeNodes.Count / Mathf.Max(1, prideCount)) + rngPop.NextInt(0, map.ShadeNodes.Count)) % map.ShadeNodes.Count;
+                var idx = (p * Mathf.Max(1, map.ShadeNodes.Count / Mathf.Max(1, prideCountUsed)) + rngPop.NextInt(0, map.ShadeNodes.Count)) % map.ShadeNodes.Count;
                 prideCenter[p] = map.ShadeNodes[idx];
                 prideShadeIndex[p] = idx;
             }
@@ -266,7 +266,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             }
         }
 
-        lionCountTotal = (pop.prideCount * pop.lionsPerPride) + (pop.roamingCoalitions * pop.coalitionSize);
+        lionCountTotal = (prideCountUsed * pop.lionsPerPride) + (pop.roamingCoalitions * pop.coalitionSize);
         lionTf = new Transform[lionCountTotal];
         lionPos = new Vector2[lionCountTotal];
         lionVel = new Vector2[lionCountTotal];
@@ -277,7 +277,7 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         lionRoaming = new bool[lionCountTotal];
 
         var lionIndex = 0;
-        for (var p = 0; p < pop.prideCount; p++)
+        for (var p = 0; p < prideCountUsed; p++)
         {
             for (var i = 0; i < pop.lionsPerPride; i++)
             {
@@ -290,12 +290,15 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         {
             for (var i = 0; i < pop.coalitionSize; i++)
             {
-                SpawnLion(lionRoot, rngPop, visuals, lionIndex, c % Mathf.Max(1, pop.prideCount), true, coalitionSlot: i, useLegendSpecies);
+                SpawnLion(lionRoot, rngPop, visuals, lionIndex, c % Mathf.Max(1, prideCountUsed), true, coalitionSlot: i, useLegendSpecies);
                 lionIndex++;
             }
         }
 
-        Debug.Log($"[SerengetiSpawn] mapId={loadedMapSpec?.mapId} herds={herdCount} herdSpecies={SummarizeSpecies(herdSpeciesKey)} predators={lionCountTotal} predatorSpecies={SummarizeSpecies(prideSpeciesKey)} useLegend={useLegendSpecies}");
+        specialTf = SpawnSpecialGroups(specialRoot, rngPop, visuals, useLegendSpecies);
+        specialCountTotal = specialTf?.Length ?? 0;
+
+        Debug.Log($"[SerengetiSpawn] mapId={loadedMapSpec?.mapId} herdCountUsed={herdCountUsed} herdSpecies={SummarizeSpecies(herdSpeciesKey)} prideCountUsed={prideCountUsed} predatorBodies={lionCountTotal} predatorSpecies={SummarizeSpecies(prideSpeciesKey)} specials={specialCountTotal} useLegend={useLegendSpecies}");
     }
 
     private void SpawnLion(Transform lionRoot, IRng rngPop, Visuals visuals, int lionIndex, int prideId, bool roaming, int coalitionSlot, bool useLegendSpecies)
@@ -572,6 +575,125 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         return !string.IsNullOrWhiteSpace(key) && species != null && species.TryGetValue(key, out entry) && entry != null;
     }
 
+    private Transform[] SpawnSpecialGroups(Transform specialRoot, IRng rngPop, Visuals visuals, bool useLegendSpecies)
+    {
+        var specials = new List<Transform>();
+        if (specialRoot == null || loadedMapSpec?.spawnHints?.entries == null)
+        {
+            return specials.ToArray();
+        }
+
+        SpawnSpecialSpecies(specials, specialRoot, rngPop, visuals, "hippo", EstimateSpecialCount("hippo", "pods", "podSize", 3), PickNearPools, useLegendSpecies);
+        SpawnSpecialSpecies(specials, specialRoot, rngPop, visuals, "crocodile", EstimateSpecialCount("crocodile", "density", "nearCrossingsOnly", 2), PickNearCrossings, useLegendSpecies);
+        SpawnSpecialSpecies(specials, specialRoot, rngPop, visuals, "flamingo", EstimateSpecialCount("flamingo", "flocks", "flockSize", 2), PickNearWetlands, useLegendSpecies);
+        SpawnSpecialSpecies(specials, specialRoot, rngPop, visuals, "rhino", EstimateSpecialCount("rhino", "rareIndividuals", "solitary", 2), PickRhinoPlains, useLegendSpecies);
+
+        return specials.ToArray();
+    }
+
+    private int EstimateSpecialCount(string speciesKey, string countKey, string sizeOrBoolKey, int fallback)
+    {
+        if (loadedMapSpec?.spawnHints?.entries == null || !loadedMapSpec.spawnHints.entries.TryGetValue(speciesKey, out var token) || token == null)
+        {
+            return fallback;
+        }
+
+        var count = 0;
+        if (!TryGetInt(token, countKey, out count) && !TryGetArrayCount(token, countKey, out count))
+        {
+            count = fallback;
+        }
+
+        var size = 1;
+        if (TryGetInt(token, sizeOrBoolKey, out var parsed))
+        {
+            size = Mathf.Max(1, parsed);
+        }
+
+        var estimate = Mathf.CeilToInt(count * Mathf.Max(1, size) * 0.12f);
+        return Mathf.Clamp(Mathf.Max(fallback, estimate), 1, 8);
+    }
+
+    private void SpawnSpecialSpecies(List<Transform> specials, Transform root, IRng rngPop, Visuals visuals, string speciesKey, int count, Func<IRng, Vector2> picker, bool useLegendSpecies)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            var spawn = picker(rngPop);
+            var go = new GameObject($"Special_{speciesKey}_{specials.Count:0000}");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = new Vector3(spawn.x, spawn.y, 0f);
+
+            var accent = PredatorPreyDocuVisualFactory.HerdAccentColor((specials.Count + i) % 8);
+            if (useLegendSpecies && TryGetLegendSpecies(speciesKey, out var entry))
+            {
+                var isMale = ((specials.Count + i) % 2) == 0;
+                var isChild = ((specials.Count + i) % 5) == 0;
+                var scale = speciesKey == "flamingo" ? visuals.preyScale * 0.8f : visuals.preyScale;
+                PredatorPreyDocuVisualFactory.BuildLegendAnimal(go.transform, entry, loadedMapSpec.legend.sexAgeRules, scale, isMale, isChild, visuals.showPackAccent, accent);
+            }
+            else
+            {
+                PredatorPreyDocuVisualFactory.BuildPrey(go.transform, accent, visuals.preyScale, visuals.showPackAccent);
+            }
+
+            AttachSpeciesLabel(go.transform, speciesKey, visuals.preyScale);
+            specials.Add(go.transform);
+        }
+    }
+
+    private Vector2 PickNearPools(IRng rng)
+    {
+        if (map?.pools != null && map.pools.Count > 0)
+        {
+            var pool = map.pools[rng.NextInt(0, map.pools.Count)];
+            return pool.worldPos + rng.InsideUnitCircle() * Mathf.Max(6f, pool.worldRadius * 0.8f);
+        }
+
+        return new Vector2(rng.Range(-halfWidth * 0.7f, halfWidth * 0.7f), rng.Range(-halfHeight * 0.6f, halfHeight * 0.6f));
+    }
+
+    private Vector2 PickNearCrossings(IRng rng)
+    {
+        if (map?.CrossingNodes != null && map.CrossingNodes.Count > 0)
+        {
+            var c = map.CrossingNodes[rng.NextInt(0, map.CrossingNodes.Count)];
+            return c.worldPos + rng.InsideUnitCircle() * Mathf.Max(6f, c.worldRadius * 0.6f);
+        }
+
+        return PickNearPools(rng);
+    }
+
+    private Vector2 PickNearWetlands(IRng rng)
+    {
+        if (map?.wetlands != null && map.wetlands.Count > 0)
+        {
+            var w = map.wetlands[rng.NextInt(0, map.wetlands.Count)];
+            return w.worldPos + rng.InsideUnitCircle() * Mathf.Max(8f, w.worldRadius * 0.7f);
+        }
+
+        return new Vector2(rng.Range(-halfWidth * 0.4f, halfWidth * 0.4f), rng.Range(-halfHeight * 0.8f, -halfHeight * 0.2f));
+    }
+
+    private Vector2 PickRhinoPlains(IRng rng)
+    {
+        for (var i = 0; i < 12; i++)
+        {
+            var candidate = new Vector2(rng.Range(-halfWidth * 0.85f, halfWidth * 0.85f), rng.Range(-halfHeight * 0.85f, halfHeight * 0.85f));
+            var nearestWater = float.MaxValue;
+            for (var w = 0; w < map.WaterNodes.Count; w++)
+            {
+                nearestWater = Mathf.Min(nearestWater, Vector2.Distance(candidate, map.WaterNodes[w]));
+            }
+
+            if (nearestWater >= 90f)
+            {
+                return candidate;
+            }
+        }
+
+        return new Vector2(rng.Range(halfWidth * 0.3f, halfWidth * 0.85f), rng.Range(-halfHeight * 0.5f, halfHeight * 0.5f));
+    }
+
     private static List<WeightedSpecies> BuildHerbivoreSpawnWeights(SerengetiMapSpec spec)
     {
         var result = new List<WeightedSpecies>();
@@ -579,9 +701,86 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         foreach (var pair in spec.spawnHints.entries.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
             if (pair.Value == null || pair.Value.Type != JTokenType.Object) continue;
-            if (!TryGetInt(pair.Value, "baseHerds", out var baseHerds) || !TryGetInt(pair.Value, "herdSize", out var herdSize)) continue;
-            var weight = Mathf.Max(1f, baseHerds * Mathf.Max(1, herdSize));
-            result.Add(new WeightedSpecies(pair.Key, weight));
+
+            var weight = 0f;
+            if (TryGetInt(pair.Value, "baseHerds", out var baseHerds) && TryGetInt(pair.Value, "herdSize", out var herdSize))
+            {
+                weight = Mathf.Max(weight, baseHerds * Mathf.Max(1, herdSize));
+            }
+
+            if (TryGetInt(pair.Value, "pods", out var pods) && TryGetInt(pair.Value, "podSize", out var podSize))
+            {
+                weight = Mathf.Max(weight, pods * Mathf.Max(1, podSize));
+            }
+
+            if (TryGetInt(pair.Value, "flocks", out var flocks) && TryGetInt(pair.Value, "flockSize", out var flockSize))
+            {
+                weight = Mathf.Max(weight, flocks * Mathf.Max(1, flockSize));
+            }
+
+            if (TryGetArrayCount(pair.Value, "rareIndividuals", out var rareIndividuals))
+            {
+                weight = Mathf.Max(weight, rareIndividuals);
+            }
+            else if (TryGetBool(pair.Value, "solitary", out var solitary) && solitary)
+            {
+                weight = Mathf.Max(weight, 1f);
+            }
+
+            if (TryGetFloat(pair.Value, "density", out var density))
+            {
+                weight = Mathf.Max(weight, Mathf.Max(1f, density * 6f));
+            }
+
+            if (weight > 0f)
+            {
+                result.Add(new WeightedSpecies(pair.Key, weight));
+            }
+        }
+
+        return result;
+    }
+
+    private static string[] AssignCoverageFirstSpecies(IRng rng, IReadOnlyList<WeightedSpecies> weighted, int count, string fallback, string forceFirstKey = null)
+    {
+        var result = new string[Mathf.Max(0, count)];
+        if (result.Length == 0)
+        {
+            return result;
+        }
+
+        if (weighted == null || weighted.Count == 0)
+        {
+            for (var i = 0; i < result.Length; i++) result[i] = fallback;
+            return result;
+        }
+
+        var sorted = weighted
+            .OrderByDescending(w => w.weight)
+            .ThenBy(w => w.key, StringComparer.Ordinal)
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(forceFirstKey) && sorted.Any(w => string.Equals(w.key, forceFirstKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            var force = sorted.First(w => string.Equals(w.key, forceFirstKey, StringComparison.OrdinalIgnoreCase));
+            sorted.Remove(force);
+            sorted.Insert(0, force);
+        }
+
+        var coverageCount = Mathf.Min(result.Length, sorted.Count);
+        for (var i = 0; i < coverageCount; i++)
+        {
+            result[i] = sorted[i].key;
+        }
+
+        for (var i = coverageCount; i < result.Length; i++)
+        {
+            result[i] = PickWeightedSpecies(rng, weighted, fallback);
+        }
+
+        if (!string.IsNullOrWhiteSpace(forceFirstKey))
+        {
+            result[0] = forceFirstKey;
         }
 
         return result;
