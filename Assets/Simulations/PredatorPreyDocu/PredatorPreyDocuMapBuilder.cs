@@ -12,7 +12,7 @@ public sealed class PredatorPreyDocuMapBuilder
     private const int PermanentWaterOrder = -180;
     private const int SeasonalWaterOrder = -175;
     private const int KopjesOverlayOrder = -170;
-    private const int DebugOverlayOrder = -20;
+    private const int DebugOverlayOrder = -10;
 
     private Transform mapRoot;
     private SpriteRenderer terrainSR;
@@ -155,7 +155,7 @@ public sealed class PredatorPreyDocuMapBuilder
         var h = Mathf.Max(256, Mathf.RoundToInt(halfH * 2f * ppu));
         var tex = NewTex(w, h);
         var px = new Color32[w * h];
-        var feather = Mathf.Clamp(18f, 12f, 24f);
+        var featherWidthWorld = Mathf.Clamp(18f, 12f, 24f);
         var regions = new List<(RegionSpec region, float x0, float x1, float y0, float y1)>();
         foreach (var region in spec.regions)
         {
@@ -192,8 +192,9 @@ public sealed class PredatorPreyDocuMapBuilder
                 }
 
                 if (chosen == null) continue;
-                var alpha = Mathf.Lerp(30f, 60f, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dist / feather)));
-                var noise = Hash01(x, y, 17) * 0.16f - 0.08f;
+                var edgeFeather = Mathf.SmoothStep(0f, featherWidthWorld, dist);
+                var alpha = RegionBaseAlpha(chosen.biome) * edgeFeather;
+                var noise = Hash01(x, y, 17) * 0.12f - 0.06f;
                 alpha *= 1f + noise;
                 var tint = RegionTint(chosen.biome);
                 px[x + y * w] = new Color32(tint.r, tint.g, tint.b, (byte)Mathf.Clamp(Mathf.RoundToInt(alpha), 0, 255));
@@ -319,17 +320,18 @@ public sealed class PredatorPreyDocuMapBuilder
             worldPoints.Add(world);
         }
 
-        var sampled = SampleCatmullRom(worldPoints, 150);
+        var sampled = SampleCatmullRom(worldPoints, 60);
+        sampled = EnsureMinSampleCount(sampled, 400);
         if (sampled.Count < 2)
         {
             return 0;
         }
 
-        var floodRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.28f + river.floodplainExtra * 0.2f) * ppu));
-        var bankRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.42f + river.bankExtra * 0.55f) * ppu));
+        var floodRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + river.floodplainExtra * 0.35f) * ppu));
+        var bankRadiusPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + river.bankExtra * 0.6f) * ppu));
         var waterRadiusPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu));
-        var floodCol = new Color32(103, 136, 89, 78);
-        var bankCol = new Color32(68, 100, 58, 112);
+        var floodCol = new Color32(103, 136, 89, 68);
+        var bankCol = new Color32(68, 100, 58, 104);
         var waterCol = new Color32(35, 120, 220, 255);
 
         for (var i = 1; i < sampled.Count; i++)
@@ -433,24 +435,40 @@ public sealed class PredatorPreyDocuMapBuilder
             var x1 = Mathf.Lerp(-halfW, halfW, r.shape.xMax);
             var y0 = Mathf.Lerp(-halfH, halfH, r.shape.yMin);
             var y1 = Mathf.Lerp(-halfH, halfH, r.shape.yMax);
-            var color = new Color(1f, 1f, 1f, 0.75f);
+            var color = new Color(0.2f, 1f, 0.2f, 0.88f);
             CreateRectOutline(debugRoot, x0, x1, y0, y1, color, 0.7f);
+            CreateDebugLabel(debugRoot, new Vector2((x0 + x1) * 0.5f, (y0 + y1) * 0.5f), r.id, color);
         }
 
-        foreach (var c in crossingNodes)
+        foreach (var c in crossingsMain)
         {
-            CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, new Color(1f, 1f, 1f, 0.82f));
+            var color = new Color(1f, 0.2f, 0.2f, 0.9f);
+            CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, color);
+            CreateDebugLabel(debugRoot, c.worldPos + new Vector2(c.worldRadius + 1.4f, c.worldRadius + 0.8f), "MaraCrossing", color);
+        }
+
+        foreach (var c in crossingsGrumeti)
+        {
+            var color = new Color(1f, 0.62f, 0.17f, 0.9f);
+            CreateCircleOutline(debugRoot, c.worldPos, c.worldRadius, color);
+            CreateDebugLabel(debugRoot, c.worldPos + new Vector2(c.worldRadius + 1.4f, c.worldRadius + 0.8f), "GrumetiCrossing", color);
         }
 
         foreach (var pool in pools)
         {
-            CreateCircleOutline(debugRoot, pool.worldPos, pool.worldRadius, new Color(0.5f, 0.8f, 1f, 0.62f));
+            var color = new Color(0.3f, 0.92f, 1f, 0.82f);
+            CreateCircleOutline(debugRoot, pool.worldPos, pool.worldRadius, color);
+            CreateDebugLabel(debugRoot, pool.worldPos + new Vector2(pool.worldRadius + 1.4f, pool.worldRadius + 0.8f), "Pool", color);
         }
 
         foreach (var node in kopjes)
         {
-            CreateCircleOutline(debugRoot, node.position, node.radius, new Color(0.7f, 0.7f, 0.7f, 0.55f));
+            var color = new Color(0.66f, 0.66f, 0.66f, 0.82f);
+            CreateCircleOutline(debugRoot, node.position, node.radius, color);
+            CreateDebugLabel(debugRoot, node.position + new Vector2(node.radius + 1.4f, node.radius + 0.8f), "Kopjes", color);
         }
+
+        Debug.Log($"[SerengetiDebug] regions={spec.regions.Count} crossingsMain={crossingsMain.Count} crossingsGrumeti={crossingsGrumeti.Count} pools={pools.Count} kopjes={kopjes.Count} wetlands={wetlands.Count}");
     }
 
     private static void CreateRectOutline(Transform parent, float x0, float x1, float y0, float y1, Color color, float thickness)
@@ -465,6 +483,26 @@ public sealed class PredatorPreyDocuMapBuilder
     {
         var sr = CreateDebugSprite(parent, PrimitiveSpriteLibrary.CircleOutline(64), center, new Vector2(radius * 2f, radius * 2f));
         sr.color = color;
+    }
+
+    private static void CreateDebugLabel(Transform parent, Vector2 pos, string text, Color color)
+    {
+        var go = new GameObject($"Label_{text}");
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = pos;
+        var tm = go.AddComponent<TextMesh>();
+        tm.text = text;
+        tm.fontSize = 24;
+        tm.characterSize = 0.22f;
+        tm.anchor = TextAnchor.MiddleLeft;
+        tm.alignment = TextAlignment.Left;
+        tm.color = color;
+        var mr = go.GetComponent<MeshRenderer>();
+        if (mr != null)
+        {
+            mr.sortingLayerName = SortingLayerDefault;
+            mr.sortingOrder = DebugOverlayOrder;
+        }
     }
 
     private static void CreateLine(Transform parent, Vector2 a, Vector2 b, Color color, float thickness)
@@ -635,10 +673,18 @@ public sealed class PredatorPreyDocuMapBuilder
 
     private static Color32 RegionTint(string biome)
     {
-        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return new Color32(108, 145, 99, 255);
-        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(96, 116, 82, 255);
-        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return new Color32(126, 123, 102, 255);
-        return new Color32(145, 133, 96, 255);
+        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return new Color32(132, 150, 106, 255);
+        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return new Color32(122, 130, 98, 255);
+        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return new Color32(136, 132, 108, 255);
+        return new Color32(148, 135, 100, 255);
+    }
+
+    private static float RegionBaseAlpha(string biome)
+    {
+        if (string.Equals(biome, "riverine", StringComparison.OrdinalIgnoreCase)) return 42f;
+        if (string.Equals(biome, "woodland", StringComparison.OrdinalIgnoreCase)) return 36f;
+        if (string.Equals(biome, "kopjes", StringComparison.OrdinalIgnoreCase)) return 30f;
+        return 28f;
     }
 
     private static float Hash01(int x, int y, int seed)
@@ -692,6 +738,17 @@ public sealed class PredatorPreyDocuMapBuilder
 
         result.Add(points[points.Count - 1]);
         return result;
+    }
+
+    private static List<Vector2> EnsureMinSampleCount(List<Vector2> points, int minSamples)
+    {
+        if (points == null || points.Count < 2 || points.Count >= minSamples)
+        {
+            return points ?? new List<Vector2>();
+        }
+
+        var factor = Mathf.CeilToInt((minSamples - 1f) / Mathf.Max(1f, points.Count - 1f));
+        return UpsamplePolyline(points, Mathf.Max(2, factor));
     }
 
     private static RiverYLookup BuildSplineYLookup(List<Vector2> smooth)
