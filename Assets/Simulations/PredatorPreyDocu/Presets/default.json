@@ -6,7 +6,7 @@
     "mapId": "serengeti_v1",
     "startMonth": 1,
     "ticksPerMonth": 3600,
-    "debugShowMapOverlays": true
+    "debugShowMapOverlays": false
   },
   "recording": { "enabled": true, "eventsEnabled": true, "snapshotEveryNTicks": 60 }
 }
