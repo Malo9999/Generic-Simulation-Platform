@@ -404,6 +404,11 @@ public class ArenaCameraPolicy : MonoBehaviour
         var baseOrtho = Mathf.Max(0.01f, _baseOrthographicSize);
         var safeZoomStep = Mathf.Max(1.0001f, zoomStep);
         var level = ComputeZoomLevelFromOrtho(orthographicSize, baseOrtho, safeZoomStep);
+        if (level > maxZoomLevel)
+        {
+            maxZoomLevel = Mathf.Min(level + 1, 30);
+        }
+
         zoomLevel = Mathf.Clamp(level, minZoomLevel, maxZoomLevel);
     }
 

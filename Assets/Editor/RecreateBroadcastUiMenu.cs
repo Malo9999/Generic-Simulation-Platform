@@ -88,7 +88,7 @@ public static class RecreateBroadcastUiMenu
         ConfigureMinimapCamera(minimapCamera, rt);
 
         EnsureEventSystem();
-        AttachAndWireClickToPan(view);
+        AttachAndWireClickToPan(view, minimapCamera);
         AttachAndWireMinimapSelection(view, minimapCamera, presentationRoot);
         EnsureSelectionRuntime(presentationRoot, view, ResolveMainCamera());
         EnsureBroadcastHotkeys(presentationRoot, canvasObject, view);
@@ -684,12 +684,15 @@ public static class RecreateBroadcastUiMenu
         eventSystem.AddComponent<StandaloneInputModule>();
     }
 
-    private static void AttachAndWireClickToPan(GameObject minimapView)
+    private static void AttachAndWireClickToPan(GameObject minimapView, GameObject minimapCameraObject)
     {
         GetOrAdd<RectTransform>(minimapView);
 
         var clickToPan = GetOrAdd<MinimapClickToPan>(minimapView);
         clickToPan.mainCamera = ResolveMainCamera();
+        clickToPan.minimapCamera = minimapCameraObject != null ? minimapCameraObject.GetComponent<Camera>() : null;
+        clickToPan.routeThroughArenaCameraPolicy = true;
+        clickToPan.clampToWorldBounds = true;
         if (clickToPan.mainCamera == null)
         {
             Debug.LogWarning("Recreate Broadcast UI: Could not find a main camera for MinimapClickToPan. Tag your primary camera as 'MainCamera'.");
