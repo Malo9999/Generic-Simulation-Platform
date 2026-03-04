@@ -62,8 +62,8 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
 
         if (loadedMapSpec.arena != null)
         {
-            var arenaWidth = Mathf.Max(1f, loadedMapSpec.arena.width);
-            var arenaHeight = Mathf.Max(1f, loadedMapSpec.arena.height);
+            var arenaWidth = Mathf.Max(1, Mathf.RoundToInt(loadedMapSpec.arena.width));
+            var arenaHeight = Mathf.Max(1, Mathf.RoundToInt(loadedMapSpec.arena.height));
             activeConfig.world.arenaWidth = arenaWidth;
             activeConfig.world.arenaHeight = arenaHeight;
 
