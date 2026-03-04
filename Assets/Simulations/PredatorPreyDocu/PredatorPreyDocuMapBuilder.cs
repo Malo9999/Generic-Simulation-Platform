@@ -868,7 +868,7 @@ StampDone:;
             if (i > 0) centersText += ";";
             var center = selectedPlacements[i].center;
             var radius = selectedPlacements[i].radius;
-            centersText += $"oxbow{i}=(x={center.x.ToString(\"0.0\", CultureInfo.InvariantCulture)} y={center.y.ToString(\"0.0\", CultureInfo.InvariantCulture)} r={radius.ToString(\"0.0\", CultureInfo.InvariantCulture)})";
+            centersText += $"oxbow{i}=(x={center.x.ToString("0.0", CultureInfo.InvariantCulture)} y={center.y.ToString("0.0", CultureInfo.InvariantCulture)} r={radius.ToString("0.0", CultureInfo.InvariantCulture)})";
         }
 
         Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count={selectedPlacements.Count} centers=({centersText})");
