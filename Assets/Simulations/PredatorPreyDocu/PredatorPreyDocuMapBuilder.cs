@@ -458,50 +458,56 @@ public sealed class PredatorPreyDocuMapBuilder
             return 0;
         }
 
-        var sampledIn = sampled.Count;
-        var confluenceIndex = -1;
-        for (var i = 0; i < sampled.Count; i++)
-        {
-            var pix = WorldToPixel(sampled[i].x, sampled[i].y, halfW, halfH, texW, texH);
-            if (!mainWaterMask[pix.px + pix.py * texW])
-            {
-                continue;
-            }
-
-            confluenceIndex = i;
-            break;
-        }
-
-        var confluenceHit = confluenceIndex >= 0;
-        if (confluenceHit)
-        {
-            var keepCount = Mathf.Clamp(confluenceIndex + 2, 2, sampled.Count);
-            sampled = sampled.GetRange(0, keepCount);
-        }
-
-        var sampledOut = sampled.Count;
-
         var bankExtra = Mathf.Max(6f, mainRiver.bankExtra * 0.7f);
         var floodExtra = Mathf.Max(45f, mainRiver.floodplainExtra * 0.55f);
         var floodCol = new Color32(103, 136, 89, 92);
         var bankCol = new Color32(68, 100, 58, 145);
         var waterCol = new Color32(35, 120, 220, 255);
 
-        var min = sampled[0];
-        var max = sampled[0];
-        for (var i = 1; i < sampled.Count; i++)
+        var reversalEps = 0.0001f;
+        var xReversals = CountSignReversals(sampled, true, reversalEps);
+        var yReversals = CountSignReversals(sampled, false, reversalEps);
+
+        var xAxisAllowed = xReversals == 0;
+        var yAxisAllowed = yReversals == 0;
+        var mode = "Stamp";
+        var xLookup = RiverXLookup.Invalid;
+        var yLookup = RiverYLookup.Invalid;
+
+        if (xAxisAllowed || yAxisAllowed)
         {
-            min = Vector2.Min(min, sampled[i]);
-            max = Vector2.Max(max, sampled[i]);
+            var min = sampled[0];
+            var max = sampled[0];
+            for (var i = 1; i < sampled.Count; i++)
+            {
+                min = Vector2.Min(min, sampled[i]);
+                max = Vector2.Max(max, sampled[i]);
+            }
+
+            var dx = Mathf.Abs(max.x - min.x);
+            var dy = Mathf.Abs(max.y - min.y);
+            if (xAxisAllowed && (!yAxisAllowed || dx >= dy))
+            {
+                xLookup = BuildSplineXLookup(sampled);
+                if (xLookup.Valid)
+                {
+                    mode = "XScan";
+                }
+            }
+            else if (yAxisAllowed)
+            {
+                yLookup = BuildSplineYLookup(sampled);
+                if (yLookup.Valid)
+                {
+                    mode = "YScan";
+                }
+            }
         }
 
-        var dx = Mathf.Abs(max.x - min.x);
-        var dy = Mathf.Abs(max.y - min.y);
-        var xAxis = dx >= dy;
-        var xLookup = xAxis ? BuildSplineXLookup(sampled) : RiverXLookup.Invalid;
-        var yLookup = xAxis ? RiverYLookup.Invalid : BuildSplineYLookup(sampled);
+        var paintedSteps = 0;
+        var confluenceHit = false;
 
-        if (xAxis && xLookup.Valid)
+        if (mode == "XScan")
         {
             for (var px = 0; px < texW; px++)
             {
@@ -515,9 +521,10 @@ public sealed class PredatorPreyDocuMapBuilder
                 FillVerticalSpan(floodPx, texW, texH, px, centerY, floodHalfPx, floodCol);
                 FillVerticalSpan(bankPx, texW, texH, px, centerY, bankHalfPx, bankCol);
                 FillVerticalSpan(waterPx, texW, texH, px, centerY, waterHalfPx, waterCol);
+                paintedSteps++;
             }
         }
-        else if (yLookup.Valid)
+        else if (mode == "YScan")
         {
             for (var py = 0; py < texH; py++)
             {
@@ -531,12 +538,60 @@ public sealed class PredatorPreyDocuMapBuilder
                 FillHorizontalSpan(floodPx, texW, texH, py, centerX, floodHalfPx, floodCol);
                 FillHorizontalSpan(bankPx, texW, texH, py, centerX, bankHalfPx, bankCol);
                 FillHorizontalSpan(waterPx, texW, texH, py, centerX, waterHalfPx, waterCol);
+                paintedSteps++;
             }
+        }
+        else
+        {
+            var joinPoint = sampled[0];
+            var hasJoinPoint = false;
+            var stepWorld = Mathf.Max(0.5f, river.width * 0.5f * 0.6f);
+            for (var i = 1; i < sampled.Count; i++)
+            {
+                var a = sampled[i - 1];
+                var b = sampled[i];
+                var segLen = Vector2.Distance(a, b);
+                var subSteps = Mathf.Max(1, Mathf.CeilToInt(segLen / stepWorld));
+                for (var s = 0; s <= subSteps; s++)
+                {
+                    var t = s / Mathf.Max(1f, subSteps);
+                    var point = Vector2.Lerp(a, b, t);
+                    var center = WorldToPixel(point.x, point.y, halfW, halfH, texW, texH);
+                    var waterIndex = center.px + center.py * texW;
+                    if (mainWaterMask[waterIndex])
+                    {
+                        confluenceHit = true;
+                        if (hasJoinPoint)
+                        {
+                            var joinPixel = WorldToPixel(joinPoint.x, joinPoint.y, halfW, halfH, texW, texH);
+                            var joinHalfPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu * 0.7f));
+                            PaintDisc(waterPx, texW, texH, joinPixel, joinHalfPx, waterCol);
+                        }
+
+                        goto StampDone;
+                    }
+
+                    var progress01 = (i - 1 + t) / Mathf.Max(1f, sampled.Count - 1f);
+                    var width = river.width * (1f + Mathf.Sin(progress01 * Mathf.PI * 5f) * 0.1f);
+                    var waterHalfPx = Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu));
+                    var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + bankExtra) * ppu));
+                    var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + floodExtra * 0.5f) * ppu));
+                    PaintDisc(floodPx, texW, texH, center, floodHalfPx, floodCol);
+                    PaintDisc(bankPx, texW, texH, center, bankHalfPx, bankCol);
+                    PaintDisc(waterPx, texW, texH, center, waterHalfPx, waterCol);
+                    joinPoint = point;
+                    hasJoinPoint = true;
+                    paintedSteps++;
+                }
+            }
+
+StampDone:;
         }
 
         var startCap = sampled[0];
         var endCap = sampled[sampled.Count - 1];
-        var endCaps = confluenceHit ? new[] { startCap } : new[] { startCap, endCap };
+        var addEndCap = mode != "Stamp" || !confluenceHit;
+        var endCaps = addEndCap ? new[] { startCap, endCap } : new[] { startCap };
         for (var i = 0; i < endCaps.Length; i++)
         {
             var c = WorldToPixel(endCaps[i].x, endCaps[i].y, halfW, halfH, texW, texH);
@@ -564,10 +619,34 @@ public sealed class PredatorPreyDocuMapBuilder
             crossingsGrumeti.Add(node);
         }
 
-        Debug.Log($"[SerengetiConfluence] hit={(confluenceHit ? "true" : "false")} idx={confluenceIndex} sampledIn={sampledIn} sampledOut={sampledOut} endWorld=({endCap.x:0.##},{endCap.y:0.##})");
-        Debug.Log($"[SerengetiWater] grumeti axis={(xAxis ? "X" : "Y")} samples={sampled.Count} width={river.width:0.##} floodExtra={floodExtra:0.##} bankExtra={bankExtra:0.##}");
+        Debug.Log($"[SerengetiConfluence] hit={(confluenceHit ? "true" : "false")} mode={mode} paintedSteps={paintedSteps}");
+        Debug.Log($"[SerengetiWater] grumeti mode={mode} xRev={xReversals} yRev={yReversals} samples={sampled.Count}");
 
         return sampled.Count;
+    }
+
+    private static int CountSignReversals(IReadOnlyList<Vector2> points, bool axisX, float eps)
+    {
+        var reversals = 0;
+        var previousSign = 0;
+        for (var i = 1; i < points.Count; i++)
+        {
+            var delta = axisX ? points[i].x - points[i - 1].x : points[i].y - points[i - 1].y;
+            if (Mathf.Abs(delta) < eps)
+            {
+                continue;
+            }
+
+            var sign = delta > 0f ? 1 : -1;
+            if (previousSign != 0 && sign != previousSign)
+            {
+                reversals++;
+            }
+
+            previousSign = sign;
+        }
+
+        return reversals;
     }
 
     private void BuildKopjes(SerengetiMapSpec spec, float halfW, float halfH)
