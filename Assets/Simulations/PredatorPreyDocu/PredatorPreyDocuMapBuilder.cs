@@ -107,6 +107,12 @@ public sealed class PredatorPreyDocuMapBuilder
 
     public void UpdateSeasonVisuals(float seasonalPresence01)
     {
+        var floodAlpha = Mathf.Clamp01(seasonalPresence01);
+        if (floodplainSR != null)
+        {
+            floodplainSR.color = new Color(1f, 1f, 1f, floodAlpha);
+        }
+
         if (seasonalWaterSR != null)
         {
             seasonalWaterSR.color = new Color(1f, 1f, 1f, Mathf.Clamp01(seasonalPresence01));
@@ -340,14 +346,14 @@ public sealed class PredatorPreyDocuMapBuilder
         var permPx = new Color32[w * h];
         var seasonPx = new Color32[w * h];
 
-        mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, seasonPx, bankPx, permPx);
+        mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
         var mainWaterMask = new bool[permPx.Length];
         for (var i = 0; i < permPx.Length; i++)
         {
             mainWaterMask[i] = permPx[i].a > 0;
         }
 
-        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, seasonPx, bankPx, permPx, mainWaterMask);
+        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx, mainWaterMask);
 
         foreach (var pool in spec.water.pools)
         {
