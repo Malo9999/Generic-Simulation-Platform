@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 public sealed class PredatorPreyDocuMapBuilder
@@ -30,6 +31,18 @@ public sealed class PredatorPreyDocuMapBuilder
         public readonly float ey;
     }
 
+    private readonly struct OxbowPlacement
+    {
+        public OxbowPlacement(Vector2 center, float radius)
+        {
+            this.center = center;
+            this.radius = radius;
+        }
+
+        public readonly Vector2 center;
+        public readonly float radius;
+    }
+
     private const string SortingLayerDefault = "Default";
     private const int TerrainBaseOrder = -200;
     private const int RegionOverlayOrder = -198;
@@ -58,6 +71,7 @@ public sealed class PredatorPreyDocuMapBuilder
     private int permanentWaterMaskWidth;
     private int permanentWaterMaskHeight;
     private readonly List<Vector2> mainRiverWaterNodes = new();
+    private readonly List<OxbowPlacement> oxbowPlacements = new();
 
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
@@ -157,6 +171,7 @@ public sealed class PredatorPreyDocuMapBuilder
         permanentWaterMaskWidth = 0;
         permanentWaterMaskHeight = 0;
         mainRiverWaterNodes.Clear();
+        oxbowPlacements.Clear();
 
         waterNodes.Clear();
         shadeNodes.Clear();
@@ -822,40 +837,44 @@ StampDone:;
         }
 
         peaks.Sort((a, b) => b.curvature.CompareTo(a.curvature));
-        var selectedCenters = new List<Vector2>(2);
-        var seed = Mathf.Abs(StableHash.Hash32($"{mapId}:oxbow"));
+        var selectedPlacements = new List<OxbowPlacement>(2);
         foreach (var peak in peaks)
         {
-            if (selectedCenters.Count >= 2)
+            if (selectedPlacements.Count >= 2)
             {
                 break;
             }
 
-            TryPlaceOxbowPeak(peak, sampledMain, stride, mainRiver, halfW, halfH, texW, texH, ppu, permPx, bankPx, seed, selectedCenters, enforceSpacing: true);
+            TryPlaceOxbowPeak(peak, sampledMain, stride, mainRiver, halfW, halfH, texW, texH, ppu, permPx, bankPx, selectedPlacements, enforceSpacing: true);
         }
 
-        if (peaks.Count > 0 && selectedCenters.Count == 0)
+        if (peaks.Count > 0 && selectedPlacements.Count == 0)
         {
-            TryPlaceOxbowPeak(peaks[0], sampledMain, stride, mainRiver, halfW, halfH, texW, texH, ppu, permPx, bankPx, seed, selectedCenters, enforceSpacing: false);
+            TryPlaceOxbowPeak(peaks[0], sampledMain, stride, mainRiver, halfW, halfH, texW, texH, ppu, permPx, bankPx, selectedPlacements, enforceSpacing: false);
         }
 
-        if (selectedCenters.Count == 0)
+        if (selectedPlacements.Count == 0)
         {
             Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count=0 centers=()");
             return;
         }
 
+        oxbowPlacements.Clear();
+        oxbowPlacements.AddRange(selectedPlacements);
+
         var centersText = string.Empty;
-        for (var i = 0; i < selectedCenters.Count; i++)
+        for (var i = 0; i < selectedPlacements.Count; i++)
         {
             if (i > 0) centersText += ";";
-            centersText += $"{selectedCenters[i].x:0.#},{selectedCenters[i].y:0.#}";
+            var center = selectedPlacements[i].center;
+            var radius = selectedPlacements[i].radius;
+            centersText += $"oxbow{i}=(x={center.x.ToString(\"0.0\", CultureInfo.InvariantCulture)} y={center.y.ToString(\"0.0\", CultureInfo.InvariantCulture)} r={radius.ToString(\"0.0\", CultureInfo.InvariantCulture)})";
         }
 
-        Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count={selectedCenters.Count} centers=({centersText})");
+        Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count={selectedPlacements.Count} centers=({centersText})");
     }
 
-    private bool TryPlaceOxbowPeak((int index, float curvature) peak, List<Vector2> sampledMain, int stride, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] permPx, Color32[] bankPx, int seed, List<Vector2> selectedCenters, bool enforceSpacing)
+    private bool TryPlaceOxbowPeak((int index, float curvature) peak, List<Vector2> sampledMain, int stride, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] permPx, Color32[] bankPx, List<OxbowPlacement> selectedPlacements, bool enforceSpacing)
     {
         var i = peak.index;
         var prev = (sampledMain[i] - sampledMain[i - stride]).normalized;
@@ -866,7 +885,8 @@ StampDone:;
         if (tangent.sqrMagnitude < 1e-5f) tangent = prev;
         var normal = new Vector2(-tangent.y, tangent.x);
         var insideSide = -turnSign * normal;
-        var center = sampledMain[i] + insideSide * ((mainRiver.widthNorth + mainRiver.widthSouth) * 0.5f * 1.2f + 40f);
+        var strength = Mathf.Clamp01(peak.curvature * 3f);
+        var center = sampledMain[i] + insideSide * ((mainRiver.widthNorth + mainRiver.widthSouth) * 0.5f * 1.2f + Mathf.Lerp(18f, 28f, strength));
         if (center.x < -halfW || center.x > halfW || center.y < -halfH || center.y > halfH)
         {
             return false;
@@ -874,9 +894,9 @@ StampDone:;
 
         if (enforceSpacing)
         {
-            for (var c = 0; c < selectedCenters.Count; c++)
+            for (var c = 0; c < selectedPlacements.Count; c++)
             {
-                if (Vector2.Distance(center, selectedCenters[c]) < 120f)
+                if (Vector2.Distance(center, selectedPlacements[c].center) < 120f)
                 {
                     return false;
                 }
@@ -888,19 +908,18 @@ StampDone:;
             }
         }
 
-        var strength = Mathf.Clamp01(peak.curvature * 3f);
-        var rWorld = Mathf.Lerp(22f, 40f, strength) + (Hash01(seed, i, 147) - 0.5f) * 2f;
+        var majorWorld = Mathf.Lerp(28f, 52f, strength);
+        var minorWorld = Mathf.Lerp(16f, 34f, strength);
+        var thicknessWorld = Mathf.Lerp(10f, 18f, strength);
+        var rWorld = Mathf.Max(majorWorld, minorWorld) + thicknessWorld;
         if (WouldOverlapPermanentWaterHeavily(center, rWorld, halfW, halfH, texW, texH, ppu, permPx))
         {
             return false;
         }
 
-        var cpx = WorldToPixel(center.x, center.y, halfW, halfH, texW, texH);
-        var waterRadius = Mathf.Max(1, Mathf.RoundToInt(rWorld * ppu * 0.5f));
-        PaintDisc(permPx, texW, texH, cpx, waterRadius, new Color32(44, 126, 218, 220));
-        PaintRing(bankPx, texW, texH, cpx, waterRadius + Mathf.Max(1, Mathf.RoundToInt(2.5f * ppu)), Mathf.Max(1, Mathf.RoundToInt(2f * ppu)), new Color32(66, 103, 58, 95));
+        PaintOxbowCrescent(permPx, bankPx, texW, texH, ppu, halfW, halfH, center, tangent, insideSide, majorWorld, minorWorld, thicknessWorld, new Color32(44, 126, 218, 230), new Color32(66, 103, 58, 95));
         waterNodes.Add(center);
-        selectedCenters.Add(center);
+        selectedPlacements.Add(new OxbowPlacement(center, rWorld));
         return true;
     }
 
@@ -1260,8 +1279,41 @@ StampDone:;
             CreateDebugLabel(debugRoot, node.position + new Vector2(node.radius + 1.4f, node.radius + 0.8f), "Kopjes", color);
         }
 
+        if (oxbowPlacements.Count > 0)
+        {
+            var oxbowRoot = new GameObject("OxbowMarkers").transform;
+            oxbowRoot.SetParent(debugRoot, false);
+            var color = new Color(1f, 0f, 1f, 0.9f);
+            for (var i = 0; i < oxbowPlacements.Count; i++)
+            {
+                var marker = oxbowPlacements[i];
+                CreateCircleOutline(oxbowRoot, marker.center, Mathf.Max(8f, marker.radius * 0.5f), color);
+                CreateDebugLabel(oxbowRoot, marker.center + new Vector2(3f, 3f), $"Oxbow{i + 1}", color);
+            }
+        }
+
         Debug.Log($"[SerengetiDebug] RegionOutlines drawn: {spec.regions.Count} (no global lines)");
         Debug.Log($"[SerengetiDebug] overlays=ON regions={spec.regions.Count} mainCross={crossingsMain.Count} grumetiCross={crossingsGrumeti.Count} pools={pools.Count} kopjes={kopjes.Count} wetlands={wetlands.Count}");
+    }
+
+    private static void PaintOxbowCrescent(Color32[] waterPx, Color32[] bankPx, int texW, int texH, float ppu,
+        float halfW, float halfH, Vector2 center, Vector2 tangent, Vector2 normal,
+        float majorWorld, float minorWorld, float thicknessWorld,
+        Color32 waterCol, Color32 bankCol)
+    {
+        var stepDeg = 12f;
+        var waterRadius = Mathf.Max(1, Mathf.RoundToInt(thicknessWorld * 0.5f * ppu));
+        var bankRadius = waterRadius + Mathf.Max(1, Mathf.RoundToInt(2.5f * ppu));
+        var bankThickness = Mathf.Max(1, Mathf.RoundToInt(2f * ppu));
+
+        for (var angleDeg = -130f; angleDeg <= 130f; angleDeg += stepDeg)
+        {
+            var angle = angleDeg * Mathf.Deg2Rad;
+            var pos = center + tangent * (Mathf.Cos(angle) * majorWorld) + normal * (Mathf.Sin(angle) * minorWorld);
+            var cpx = WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH);
+            PaintDisc(waterPx, texW, texH, cpx, waterRadius, waterCol);
+            PaintRing(bankPx, texW, texH, cpx, bankRadius, bankThickness, bankCol);
+        }
     }
 
     private static void CreateRectOutline(Transform parent, float x0, float x1, float y0, float y1, Color color, float thickness)
