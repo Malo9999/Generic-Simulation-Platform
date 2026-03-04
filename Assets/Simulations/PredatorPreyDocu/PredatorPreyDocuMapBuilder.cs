@@ -682,16 +682,19 @@ StampDone:;
         var cutBanks = 0;
         var maxCurvMain = 0f;
         var maxCurvGrumeti = 0f;
+        var threshMain = 0f;
+        var threshGrumeti = 0f;
         var strideMain = 0;
         var strideGrumeti = 0;
-        PaintGeomorphForPolyline(sampledMain, mainRiver.widthNorth, mainRiver.widthSouth, mainRiver.bankExtra, 4, 26f, 22f, 311, pointBarPx, cutBankPx, ref bars, ref cutBanks, ref maxCurvMain, out strideMain, halfW, halfH, texW, texH, ppu);
-        PaintGeomorphForPolyline(sampledGrumeti, grumetiRiver.width, grumetiRiver.width, Mathf.Max(2f, mainRiver.bankExtra * 0.55f), 5, 18f, 16f, 719, pointBarPx, cutBankPx, ref bars, ref cutBanks, ref maxCurvGrumeti, out strideGrumeti, halfW, halfH, texW, texH, ppu);
-        Debug.Log($"[SerengetiGeomorph] mainSamples={sampledMain.Count} grumetiSamples={sampledGrumeti.Count} maxCurvMain={maxCurvMain:0.####} maxCurvGrumeti={maxCurvGrumeti:0.####} stride={strideMain}/{strideGrumeti} bars={bars} cutbanks={cutBanks}");
+        PaintGeomorphForPolyline(sampledMain, mainRiver.widthNorth, mainRiver.widthSouth, mainRiver.bankExtra, 4, 26f, 22f, 311, pointBarPx, cutBankPx, ref bars, ref cutBanks, ref maxCurvMain, out strideMain, out threshMain, halfW, halfH, texW, texH, ppu);
+        PaintGeomorphForPolyline(sampledGrumeti, grumetiRiver.width, grumetiRiver.width, Mathf.Max(2f, mainRiver.bankExtra * 0.55f), 5, 18f, 16f, 719, pointBarPx, cutBankPx, ref bars, ref cutBanks, ref maxCurvGrumeti, out strideGrumeti, out threshGrumeti, halfW, halfH, texW, texH, ppu);
+        Debug.Log($"[SerengetiGeomorph] mainSamples={sampledMain.Count} grumetiSamples={sampledGrumeti.Count} maxCurvMain={maxCurvMain:0.####} maxCurvGrumeti={maxCurvGrumeti:0.####} threshMain={threshMain:0.####} threshGrumeti={threshGrumeti:0.####} stride={strideMain}/{strideGrumeti} bars={bars} cutbanks={cutBanks}");
     }
 
-    private void PaintGeomorphForPolyline(List<Vector2> sampled, float widthStart, float widthEnd, float bankExtra, int step, float pointBarMaxRadius, float cutBankMaxRadius, int seedSalt, Color32[] pointBarPx, Color32[] cutBankPx, ref int bars, ref int cutBanks, ref float maxCurvature, out int strideUsed, float halfW, float halfH, int texW, int texH, float ppu)
+    private void PaintGeomorphForPolyline(List<Vector2> sampled, float widthStart, float widthEnd, float bankExtra, int step, float pointBarMaxRadius, float cutBankMaxRadius, int seedSalt, Color32[] pointBarPx, Color32[] cutBankPx, ref int bars, ref int cutBanks, ref float maxCurvature, out int strideUsed, out float curvatureThresholdUsed, float halfW, float halfH, int texW, int texH, float ppu)
     {
         strideUsed = 0;
+        curvatureThresholdUsed = 0.0025f;
         if (sampled == null || sampled.Count < 3)
         {
             return;
@@ -704,6 +707,24 @@ StampDone:;
             return;
         }
 
+        var maxCurvLocal = 0f;
+        for (var i = stride; i < sampled.Count - stride; i += Mathf.Max(3, step))
+        {
+            var prev = (sampled[i] - sampled[i - stride]).normalized;
+            var next = (sampled[i + stride] - sampled[i]).normalized;
+            if (prev.sqrMagnitude < 1e-5f || next.sqrMagnitude < 1e-5f)
+            {
+                continue;
+            }
+
+            var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
+            maxCurvLocal = Mathf.Max(maxCurvLocal, curvature);
+        }
+
+        var curvThresh = Mathf.Max(0.0025f, maxCurvLocal * 0.35f);
+        curvatureThresholdUsed = curvThresh;
+        maxCurvature = Mathf.Max(maxCurvature, maxCurvLocal);
+
         for (var i = stride; i < sampled.Count - stride; i += Mathf.Max(3, step))
         {
             var prev = (sampled[i] - sampled[i - stride]).normalized;
@@ -715,7 +736,7 @@ StampDone:;
 
             var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
             maxCurvature = Mathf.Max(maxCurvature, curvature);
-            if (curvature <= 0.01f)
+            if (curvature <= curvThresh)
             {
                 continue;
             }
@@ -757,10 +778,13 @@ StampDone:;
     {
         var peaks = new List<(int index, float curvature)>();
         var maxCurv = 0f;
+        var peakThresh = 0.004f;
+        var bestCurv = 0f;
+        var bestIndex = -1;
         var stride = Mathf.Clamp(Mathf.RoundToInt(sampledMain.Count * 0.01f), 3, 10);
         if (sampledMain.Count <= stride * 2)
         {
-            Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} stride={stride} count=0 centers=()");
+            Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count=0 centers=()");
             return;
         }
 
@@ -771,10 +795,30 @@ StampDone:;
             if (prev.sqrMagnitude < 1e-5f || next.sqrMagnitude < 1e-5f) continue;
             var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
             maxCurv = Mathf.Max(maxCurv, curvature);
-            if (curvature > 0.015f)
+            if (curvature > bestCurv)
+            {
+                bestCurv = curvature;
+                bestIndex = i;
+            }
+        }
+
+        peakThresh = Mathf.Max(0.004f, maxCurv * 0.55f);
+
+        for (var i = stride; i < sampledMain.Count - stride; i++)
+        {
+            var prev = (sampledMain[i] - sampledMain[i - stride]).normalized;
+            var next = (sampledMain[i + stride] - sampledMain[i]).normalized;
+            if (prev.sqrMagnitude < 1e-5f || next.sqrMagnitude < 1e-5f) continue;
+            var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
+            if (curvature >= peakThresh)
             {
                 peaks.Add((i, curvature));
             }
+        }
+
+        if (peaks.Count == 0 && bestCurv > 0f && bestIndex >= 0)
+        {
+            peaks.Add((bestIndex, bestCurv));
         }
 
         peaks.Sort((a, b) => b.curvature.CompareTo(a.curvature));
@@ -797,7 +841,7 @@ StampDone:;
 
         if (selectedCenters.Count == 0)
         {
-            Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} stride={stride} count=0 centers=()");
+            Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count=0 centers=()");
             return;
         }
 
@@ -808,7 +852,7 @@ StampDone:;
             centersText += $"{selectedCenters[i].x:0.#},{selectedCenters[i].y:0.#}";
         }
 
-        Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} stride={stride} count={selectedCenters.Count} centers=({centersText})");
+        Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count={selectedCenters.Count} centers=({centersText})");
     }
 
     private bool TryPlaceOxbowPeak((int index, float curvature) peak, List<Vector2> sampledMain, int stride, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] permPx, Color32[] bankPx, int seed, List<Vector2> selectedCenters, bool enforceSpacing)
