@@ -340,14 +340,14 @@ public sealed class PredatorPreyDocuMapBuilder
         var permPx = new Color32[w * h];
         var seasonPx = new Color32[w * h];
 
-        mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
+        mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, seasonPx, bankPx, permPx);
         var mainWaterMask = new bool[permPx.Length];
         for (var i = 0; i < permPx.Length; i++)
         {
             mainWaterMask[i] = permPx[i].a > 0;
         }
 
-        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx, mainWaterMask);
+        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, seasonPx, bankPx, permPx, mainWaterMask);
 
         foreach (var pool in spec.water.pools)
         {
@@ -378,10 +378,11 @@ public sealed class PredatorPreyDocuMapBuilder
         bankSR = CreateSprite("BankOverlayTexture", ToTex(w, h, bankPx), ppu, BankOrder);
         permanentWaterSR = CreateSprite("PermanentWaterOverlay", ToTex(w, h, permPx), ppu, PermanentWaterOrder);
         seasonalWaterSR = CreateSprite("SeasonalWaterOverlay", ToTex(w, h, seasonPx), ppu, SeasonalWaterOrder);
+        Debug.Log($"[SerengetiWaterStyle] bankPermanent=true floodSeasonal=true bankExtra={spec.water.mainRiver.bankExtra:0.##} floodExtra={spec.water.mainRiver.floodplainExtra:0.##}");
         Debug.Log($"[SerengetiConformance] WaterTex={w}x{h}@{ppu:0.###}PPU");
     }
 
-    private int PaintMainRiverScanline(RiverSpec river, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx)
+    private int PaintMainRiverScanline(RiverSpec river, float halfW, float halfH, int texW, int texH, float ppu, Color32[] seasonalPx, Color32[] bankPx, Color32[] waterPx)
     {
         var worldPoints = new List<Vector2>();
         foreach (var p in river.centerline)
@@ -414,7 +415,7 @@ public sealed class PredatorPreyDocuMapBuilder
             }
 
             var width = Mathf.Lerp(river.widthNorth, river.widthSouth, progress01);
-            FillHorizontalSpan(floodPx, texW, texH, py, WorldToPixelX(xWorld, halfW, texW), Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu), floodCol);
+            FillHorizontalSpan(seasonalPx, texW, texH, py, WorldToPixelX(xWorld, halfW, texW), Mathf.RoundToInt((width * 0.5f + river.floodplainExtra * 0.5f) * ppu), floodCol);
             FillHorizontalSpan(bankPx, texW, texH, py, WorldToPixelX(xWorld, halfW, texW), Mathf.RoundToInt((width * 0.5f + river.bankExtra) * ppu), bankCol);
             FillHorizontalSpan(waterPx, texW, texH, py, WorldToPixelX(xWorld, halfW, texW), Mathf.RoundToInt(width * 0.5f * ppu), waterCol);
         }
@@ -439,7 +440,7 @@ public sealed class PredatorPreyDocuMapBuilder
         return sampled.Count;
     }
 
-    private int PaintGrumetiPolyline(RiverSpec river, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx, bool[] mainWaterMask)
+    private int PaintGrumetiPolyline(RiverSpec river, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] seasonalPx, Color32[] bankPx, Color32[] waterPx, bool[] mainWaterMask)
     {
         var worldPoints = new List<Vector2>();
         foreach (var p in river.centerline)
@@ -458,10 +459,10 @@ public sealed class PredatorPreyDocuMapBuilder
             return 0;
         }
 
-        var bankExtra = Mathf.Max(6f, mainRiver.bankExtra * 0.7f);
-        var floodExtra = Mathf.Max(45f, mainRiver.floodplainExtra * 0.55f);
-        var floodCol = new Color32(103, 136, 89, 92);
-        var bankCol = new Color32(68, 100, 58, 145);
+        var bankExtra = mainRiver.bankExtra;
+        var floodExtra = mainRiver.floodplainExtra;
+        var floodCol = new Color32(108, 145, 92, 120);
+        var bankCol = new Color32(73, 108, 61, 170);
         var waterCol = new Color32(35, 120, 220, 255);
 
         var reversalEps = 0.0001f;
@@ -518,7 +519,7 @@ public sealed class PredatorPreyDocuMapBuilder
                 var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + bankExtra) * ppu));
                 var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + floodExtra * 0.5f) * ppu));
                 var centerY = WorldToPixel(0f, yWorld, halfW, halfH, texW, texH).py;
-                FillVerticalSpan(floodPx, texW, texH, px, centerY, floodHalfPx, floodCol);
+                FillVerticalSpan(seasonalPx, texW, texH, px, centerY, floodHalfPx, floodCol);
                 FillVerticalSpan(bankPx, texW, texH, px, centerY, bankHalfPx, bankCol);
                 FillVerticalSpan(waterPx, texW, texH, px, centerY, waterHalfPx, waterCol);
                 paintedSteps++;
@@ -535,7 +536,7 @@ public sealed class PredatorPreyDocuMapBuilder
                 var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + bankExtra) * ppu));
                 var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + floodExtra * 0.5f) * ppu));
                 var centerX = WorldToPixelX(xWorld, halfW, texW);
-                FillHorizontalSpan(floodPx, texW, texH, py, centerX, floodHalfPx, floodCol);
+                FillHorizontalSpan(seasonalPx, texW, texH, py, centerX, floodHalfPx, floodCol);
                 FillHorizontalSpan(bankPx, texW, texH, py, centerX, bankHalfPx, bankCol);
                 FillHorizontalSpan(waterPx, texW, texH, py, centerX, waterHalfPx, waterCol);
                 paintedSteps++;
@@ -564,8 +565,13 @@ public sealed class PredatorPreyDocuMapBuilder
                         if (hasJoinPoint)
                         {
                             var joinPixel = WorldToPixel(joinPoint.x, joinPoint.y, halfW, halfH, texW, texH);
-                            var joinHalfPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu * 0.7f));
-                            PaintDisc(waterPx, texW, texH, joinPixel, joinHalfPx, waterCol);
+                            var joinWidth = river.width * 0.7f;
+                            var joinWaterHalfPx = Mathf.Max(1, Mathf.RoundToInt(joinWidth * 0.5f * ppu));
+                            var joinBankHalfPx = Mathf.Max(1, Mathf.RoundToInt((joinWidth * 0.5f + bankExtra) * ppu));
+                            var joinFloodHalfPx = Mathf.Max(1, Mathf.RoundToInt((joinWidth * 0.5f + floodExtra * 0.5f) * ppu));
+                            PaintDisc(seasonalPx, texW, texH, joinPixel, joinFloodHalfPx, floodCol);
+                            PaintDisc(bankPx, texW, texH, joinPixel, joinBankHalfPx, bankCol);
+                            PaintDisc(waterPx, texW, texH, joinPixel, joinWaterHalfPx, waterCol);
                         }
 
                         goto StampDone;
@@ -576,7 +582,7 @@ public sealed class PredatorPreyDocuMapBuilder
                     var waterHalfPx = Mathf.Max(1, Mathf.RoundToInt(width * 0.5f * ppu));
                     var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + bankExtra) * ppu));
                     var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((width * 0.5f + floodExtra * 0.5f) * ppu));
-                    PaintDisc(floodPx, texW, texH, center, floodHalfPx, floodCol);
+                    PaintDisc(seasonalPx, texW, texH, center, floodHalfPx, floodCol);
                     PaintDisc(bankPx, texW, texH, center, bankHalfPx, bankCol);
                     PaintDisc(waterPx, texW, texH, center, waterHalfPx, waterCol);
                     joinPoint = point;
@@ -598,7 +604,7 @@ StampDone:;
             var waterHalfPx = Mathf.Max(1, Mathf.RoundToInt(river.width * 0.5f * ppu));
             var bankHalfPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + bankExtra) * ppu));
             var floodHalfPx = Mathf.Max(1, Mathf.RoundToInt((river.width * 0.5f + floodExtra * 0.5f) * ppu));
-            PaintDisc(floodPx, texW, texH, c, floodHalfPx, floodCol);
+            PaintDisc(seasonalPx, texW, texH, c, floodHalfPx, floodCol);
             PaintDisc(bankPx, texW, texH, c, bankHalfPx, bankCol);
             PaintDisc(waterPx, texW, texH, c, waterHalfPx, waterCol);
         }
