@@ -341,7 +341,13 @@ public sealed class PredatorPreyDocuMapBuilder
         var seasonPx = new Color32[w * h];
 
         mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
-        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
+        var mainWaterMask = new bool[permPx.Length];
+        for (var i = 0; i < permPx.Length; i++)
+        {
+            mainWaterMask[i] = permPx[i].a > 0;
+        }
+
+        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx, mainWaterMask);
 
         foreach (var pool in spec.water.pools)
         {
@@ -433,7 +439,7 @@ public sealed class PredatorPreyDocuMapBuilder
         return sampled.Count;
     }
 
-    private int PaintGrumetiPolyline(RiverSpec river, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx)
+    private int PaintGrumetiPolyline(RiverSpec river, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] floodPx, Color32[] bankPx, Color32[] waterPx, bool[] mainWaterMask)
     {
         var worldPoints = new List<Vector2>();
         foreach (var p in river.centerline)
@@ -451,6 +457,29 @@ public sealed class PredatorPreyDocuMapBuilder
         {
             return 0;
         }
+
+        var sampledIn = sampled.Count;
+        var confluenceIndex = -1;
+        for (var i = 0; i < sampled.Count; i++)
+        {
+            var pix = WorldToPixel(sampled[i].x, sampled[i].y, halfW, halfH, texW, texH);
+            if (!mainWaterMask[pix.px + pix.py * texW])
+            {
+                continue;
+            }
+
+            confluenceIndex = i;
+            break;
+        }
+
+        var confluenceHit = confluenceIndex >= 0;
+        if (confluenceHit)
+        {
+            var keepCount = Mathf.Clamp(confluenceIndex + 2, 2, sampled.Count);
+            sampled = sampled.GetRange(0, keepCount);
+        }
+
+        var sampledOut = sampled.Count;
 
         var bankExtra = Mathf.Max(6f, mainRiver.bankExtra * 0.7f);
         var floodExtra = Mathf.Max(45f, mainRiver.floodplainExtra * 0.55f);
@@ -507,15 +536,7 @@ public sealed class PredatorPreyDocuMapBuilder
 
         var startCap = sampled[0];
         var endCap = sampled[sampled.Count - 1];
-        var confluenceThreshold = 35f;
-        var endDist = float.MaxValue;
-        for (var i = 0; i < waterNodes.Count; i++)
-        {
-            endDist = Mathf.Min(endDist, Vector2.Distance(endCap, waterNodes[i]));
-        }
-
-        var confluenceSkipEndCap = endDist <= confluenceThreshold;
-        var endCaps = confluenceSkipEndCap ? new[] { startCap } : new[] { startCap, endCap };
+        var endCaps = confluenceHit ? new[] { startCap } : new[] { startCap, endCap };
         for (var i = 0; i < endCaps.Length; i++)
         {
             var c = WorldToPixel(endCaps[i].x, endCaps[i].y, halfW, halfH, texW, texH);
@@ -543,7 +564,7 @@ public sealed class PredatorPreyDocuMapBuilder
             crossingsGrumeti.Add(node);
         }
 
-        Debug.Log($"[SerengetiWater] grumeti confluenceSkipEndCap={confluenceSkipEndCap} endDist={endDist:0.##}");
+        Debug.Log($"[SerengetiConfluence] hit={(confluenceHit ? "true" : "false")} idx={confluenceIndex} sampledIn={sampledIn} sampledOut={sampledOut} endWorld=({endCap.x:0.##},{endCap.y:0.##})");
         Debug.Log($"[SerengetiWater] grumeti axis={(xAxis ? "X" : "Y")} samples={sampled.Count} width={river.width:0.##} floodExtra={floodExtra:0.##} bankExtra={bankExtra:0.##}");
 
         return sampled.Count;
