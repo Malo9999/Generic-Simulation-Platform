@@ -74,7 +74,10 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
             appliedArenaRect = new Rect(-halfWidth, -halfHeight, arenaWidth, arenaHeight);
 
             var mainCamera = Camera.main;
-            var policies = FindObjectsOfType<ArenaCameraPolicy>(true);
+            var policies = UnityEngine.Object.FindObjectsByType<ArenaCameraPolicy>(
+                FindObjectsInactive.Include,
+                FindObjectsSortMode.None
+            );
             for (var i = 0; i < policies.Length; i++)
             {
                 var policy = policies[i];
