@@ -50,6 +50,10 @@ public sealed class PredatorPreyDocuMapBuilder
     private SpriteRenderer seasonalWaterSR;
     private int mainRiverRasterSamples;
     private int grumetiRasterSamples;
+    private bool[] permanentWaterMask;
+    private int permanentWaterMaskWidth;
+    private int permanentWaterMaskHeight;
+    private readonly List<Vector2> mainRiverWaterNodes = new();
 
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
@@ -143,6 +147,10 @@ public sealed class PredatorPreyDocuMapBuilder
         seasonalWaterSR = null;
         mainRiverRasterSamples = 0;
         grumetiRasterSamples = 0;
+        permanentWaterMask = null;
+        permanentWaterMaskWidth = 0;
+        permanentWaterMaskHeight = 0;
+        mainRiverWaterNodes.Clear();
 
         waterNodes.Clear();
         shadeNodes.Clear();
@@ -384,6 +392,14 @@ public sealed class PredatorPreyDocuMapBuilder
         bankSR = CreateSprite("BankOverlayTexture", ToTex(w, h, bankPx), ppu, BankOrder);
         permanentWaterSR = CreateSprite("PermanentWaterOverlay", ToTex(w, h, permPx), ppu, PermanentWaterOrder);
         seasonalWaterSR = CreateSprite("SeasonalWaterOverlay", ToTex(w, h, seasonPx), ppu, SeasonalWaterOrder);
+        permanentWaterMask = new bool[permPx.Length];
+        for (var i = 0; i < permPx.Length; i++)
+        {
+            permanentWaterMask[i] = permPx[i].a > 0;
+        }
+
+        permanentWaterMaskWidth = w;
+        permanentWaterMaskHeight = h;
         Debug.Log($"[SerengetiWaterStyle] bankPermanent=true floodSeasonal=true bankExtra={spec.water.mainRiver.bankExtra:0.##} floodExtra={spec.water.mainRiver.floodplainExtra:0.##}");
         Debug.Log($"[SerengetiConformance] WaterTex={w}x{h}@{ppu:0.###}PPU");
     }
@@ -429,6 +445,7 @@ public sealed class PredatorPreyDocuMapBuilder
         for (var i = 0; i < sampled.Count; i += 40)
         {
             waterNodes.Add(sampled[i]);
+            mainRiverWaterNodes.Add(sampled[i]);
         }
 
         var dest = crossingsMain;
@@ -465,11 +482,14 @@ public sealed class PredatorPreyDocuMapBuilder
             return 0;
         }
 
-        var bankExtra = mainRiver.bankExtra;
-        var floodExtra = mainRiver.floodplainExtra;
-        var floodCol = new Color32(108, 145, 92, 120);
-        var bankCol = new Color32(73, 108, 61, 170);
+        var mainWidthRef = (mainRiver.widthNorth + mainRiver.widthSouth) * 0.5f;
+        var ratio = Mathf.Clamp(river.width / Mathf.Max(0.001f, mainWidthRef), 0.25f, 0.75f);
+        var bankExtra = Mathf.Max(2f, mainRiver.bankExtra * (0.75f * ratio + 0.25f));
+        var floodExtra = Mathf.Max(18f, mainRiver.floodplainExtra * (0.55f * ratio + 0.10f));
+        var floodCol = new Color32(108, 145, 92, (byte)Mathf.Clamp(Mathf.RoundToInt(120f * 0.75f), 0, 255));
+        var bankCol = new Color32(73, 108, 61, (byte)Mathf.Clamp(Mathf.RoundToInt(170f * 0.85f), 0, 255));
         var waterCol = new Color32(35, 120, 220, 255);
+        Debug.Log($"[SerengetiGrumetiStyle] width={river.width:0.##} ratio={ratio:0.###} bankExtra={bankExtra:0.##} floodExtra={floodExtra:0.##} bankA={bankCol.a} floodA={floodCol.a}");
 
         var reversalEps = 0.0001f;
         var xReversals = CountSignReversals(sampled, true, reversalEps);
@@ -667,39 +687,193 @@ StampDone:;
         var w = Mathf.Max(256, Mathf.RoundToInt(halfW * 2f * ppu));
         var h = Mathf.Max(256, Mathf.RoundToInt(halfH * 2f * ppu));
         var px = new Color32[w * h];
+        var localWaterMask = BuildLocalWaterMask(halfW, halfH, w, h);
+        var allNodes = new List<KopjesNodeData>(spec.landmarks.kopjes.Count + 20);
         foreach (var node in spec.landmarks.kopjes)
         {
             WarnIfNormalizedOutsideRange(node.x, "landmarks.kopjes.x");
             WarnIfNormalizedOutsideRange(node.y, "landmarks.kopjes.y");
             var world = ToWorld(node.x, node.y, halfW, halfH);
             WarnIfWorldOutsideBounds(world, halfW, halfH, "landmarks.kopjes");
-            var data = new KopjesNodeData(node.id, world, node.radius, node.cover);
+            allNodes.Add(new KopjesNodeData(node.id, world, node.radius, node.cover));
+        }
+
+        var extraEast = GenerateExtraEastKopjes(spec, halfW, halfH, 10, 35f);
+        allNodes.AddRange(extraEast);
+        var extraRiverbank = GenerateRiverbankKopjes(halfW, halfH, 6, 10, 35f);
+        allNodes.AddRange(extraRiverbank);
+
+        foreach (var data in allNodes)
+        {
             kopjes.Add(data);
             kopjesNodes.Add(data);
-            shadeNodes.Add(world);
-            var seed = Mathf.Abs(StableHash.Hash32(node.id ?? "kopjes"));
-            var speckles = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(200f, 600f, Mathf.Clamp01(node.radius / 48f))), 200, 600);
+            shadeNodes.Add(data.position);
+            var seed = Mathf.Abs(StableHash.Hash32(data.id ?? "kopjes"));
+            var speckles = Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(200f, 600f, Mathf.Clamp01(data.radius / 48f))), 200, 600);
             for (var i = 0; i < speckles; i++)
             {
                 var ang = Hash01(seed, i, 83) * Mathf.PI * 2f;
-                var mag = Mathf.Sqrt(Hash01(seed, i, 107)) * node.radius;
-                var p = WorldToPixel(world.x + Mathf.Cos(ang) * mag, world.y + Mathf.Sin(ang) * mag, halfW, halfH, w, h);
+                var mag = Mathf.Sqrt(Hash01(seed, i, 107)) * data.radius;
+                var p = WorldToPixel(data.position.x + Mathf.Cos(ang) * mag, data.position.y + Mathf.Sin(ang) * mag, halfW, halfH, w, h);
+                if (localWaterMask[p.px + p.py * w])
+                {
+                    continue;
+                }
+
                 var alpha = Mathf.RoundToInt(Mathf.Lerp(90f, 150f, Hash01(seed, i, 149)));
                 px[p.px + p.py * w] = Blend(px[p.px + p.py * w], new Color32(63, 62, 58, (byte)alpha));
             }
 
-            var blobCount = Mathf.Clamp(Mathf.RoundToInt(node.radius * 0.06f), 3, 8);
+            var blobCount = Mathf.Clamp(Mathf.RoundToInt(data.radius * 0.06f), 3, 8);
             for (var i = 0; i < blobCount; i++)
             {
                 var ang = Hash01(seed, i, 211) * Mathf.PI * 2f;
-                var mag = Mathf.Sqrt(Hash01(seed, i, 239)) * node.radius * 0.85f;
-                var p = WorldToPixel(world.x + Mathf.Cos(ang) * mag, world.y + Mathf.Sin(ang) * mag, halfW, halfH, w, h);
+                var mag = Mathf.Sqrt(Hash01(seed, i, 239)) * data.radius * 0.85f;
+                var p = WorldToPixel(data.position.x + Mathf.Cos(ang) * mag, data.position.y + Mathf.Sin(ang) * mag, halfW, halfH, w, h);
                 var rad = Mathf.Max(1, Mathf.RoundToInt(Mathf.Lerp(1.2f, 2.8f, Hash01(seed, i, 271)) * ppu));
-                PaintDisc(px, w, h, p, rad, new Color32(70, 69, 65, (byte)Mathf.RoundToInt(Mathf.Lerp(100f, 140f, Hash01(seed, i, 307)))));
+                PaintDiscMasked(px, localWaterMask, w, h, p, rad, new Color32(70, 69, 65, (byte)Mathf.RoundToInt(Mathf.Lerp(100f, 140f, Hash01(seed, i, 307)))));
             }
         }
 
+        Debug.Log($"[SerengetiKopjes] base={spec.landmarks.kopjes.Count} extraEast={extraEast.Count} extraRiverbank={extraRiverbank.Count}");
         kopjesSR = CreateSprite("KopjesOverlayTexture", ToTex(w, h, px), ppu, KopjesOverlayOrder);
+    }
+
+    private List<KopjesNodeData> GenerateExtraEastKopjes(SerengetiMapSpec spec, float halfW, float halfH, int targetCount, float minWaterDistance)
+    {
+        var result = new List<KopjesNodeData>(targetCount);
+        RegionSpec eastRegion = null;
+        foreach (var region in spec.regions)
+        {
+            if (string.Equals(region.id, "east_kopjes", StringComparison.OrdinalIgnoreCase))
+            {
+                eastRegion = region;
+                break;
+            }
+        }
+
+        if (eastRegion == null)
+        {
+            return result;
+        }
+
+        var xMin = Mathf.Lerp(-halfW, halfW, eastRegion.shape.xMin);
+        var xMax = Mathf.Lerp(-halfW, halfW, eastRegion.shape.xMax);
+        var yMin = Mathf.Lerp(-halfH, halfH, eastRegion.shape.yMin);
+        var yMax = Mathf.Lerp(-halfH, halfH, eastRegion.shape.yMax);
+        var seed = Mathf.Abs(StableHash.Hash32($"{spec.mapId}:east_kopjes_extra"));
+        for (var i = 0; i < targetCount * 8 && result.Count < targetCount; i++)
+        {
+            var nx = Hash01(seed, i, 37);
+            var ny = Hash01(seed, i, 53);
+            var world = new Vector2(Mathf.Lerp(xMin, xMax, nx), Mathf.Lerp(yMin, yMax, ny));
+            if (IsNearPermanentWater(world, minWaterDistance, halfW, halfH))
+            {
+                continue;
+            }
+
+            var radius = Mathf.Lerp(18f, 34f, Hash01(seed, i, 71));
+            var cover = Mathf.Lerp(0.75f, 0.90f, Hash01(seed, i, 89));
+            result.Add(new KopjesNodeData($"east_kopjes_extra_{result.Count + 1}", world, radius, cover));
+        }
+
+        return result;
+    }
+
+    private List<KopjesNodeData> GenerateRiverbankKopjes(float halfW, float halfH, int stepEvery, int maxCount, float minWaterDistance)
+    {
+        var result = new List<KopjesNodeData>(maxCount);
+        if (mainRiverWaterNodes.Count < 3)
+        {
+            return result;
+        }
+
+        for (var i = stepEvery; i < mainRiverWaterNodes.Count - 1 && result.Count < maxCount; i += stepEvery)
+        {
+            var prev = mainRiverWaterNodes[i - 1];
+            var next = mainRiverWaterNodes[i + 1];
+            var tangent = (next - prev).normalized;
+            if (tangent.sqrMagnitude < 0.0001f)
+            {
+                continue;
+            }
+
+            var normal = new Vector2(-tangent.y, tangent.x);
+            var seed = Mathf.Abs(StableHash.Hash32($"riverbank_kopjes_{i}"));
+            var side = Hash01(seed, i, 113) < 0.5f ? -1f : 1f;
+            var offset = Mathf.Lerp(25f, 55f, Hash01(seed, i, 149));
+            var candidate = mainRiverWaterNodes[i] + normal * (offset * side);
+            if (candidate.x < -halfW || candidate.x > halfW || candidate.y < -halfH || candidate.y > halfH)
+            {
+                continue;
+            }
+
+            if (IsNearPermanentWater(candidate, minWaterDistance, halfW, halfH))
+            {
+                continue;
+            }
+
+            var radius = Mathf.Lerp(14f, 24f, Hash01(seed, i, 173));
+            var cover = Mathf.Lerp(0.65f, 0.85f, Hash01(seed, i, 191));
+            result.Add(new KopjesNodeData($"riverbank_kopjes_{result.Count + 1}", candidate, radius, cover));
+        }
+
+        return result;
+    }
+
+    private bool[] BuildLocalWaterMask(float halfW, float halfH, int targetW, int targetH)
+    {
+        var mask = new bool[targetW * targetH];
+        if (permanentWaterMask == null || permanentWaterMaskWidth <= 0 || permanentWaterMaskHeight <= 0)
+        {
+            return mask;
+        }
+
+        for (var y = 0; y < targetH; y++)
+        {
+            var wy = Mathf.Lerp(-halfH, halfH, y / Mathf.Max(1f, targetH - 1f));
+            for (var x = 0; x < targetW; x++)
+            {
+                var wx = Mathf.Lerp(-halfW, halfW, x / Mathf.Max(1f, targetW - 1f));
+                var waterPixel = WorldToPixel(wx, wy, halfW, halfH, permanentWaterMaskWidth, permanentWaterMaskHeight);
+                mask[x + y * targetW] = permanentWaterMask[waterPixel.px + waterPixel.py * permanentWaterMaskWidth];
+            }
+        }
+
+        return mask;
+    }
+
+    private bool IsNearPermanentWater(Vector2 world, float minDistance, float halfW, float halfH)
+    {
+        if (permanentWaterMask == null || permanentWaterMaskWidth <= 0 || permanentWaterMaskHeight <= 0)
+        {
+            return false;
+        }
+
+        var center = WorldToPixel(world.x, world.y, halfW, halfH, permanentWaterMaskWidth, permanentWaterMaskHeight);
+        var worldPerPixelX = (2f * halfW) / Mathf.Max(1f, permanentWaterMaskWidth - 1f);
+        var worldPerPixelY = (2f * halfH) / Mathf.Max(1f, permanentWaterMaskHeight - 1f);
+        var radiusPx = Mathf.CeilToInt(minDistance / Mathf.Max(0.001f, Mathf.Min(worldPerPixelX, worldPerPixelY)));
+        var radiusSq = minDistance * minDistance;
+        for (var y = center.py - radiusPx; y <= center.py + radiusPx; y++)
+        {
+            if (y < 0 || y >= permanentWaterMaskHeight) continue;
+            for (var x = center.px - radiusPx; x <= center.px + radiusPx; x++)
+            {
+                if (x < 0 || x >= permanentWaterMaskWidth) continue;
+                if (!permanentWaterMask[x + y * permanentWaterMaskWidth]) continue;
+                var wx = Mathf.Lerp(-halfW, halfW, x / Mathf.Max(1f, permanentWaterMaskWidth - 1f));
+                var wy = Mathf.Lerp(-halfH, halfH, y / Mathf.Max(1f, permanentWaterMaskHeight - 1f));
+                var dx = wx - world.x;
+                var dy = wy - world.y;
+                if (dx * dx + dy * dy <= radiusSq)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private void BuildDebugOverlays(SerengetiMapSpec spec, ScenarioConfig config, float halfW, float halfH)
@@ -934,6 +1108,25 @@ StampDone:;
                 var dy = y - c.py;
                 if (dx * dx + dy * dy > r2) continue;
                 px[x + y * w] = Blend(px[x + y * w], col);
+            }
+        }
+    }
+
+    private static void PaintDiscMasked(Color32[] px, bool[] mask, int w, int h, (int px, int py) c, int r, Color32 col)
+    {
+        var r2 = r * r;
+        for (var y = c.py - r; y <= c.py + r; y++)
+        {
+            if (y < 0 || y >= h) continue;
+            for (var x = c.px - r; x <= c.px + r; x++)
+            {
+                if (x < 0 || x >= w) continue;
+                var dx = x - c.px;
+                var dy = y - c.py;
+                if (dx * dx + dy * dy > r2) continue;
+                var index = x + y * w;
+                if (mask != null && mask[index]) continue;
+                px[index] = Blend(px[index], col);
             }
         }
     }
