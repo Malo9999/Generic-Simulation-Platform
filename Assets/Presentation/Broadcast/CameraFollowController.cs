@@ -4,6 +4,7 @@ public class CameraFollowController : MonoBehaviour
 {
     public Camera mainCamera;
     public Transform target;
+    public ArenaCameraPolicy arenaCameraPolicy;
     public bool followEnabled = true;
     public Rect worldBounds = new Rect(-32f, -32f, 64f, 64f);
     public bool clampToBounds = true;
@@ -42,10 +43,27 @@ public class CameraFollowController : MonoBehaviour
 
         if (clampToBounds)
         {
-            nextPosition.x = Mathf.Clamp(nextPosition.x, worldBounds.xMin, worldBounds.xMax);
-            nextPosition.y = Mathf.Clamp(nextPosition.y, worldBounds.yMin, worldBounds.yMax);
+            var bounds = ResolveWorldBounds();
+            nextPosition.x = Mathf.Clamp(nextPosition.x, bounds.xMin, bounds.xMax);
+            nextPosition.y = Mathf.Clamp(nextPosition.y, bounds.yMin, bounds.yMax);
         }
 
         return nextPosition;
+    }
+
+    private Rect ResolveWorldBounds()
+    {
+        if (arenaCameraPolicy == null)
+        {
+            arenaCameraPolicy = FindAnyObjectByType<ArenaCameraPolicy>();
+        }
+
+        if (arenaCameraPolicy != null && arenaCameraPolicy.TryGetWorldBoundsRect(out var policyBounds))
+        {
+            worldBounds = policyBounds;
+            return policyBounds;
+        }
+
+        return worldBounds;
     }
 }

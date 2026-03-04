@@ -57,23 +57,76 @@ public class Bootstrapper : MonoBehaviour
     private bool IsReplayMode => string.Equals(currentConfig?.mode, "Replay", StringComparison.OrdinalIgnoreCase);
 
 #if UNITY_EDITOR
+    private static bool _ensureScheduled;
+
     private void OnValidate()
     {
+        if (Application.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            return;
+        }
+
         if (options == null)
         {
-            options = EnsureBootstrapOptionsAsset();
+            options = AssetDatabase.LoadAssetAtPath<BootstrapOptions>("Assets/_Bootstrap/BootstrapOptions.asset");
+            if (options == null)
+            {
+                ScheduleEnsureBootstrapAssets(this);
+            }
         }
 
         if (options != null && options.simulationCatalog == null)
         {
-            options.simulationCatalog = EnsureSimulationCatalogAsset();
-            EditorUtility.SetDirty(options);
+            ScheduleEnsureBootstrapAssets(this);
+        }
+    }
+
+    private static void ScheduleEnsureBootstrapAssets(Bootstrapper bootstrapper)
+    {
+        if (_ensureScheduled)
+        {
+            return;
         }
 
-        if (options != null)
+        _ensureScheduled = true;
+        EditorApplication.delayCall += () =>
         {
-            EnsureSimSettingsAssets(options);
-        }
+            _ensureScheduled = false;
+
+            if (Application.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                return;
+            }
+
+            if (bootstrapper == null)
+            {
+                return;
+            }
+
+            var resolvedOptions = bootstrapper.options;
+            if (resolvedOptions == null)
+            {
+                resolvedOptions = AssetDatabase.LoadAssetAtPath<BootstrapOptions>("Assets/_Bootstrap/BootstrapOptions.asset");
+            }
+
+            if (resolvedOptions == null)
+            {
+                resolvedOptions = EnsureBootstrapOptionsAsset();
+            }
+
+            if (resolvedOptions != null && resolvedOptions.simulationCatalog == null)
+            {
+                resolvedOptions.simulationCatalog = EnsureSimulationCatalogAsset();
+                EditorUtility.SetDirty(resolvedOptions);
+                AssetDatabase.SaveAssets();
+            }
+
+            if (bootstrapper.options != resolvedOptions)
+            {
+                bootstrapper.options = resolvedOptions;
+                EditorUtility.SetDirty(bootstrapper);
+            }
+        };
     }
 #endif
 
@@ -255,6 +308,24 @@ public class Bootstrapper : MonoBehaviour
             return bootstrapOptions.raceCarVisual;
         }
 
+        var extraBindings = bootstrapOptions.extraSimulations;
+        if (extraBindings != null)
+        {
+            for (var i = 0; i < extraBindings.Count; i++)
+            {
+                var binding = extraBindings[i];
+                if (binding == null || string.IsNullOrWhiteSpace(binding.simulationId))
+                {
+                    continue;
+                }
+
+                if (string.Equals(binding.simulationId, simulationId, StringComparison.OrdinalIgnoreCase) && binding.visual != null)
+                {
+                    return binding.visual;
+                }
+            }
+        }
+
         return null;
     }
 
@@ -288,6 +359,24 @@ public class Bootstrapper : MonoBehaviour
         if (string.Equals(simulationId, "RaceCar", StringComparison.OrdinalIgnoreCase))
         {
             return bootstrapOptions.raceCarSettings;
+        }
+
+        var extraBindings = bootstrapOptions.extraSimulations;
+        if (extraBindings != null)
+        {
+            for (var i = 0; i < extraBindings.Count; i++)
+            {
+                var binding = extraBindings[i];
+                if (binding == null || string.IsNullOrWhiteSpace(binding.simulationId))
+                {
+                    continue;
+                }
+
+                if (string.Equals(binding.simulationId, simulationId, StringComparison.OrdinalIgnoreCase) && binding.settings != null)
+                {
+                    return binding.settings;
+                }
+            }
         }
 
         return null;
@@ -382,6 +471,7 @@ public class Bootstrapper : MonoBehaviour
 
             ArenaBuilder.Build(simulationRoot.transform, currentConfig);
             var runnerSpawned = SpawnRunner(currentConfig);
+            SyncCameraBoundsAndFit(simulationId);
 
             if (IsReplayMode)
             {
@@ -450,6 +540,33 @@ public class Bootstrapper : MonoBehaviour
         if (scoreboardObject != null && scoreboardObject.activeSelf != visible)
         {
             scoreboardObject.SetActive(visible);
+        }
+    }
+
+    private static void SyncCameraBoundsAndFit(string simulationId)
+    {
+        var arenaBoundsObject = GameObject.Find("ArenaBounds");
+        var arenaBoundsCollider = arenaBoundsObject != null ? arenaBoundsObject.GetComponent<Collider2D>() : null;
+        var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
+
+        if (arenaCameraPolicy != null)
+        {
+            arenaCameraPolicy.ApplySimCameraProfile(simulationId);
+
+            if (arenaBoundsCollider != null)
+            {
+                arenaCameraPolicy.BindArenaBounds(arenaBoundsCollider, fitToBounds: true);
+            }
+            else
+            {
+                arenaCameraPolicy.FitToBounds();
+            }
+        }
+
+        var followController = UnityEngine.Object.FindAnyObjectByType<CameraFollowController>();
+        if (followController != null)
+        {
+            followController.arenaCameraPolicy = arenaCameraPolicy;
         }
     }
 
@@ -681,103 +798,120 @@ public class Bootstrapper : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-    private static void EnsureSimSettingsAssets(BootstrapOptions bootstrapOptions)
+    private static bool EnsureSimSettingsAssets(BootstrapOptions bootstrapOptions)
     {
         if (bootstrapOptions == null)
         {
-            return;
+            return false;
         }
+
+        var dirty = false;
 
         const string rootFolder = "Assets/_Bootstrap/SimSettings";
         if (!AssetDatabase.IsValidFolder("Assets/_Bootstrap"))
         {
             AssetDatabase.CreateFolder("Assets", "_Bootstrap");
+            dirty = true;
         }
 
         if (!AssetDatabase.IsValidFolder(rootFolder))
         {
             AssetDatabase.CreateFolder("Assets/_Bootstrap", "SimSettings");
+            dirty = true;
         }
 
-        bootstrapOptions.antColoniesSettings = EnsureSimSettingsAsset<AntColoniesSimSettings>(
+        dirty |= EnsureSimSettingsAsset(
             $"{rootFolder}/AntColoniesSimSettings.asset",
-            bootstrapOptions.antColoniesSettings);
-        bootstrapOptions.marbleRaceSettings = EnsureSimSettingsAsset<MarbleRaceSimSettings>(
+            ref bootstrapOptions.antColoniesSettings);
+        dirty |= EnsureSimSettingsAsset(
             $"{rootFolder}/MarbleRaceSimSettings.asset",
-            bootstrapOptions.marbleRaceSettings);
-        bootstrapOptions.fantasySportSettings = EnsureSimSettingsAsset<FantasySportSimSettings>(
+            ref bootstrapOptions.marbleRaceSettings);
+        dirty |= EnsureSimSettingsAsset(
             $"{rootFolder}/FantasySportSimSettings.asset",
-            bootstrapOptions.fantasySportSettings);
-        bootstrapOptions.raceCarSettings = EnsureSimSettingsAsset<RaceCarSimSettings>(
+            ref bootstrapOptions.fantasySportSettings);
+        dirty |= EnsureSimSettingsAsset(
             $"{rootFolder}/RaceCarSimSettings.asset",
-            bootstrapOptions.raceCarSettings);
+            ref bootstrapOptions.raceCarSettings);
 
-        bootstrapOptions.antColoniesVisual = EnsureSimVisualSettingsAsset(
+        dirty |= EnsureSimVisualSettingsAsset(
             $"{rootFolder}/AntColoniesSimVisualSettings.asset",
             "AntColonies",
             BasicShapeKind.Capsule,
-            bootstrapOptions.antColoniesVisual);
-        bootstrapOptions.marbleRaceVisual = EnsureSimVisualSettingsAsset(
+            ref bootstrapOptions.antColoniesVisual);
+        dirty |= EnsureSimVisualSettingsAsset(
             $"{rootFolder}/MarbleRaceSimVisualSettings.asset",
             "MarbleRace",
             BasicShapeKind.Circle,
-            bootstrapOptions.marbleRaceVisual);
-        bootstrapOptions.fantasySportVisual = EnsureSimVisualSettingsAsset(
+            ref bootstrapOptions.marbleRaceVisual);
+        dirty |= EnsureSimVisualSettingsAsset(
             $"{rootFolder}/FantasySportSimVisualSettings.asset",
             "FantasySport",
             BasicShapeKind.RoundedRect,
-            bootstrapOptions.fantasySportVisual);
-        bootstrapOptions.raceCarVisual = EnsureSimVisualSettingsAsset(
+            ref bootstrapOptions.fantasySportVisual);
+        dirty |= EnsureSimVisualSettingsAsset(
             $"{rootFolder}/RaceCarSimVisualSettings.asset",
             "RaceCar",
             BasicShapeKind.RoundedRect,
-            bootstrapOptions.raceCarVisual);
+            ref bootstrapOptions.raceCarVisual);
 
-        EditorUtility.SetDirty(bootstrapOptions);
-        AssetDatabase.SaveAssets();
+        if (dirty)
+        {
+            EditorUtility.SetDirty(bootstrapOptions);
+            AssetDatabase.SaveAssets();
+        }
+
+        return dirty;
     }
 
-    private static T EnsureSimSettingsAsset<T>(string assetPath, T current) where T : SimSettingsBase
+    private static bool EnsureSimSettingsAsset<T>(string assetPath, ref T current) where T : SimSettingsBase
     {
         if (current != null)
         {
-            return current;
+            return false;
         }
 
         var existing = AssetDatabase.LoadAssetAtPath<T>(assetPath);
         if (existing != null)
         {
-            return existing;
+            current = existing;
+            return true;
         }
 
         var created = ScriptableObject.CreateInstance<T>();
         AssetDatabase.CreateAsset(created, assetPath);
-        return created;
+        current = created;
+        return true;
     }
 
-    private static SimVisualSettings EnsureSimVisualSettingsAsset(string assetPath, string simulationId, BasicShapeKind shape, SimVisualSettings current)
+    private static bool EnsureSimVisualSettingsAsset(string assetPath, string simulationId, BasicShapeKind shape, ref SimVisualSettings current)
     {
+        var dirty = false;
+
         if (current != null)
         {
             if (!string.Equals(current.simulationId, simulationId, StringComparison.Ordinal))
             {
                 current.simulationId = simulationId;
                 EditorUtility.SetDirty(current);
+                dirty = true;
             }
 
-            return current;
+            return dirty;
         }
 
         var existing = AssetDatabase.LoadAssetAtPath<SimVisualSettings>(assetPath);
         if (existing != null)
         {
+            current = existing;
+            dirty = true;
             if (!string.Equals(existing.simulationId, simulationId, StringComparison.Ordinal))
             {
                 existing.simulationId = simulationId;
                 EditorUtility.SetDirty(existing);
+                dirty = true;
             }
 
-            return existing;
+            return dirty;
         }
 
         var created = ScriptableObject.CreateInstance<SimVisualSettings>();
@@ -788,7 +922,8 @@ public class Bootstrapper : MonoBehaviour
         created.agentSizePx = 64;
         created.defaultDebugMode = DebugPlaceholderMode.Overlay;
         AssetDatabase.CreateAsset(created, assetPath);
-        return created;
+        current = created;
+        return true;
     }
 
     private static BootstrapOptions EnsureBootstrapOptionsAsset()
@@ -853,6 +988,26 @@ public class Bootstrapper : MonoBehaviour
         AssetDatabase.SaveAssets();
         Debug.Log($"Bootstrapper: Created SimulationCatalog asset at {assetPath}");
         return catalog;
+    }
+
+    [MenuItem("Tools/GSP/Bootstrap/Ensure Bootstrap Assets")]
+    private static void EnsureBootstrapAssetsMenuItem()
+    {
+        var resolvedOptions = EnsureBootstrapOptionsAsset();
+        if (resolvedOptions == null)
+        {
+            return;
+        }
+
+        if (resolvedOptions.simulationCatalog == null)
+        {
+            resolvedOptions.simulationCatalog = EnsureSimulationCatalogAsset();
+            EditorUtility.SetDirty(resolvedOptions);
+        }
+
+        EnsureSimSettingsAssets(resolvedOptions);
+        AssetDatabase.SaveAssets();
+        Debug.Log("Bootstrapper: Ensured bootstrap assets.");
     }
 #endif
 

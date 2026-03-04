@@ -18,6 +18,7 @@ public static class PresentationBoundsSync
     {
         var behaviours = UnityEngine.Object.FindObjectsByType<MonoBehaviour>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         var minimapClickFound = false;
+        var minimapCamera = FindMinimapCamera();
 
         foreach (var behaviour in behaviours)
         {
@@ -33,6 +34,8 @@ public static class PresentationBoundsSync
             {
                 minimapClickFound = true;
                 EnsureMainCamera(behaviour, type);
+                SetNamedField(behaviour, type, "minimapCamera", minimapCamera);
+                SetNamedProperty(behaviour, type, "minimapCamera", minimapCamera);
 
                 if (!updated)
                 {
@@ -76,11 +79,20 @@ public static class PresentationBoundsSync
         }
 
         mainCamera.orthographic = true;
+        var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        var canRouteThroughPolicy = arenaCameraPolicy != null && arenaCameraPolicy.targetCamera == mainCamera;
 
         var position = mainCamera.transform.position;
         position.x = bounds.center.x;
         position.y = bounds.center.y;
-        mainCamera.transform.position = position;
+        if (canRouteThroughPolicy)
+        {
+            arenaCameraPolicy.transform.position = position;
+        }
+        else
+        {
+            mainCamera.transform.position = position;
+        }
 
         var halfH = bounds.height * 0.5f;
         var halfW = bounds.width * 0.5f;
@@ -88,7 +100,15 @@ public static class PresentationBoundsSync
         var sizeToFitWidth = halfW / Mathf.Max(0.01f, aspect);
         var baseSize = Mathf.Max(halfH, sizeToFitWidth);
         var pad = Mathf.Clamp(baseSize * 0.08f, 1.5f, 6f);
-        mainCamera.orthographicSize = baseSize + pad;
+        var framingOrtho = baseSize + pad;
+        if (canRouteThroughPolicy)
+        {
+            arenaCameraPolicy.SetOrthoFromExternal(framingOrtho, "PresentationBoundsSync.EnsureMainCameraFraming", syncZoomLevel: true);
+        }
+        else
+        {
+            mainCamera.orthographicSize = framingOrtho;
+        }
     }
 
     private static bool SetWorldBoundsFieldOrProperty(MonoBehaviour behaviour, Type type, Rect bounds)
@@ -139,13 +159,7 @@ public static class PresentationBoundsSync
 
     private static void EnsureMinimapCamera(Rect bounds)
     {
-        var minimapCameraObject = GameObject.Find("MinimapCamera");
-        if (minimapCameraObject == null)
-        {
-            return;
-        }
-
-        var minimapCamera = minimapCameraObject.GetComponent<Camera>();
+        var minimapCamera = FindMinimapCamera();
         if (minimapCamera == null)
         {
             return;
@@ -153,5 +167,37 @@ public static class PresentationBoundsSync
 
         minimapCamera.orthographic = true;
         minimapCamera.orthographicSize = Mathf.Max(bounds.width, bounds.height) * 0.5f;
+        var position = minimapCamera.transform.position;
+        minimapCamera.transform.position = new Vector3(bounds.center.x, bounds.center.y, position.z);
+    }
+
+    private static Camera FindMinimapCamera()
+    {
+        var minimapCameraObject = GameObject.Find("MinimapCamera");
+        return minimapCameraObject != null ? minimapCameraObject.GetComponent<Camera>() : null;
+    }
+
+    private static bool SetNamedField(MonoBehaviour behaviour, Type type, string name, Camera value)
+    {
+        var field = type.GetField(name, BindingFlags.Instance | BindingFlags.Public);
+        if (field == null || !typeof(Camera).IsAssignableFrom(field.FieldType))
+        {
+            return false;
+        }
+
+        field.SetValue(behaviour, value);
+        return true;
+    }
+
+    private static bool SetNamedProperty(MonoBehaviour behaviour, Type type, string name, Camera value)
+    {
+        var property = type.GetProperty(name, BindingFlags.Instance | BindingFlags.Public);
+        if (property == null || !property.CanWrite || !typeof(Camera).IsAssignableFrom(property.PropertyType))
+        {
+            return false;
+        }
+
+        property.SetValue(behaviour, value);
+        return true;
     }
 }

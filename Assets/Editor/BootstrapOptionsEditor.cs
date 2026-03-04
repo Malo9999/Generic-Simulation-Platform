@@ -18,6 +18,7 @@ public class BootstrapOptionsInspector : Editor
     private SerializedProperty marbleRaceVisualProp;
     private SerializedProperty fantasySportVisualProp;
     private SerializedProperty raceCarVisualProp;
+    private SerializedProperty extraSimulationsProp;
     private SerializedProperty seedPolicyProp;
     private SerializedProperty fixedSeedProp;
     private SerializedProperty allowHotkeySwitchProp;
@@ -37,6 +38,7 @@ public class BootstrapOptionsInspector : Editor
         marbleRaceVisualProp = serializedObject.FindProperty("marbleRaceVisual");
         fantasySportVisualProp = serializedObject.FindProperty("fantasySportVisual");
         raceCarVisualProp = serializedObject.FindProperty("raceCarVisual");
+        extraSimulationsProp = serializedObject.FindProperty("extraSimulations");
         seedPolicyProp = serializedObject.FindProperty("seedPolicy");
         fixedSeedProp = serializedObject.FindProperty("fixedSeed");
         allowHotkeySwitchProp = serializedObject.FindProperty("allowHotkeySwitch");
@@ -64,6 +66,7 @@ public class BootstrapOptionsInspector : Editor
         EditorGUILayout.PropertyField(marbleRaceVisualProp);
         EditorGUILayout.PropertyField(fantasySportVisualProp);
         EditorGUILayout.PropertyField(raceCarVisualProp);
+        EditorGUILayout.PropertyField(extraSimulationsProp, true);
 
         EditorGUILayout.PropertyField(seedPolicyProp);
         EditorGUILayout.PropertyField(fixedSeedProp);

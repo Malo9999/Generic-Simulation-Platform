@@ -1,0 +1,12 @@
+{
+  "simulationId": "PredatorPreyDocu",
+  "seed": 1000,
+  "world": { "arenaWidth": 1200, "arenaHeight": 800, "walls": true, "obstacleDensity": 0.0 },
+  "predatorPreyDocu": {
+    "mapId": "serengeti_v1",
+    "startMonth": 1,
+    "ticksPerMonth": 3600,
+    "debugShowMapOverlays": false
+  },
+  "recording": { "enabled": true, "eventsEnabled": true, "snapshotEveryNTicks": 60 }
+}

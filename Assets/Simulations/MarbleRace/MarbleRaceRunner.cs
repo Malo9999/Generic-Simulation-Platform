@@ -18,6 +18,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private const float MarbleRadius = 0.55f;
     private const float WallRestitution = 0.35f;
     private const float WallFriction = 0.20f;
+    private const float ArenaBoundsMargin = 2.5f;
     private static readonly string[] LegacyDecorTrackObjectNames =
     {
         "StartFinishTile",
@@ -145,6 +146,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         Debug.Log($"[MarbleRace] Track built: samples={track.SampleCount} minHalfWidth={minHalfWidth:F2} maxHalfWidth={maxHalfWidth:F2} fallback={fallbackUsed}");
 
         trackRenderer.Apply(sceneGraph.DecorRoot, track);
+        EnsureArenaBoundsAndCameraFit();
         LogTrackValidation();
         BuildMarbles(seed);
         EnsureRankingBuffer(GetSafeCount());
@@ -935,6 +937,7 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         trackRenderer.Apply(sceneGraph.DecorRoot, track);
+        EnsureArenaBoundsAndCameraFit();
         LogTrackValidation();
 
         if (marbles == null || marbles.Length != marbleCount)
@@ -1202,6 +1205,76 @@ public class MarbleRaceRunner : MonoBehaviour, ITickableSimulationRunner
     private static float Cross(Vector2 a, Vector2 b)
     {
         return (a.x * b.y) - (a.y * b.x);
+    }
+
+    private void EnsureArenaBoundsAndCameraFit()
+    {
+        if (sceneGraph?.WorldRoot == null)
+        {
+            return;
+        }
+
+        var boundsTransform = sceneGraph.WorldRoot.Find("ArenaBounds");
+        if (boundsTransform == null)
+        {
+            var boundsObject = new GameObject("ArenaBounds");
+            boundsObject.transform.SetParent(sceneGraph.WorldRoot, false);
+            boundsObject.transform.localPosition = Vector3.zero;
+            boundsTransform = boundsObject.transform;
+        }
+
+        var boundsCollider = boundsTransform.GetComponent<BoxCollider2D>();
+        if (boundsCollider == null)
+        {
+            boundsCollider = boundsTransform.gameObject.AddComponent<BoxCollider2D>();
+        }
+
+        var bounds = ComputeTrackBounds();
+        boundsCollider.isTrigger = true;
+        boundsCollider.offset = bounds.center;
+        boundsCollider.size = bounds.size;
+
+        var policy = Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        if (policy != null)
+        {
+            policy.BindArenaBounds(boundsCollider, fitToBounds: true);
+        }
+
+        var followController = Object.FindAnyObjectByType<CameraFollowController>();
+        if (followController != null)
+        {
+            followController.arenaCameraPolicy = policy;
+        }
+    }
+
+    private Bounds ComputeTrackBounds()
+    {
+        if (track != null && track.SampleCount > 0)
+        {
+            var min = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+            var max = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+
+            for (var i = 0; i < track.SampleCount; i++)
+            {
+                var center = track.Center[i];
+                var halfWidth = track.HalfWidth != null && i < track.HalfWidth.Length ? Mathf.Max(0f, track.HalfWidth[i]) : 0f;
+                min.x = Mathf.Min(min.x, center.x - halfWidth);
+                min.y = Mathf.Min(min.y, center.y - halfWidth);
+                max.x = Mathf.Max(max.x, center.x + halfWidth);
+                max.y = Mathf.Max(max.y, center.y + halfWidth);
+            }
+
+            min -= Vector2.one * ArenaBoundsMargin;
+            max += Vector2.one * ArenaBoundsMargin;
+            var centerPoint = (min + max) * 0.5f;
+            var size = new Vector2(Mathf.Max(1f, max.x - min.x), Mathf.Max(1f, max.y - min.y));
+            return new Bounds(centerPoint, size);
+        }
+
+        var fallbackSize = new Vector2(
+            Mathf.Max(1f, (arenaHalfWidth + ArenaBoundsMargin) * 2f),
+            Mathf.Max(1f, (arenaHalfHeight + ArenaBoundsMargin) * 2f));
+        return new Bounds(Vector3.zero, fallbackSize);
     }
 
     private static void DestroyIfFound(Transform parent, string childName)
