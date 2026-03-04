@@ -54,9 +54,59 @@ public class PredatorPreyDocuRunner : MonoBehaviour, ITickableSimulationRunner
         activeConfig.NormalizeAliases();
 
         var mapId = activeConfig.predatorPreyDocu?.mapId ?? "serengeti_v1";
+        var configuredArenaWidth = activeConfig.world.arenaWidth;
+        var configuredArenaHeight = activeConfig.world.arenaHeight;
         loadedMapSpec = SerengetiMapSpecLoader.LoadOrThrow(mapId);
+        var appliedArenaRect = default(Rect);
+        ArenaCameraPolicy matchedPolicy = null;
+
+        if (loadedMapSpec.arena != null)
+        {
+            var arenaWidth = Mathf.Max(1f, loadedMapSpec.arena.width);
+            var arenaHeight = Mathf.Max(1f, loadedMapSpec.arena.height);
+            activeConfig.world.arenaWidth = arenaWidth;
+            activeConfig.world.arenaHeight = arenaHeight;
+
+            halfWidth = arenaWidth * 0.5f;
+            halfHeight = arenaHeight * 0.5f;
+
+            PresentationBoundsSync.ApplyFromConfig(activeConfig);
+            appliedArenaRect = new Rect(-halfWidth, -halfHeight, arenaWidth, arenaHeight);
+
+            var mainCamera = Camera.main;
+            var policies = FindObjectsOfType<ArenaCameraPolicy>(true);
+            for (var i = 0; i < policies.Length; i++)
+            {
+                var policy = policies[i];
+                if (policy == null)
+                {
+                    continue;
+                }
+
+                if (policy.targetCamera != null && policy.targetCamera == mainCamera)
+                {
+                    matchedPolicy = policy;
+                    break;
+                }
+            }
+
+            if (matchedPolicy == null)
+            {
+                matchedPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
+            }
+
+            if (matchedPolicy != null)
+            {
+                matchedPolicy.SetWorldSizeAndRefresh(new Vector2(arenaWidth, arenaHeight));
+            }
+
+            var policyWorldSize = matchedPolicy != null ? matchedPolicy.worldSize : Vector2.zero;
+            var clampState = matchedPolicy != null && matchedPolicy.clampToBounds ? "on" : "off";
+            Debug.Log($"[PredatorPreyDocuBounds] mapId={loadedMapSpec.mapId} appliedArena={arenaWidth}x{arenaHeight} minimapBounds={appliedArenaRect} policyWorldSize={policyWorldSize.x}x{policyWorldSize.y} clamp={clampState}");
+        }
+
         if (loadedMapSpec.arena != null &&
-            (loadedMapSpec.arena.width != activeConfig.world.arenaWidth || loadedMapSpec.arena.height != activeConfig.world.arenaHeight))
+            (loadedMapSpec.arena.width != configuredArenaWidth || loadedMapSpec.arena.height != configuredArenaHeight))
         {
             Debug.LogWarning($"[PredatorPreyDocu] Map '{loadedMapSpec.mapId}' arena={loadedMapSpec.arena.width}x{loadedMapSpec.arena.height} differs from configured world {activeConfig.world.arenaWidth}x{activeConfig.world.arenaHeight}. Preset should match arena size before ArenaBuilder.Build.");
         }

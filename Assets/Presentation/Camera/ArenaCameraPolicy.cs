@@ -204,6 +204,12 @@ public class ArenaCameraPolicy : MonoBehaviour
         }
     }
 
+    public void SetWorldSizeAndRefresh(Vector2 size)
+    {
+        worldSize = new Vector2(Mathf.Max(1f, size.x), Mathf.Max(1f, size.y));
+        FitToBounds();
+    }
+
     public bool TryGetWorldBoundsRect(out Rect boundsRect)
     {
         GetWorldMinMax(out var minX, out var minY, out var maxX, out var maxY);
