@@ -910,29 +910,35 @@ StampDone:;
             }
         }
 
-        var majorWorld = Mathf.Lerp(24f, 44f, strength);
-        var minorWorld = Mathf.Lerp(12f, 26f, strength);
-        var thicknessWorld = Mathf.Lerp(10f, 18f, strength);
-        var rWorld = Mathf.Max(majorWorld, minorWorld) + thicknessWorld;
+        var poolRadiusWorld = Mathf.Lerp(18f, 30f, strength);
+        var rWorld = poolRadiusWorld + 8f;
         if (WouldOverlapPermanentWaterHeavily(center, rWorld, halfW, halfH, texW, texH, ppu, permPx))
         {
             return false;
         }
 
-        if (WouldOverlapPermanentWaterCrescent(center, tangent, insideSide, majorWorld, minorWorld, thicknessWorld, halfW, halfH, texW, texH, ppu, permPx))
+        var poolPx = WorldToPixel(center.x, center.y, halfW, halfH, texW, texH);
+        PaintDisc(permPx, texW, texH, poolPx, Mathf.Max(1, Mathf.RoundToInt(poolRadiusWorld * ppu * 0.5f)), new Color32(41, 118, 204, 208));
+        PaintRing(bankPx, texW, texH, poolPx, Mathf.Max(2, Mathf.RoundToInt((poolRadiusWorld + 3.5f) * ppu * 0.5f)), Mathf.Max(1, Mathf.RoundToInt(1.8f * ppu)), new Color32(66, 103, 58, 95));
+
+        var ghostPts = Mathf.RoundToInt(Mathf.Lerp(8f, 14f, strength));
+        var ghostRadiusWorld = Mathf.Lerp(poolRadiusWorld + 8f, poolRadiusWorld + 16f, 0.5f + strength * 0.5f);
+        var ghostDiscRadiusWorld = Mathf.Lerp(4f, 7f, strength);
+        PaintOxbowGhostTrace(seasonPx, texW, texH, ppu, halfW, halfH, center, tangent, insideSide, ghostRadiusWorld, ghostPts, ghostDiscRadiusWorld,
+            new Color32(74, 132, 124, (byte)Mathf.RoundToInt(Mathf.Lerp(30f, 60f, strength))));
+
+        var cutoffBar = pointBarPx != null && Hash01(911, i, Mathf.RoundToInt(strength * 1000f)) > 0.32f;
+        if (cutoffBar)
         {
-            return false;
+            var barLength = Mathf.Lerp(25f, 45f, strength);
+            var barThickness = Mathf.Lerp(8f, 14f, strength);
+            PaintCutoffBarBetweenPoints(pointBarPx, texW, texH, ppu, halfW, halfH, p, center, barLength, barThickness,
+                new Color32(199, 170, 114, (byte)Mathf.RoundToInt(Mathf.Lerp(80f, 130f, strength))));
         }
 
-        PaintOxbowCrescent(permPx, bankPx, texW, texH, ppu, halfW, halfH, center, tangent, insideSide, majorWorld, minorWorld, thicknessWorld, new Color32(36, 110, 198, 228), new Color32(66, 103, 58, 95));
-        PaintOxbowGhostChannel(seasonPx, texW, texH, ppu, halfW, halfH, center, tangent, insideSide, majorWorld + 10f, minorWorld + 8f, thicknessWorld * 0.9f, new Color32(74, 132, 124, (byte)Mathf.RoundToInt(Mathf.Lerp(40f, 70f, strength))));
-        var barCenter = p + insideSide * (riverWidth * 0.65f + 8f);
-        var barLength = Mathf.Lerp(40f, 70f, strength);
-        var barThickness = Mathf.Lerp(10f, 18f, strength);
-        PaintCutoffBar(pointBarPx, texW, texH, ppu, halfW, halfH, barCenter, tangent, barLength, barThickness, new Color32(199, 170, 114, (byte)Mathf.RoundToInt(Mathf.Lerp(140f, 190f, strength))));
         waterNodes.Add(center);
-        selectedPlacements.Add(new OxbowPlacement(center, rWorld));
-        Debug.Log($"[SerengetiOxbow] oxbow{selectedPlacements.Count - 1} x={center.x.ToString("0.0", CultureInfo.InvariantCulture)} y={center.y.ToString("0.0", CultureInfo.InvariantCulture)} strength={strength.ToString("0.000", CultureInfo.InvariantCulture)}");
+        selectedPlacements.Add(new OxbowPlacement(center, poolRadiusWorld));
+        Debug.Log($"[SerengetiOxbow] oxbow{selectedPlacements.Count - 1} x={center.x.ToString("0.0", CultureInfo.InvariantCulture)} y={center.y.ToString("0.0", CultureInfo.InvariantCulture)} strength={strength.ToString("0.000", CultureInfo.InvariantCulture)} poolR={poolRadiusWorld.ToString("0.0", CultureInfo.InvariantCulture)} ghostPts={ghostPts} cutoffBar={(cutoffBar ? "true" : "false")}");
         return true;
     }
 
@@ -1309,78 +1315,32 @@ StampDone:;
         Debug.Log($"[SerengetiDebug] overlays=ON regions={spec.regions.Count} mainCross={crossingsMain.Count} grumetiCross={crossingsGrumeti.Count} pools={pools.Count} kopjes={kopjes.Count} wetlands={wetlands.Count}");
     }
 
-    private static void PaintOxbowCrescent(Color32[] waterPx, Color32[] bankPx, int texW, int texH, float ppu,
+    private static void PaintOxbowGhostTrace(Color32[] seasonalPx, int texW, int texH, float ppu,
         float halfW, float halfH, Vector2 center, Vector2 tangent, Vector2 normal,
-        float majorWorld, float minorWorld, float thicknessWorld,
-        Color32 waterCol, Color32 bankCol)
+        float arcRadiusWorld, int pointCount, float thicknessWorld, Color32 ghostCol)
     {
-        var stepDeg = 12f;
-        var waterRadius = Mathf.Max(1, Mathf.RoundToInt(thicknessWorld * 0.5f * ppu));
-        var bankRadius = waterRadius + Mathf.Max(1, Mathf.RoundToInt(2.5f * ppu));
-        var bankThickness = Mathf.Max(1, Mathf.RoundToInt(2f * ppu));
-
-        for (var angleDeg = -130f; angleDeg <= 130f; angleDeg += stepDeg)
-        {
-            var angle = angleDeg * Mathf.Deg2Rad;
-            var pos = center + tangent * (Mathf.Cos(angle) * majorWorld) + normal * (Mathf.Sin(angle) * minorWorld);
-            var cpx = WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH);
-            PaintDisc(waterPx, texW, texH, cpx, waterRadius, waterCol);
-            PaintRing(bankPx, texW, texH, cpx, bankRadius, bankThickness, bankCol);
-        }
-    }
-
-    private static bool WouldOverlapPermanentWaterCrescent(Vector2 center, Vector2 tangent, Vector2 normal, float majorWorld, float minorWorld, float thicknessWorld,
-        float halfW, float halfH, int texW, int texH, float ppu, Color32[] permPx)
-    {
-        var stepDeg = 12f;
-        var overlap = 0;
-        var samples = 0;
-        var sampleRadius = Mathf.Max(1, Mathf.RoundToInt(thicknessWorld * 0.35f * ppu));
-        var r2 = sampleRadius * sampleRadius;
-        for (var angleDeg = -130f; angleDeg <= 130f; angleDeg += stepDeg)
-        {
-            var angle = angleDeg * Mathf.Deg2Rad;
-            var pos = center + tangent * (Mathf.Cos(angle) * majorWorld) + normal * (Mathf.Sin(angle) * minorWorld);
-            var c = WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH);
-            for (var y = c.py - sampleRadius; y <= c.py + sampleRadius; y++)
-            {
-                if (y < 0 || y >= texH) continue;
-                for (var x = c.px - sampleRadius; x <= c.px + sampleRadius; x++)
-                {
-                    if (x < 0 || x >= texW) continue;
-                    var dx = x - c.px;
-                    var dy = y - c.py;
-                    if (dx * dx + dy * dy > r2) continue;
-                    samples++;
-                    if (permPx[x + y * texW].a > 20) overlap++;
-                }
-            }
-        }
-
-        if (samples == 0)
-        {
-            return true;
-        }
-
-        return overlap / (float)samples > 0.04f;
-    }
-
-    private static void PaintOxbowGhostChannel(Color32[] seasonalPx, int texW, int texH, float ppu,
-        float halfW, float halfH, Vector2 center, Vector2 tangent, Vector2 normal,
-        float majorWorld, float minorWorld, float thicknessWorld, Color32 ghostCol)
-    {
-        var stepDeg = 12f;
+        var points = Mathf.Clamp(pointCount, 8, 14);
         var radiusPx = Mathf.Max(1, Mathf.RoundToInt(thicknessWorld * 0.45f * ppu));
-        for (var angleDeg = -138f; angleDeg <= 138f; angleDeg += stepDeg)
+        for (var i = 0; i < points; i++)
         {
+            var t = points <= 1 ? 0.5f : i / (float)(points - 1);
+            var angleDeg = Mathf.Lerp(-95f, 95f, t);
             var angle = angleDeg * Mathf.Deg2Rad;
-            var pos = center + tangent * (Mathf.Cos(angle) * majorWorld) + normal * (Mathf.Sin(angle) * minorWorld);
+            var pos = center + tangent * (Mathf.Cos(angle) * arcRadiusWorld) + normal * (Mathf.Sin(angle) * (arcRadiusWorld * 0.82f));
             PaintDisc(seasonalPx, texW, texH, WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH), radiusPx, ghostCol);
         }
     }
 
-    private static void PaintCutoffBar(Color32[] pointBarPx, int texW, int texH, float ppu, float halfW, float halfH, Vector2 center, Vector2 tangent, float lengthWorld, float thicknessWorld, Color32 color)
+    private static void PaintCutoffBarBetweenPoints(Color32[] pointBarPx, int texW, int texH, float ppu, float halfW, float halfH, Vector2 from, Vector2 to, float lengthWorld, float thicknessWorld, Color32 color)
     {
+        var dir = (to - from);
+        if (dir.sqrMagnitude < 1e-4f)
+        {
+            return;
+        }
+
+        var tangent = dir.normalized;
+        var center = Vector2.Lerp(from, to, 0.5f);
         var halfLen = lengthWorld * 0.5f;
         var stepWorld = Mathf.Max(2f, thicknessWorld * 0.35f);
         var radiusPx = Mathf.Max(1, Mathf.RoundToInt(thicknessWorld * 0.5f * ppu));
