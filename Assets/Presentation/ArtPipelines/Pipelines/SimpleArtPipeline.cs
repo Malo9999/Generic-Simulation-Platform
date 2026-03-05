@@ -16,6 +16,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const string PlaceholderOutlineName = "PlaceholderOutline";
     private const string IconRootName = "IconRoot";
     private const string MaskName = "Mask";
+    // TODO: wire runtime-generated shapes from RuntimeShapeCache/ShapeLibrary into simple placeholders.
 
     private readonly Dictionary<string, Sprite[]> framesByBaseId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ResolvedSpriteSource> resolvedBaseByKey = new(StringComparer.Ordinal);
