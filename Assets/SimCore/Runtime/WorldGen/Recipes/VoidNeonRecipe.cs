@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public class VoidNeonRecipe : WorldRecipeBase<VoidNeonSettingsSO>
 {
@@ -28,6 +29,22 @@ public class VoidNeonRecipe : WorldRecipeBase<VoidNeonSettingsSO>
             rng.Fork("graph"));
 
         map.splines = GraphToSplines.Build(graph, Mathf.Max(0f, settings.organicJitter), settings.smoothIterations, rng.Fork("splines"));
+
+        var mapRect = new Rect(
+            grid.originWorld.x,
+            grid.originWorld.y,
+            grid.width * grid.cellSize,
+            grid.height * grid.cellSize);
+
+        var clippedSplines = new List<WorldSpline>();
+        for (var i = 0; i < map.splines.Count; i++)
+        {
+            var parts = SplineClipper.ClipToRectParts(map.splines[i], mapRect);
+            if (parts.Count == 0) continue;
+            clippedSplines.AddRange(parts);
+        }
+
+        map.splines = clippedSplines;
 
         var lanes = SplineRasterizer.RasterizeLanes("lanes", grid, map.splines, 0.25f * grid.cellSize);
         map.masks["lanes"] = lanes;
