@@ -25,6 +25,12 @@ public class OrganicBlobTemplate : ShapeTemplateBase
     [SerializeField] private int rimSoftnessPx;
     [SerializeField] private float symmetryBreak = 0.35f;
 
+    [Header("Rim Gradient")]
+    [SerializeField] private bool useRimGradient = true;
+    [SerializeField] private int rimWidthPx = 6;
+    [SerializeField] private float innerMul = 1f;
+    [SerializeField] private float outerMul = 0.78f;
+
     private void Reset()
     {
         ConfigureBase(ShapeId.OrganicMetaball, "Blobs", 96, 16);
@@ -47,7 +53,11 @@ public class OrganicBlobTemplate : ShapeTemplateBase
             Mathf.Max(1f, noiseLacunarity),
             Mathf.Clamp01(noiseGain),
             Mathf.Max(0, rimSoftnessPx),
-            Mathf.Clamp01(symmetryBreak));
+            Mathf.Clamp01(symmetryBreak),
+            useRimGradient,
+            Mathf.Max(1, rimWidthPx),
+            Mathf.Max(0f, innerMul),
+            Mathf.Max(0f, outerMul));
     }
 
     public void ApplyMetaballDefaults()
@@ -57,6 +67,10 @@ public class OrganicBlobTemplate : ShapeTemplateBase
         lobeCount = 4;
         radiusPx = 18f;
         jitterPx = 8f;
+        useRimGradient = true;
+        rimWidthPx = 6;
+        innerMul = 1f;
+        outerMul = 0.78f;
     }
 
     public void ApplyAmoebaDefaults()
@@ -71,5 +85,9 @@ public class OrganicBlobTemplate : ShapeTemplateBase
         noiseLacunarity = 2f;
         rimSoftnessPx = 0;
         symmetryBreak = 0.35f;
+        useRimGradient = true;
+        rimWidthPx = 6;
+        innerMul = 1f;
+        outerMul = 0.78f;
     }
 }
