@@ -15,6 +15,12 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public float carveStrength = 0.35f;
     public float RiverWarpAmplitude = 5f;
     public float RiverWarpFrequency = 0.025f;
+    public int CutoffCount = 1;
+    public float CutoffChance = 0.25f;
+    public int SideChannelCount = 1;
+    public float SideChannelWidthFactor = 0.6f;
+    public float BankNoiseStrength = 0.35f;
+    public float FloodplainNoiseStrength = 0.45f;
     public NoiseDescriptor HeightNoise = NoiseDescriptor.CreateDefault("savanna_height");
     public NoiseDescriptor WetnessNoise = NoiseDescriptor.CreateDefault("savanna_wetness");
     public NoiseDescriptor WarpNoise = NoiseDescriptor.CreateDefault("savanna_warp");
