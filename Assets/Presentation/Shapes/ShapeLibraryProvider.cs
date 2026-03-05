@@ -4,7 +4,7 @@ using UnityEngine;
 
 public static class ShapeLibraryProvider
 {
-    private const string DefaultResourcePath = "Shapes/ShapeLibrary";
+    private const string DefaultResourcePath = "ShapeLibrary";
 
     private static ShapeLibrary cachedLibrary;
     private static Dictionary<string, Sprite> spriteById;
