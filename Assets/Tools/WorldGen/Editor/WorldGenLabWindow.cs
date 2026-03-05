@@ -35,7 +35,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private double nextLiveGenAt;
     private bool dirtyLiveGen;
 
-    private NoiseDescriptorSet activeNoise = new NoiseDescriptorSet();
+    private NoiseSet activeNoise = new NoiseSet();
     private WorldMap previewMap;
     private Texture2D previewTexture;
     private Vector2 leftPanelScroll;
@@ -160,25 +160,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
         EditorGUI.BeginChangeCheck();
-
-        if (settings is VoidNeonSettingsSO neon)
-        {
-            neon.nodeCount = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Node Count", "Maximum Poisson graph nodes."), neon.nodeCount));
-            neon.nodeMinDist = Mathf.Max(1f, EditorGUILayout.FloatField(new GUIContent("Node Min Dist", "Minimum node spacing in cells."), neon.nodeMinDist));
-            neon.kNearest = Mathf.Clamp(EditorGUILayout.IntField(new GUIContent("K Nearest", "Nearest neighbors used for edge connections."), neon.kNearest), 2, 5);
-            neon.edgeWidthMin = Mathf.Max(0.1f, EditorGUILayout.FloatField(new GUIContent("Edge Width Min", "Minimum spline width for generated edges."), neon.edgeWidthMin));
-            neon.edgeWidthMax = Mathf.Max(neon.edgeWidthMin, EditorGUILayout.FloatField(new GUIContent("Edge Width Max", "Maximum spline width for generated edges."), neon.edgeWidthMax));
-            neon.organicJitter = Mathf.Max(0f, EditorGUILayout.FloatField(new GUIContent("Organic Jitter", "Per-edge bending amount before smoothing."), neon.organicJitter));
-            neon.smoothIterations = Mathf.Clamp(EditorGUILayout.IntField(new GUIContent("Smooth Iterations", "Chaikin smoothing iterations for each edge spline."), neon.smoothIterations), 0, 3);
-            neon.marginCells = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Margin Cells", "Keeps generated nodes away from borders."), neon.marginCells));
-            neon.anchorSpacing = Mathf.Max(0.5f, EditorGUILayout.FloatField(new GUIContent("Anchor Spacing", "Spacing used to sample anchors along lane splines."), neon.anchorSpacing));
-            neon.glowFalloff = Mathf.Max(0.01f, EditorGUILayout.FloatField(new GUIContent("Glow Falloff", "Glow influence radius around generated lanes."), neon.glowFalloff));
-            neon.noiseScale = Mathf.Max(0.0001f, EditorGUILayout.FloatField(new GUIContent("Noise Scale", "Noise frequency applied to glow variation."), neon.noiseScale));
-        }
-        else
-        {
-            settingsEditor?.OnInspectorGUI();
-        }
+        settingsEditor?.OnInspectorGUI();
 
         if (EditorGUI.EndChangeCheck())
         {
@@ -413,7 +395,8 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private void GeneratePreview()
     {
         logs = string.Empty;
-        activeNoise = activeNoise ?? new NoiseDescriptorSet();
+        activeNoise = activeNoise ?? new NoiseSet();
+        activeNoise.descriptors.Clear();
         var recipe = recipes[selectedRecipe];
         previewMap = recipe.Generate(settings, seed, CurrentGrid(), activeNoise, this);
         if (string.IsNullOrEmpty(previewMap.mapId)) previewMap.mapId = mapId;
@@ -510,7 +493,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         height = prov.grid.height;
         cellSize = prov.grid.cellSize;
         origin = prov.grid.originWorld;
-        activeNoise = prov.noiseDescriptors ?? new NoiseDescriptorSet();
+        activeNoise = prov.noiseDescriptors ?? new NoiseSet();
 
         GeneratePreview();
         if (previewMap != null)

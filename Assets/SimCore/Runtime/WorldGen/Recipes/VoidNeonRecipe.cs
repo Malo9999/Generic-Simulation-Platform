@@ -6,7 +6,7 @@ public class VoidNeonRecipe : WorldRecipeBase<VoidNeonSettingsSO>
     public override string RecipeId => "VoidNeon";
     public override int Version => 2;
 
-    protected override WorldMap GenerateTyped(VoidNeonSettingsSO settings, int seed, WorldGridSpec grid, NoiseDescriptorSet noise, IWorldGenLogger log)
+    protected override WorldMap GenerateTyped(VoidNeonSettingsSO settings, int seed, WorldGridSpec grid, NoiseSet noise, IWorldGenLogger log)
     {
         var map = new WorldMap { recipeId = RecipeId, seed = seed, grid = grid };
         var rng = new WorldGenRng(seed);
@@ -60,8 +60,10 @@ public class VoidNeonRecipe : WorldRecipeBase<VoidNeonSettingsSO>
         AnchorGenerator.PopulateAnchors(map, graph, settings.anchorSpacing * grid.cellSize);
 
         var glow = new ScalarField("glow", grid);
-        var glowNoise = noise.GetOrCreate("voidneon_glow", rng.Fork("noise"));
-        glowNoise.scale = settings.noiseScale;
+        var glowNoiseDesc = settings.GlowNoise;
+        if (glowNoiseDesc.frequency <= 0f) glowNoiseDesc.frequency = settings.noiseScale;
+        noise.Register(glowNoiseDesc, seed);
+        var glowNoise = noise.Get(glowNoiseDesc.id);
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
         {
@@ -69,7 +71,7 @@ public class VoidNeonRecipe : WorldRecipeBase<VoidNeonSettingsSO>
             var nearestSpline = WorldMapQuery.GetNearestSpline(map, pos);
             var d = nearestSpline == null ? float.MaxValue : Vector2.Distance(pos, WorldMapQuery.GetNearestPointOnSpline(nearestSpline, pos));
             var g = Mathf.Exp(-d / Mathf.Max(0.01f, settings.glowFalloff));
-            var n = NoiseUtil.Sample2D(glowNoise, x, y);
+            var n = NoiseUtil.Sample2D(glowNoise, x, y, seed);
             glow[x, y] = Mathf.Clamp01(g * 0.8f + n * 0.2f);
         }
 

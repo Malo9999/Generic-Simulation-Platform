@@ -14,4 +14,8 @@ public class VoidNeonSettingsSO : WorldRecipeSettingsSO
     public float anchorSpacing = 6f;
     public float glowFalloff = 10f;
     public float noiseScale = 0.03f;
+    public NoiseDescriptor HeightNoise = NoiseDescriptor.CreateDefault("voidneon_height");
+    public NoiseDescriptor WetnessNoise = NoiseDescriptor.CreateDefault("voidneon_wetness");
+    public NoiseDescriptor WarpNoise = NoiseDescriptor.CreateDefault("voidneon_warp");
+    public NoiseDescriptor GlowNoise = NoiseDescriptor.CreateDefault("voidneon_glow");
 }

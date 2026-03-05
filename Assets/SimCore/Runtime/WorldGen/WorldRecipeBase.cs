@@ -6,7 +6,7 @@ public abstract class WorldRecipeBase<TSettings> : IWorldRecipe where TSettings 
     public abstract int Version { get; }
     public Type SettingsType => typeof(TSettings);
 
-    public WorldMap Generate(object settings, int seed, WorldGridSpec grid, NoiseDescriptorSet noise, IWorldGenLogger log)
+    public WorldMap Generate(object settings, int seed, WorldGridSpec grid, NoiseSet noise, IWorldGenLogger log)
     {
         var typed = settings as TSettings;
         if (typed == null)
@@ -17,5 +17,5 @@ public abstract class WorldRecipeBase<TSettings> : IWorldRecipe where TSettings 
         return GenerateTyped(typed, seed, grid, noise, log);
     }
 
-    protected abstract WorldMap GenerateTyped(TSettings settings, int seed, WorldGridSpec grid, NoiseDescriptorSet noise, IWorldGenLogger log);
+    protected abstract WorldMap GenerateTyped(TSettings settings, int seed, WorldGridSpec grid, NoiseSet noise, IWorldGenLogger log);
 }

@@ -12,4 +12,7 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public Vector2 gradientDir = new Vector2(0f, 1f);
     public float waterLevel = 0.45f;
     public float carveStrength = 0.35f;
+    public NoiseDescriptor HeightNoise = NoiseDescriptor.CreateDefault("savanna_height");
+    public NoiseDescriptor WetnessNoise = NoiseDescriptor.CreateDefault("savanna_wetness");
+    public NoiseDescriptor WarpNoise = NoiseDescriptor.CreateDefault("savanna_warp");
 }

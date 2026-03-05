@@ -11,7 +11,7 @@ public class WorldProvenance
     public WorldGridSpec grid;
     public string settingsType;
     public string settingsJson;
-    public NoiseDescriptorSet noiseDescriptors;
+    public NoiseSet noiseDescriptors;
     public string bakedAtUtc;
     public string generatorGitCommit;
     public ProvenanceOutputs outputs = new ProvenanceOutputs();
