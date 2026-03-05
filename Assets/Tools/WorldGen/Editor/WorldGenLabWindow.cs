@@ -21,11 +21,13 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private Vector2 origin;
 
     private bool livePreview = true;
-    private bool showWater = true;
     private bool showWalkable = true;
+    private bool showLanes = true;
     private bool showZones = true;
     private bool showSplines = true;
     private bool showScatter = true;
+    private bool showNodeAnchors = true;
+    private bool showLaneAnchors = true;
 
     private double nextLiveGenAt;
     private bool dirtyLiveGen;
@@ -158,14 +160,17 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
         if (settings is VoidNeonSettingsSO neon)
         {
-            neon.railsCount = Mathf.Max(1, EditorGUILayout.IntField(new GUIContent("Rails Count", "Number of neon rail splines generated."), neon.railsCount));
-            neon.railLengthFactor = EditorGUILayout.FloatField(new GUIContent("Rail Length Factor", "Rail length as a fraction of map size."), neon.railLengthFactor);
-            neon.railCurvature = EditorGUILayout.FloatField(new GUIContent("Rail Curvature", "How wavy the rails are (higher = more bends)."), neon.railCurvature);
-            neon.railWidth = EditorGUILayout.FloatField(new GUIContent("Rail Width", "Visual width of rails in preview and baked spline width."), neon.railWidth);
-            neon.emitterSpacing = EditorGUILayout.FloatField(new GUIContent("Emitter Spacing", "Distance between scatter emitters placed along rails."), neon.emitterSpacing);
-            neon.marginCells = EditorGUILayout.IntField(new GUIContent("Margin Cells", "Keeps rails away from edges by this many grid cells."), neon.marginCells);
-            neon.glowFalloff = EditorGUILayout.FloatField(new GUIContent("Glow Falloff", "Glow influence radius around rails."), neon.glowFalloff);
-            neon.noiseScale = EditorGUILayout.FloatField(new GUIContent("Noise Scale", "Noise frequency applied to glow variation."), neon.noiseScale);
+            neon.nodeCount = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Node Count", "Maximum Poisson graph nodes."), neon.nodeCount));
+            neon.nodeMinDist = Mathf.Max(1f, EditorGUILayout.FloatField(new GUIContent("Node Min Dist", "Minimum node spacing in cells."), neon.nodeMinDist));
+            neon.kNearest = Mathf.Clamp(EditorGUILayout.IntField(new GUIContent("K Nearest", "Nearest neighbors used for edge connections."), neon.kNearest), 2, 5);
+            neon.edgeWidthMin = Mathf.Max(0.1f, EditorGUILayout.FloatField(new GUIContent("Edge Width Min", "Minimum spline width for generated edges."), neon.edgeWidthMin));
+            neon.edgeWidthMax = Mathf.Max(neon.edgeWidthMin, EditorGUILayout.FloatField(new GUIContent("Edge Width Max", "Maximum spline width for generated edges."), neon.edgeWidthMax));
+            neon.organicJitter = Mathf.Max(0f, EditorGUILayout.FloatField(new GUIContent("Organic Jitter", "Per-edge bending amount before smoothing."), neon.organicJitter));
+            neon.smoothIterations = Mathf.Clamp(EditorGUILayout.IntField(new GUIContent("Smooth Iterations", "Chaikin smoothing iterations for each edge spline."), neon.smoothIterations), 0, 3);
+            neon.marginCells = Mathf.Max(0, EditorGUILayout.IntField(new GUIContent("Margin Cells", "Keeps generated nodes away from borders."), neon.marginCells));
+            neon.anchorSpacing = Mathf.Max(0.5f, EditorGUILayout.FloatField(new GUIContent("Anchor Spacing", "Spacing used to sample anchors along lane splines."), neon.anchorSpacing));
+            neon.glowFalloff = Mathf.Max(0.01f, EditorGUILayout.FloatField(new GUIContent("Glow Falloff", "Glow influence radius around generated lanes."), neon.glowFalloff));
+            neon.noiseScale = Mathf.Max(0.0001f, EditorGUILayout.FloatField(new GUIContent("Noise Scale", "Noise frequency applied to glow variation."), neon.noiseScale));
         }
         else
         {
@@ -239,27 +244,35 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         {
             if (showSplines && previewMap.splines != null)
             {
-                Handles.color = Color.cyan;
                 foreach (var spline in previewMap.splines)
                 {
                     if (spline?.points == null) continue;
+                    var thickness = Mathf.Max(1f, spline.baseWidth / Mathf.Max(0.001f, previewMap.grid.cellSize));
+                    Handles.color = Color.cyan;
                     for (var i = 1; i < spline.points.Count; i++)
                     {
-                        Handles.DrawLine(WorldToRect(previewRect, spline.points[i - 1]), WorldToRect(previewRect, spline.points[i]));
+                        Handles.DrawAAPolyLine(thickness, WorldToRect(previewRect, spline.points[i - 1]), WorldToRect(previewRect, spline.points[i]));
                     }
                 }
             }
 
             if (showScatter && previewMap.scatters != null)
             {
-                Handles.color = Color.magenta;
-                foreach (var pair in previewMap.scatters)
+                if (showLaneAnchors && previewMap.scatters.TryGetValue("anchors_lane", out var laneAnchors) && laneAnchors?.points != null)
                 {
-                    var points = pair.Value?.points;
-                    if (points == null) continue;
-                    foreach (var pt in points)
+                    Handles.color = new Color(1f, 0.3f, 1f, 0.95f);
+                    foreach (var pt in laneAnchors.points)
                     {
-                        Handles.DrawSolidDisc(WorldToRect(previewRect, pt.pos), Vector3.forward, 2f);
+                        Handles.DrawSolidDisc(WorldToRect(previewRect, pt.pos), Vector3.forward, 1.8f);
+                    }
+                }
+
+                if (showNodeAnchors && previewMap.scatters.TryGetValue("anchors_nodes", out var nodeAnchors) && nodeAnchors?.points != null)
+                {
+                    Handles.color = new Color(1f, 0.95f, 0.2f, 0.95f);
+                    foreach (var pt in nodeAnchors.points)
+                    {
+                        Handles.DrawSolidDisc(WorldToRect(previewRect, pt.pos), Vector3.forward, 3.8f);
                     }
                 }
             }
@@ -269,10 +282,12 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         using (new HorizontalScope())
         {
             showWalkable = EditorGUILayout.ToggleLeft(new GUIContent("Walkable", "Show walkable mask overlay."), showWalkable);
-            showWater = EditorGUILayout.ToggleLeft(new GUIContent("Water", "Show water mask overlay."), showWater);
+            showLanes = EditorGUILayout.ToggleLeft(new GUIContent("Lanes", "Show lane mask overlay."), showLanes);
             showZones = EditorGUILayout.ToggleLeft(new GUIContent("Zones", "Show zones mask overlay."), showZones);
             showSplines = EditorGUILayout.ToggleLeft(new GUIContent("Splines", "Show generated spline paths."), showSplines);
             showScatter = EditorGUILayout.ToggleLeft(new GUIContent("Scatter", "Show scatter points."), showScatter);
+            showNodeAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Node Anchors", "Show anchors_nodes points."), showNodeAnchors);
+            showLaneAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Lane Anchors", "Show anchors_lane points."), showLaneAnchors);
         }
 
         EditorGUILayout.LabelField(GetMouseReadout(previewRect));
@@ -288,8 +303,33 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             (Event.current.mousePosition.y - previewRect.y) / Mathf.Max(1f, previewRect.height));
         var cx = Mathf.Clamp(Mathf.FloorToInt(uv.x * previewMap.grid.width), 0, Mathf.Max(0, previewMap.grid.width - 1));
         var cy = Mathf.Clamp(Mathf.FloorToInt((1f - uv.y) * previewMap.grid.height), 0, Mathf.Max(0, previewMap.grid.height - 1));
+        var worldPos = previewMap.grid.CellCenterWorld(cx, cy);
 
-        var msg = $"Cell {cx},{cy}";
+        var msg = $"world {worldPos.x:0.##},{worldPos.y:0.##} | cell {cx},{cy}";
+        msg += $" | walkable:{WorldMapQuery.IsWalkable(previewMap, worldPos)}";
+
+        var nearestSpline = WorldMapQuery.GetNearestSpline(previewMap, worldPos);
+        if (nearestSpline != null)
+        {
+            var nearestPoint = WorldMapQuery.GetNearestPointOnSpline(nearestSpline, worldPos);
+            msg += $" | spline:{nearestSpline.id} d={Vector2.Distance(worldPos, nearestPoint):0.##}";
+        }
+
+        if (previewMap.scatters != null && previewMap.scatters.TryGetValue("anchors_nodes", out var nodes) && nodes?.points != null && nodes.points.Count > 0)
+        {
+            var nearestNodeIndex = -1;
+            var bestD2 = float.MaxValue;
+            for (var i = 0; i < nodes.points.Count; i++)
+            {
+                var d2 = (nodes.points[i].pos - worldPos).sqrMagnitude;
+                if (d2 >= bestD2) continue;
+                bestD2 = d2;
+                nearestNodeIndex = i;
+            }
+
+            if (nearestNodeIndex >= 0) msg += $" | nearestNode:{nearestNodeIndex} d={Mathf.Sqrt(bestD2):0.##}";
+        }
+
         if (previewMap.scalars != null)
         {
             foreach (var scalar in previewMap.scalars)
@@ -369,8 +409,8 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
                 c = new Color(h, h, h, 1f);
             }
 
-            if (showWater && previewMap.masks != null && previewMap.masks.TryGetValue("water", out var water) && water != null && water[x, y] > 0)
-                c = Color.Lerp(c, new Color(0f, 0.4f, 1f, 1f), 0.7f);
+            if (showLanes && previewMap.masks != null && previewMap.masks.TryGetValue("lanes", out var lanes) && lanes != null && lanes[x, y] > 0)
+                c = Color.Lerp(c, new Color(0f, 0.8f, 1f, 1f), 0.65f);
             if (showWalkable && previewMap.masks != null && previewMap.masks.TryGetValue("walkable", out var walkable) && walkable != null && walkable[x, y] == 0)
                 c = Color.Lerp(c, new Color(1f, 0f, 0f, 1f), 0.35f);
             if (showZones && previewMap.masks != null && previewMap.masks.TryGetValue("zones", out var zones) && zones != null)
