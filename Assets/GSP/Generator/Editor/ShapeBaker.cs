@@ -74,25 +74,31 @@ public static class ShapeBaker
             AssetDatabase.CreateAsset(pack, DefaultPackPath);
         }
 
-        if (pack.templates.Count == 0)
+        var changed = false;
+        changed |= EnsurePackTemplate(pack, CreateTemplate<DotCoreTemplate>("DotCore_Default.asset", t =>
+            t.ConfigureBase(ShapeId.DotCore, "Dots", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<GlowDotTemplate>("GlowDot_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<GlowDotTemplate>("GlowDotSmall_Default.asset", t => t.ApplySmallDefaults()));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<RingPingTemplate>("RingPing_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicMetaball_Default.asset", t =>
         {
-            pack.templates.Add(CreateTemplate<DotCoreTemplate>("DotCore_Default.asset", t =>
-                t.ConfigureBase(ShapeId.DotCore, "Dots", 64, 16)));
+            t.ConfigureBase(ShapeId.OrganicMetaball, "Blobs", 96, 16);
+            t.ApplyMetaballDefaults();
+        }));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoeba_Default.asset", t =>
+        {
+            t.ConfigureBase(ShapeId.OrganicAmoeba, "Blobs", 96, 16);
+            t.ApplyAmoebaDefaults();
+        }));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<StrokeTemplate>("StrokeScribble_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<TriangleAgentTemplate>("TriangleAgent_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<DiamondAgentTemplate>("DiamondAgent_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<LineSegmentTemplate>("LineSegment_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<NoiseBlobTemplate>("NoiseBlob_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<PulseRingTemplate>("PulseRing_Default.asset", null));
 
-            pack.templates.Add(CreateTemplate<GlowDotTemplate>("GlowDot_Default.asset", null));
-            pack.templates.Add(CreateTemplate<GlowDotTemplate>("GlowDotSmall_Default.asset", t => t.ApplySmallDefaults()));
-            pack.templates.Add(CreateTemplate<RingPingTemplate>("RingPing_Default.asset", null));
-            pack.templates.Add(CreateTemplate<OrganicBlobTemplate>("OrganicMetaball_Default.asset", t =>
-            {
-                t.ConfigureBase(ShapeId.OrganicMetaball, "Blobs", 96, 16);
-                t.ApplyMetaballDefaults();
-            }));
-            pack.templates.Add(CreateTemplate<OrganicBlobTemplate>("OrganicAmoeba_Default.asset", t =>
-            {
-                t.ConfigureBase(ShapeId.OrganicAmoeba, "Blobs", 96, 16);
-                t.ApplyAmoebaDefaults();
-            }));
-            pack.templates.Add(CreateTemplate<StrokeTemplate>("StrokeScribble_Default.asset", null));
+        if (changed)
+        {
             EditorUtility.SetDirty(pack);
             AssetDatabase.SaveAssets();
         }
@@ -114,6 +120,25 @@ public static class ShapeBaker
         configure?.Invoke(created);
         AssetDatabase.CreateAsset(created, path);
         return created;
+    }
+
+    private static bool EnsurePackTemplate(ShapeTemplatePack pack, ShapeTemplateBase template)
+    {
+        if (pack == null || template == null)
+        {
+            return false;
+        }
+
+        foreach (var existing in pack.templates)
+        {
+            if (existing != null && existing.Id == template.Id)
+            {
+                return false;
+            }
+        }
+
+        pack.templates.Add(template);
+        return true;
     }
 
     private static ShapeLibrary EnsureLibraryAsset()
@@ -156,6 +181,8 @@ public static class ShapeBaker
         EnsureFolder(OutputRoot + "/Rings");
         EnsureFolder(OutputRoot + "/Blobs");
         EnsureFolder(OutputRoot + "/Strokes");
+        EnsureFolder(OutputRoot + "/Agents");
+        EnsureFolder(OutputRoot + "/Lines");
         EnsureFolder(TemplatesRoot);
     }
 
