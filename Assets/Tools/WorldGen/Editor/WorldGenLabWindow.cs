@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -12,6 +13,10 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private int selectedRecipe;
     private WorldRecipeSettingsSO settings;
     private Editor settingsEditor;
+
+    private List<WorldRecipePresetSO> availablePresets = new List<WorldRecipePresetSO>();
+    private string[] presetNames = Array.Empty<string>();
+    private int selectedPreset = -1;
 
     private int seed = 1337;
     private string mapId = "Map_001";
@@ -29,6 +34,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private bool showNodeAnchors = true;
     private bool showLaneAnchors = true;
     private bool autoFitPreview = true;
+    private bool overlayHeightPreview = true;
 
     private PreviewTransform previewTransform;
 
@@ -58,6 +64,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         recipes = WorldRecipeRegistry.GetRecipes();
         recipeNames = recipes.Select(r => r.RecipeId).ToArray();
         RecreateSettings();
+        RefreshPresets();
         minSize = new Vector2(980f, 700f);
         EditorApplication.update += Tick;
     }
@@ -130,8 +137,11 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         if (EditorGUI.EndChangeCheck())
         {
             RecreateSettings();
+        RefreshPresets();
             MarkLiveDirty();
         }
+
+        DrawPresetControls();
 
         using (new HorizontalScope())
         {
@@ -151,6 +161,129 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         cellSize = Mathf.Max(0.01f, EditorGUILayout.FloatField(new GUIContent("Cell Size", "Size of one world grid cell."), cellSize));
         origin = EditorGUILayout.Vector2Field(new GUIContent("Origin", "World-space origin of the generated grid."), origin);
         livePreview = EditorGUILayout.Toggle(new GUIContent("Live Preview", "Automatically regenerate preview after settings changes."), livePreview);
+    }
+
+
+    private void DrawPresetControls()
+    {
+        using (new HorizontalScope())
+        {
+            EditorGUI.BeginDisabledGroup(presetNames.Length == 0);
+            selectedPreset = EditorGUILayout.Popup(new GUIContent("Preset", "Select a saved preset for the active recipe."), Mathf.Clamp(selectedPreset, 0, Mathf.Max(0, presetNames.Length - 1)), presetNames.Length == 0 ? new[] { "(none)" } : presetNames);
+            if (GUILayout.Button(new GUIContent("Apply Preset", "Apply the selected preset to current settings."), GUILayout.Width(105f)))
+            {
+                ApplySelectedPreset();
+            }
+            EditorGUI.EndDisabledGroup();
+
+            if (GUILayout.Button(new GUIContent("Save Preset...", "Save current recipe settings as a reusable preset asset."), GUILayout.Width(105f)))
+            {
+                SavePreset();
+            }
+        }
+    }
+
+    private void RefreshPresets()
+    {
+        availablePresets = new List<WorldRecipePresetSO>();
+        var recipeId = recipes[selectedRecipe].RecipeId;
+        foreach (var guid in AssetDatabase.FindAssets("t:WorldRecipePresetSO"))
+        {
+            var path = AssetDatabase.GUIDToAssetPath(guid);
+            var preset = AssetDatabase.LoadAssetAtPath<WorldRecipePresetSO>(path);
+            if (preset != null && string.Equals(preset.recipeId, recipeId, StringComparison.Ordinal))
+            {
+                availablePresets.Add(preset);
+            }
+        }
+
+        availablePresets = availablePresets.OrderBy(p => p.presetName).ToList();
+        presetNames = availablePresets.Select(p => p.presetName).ToArray();
+        selectedPreset = presetNames.Length > 0 ? 0 : -1;
+    }
+
+    private void SavePreset()
+    {
+        if (settings == null) return;
+
+        var recipeId = recipes[selectedRecipe].RecipeId;
+        var root = $"Assets/Content/WorldPresets/{recipeId}";
+        EnsureFolder(root);
+
+        var proposedName = $"{recipeId}_Preset";
+        var path = EditorUtility.SaveFilePanelInProject("Save World Preset", proposedName, "asset", "Choose where to save preset asset.", root);
+        if (string.IsNullOrEmpty(path)) return;
+
+        var fileName = Path.GetFileNameWithoutExtension(path);
+        var preset = WorldRecipePresetSO.Create(
+            recipeId,
+            fileName,
+            CurrentGrid(),
+            true,
+            WorldPresetIO.CaptureSettingsJson(settings),
+            CaptureNoiseJson(),
+            settings.GetType().AssemblyQualifiedName);
+
+        AssetDatabase.CreateAsset(preset, path);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        RefreshPresets();
+        selectedPreset = Mathf.Max(0, availablePresets.FindIndex(p => p == preset));
+        Log($"Saved preset '{fileName}' to {path}");
+    }
+
+    private void ApplySelectedPreset()
+    {
+        if (selectedPreset < 0 || selectedPreset >= availablePresets.Count || settings == null) return;
+
+        var preset = availablePresets[selectedPreset];
+        if (!string.IsNullOrEmpty(preset.settingsJson))
+        {
+            WorldPresetIO.ApplySettingsJson(settings, preset.settingsJson);
+            EditorUtility.SetDirty(settings);
+            settingsEditor = Editor.CreateEditor(settings);
+        }
+
+        if (!preset.useCurrentGrid && IsGridValid(preset.gridDefaults))
+        {
+            width = preset.gridDefaults.width;
+            height = preset.gridDefaults.height;
+            cellSize = preset.gridDefaults.cellSize;
+            origin = preset.gridDefaults.originWorld;
+        }
+
+        activeNoise = string.IsNullOrEmpty(preset.noiseJson) ? new NoiseSet() : JsonUtility.FromJson<NoiseSet>(preset.noiseJson) ?? new NoiseSet();
+
+        if (livePreview)
+        {
+            MarkLiveDirty();
+        }
+
+        Repaint();
+        Log($"Applied preset '{preset.presetName}'.");
+    }
+
+    private string CaptureNoiseJson()
+    {
+        var snapshot = new NoiseSet();
+        foreach (var field in settings.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            if (field.FieldType != typeof(NoiseDescriptor)) continue;
+            var descriptor = (NoiseDescriptor)field.GetValue(settings);
+            snapshot.Register(descriptor, seed);
+        }
+
+        return JsonUtility.ToJson(snapshot, true);
+    }
+
+    private static void EnsureFolder(string folder)
+    {
+        if (AssetDatabase.IsValidFolder(folder)) return;
+        var parent = Path.GetDirectoryName(folder)?.Replace('\\', '/');
+        var leaf = Path.GetFileName(folder);
+        if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(leaf)) return;
+        EnsureFolder(parent);
+        if (!AssetDatabase.IsValidFolder(folder)) AssetDatabase.CreateFolder(parent, leaf);
     }
 
     private void DrawSettingsControls()
@@ -284,6 +417,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             showScatter = EditorGUILayout.ToggleLeft(new GUIContent("Scatter", "Show scatter points."), showScatter);
             showNodeAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Node Anchors", "Show anchors_nodes points."), showNodeAnchors);
             showLaneAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Lane Anchors", "Show anchors_lane points."), showLaneAnchors);
+            overlayHeightPreview = EditorGUILayout.ToggleLeft(new GUIContent("Overlay Height", "Blend terrain height into lane/zone shading for easier noise inspection."), overlayHeightPreview);
         }
 
         EditorGUILayout.LabelField(GetMouseReadout());
@@ -421,6 +555,12 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
                 c = new Color(h, h, h, 1f);
             }
 
+            if (overlayHeightPreview && previewMap.scalars != null && previewMap.scalars.TryGetValue("height", out var overlayHeight) && overlayHeight != null)
+            {
+                var overlay = Mathf.Clamp01((overlayHeight[x, y] - 0.5f) * 2f);
+                c = Color.Lerp(c, c + new Color(overlay, overlay, overlay, 0f), 0.15f);
+            }
+
             if (showLanes && previewMap.masks != null && previewMap.masks.TryGetValue("lanes", out var lanes) && lanes != null && lanes[x, y] > 0)
                 c = Color.Lerp(c, new Color(0f, 0.8f, 1f, 1f), 0.65f);
             if (showWalkable && previewMap.masks != null && previewMap.masks.TryGetValue("walkable", out var walkable) && walkable != null && walkable[x, y] == 0)
@@ -481,6 +621,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
         selectedRecipe = recipeIndex;
         RecreateSettings();
+        RefreshPresets();
 
         if (!string.IsNullOrEmpty(prov.settingsJson))
         {

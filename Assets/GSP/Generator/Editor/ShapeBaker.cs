@@ -83,9 +83,15 @@ public static class ShapeBaker
             pack.templates.Add(CreateTemplate<GlowDotTemplate>("GlowDotSmall_Default.asset", t => t.ApplySmallDefaults()));
             pack.templates.Add(CreateTemplate<RingPingTemplate>("RingPing_Default.asset", null));
             pack.templates.Add(CreateTemplate<OrganicBlobTemplate>("OrganicMetaball_Default.asset", t =>
-                t.ConfigureBase(ShapeId.OrganicMetaball, "Blobs", 96, 16)));
+            {
+                t.ConfigureBase(ShapeId.OrganicMetaball, "Blobs", 96, 16);
+                t.ApplyMetaballDefaults();
+            }));
             pack.templates.Add(CreateTemplate<OrganicBlobTemplate>("OrganicAmoeba_Default.asset", t =>
-                t.ConfigureBase(ShapeId.OrganicAmoeba, "Blobs", 96, 16)));
+            {
+                t.ConfigureBase(ShapeId.OrganicAmoeba, "Blobs", 96, 16);
+                t.ApplyAmoebaDefaults();
+            }));
             pack.templates.Add(CreateTemplate<StrokeTemplate>("StrokeScribble_Default.asset", null));
             EditorUtility.SetDirty(pack);
             AssetDatabase.SaveAssets();

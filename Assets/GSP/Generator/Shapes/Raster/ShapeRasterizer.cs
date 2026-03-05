@@ -82,10 +82,32 @@ public static class ShapeRasterizer
         return pixels;
     }
 
-    public static Color32[] RasterizeOrganic(int size, Color tint, OrganicBlobMode mode, int seed, int lobeCount, float radius, float jitter)
+    public static Color32[] RasterizeOrganic(
+        int size,
+        Color tint,
+        OrganicBlobMode mode,
+        int seed,
+        int lobeCount,
+        float radius,
+        float jitter,
+        int baseRadiusPx,
+        float noiseAmplitudePx,
+        float noiseFrequency,
+        int noiseOctaves,
+        float noiseLacunarity,
+        float noiseGain,
+        int rimSoftnessPx,
+        float symmetryBreak)
     {
         var pixels = NewPixels(size);
         var center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+
+        if (mode == OrganicBlobMode.AmoebaNoise)
+        {
+            RasterizeAmoebaNoise(pixels, size, tint, center, seed, baseRadiusPx, noiseAmplitudePx, noiseFrequency, noiseOctaves, noiseLacunarity, noiseGain, rimSoftnessPx, symmetryBreak);
+            return pixels;
+        }
+
         var centers = new Vector2[lobeCount];
         var radii = new float[lobeCount];
 
@@ -101,12 +123,7 @@ public static class ShapeRasterizer
         for (var x = 0; x < size; x++)
         {
             var f = MetaballUtil.SampleField(x, y, centers, radii);
-            var threshold = mode == OrganicBlobMode.Metaball ? 2.1f : 1.8f;
-            if (mode == OrganicBlobMode.Amoeba)
-            {
-                var wobble = RasterNoiseUtil.ValueNoise01(x * 0.09f, y * 0.09f, seed) - 0.5f;
-                threshold += wobble * 0.4f;
-            }
+            const float threshold = 2.1f;
 
             if (f >= threshold)
             {
@@ -115,6 +132,75 @@ public static class ShapeRasterizer
         }
 
         return pixels;
+    }
+
+    private static void RasterizeAmoebaNoise(Color32[] pixels, int size, Color tint, Vector2 center, int seed, int baseRadiusPx, float noiseAmplitudePx, float noiseFrequency, int noiseOctaves, float noiseLacunarity, float noiseGain, int rimSoftnessPx, float symmetryBreak)
+    {
+        var seedY = seed * 0.071f;
+        var secondSeedY = (seed + 7919) * 0.113f;
+
+        for (var y = 0; y < size; y++)
+        for (var x = 0; x < size; x++)
+        {
+            var dx = x - center.x;
+            var dy = y - center.y;
+            var dist = Mathf.Sqrt((dx * dx) + (dy * dy));
+            var angle = Mathf.Atan2(dy, dx);
+            if (angle < 0f)
+            {
+                angle += Mathf.PI * 2f;
+            }
+
+            var primary = Fbm01(angle * noiseFrequency, seedY, seed, noiseOctaves, noiseLacunarity, noiseGain);
+            var secondary = Fbm01((angle + 1.234f) * (noiseFrequency * 1.37f), secondSeedY, seed + 17, noiseOctaves, noiseLacunarity, noiseGain);
+            var n = Mathf.Lerp(primary, secondary, symmetryBreak);
+            var deformedRadius = baseRadiusPx + ((n * 2f - 1f) * noiseAmplitudePx);
+            var sdf = deformedRadius - dist;
+
+            if (sdf >= 0f)
+            {
+                pixels[(y * size) + x] = tint;
+                continue;
+            }
+
+            if (rimSoftnessPx <= 0 || sdf <= -rimSoftnessPx)
+            {
+                continue;
+            }
+
+            var a = Mathf.Clamp01(1f + (sdf / rimSoftnessPx));
+            if (a <= 0f)
+            {
+                continue;
+            }
+
+            var c = tint;
+            c.a *= a;
+            pixels[(y * size) + x] = c;
+        }
+    }
+
+    private static float Fbm01(float x, float y, int seed, int octaves, float lacunarity, float gain)
+    {
+        var amplitude = 1f;
+        var frequency = 1f;
+        var weight = 0f;
+        var value = 0f;
+
+        for (var i = 0; i < octaves; i++)
+        {
+            value += RasterNoiseUtil.ValueNoise01(x * frequency, y * frequency, seed + (i * 101)) * amplitude;
+            weight += amplitude;
+            amplitude *= gain;
+            frequency *= lacunarity;
+        }
+
+        if (weight <= 0f)
+        {
+            return 0.5f;
+        }
+
+        return value / weight;
     }
 
     public static Color32[] RasterizeStroke(int size, Color tint, int seed, int steps, float widthPx, float stridePx)
