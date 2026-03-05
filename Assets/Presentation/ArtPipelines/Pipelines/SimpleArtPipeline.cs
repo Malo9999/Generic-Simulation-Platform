@@ -14,9 +14,9 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const string PlaceholderSpriteName = "PlaceholderSprite";
     private const string PlaceholderArrowName = "PlaceholderArrow";
     private const string PlaceholderOutlineName = "PlaceholderOutline";
+    private const string PlaceholderGlowName = "PlaceholderGlow";
     private const string IconRootName = "IconRoot";
     private const string MaskName = "Mask";
-    // TODO: wire runtime-generated shapes from RuntimeShapeCache/ShapeLibrary into simple placeholders.
 
     private readonly Dictionary<string, Sprite[]> framesByBaseId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ResolvedSpriteSource> resolvedBaseByKey = new(StringComparer.Ordinal);
@@ -25,6 +25,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     [SerializeField] private bool forceDebugPlaceholder = true;
     [SerializeField] private DebugPlaceholderMode defaultDebugMode = DebugPlaceholderMode.Replace;
     [SerializeField] private float placeholderScale = 0.5f;
+    [SerializeField] private bool useGlow = false;
 
     private bool debugEnabled;
     private DebugPlaceholderMode debugMode;
@@ -66,9 +67,22 @@ public class SimpleArtPipeline : ArtPipelineBase
         var spriteObject = new GameObject(PlaceholderSpriteName);
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
-        dotRenderer.sprite = DebugShapeSpriteFactory.GetCircleSprite();
+        dotRenderer.sprite = ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out var coreSprite)
+            ? coreSprite
+            : DebugShapeSpriteFactory.GetCircleSprite();
         dotRenderer.color = PlaceholderColorPalette.GetColor(key);
         RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
+
+        if (useGlow && ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlow, out var glowSprite))
+        {
+            var glowObject = new GameObject(PlaceholderGlowName);
+            glowObject.transform.SetParent(rendererObject.transform, false);
+            var glowRenderer = glowObject.AddComponent<SpriteRenderer>();
+            glowRenderer.sprite = glowSprite;
+            glowRenderer.color = new Color(1f, 1f, 1f, 0.35f);
+            glowObject.transform.localScale = Vector3.one * 1.6f;
+            RenderOrder.Apply(glowRenderer, RenderOrder.EntityBody - 2);
+        }
 
         var outlineObject = new GameObject(PlaceholderOutlineName);
         outlineObject.transform.SetParent(rendererObject.transform, false);
@@ -280,6 +294,12 @@ public class SimpleArtPipeline : ArtPipelineBase
         if (dotRenderer != null)
         {
             dotRenderer.enabled = dotVisible;
+        }
+
+        var glowRenderer = rendererRoot.transform.Find(PlaceholderGlowName)?.GetComponent<SpriteRenderer>();
+        if (glowRenderer != null)
+        {
+            glowRenderer.enabled = dotVisible;
         }
 
         var outlineRenderer = rendererRoot.transform.Find(PlaceholderOutlineName)?.GetComponent<SpriteRenderer>();
