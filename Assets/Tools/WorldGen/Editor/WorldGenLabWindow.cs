@@ -17,6 +17,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     {
         Beauty,
         Height,
+        Wetness,
         Walkable,
         Water,
         Zones,
@@ -55,7 +56,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private Vector2 logsScroll;
 
     private PreviewMode previewMode = PreviewMode.Beauty;
-    private float heightContrast = 1.8f;
+    private float heightContrast = 1.6f;
     private float heightGamma = 1f;
     private float previewHeightMin = 0f;
     private float previewHeightMax = 1f;
@@ -397,10 +398,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
                 MarkLiveDirty();
             }
         }
-        else
-        {
-            EditorGUILayout.LabelField(new GUIContent("Seed (uint)", "Unsigned 32-bit view of the same seed bits."), unchecked((uint)seed).ToString());
-        }
+        else EditorGUILayout.LabelField(new GUIContent("Seed (uint)", "Unsigned 32-bit view of the same seed bits."), new GUIContent(unchecked((uint)seed).ToString()), EditorStyles.miniLabel);
 
         mapId = EditorGUILayout.TextField(new GUIContent("Map ID", "Identifier stored with generated map assets."), mapId);
 
@@ -624,6 +622,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         var hasWalkable = TryGetMask("walkable", out var walkableField);
         var hasWater = TryGetMask("water", out var waterField);
         var hasZones = TryGetMask("zones", out var zonesField);
+        var hasWetness = TryGetScalar("wetness", out var wetnessField);
 
         previewHeightMin = 0f;
         previewHeightMax = 1f;
@@ -655,6 +654,10 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             {
                 case PreviewMode.Height:
                     color = HeightColor(heightValue);
+                    break;
+                case PreviewMode.Wetness:
+                    var wetValue = hasWetness ? wetnessField[x, y] : 0f;
+                    color = new Color(wetValue, wetValue, wetValue, 1f);
                     break;
                 case PreviewMode.Walkable:
                     color = hasWalkable && walkableField[x, y] > 0 ? Color.white : Color.black;
