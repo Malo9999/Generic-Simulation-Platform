@@ -33,8 +33,9 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private NoiseDescriptorSet activeNoise = new NoiseDescriptorSet();
     private WorldMap previewMap;
     private Texture2D previewTexture;
-    private Vector2 previewScroll;
+    private Vector2 leftPanelScroll;
     private string logs = string.Empty;
+    private string hoveredHelp = string.Empty;
 
     [MenuItem("GSP/Generator/WorldGen Lab")]
     public static void Open()
@@ -47,6 +48,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         recipes = WorldRecipeRegistry.GetRecipes();
         recipeNames = recipes.Select(r => r.RecipeId).ToArray();
         RecreateSettings();
+        minSize = new Vector2(980f, 700f);
         EditorApplication.update += Tick;
     }
 
@@ -69,128 +71,241 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
     private void OnGUI()
     {
-        if (recipes == null || recipes.Count == 0)
-        {
-            EditorGUILayout.HelpBox("No recipes registered.", MessageType.Warning);
-            return;
-        }
+        hoveredHelp = string.Empty;
+        var hasRecipes = recipes != null && recipes.Count > 0;
 
+        IDisposable horizontalScope = null;
+        try
+        {
+            horizontalScope = new HorizontalScope();
+            DrawLeftColumn(hasRecipes);
+            DrawMiddleColumn(hasRecipes);
+            CaptureHoveredTooltip();
+            DrawHelpPanel(hasRecipes);
+        }
+        catch (Exception ex)
+        {
+            logs += $"[Error] UI exception: {ex.Message}\n";
+            Repaint();
+        }
+        finally
+        {
+            horizontalScope?.Dispose();
+        }
+    }
+
+    private void DrawLeftColumn(bool hasRecipes)
+    {
+        using (new VerticalScope(GUILayout.Width(360f), GUILayout.ExpandHeight(true)))
+        using (var scroll = new ScrollScope(leftPanelScroll))
+        {
+            leftPanelScroll = scroll.Position;
+
+            if (!hasRecipes)
+            {
+                EditorGUILayout.HelpBox("No recipes registered.", MessageType.Warning);
+                return;
+            }
+
+            DrawRecipeAndGridControls();
+            DrawSettingsControls();
+            DrawActionButtons();
+        }
+    }
+
+    private void DrawRecipeAndGridControls()
+    {
         EditorGUI.BeginChangeCheck();
-        selectedRecipe = EditorGUILayout.Popup("Recipe", selectedRecipe, recipeNames);
+        selectedRecipe = EditorGUILayout.Popup(new GUIContent("Recipe", "Select a world generation recipe."), selectedRecipe, recipeNames);
         if (EditorGUI.EndChangeCheck())
         {
             RecreateSettings();
             MarkLiveDirty();
         }
 
-        EditorGUILayout.BeginHorizontal();
-        seed = EditorGUILayout.IntField("Seed", seed);
-        if (GUILayout.Button("Randomize", GUILayout.Width(100)))
+        using (new HorizontalScope())
         {
-            seed = (int)DateTime.UtcNow.Ticks;
-            MarkLiveDirty();
+            seed = EditorGUILayout.IntField(new GUIContent("Seed", "Seed used for deterministic world generation."), seed);
+            if (GUILayout.Button(new GUIContent("Randomize", "Set seed to current UTC ticks."), GUILayout.Width(100f)))
+            {
+                seed = (int)DateTime.UtcNow.Ticks;
+                MarkLiveDirty();
+            }
         }
-        EditorGUILayout.EndHorizontal();
 
-        mapId = EditorGUILayout.TextField("Map ID", mapId);
+        mapId = EditorGUILayout.TextField(new GUIContent("Map ID", "Identifier stored with the generated map assets."), mapId);
 
         EditorGUILayout.LabelField("Grid", EditorStyles.boldLabel);
-        width = Mathf.Max(8, EditorGUILayout.IntField("Width", width));
-        height = Mathf.Max(8, EditorGUILayout.IntField("Height", height));
-        cellSize = Mathf.Max(0.01f, EditorGUILayout.FloatField("Cell Size", cellSize));
-        origin = EditorGUILayout.Vector2Field("Origin", origin);
+        width = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Width", "Grid width in cells."), width));
+        height = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Height", "Grid height in cells."), height));
+        cellSize = Mathf.Max(0.01f, EditorGUILayout.FloatField(new GUIContent("Cell Size", "Size of one world grid cell."), cellSize));
+        origin = EditorGUILayout.Vector2Field(new GUIContent("Origin", "World-space origin of the generated grid."), origin);
+        livePreview = EditorGUILayout.Toggle(new GUIContent("Live Preview", "Automatically regenerate preview after settings changes."), livePreview);
+    }
 
-        livePreview = EditorGUILayout.Toggle("Live Preview", livePreview);
-
-        if (settingsEditor != null)
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
-            EditorGUI.BeginChangeCheck();
-            settingsEditor.OnInspectorGUI();
-            if (EditorGUI.EndChangeCheck()) MarkLiveDirty();
-        }
+    private void DrawSettingsControls()
+    {
+        if (settings == null) return;
 
         EditorGUILayout.Space();
-        EditorGUILayout.BeginHorizontal();
-        if (GUILayout.Button("Generate")) GeneratePreview();
-        if (GUILayout.Button("Bake")) Bake(false);
-        if (GUILayout.Button("Bake & Ping Folder")) Bake(true);
-        EditorGUILayout.EndHorizontal();
+        EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
+        EditorGUI.BeginChangeCheck();
+
+        if (settings is VoidNeonSettingsSO neon)
+        {
+            neon.railsCount = Mathf.Max(1, EditorGUILayout.IntField(new GUIContent("Rails Count", "Number of neon rail splines generated."), neon.railsCount));
+            neon.railLengthFactor = EditorGUILayout.FloatField(new GUIContent("Rail Length Factor", "Rail length as a fraction of map size."), neon.railLengthFactor);
+            neon.railCurvature = EditorGUILayout.FloatField(new GUIContent("Rail Curvature", "How wavy the rails are (higher = more bends)."), neon.railCurvature);
+            neon.railWidth = EditorGUILayout.FloatField(new GUIContent("Rail Width", "Visual width of rails in preview and baked spline width."), neon.railWidth);
+            neon.emitterSpacing = EditorGUILayout.FloatField(new GUIContent("Emitter Spacing", "Distance between scatter emitters placed along rails."), neon.emitterSpacing);
+            neon.marginCells = EditorGUILayout.IntField(new GUIContent("Margin Cells", "Keeps rails away from edges by this many grid cells."), neon.marginCells);
+            neon.glowFalloff = EditorGUILayout.FloatField(new GUIContent("Glow Falloff", "Glow influence radius around rails."), neon.glowFalloff);
+            neon.noiseScale = EditorGUILayout.FloatField(new GUIContent("Noise Scale", "Noise frequency applied to glow variation."), neon.noiseScale);
+        }
+        else
+        {
+            settingsEditor?.OnInspectorGUI();
+        }
+
+        if (EditorGUI.EndChangeCheck())
+        {
+            EditorUtility.SetDirty(settings);
+            MarkLiveDirty();
+        }
+    }
+
+    private void DrawActionButtons()
+    {
+        EditorGUILayout.Space();
+        using (new HorizontalScope())
+        {
+            if (GUILayout.Button(new GUIContent("Generate", "Generate a preview map with current settings."))) GeneratePreview();
+            if (GUILayout.Button(new GUIContent("Bake", "Bake world map assets to the content folder."))) Bake(false);
+            if (GUILayout.Button("Bake & Ping Folder")) Bake(true);
+        }
 
         if (GUILayout.Button("Load provenance.json + Rebuild"))
         {
             RebuildFromProvenance();
         }
-
-        DrawPreview();
-
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Log");
-        EditorGUILayout.HelpBox(logs, MessageType.None);
     }
 
-    private void DrawPreview()
+    private void DrawMiddleColumn(bool hasRecipes)
     {
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel);
-        showWalkable = EditorGUILayout.Toggle("Overlay Walkable", showWalkable);
-        showWater = EditorGUILayout.Toggle("Overlay Water", showWater);
-        showZones = EditorGUILayout.Toggle("Overlay Zones", showZones);
-        showSplines = EditorGUILayout.Toggle("Overlay Splines", showSplines);
-        showScatter = EditorGUILayout.Toggle("Overlay Scatter", showScatter);
-
-        var rect = GUILayoutUtility.GetRect(position.width - 20, position.width - 20, 128, 512);
-        EditorGUI.DrawRect(rect, Color.black);
-
-        if (previewTexture != null)
+        using (new VerticalScope(GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true)))
         {
-            GUI.DrawTexture(rect, previewTexture, ScaleMode.ScaleToFit, false);
+            DrawPreview(hasRecipes);
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Log", EditorStyles.boldLabel);
+            using (new VerticalScope(EditorStyles.helpBox, GUILayout.Height(88f), GUILayout.ExpandWidth(true)))
+            {
+                EditorGUILayout.LabelField(string.IsNullOrEmpty(logs) ? "No log messages yet." : logs, EditorStyles.wordWrappedLabel, GUILayout.ExpandHeight(true));
+            }
+        }
+    }
+
+    private void DrawHelpPanel(bool hasRecipes)
+    {
+        using (new VerticalScope(EditorStyles.helpBox, GUILayout.Width(280f), GUILayout.ExpandHeight(true)))
+        {
+            EditorGUILayout.LabelField("Help", EditorStyles.boldLabel);
+            var helpText = !hasRecipes
+                ? "Register a recipe to start using WorldGen Lab."
+                : (string.IsNullOrEmpty(hoveredHelp) ? "Hover a setting to see help." : hoveredHelp);
+            EditorGUILayout.HelpBox(helpText, MessageType.Info);
+        }
+    }
+
+    private void DrawPreview(bool hasRecipes)
+    {
+        EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel);
+
+        var previewRect = GUILayoutUtility.GetRect(10f, 380f, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
+        EditorGUI.DrawRect(previewRect, new Color(0.08f, 0.08f, 0.08f, 1f));
+
+        if (hasRecipes && previewTexture != null)
+        {
+            GUI.DrawTexture(previewRect, previewTexture, ScaleMode.ScaleToFit, false);
         }
 
-        if (previewMap != null)
+        Handles.BeginGUI();
+        if (hasRecipes && previewMap != null)
         {
-            Handles.BeginGUI();
-            if (showSplines)
+            if (showSplines && previewMap.splines != null)
             {
                 Handles.color = Color.cyan;
                 foreach (var spline in previewMap.splines)
                 {
+                    if (spline?.points == null) continue;
                     for (var i = 1; i < spline.points.Count; i++)
                     {
-                        Handles.DrawLine(WorldToRect(rect, spline.points[i - 1]), WorldToRect(rect, spline.points[i]));
+                        Handles.DrawLine(WorldToRect(previewRect, spline.points[i - 1]), WorldToRect(previewRect, spline.points[i]));
                     }
                 }
             }
 
-            if (showScatter)
+            if (showScatter && previewMap.scatters != null)
             {
                 Handles.color = Color.magenta;
                 foreach (var pair in previewMap.scatters)
                 {
-                    foreach (var pt in pair.Value.points)
+                    var points = pair.Value?.points;
+                    if (points == null) continue;
+                    foreach (var pt in points)
                     {
-                        Handles.DrawSolidDisc(WorldToRect(rect, pt.pos), Vector3.forward, 2f);
+                        Handles.DrawSolidDisc(WorldToRect(previewRect, pt.pos), Vector3.forward, 2f);
                     }
                 }
             }
-            Handles.EndGUI();
+        }
+        Handles.EndGUI();
 
-            var evt = Event.current;
-            if (rect.Contains(evt.mousePosition))
+        using (new HorizontalScope())
+        {
+            showWalkable = EditorGUILayout.ToggleLeft(new GUIContent("Walkable", "Show walkable mask overlay."), showWalkable);
+            showWater = EditorGUILayout.ToggleLeft(new GUIContent("Water", "Show water mask overlay."), showWater);
+            showZones = EditorGUILayout.ToggleLeft(new GUIContent("Zones", "Show zones mask overlay."), showZones);
+            showSplines = EditorGUILayout.ToggleLeft(new GUIContent("Splines", "Show generated spline paths."), showSplines);
+            showScatter = EditorGUILayout.ToggleLeft(new GUIContent("Scatter", "Show scatter points."), showScatter);
+        }
+
+        EditorGUILayout.LabelField(GetMouseReadout(previewRect));
+    }
+
+    private string GetMouseReadout(Rect previewRect)
+    {
+        if (previewMap == null || previewMap.grid == null || !previewRect.Contains(Event.current.mousePosition))
+            return "Cell: -";
+
+        var uv = new Vector2(
+            (Event.current.mousePosition.x - previewRect.x) / Mathf.Max(1f, previewRect.width),
+            (Event.current.mousePosition.y - previewRect.y) / Mathf.Max(1f, previewRect.height));
+        var cx = Mathf.Clamp(Mathf.FloorToInt(uv.x * previewMap.grid.width), 0, Mathf.Max(0, previewMap.grid.width - 1));
+        var cy = Mathf.Clamp(Mathf.FloorToInt((1f - uv.y) * previewMap.grid.height), 0, Mathf.Max(0, previewMap.grid.height - 1));
+
+        var msg = $"Cell {cx},{cy}";
+        if (previewMap.scalars != null)
+        {
+            foreach (var scalar in previewMap.scalars)
             {
-                var uv = new Vector2((evt.mousePosition.x - rect.x) / rect.width, (evt.mousePosition.y - rect.y) / rect.height);
-                var cx = Mathf.Clamp(Mathf.FloorToInt(uv.x * previewMap.grid.width), 0, previewMap.grid.width - 1);
-                var cy = Mathf.Clamp(Mathf.FloorToInt((1f - uv.y) * previewMap.grid.height), 0, previewMap.grid.height - 1);
-                var msg = $"Cell {cx},{cy}";
-                foreach (var s in previewMap.scalars)
-                {
-                    msg += $" | {s.Key}:{s.Value[cx, cy]:0.###}";
-                }
-                EditorGUILayout.LabelField(msg);
+                if (scalar.Value == null || cx >= scalar.Value.GetLength(0) || cy >= scalar.Value.GetLength(1)) continue;
+                msg += $" | {scalar.Key}:{scalar.Value[cx, cy]:0.###}";
             }
         }
+
+        return msg;
     }
+
+    private void CaptureHoveredTooltip()
+    {
+        if (!string.IsNullOrEmpty(GUI.tooltip))
+        {
+            hoveredHelp = GUI.tooltip;
+        }
+    }
+
+    
 
     private Vector2 WorldToRect(Rect rect, Vector2 world)
     {
@@ -336,5 +451,51 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     public void Warn(string message)
     {
         logs += $"[Warn] {message}\n";
+    }
+
+    private sealed class HorizontalScope : IDisposable
+    {
+        public HorizontalScope(params GUILayoutOption[] options)
+        {
+            EditorGUILayout.BeginHorizontal(options);
+        }
+
+        public void Dispose()
+        {
+            EditorGUILayout.EndHorizontal();
+        }
+    }
+
+    private sealed class VerticalScope : IDisposable
+    {
+        public VerticalScope(params GUILayoutOption[] options)
+        {
+            EditorGUILayout.BeginVertical(options);
+        }
+
+        public VerticalScope(GUIStyle style, params GUILayoutOption[] options)
+        {
+            EditorGUILayout.BeginVertical(style, options);
+        }
+
+        public void Dispose()
+        {
+            EditorGUILayout.EndVertical();
+        }
+    }
+
+    private sealed class ScrollScope : IDisposable
+    {
+        public Vector2 Position { get; }
+
+        public ScrollScope(Vector2 position, params GUILayoutOption[] options)
+        {
+            Position = EditorGUILayout.BeginScrollView(position, options);
+        }
+
+        public void Dispose()
+        {
+            EditorGUILayout.EndScrollView();
+        }
     }
 }
