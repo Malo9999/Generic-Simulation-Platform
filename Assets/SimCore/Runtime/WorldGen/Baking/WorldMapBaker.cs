@@ -9,7 +9,7 @@ using UnityEditor;
 public static class WorldMapBaker
 {
 #if UNITY_EDITOR
-    public static WorldMapAsset Bake(WorldMap map, IWorldRecipe recipe, WorldRecipeSettingsSO settings, NoiseDescriptorSet noise, string outDirAssetPath)
+    public static WorldMapAsset Bake(WorldMap map, IWorldRecipe recipe, WorldRecipeSettingsSO settings, NoiseSet noise, string outDirAssetPath)
     {
         map.EnsureRequiredOutputs();
         EnsureFolder(outDirAssetPath);
@@ -37,7 +37,7 @@ public static class WorldMapBaker
             grid = map.grid,
             settingsType = settings.GetType().AssemblyQualifiedName,
             settingsJson = EditorJsonUtility.ToJson(settings, true),
-            noiseDescriptors = noise,
+            noiseDescriptors = CloneNoiseSet(noise),
             bakedAtUtc = DateTime.UtcNow.ToString("o"),
             generatorGitCommit = string.Empty,
             outputs = new ProvenanceOutputs()
@@ -145,6 +145,17 @@ public static class WorldMapBaker
         ConfigureImporter(path, false);
     }
 
+
+    private static NoiseSet CloneNoiseSet(NoiseSet source)
+    {
+        var clone = new NoiseSet();
+        if (source?.descriptors != null)
+        {
+            clone.descriptors.AddRange(source.descriptors);
+        }
+
+        return clone;
+    }
     private static void EnsureFolder(string folder)
     {
         if (!AssetDatabase.IsValidFolder(folder))
