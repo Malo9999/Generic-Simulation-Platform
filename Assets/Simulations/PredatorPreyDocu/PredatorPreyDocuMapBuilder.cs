@@ -54,6 +54,7 @@ public sealed class PredatorPreyDocuMapBuilder
     private const int SeasonalWaterOrder = -175;
     private const int KopjesOverlayOrder = -170;
     private const int DebugOverlayOrder = -10;
+    private static readonly Color32 RiverBankColor = new(73, 108, 61, 170);
 
     private Transform mapRoot;
     private SpriteRenderer terrainSR;
@@ -413,6 +414,34 @@ public sealed class PredatorPreyDocuMapBuilder
             PaintIrregularWetland(seasonPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), wetland.radius, ppu, wetland.id);
         }
 
+        var clearedOnWater = 0;
+        var clearedOnBank = 0;
+        var seasonNonZero = 0;
+        for (var i = 0; i < seasonPx.Length; i++)
+        {
+            if (seasonPx[i].a <= 0)
+            {
+                continue;
+            }
+
+            if (permPx[i].a > 0)
+            {
+                seasonPx[i].a = 0;
+                clearedOnWater++;
+                continue;
+            }
+
+            if (bankPx[i].a > 0)
+            {
+                seasonPx[i].a = 0;
+                clearedOnBank++;
+                continue;
+            }
+
+            seasonNonZero++;
+        }
+        Debug.Log($"[SerengetiSeasonMask] clearedOnWater={clearedOnWater} clearedOnBank={clearedOnBank} seasonNonZero={seasonNonZero}");
+
         floodplainSR = CreateSprite("FloodplainOverlayTexture", ToTex(w, h, floodPx), ppu, FloodplainOrder);
         pointBarsSR = CreateSprite("PointBarsOverlay", ToTex(w, h, pointBarPx), ppu, PointBarsOrder);
         cutBanksSR = CreateSprite("CutBanksOverlay", ToTex(w, h, cutBankPx), ppu, CutBanksOrder);
@@ -453,7 +482,7 @@ public sealed class PredatorPreyDocuMapBuilder
         }
 
         var floodCol = new Color32(108, 145, 92, 120);
-        var bankCol = new Color32(73, 108, 61, 170);
+        var bankCol = RiverBankColor;
         var waterCol = new Color32(35, 120, 220, 255);
 
         for (var py = 0; py < texH; py++)
@@ -519,7 +548,7 @@ public sealed class PredatorPreyDocuMapBuilder
         var bankExtra = Mathf.Max(2f, mainRiver.bankExtra * (0.75f * ratio + 0.25f));
         var floodExtra = Mathf.Max(18f, mainRiver.floodplainExtra * (0.55f * ratio + 0.10f));
         var floodCol = new Color32(108, 145, 92, (byte)Mathf.Clamp(Mathf.RoundToInt(120f * 0.75f), 0, 255));
-        var bankCol = new Color32(73, 108, 61, (byte)Mathf.Clamp(Mathf.RoundToInt(170f * 0.85f), 0, 255));
+        var bankCol = RiverBankColor;
         var waterCol = new Color32(35, 120, 220, 255);
         Debug.Log($"[SerengetiGrumetiStyle] width={river.width:0.##} ratio={ratio:0.###} bankExtra={bankExtra:0.##} floodExtra={floodExtra:0.##} bankA={bankCol.a} floodA={floodCol.a}");
         Debug.Log($"[SerengetiGrumetiDetail] microMeander amp={meanderAmp:0.##} freq={meanderFreq:0.##}");
