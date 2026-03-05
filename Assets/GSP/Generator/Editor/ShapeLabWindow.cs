@@ -51,9 +51,9 @@ public class ShapeLabWindow : EditorWindow
             AssetDatabase.Refresh();
         }
 
-        if (GUILayout.Button("Open Generated Folder"))
+        if (GUILayout.Button("Open Resources Folder"))
         {
-            EditorUtility.RevealInFinder(ShapeBaker.Root);
+            EditorUtility.RevealInFinder(ShapeBaker.OutputRoot);
         }
     }
 

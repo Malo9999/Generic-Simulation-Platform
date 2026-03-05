@@ -5,13 +5,24 @@ using UnityEngine;
 
 public static class ShapeBaker
 {
-    public const string Root = "Assets/Presentation/Shapes/Generated";
-    public const string LibraryAssetPath = Root + "/Library/ShapeLibrary.asset";
-    public const string DefaultPackPath = Root + "/Templates/TemplatePack_DefaultNeon.asset";
+    public const string OutputRoot = "Assets/Presentation/Shapes/Resources";
+    public const string LegacyRoot = "Assets/Presentation/Shapes/Generated";
+    public const string TemplatesRoot = "Assets/Presentation/Shapes/Templates";
+    public const string LibraryAssetPath = OutputRoot + "/ShapeLibrary.asset";
+    public const string DefaultPackPath = TemplatesRoot + "/TemplatePack_DefaultNeon.asset";
+
+    private static bool legacyFolderNoticeShown;
 
     public static Sprite BakeTemplate(ShapeTemplateBase template, Color tint)
     {
-        var folder = $"{Root}/{template.CategoryFolder}";
+        if (template == null)
+        {
+            return null;
+        }
+
+        EnsureCanonicalFolders();
+
+        var folder = $"{OutputRoot}/{template.CategoryFolder}";
         EnsureFolder(folder);
 
         var pixels = template.Rasterize(tint);
@@ -29,6 +40,8 @@ public static class ShapeBaker
         library.Set(template.Id, sprite, template);
         EditorUtility.SetDirty(library);
         AssetDatabase.SaveAssets();
+
+        NotifyLegacyFolderDetected();
         return sprite;
     }
 
@@ -50,8 +63,7 @@ public static class ShapeBaker
 
     public static ShapeTemplatePack EnsureDefaultNeonPackAndBake()
     {
-        EnsureFolder(Root);
-        EnsureFolder(Root + "/Templates");
+        EnsureCanonicalFolders();
 
         var pack = AssetDatabase.LoadAssetAtPath<ShapeTemplatePack>(DefaultPackPath);
         if (pack == null)
@@ -85,7 +97,7 @@ public static class ShapeBaker
 
     private static T CreateTemplate<T>(string fileName, System.Action<T> configure) where T : ShapeTemplateBase
     {
-        var path = $"{Root}/Templates/{fileName}";
+        var path = $"{TemplatesRoot}/{fileName}";
         var existing = AssetDatabase.LoadAssetAtPath<T>(path);
         if (existing != null)
         {
@@ -100,7 +112,6 @@ public static class ShapeBaker
 
     private static ShapeLibrary EnsureLibraryAsset()
     {
-        EnsureFolder(Root + "/Library");
         var library = AssetDatabase.LoadAssetAtPath<ShapeLibrary>(LibraryAssetPath);
         if (library != null)
         {
@@ -129,6 +140,31 @@ public static class ShapeBaker
         importer.textureCompression = TextureImporterCompression.Uncompressed;
         importer.wrapMode = TextureWrapMode.Clamp;
         importer.SaveAndReimport();
+    }
+
+    private static void EnsureCanonicalFolders()
+    {
+        EnsureFolder(OutputRoot);
+        EnsureFolder(OutputRoot + "/Dots");
+        EnsureFolder(OutputRoot + "/Glows");
+        EnsureFolder(OutputRoot + "/Rings");
+        EnsureFolder(OutputRoot + "/Blobs");
+        EnsureFolder(OutputRoot + "/Strokes");
+        EnsureFolder(TemplatesRoot);
+    }
+
+    private static void NotifyLegacyFolderDetected()
+    {
+        if (legacyFolderNoticeShown || !AssetDatabase.IsValidFolder(LegacyRoot))
+        {
+            return;
+        }
+
+        legacyFolderNoticeShown = true;
+        EditorUtility.DisplayDialog(
+            "Shape Baker Migration",
+            "Old Generated folder detected. New canonical location is Resources. Old folder is now obsolete.",
+            "OK");
     }
 
     private static void EnsureFolder(string folder)
