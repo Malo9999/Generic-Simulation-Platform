@@ -1,6 +1,6 @@
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
@@ -8,17 +8,36 @@ using UnityEngine;
 
 public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 {
+    private const float LeftMinWidth = 360f;
+    private const float LeftDefaultWidth = 420f;
+    private const float RightPanelWidth = 280f;
+    private const float SplitterWidth = 5f;
+
+    private enum PreviewMode
+    {
+        Beauty,
+        Height,
+        Walkable,
+        Water,
+        Zones,
+        Scatter,
+        Splines
+    }
+
     private IReadOnlyList<IWorldRecipe> recipes;
-    private string[] recipeNames;
+    private string[] recipeNames = Array.Empty<string>();
     private int selectedRecipe;
+
     private WorldRecipeSettingsSO settings;
     private Editor settingsEditor;
 
     private List<WorldRecipePresetSO> availablePresets = new List<WorldRecipePresetSO>();
     private string[] presetNames = Array.Empty<string>();
     private int selectedPreset = -1;
+    private bool presetUseCurrentGrid = true;
 
     private int seed = 1337;
+    private bool treatSeedAsUnsigned;
     private string mapId = "Map_001";
     private int width = 128;
     private int height = 128;
@@ -26,32 +45,31 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private Vector2 origin;
 
     private bool livePreview = true;
-    private bool showWalkable = true;
-    private bool showLanes = true;
-    private bool showZones = true;
-    private bool showSplines = true;
-    private bool showScatter = true;
+    private bool autoFitPreview = true;
     private bool showNodeAnchors = true;
     private bool showLaneAnchors = true;
-    private bool autoFitPreview = true;
-    private bool overlayHeightPreview = true;
+
+    private float leftPanelWidth = LeftDefaultWidth;
+    private bool draggingSplitter;
+    private Vector2 leftPanelScroll;
+    private Vector2 logsScroll;
+
+    private PreviewMode previewMode = PreviewMode.Beauty;
+    private float heightContrast = 1.8f;
+    private float heightGamma = 1f;
+    private float previewHeightMin = 0f;
+    private float previewHeightMax = 1f;
 
     private PreviewTransform previewTransform;
-
-    private double nextLiveGenAt;
-    private bool dirtyLiveGen;
-
-    private NoiseSet activeNoise = new NoiseSet();
-    private WorldMap previewMap;
     private Texture2D previewTexture;
-    private Vector2 leftPanelScroll;
+    private WorldMap previewMap;
+    private NoiseSet activeNoise = new NoiseSet();
+
+    private bool dirtyLiveGen;
+    private double nextLiveGenAt;
     private string logs = string.Empty;
     private string hoveredHelp = string.Empty;
-
-    private static bool IsGridValid(WorldGridSpec grid)
-    {
-        return grid.width > 0 && grid.height > 0;
-    }
+    private string pinnedHelp = string.Empty;
 
     [MenuItem("GSP/Generator/WorldGen Lab")]
     public static void Open()
@@ -62,10 +80,16 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private void OnEnable()
     {
         recipes = WorldRecipeRegistry.GetRecipes();
-        recipeNames = recipes.Select(r => r.RecipeId).ToArray();
-        RecreateSettings();
-        RefreshPresets();
-        minSize = new Vector2(980f, 700f);
+        recipeNames = recipes?.Select(r => r.RecipeId).ToArray() ?? Array.Empty<string>();
+        if (recipeNames.Length > 0)
+        {
+            selectedRecipe = Mathf.Clamp(selectedRecipe, 0, recipeNames.Length - 1);
+            RecreateSettings();
+            RefreshPresets();
+            MarkLiveDirty();
+        }
+
+        minSize = new Vector2(1150f, 720f);
         EditorApplication.update += Tick;
     }
 
@@ -73,61 +97,269 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     {
         EditorApplication.update -= Tick;
         if (settings != null) DestroyImmediate(settings);
+        if (settingsEditor != null) DestroyImmediate(settingsEditor);
         if (previewTexture != null) DestroyImmediate(previewTexture);
     }
 
     private void Tick()
     {
-        if (livePreview && dirtyLiveGen && EditorApplication.timeSinceStartup >= nextLiveGenAt)
-        {
-            dirtyLiveGen = false;
-            GeneratePreview();
-            Repaint();
-        }
+        if (!livePreview || !dirtyLiveGen || EditorApplication.timeSinceStartup < nextLiveGenAt) return;
+        dirtyLiveGen = false;
+        GeneratePreview();
+        Repaint();
     }
 
     private void OnGUI()
     {
         hoveredHelp = string.Empty;
         var hasRecipes = recipes != null && recipes.Count > 0;
+        var fullRect = new Rect(0f, 0f, position.width, position.height);
 
-        IDisposable horizontalScope = null;
-        try
+        var minMiddleWidth = 360f;
+        var maxLeftWidth = Mathf.Max(LeftMinWidth, fullRect.width - RightPanelWidth - minMiddleWidth - SplitterWidth * 2f);
+        leftPanelWidth = Mathf.Clamp(leftPanelWidth, LeftMinWidth, maxLeftWidth);
+
+        var leftRect = new Rect(fullRect.x, fullRect.y, leftPanelWidth, fullRect.height);
+        var splitterRect = new Rect(leftRect.xMax, fullRect.y, SplitterWidth, fullRect.height);
+        var rightRect = new Rect(fullRect.xMax - RightPanelWidth, fullRect.y, RightPanelWidth, fullRect.height);
+        var middleRect = new Rect(splitterRect.xMax, fullRect.y, rightRect.xMin - splitterRect.xMax, fullRect.height);
+
+        DrawSplitter(splitterRect, maxLeftWidth);
+
+        using (new GUILayoutAreaScope(leftRect)) DrawLeftColumn(hasRecipes);
+        using (new GUILayoutAreaScope(middleRect)) DrawMiddleColumn(hasRecipes);
+        CaptureHoveredTooltip();
+        using (new GUILayoutAreaScope(rightRect)) DrawHelpPanel(hasRecipes);
+    }
+
+    private void DrawSplitter(Rect splitterRect, float maxLeftWidth)
+    {
+        EditorGUIUtility.AddCursorRect(splitterRect, MouseCursor.ResizeHorizontal);
+        EditorGUI.DrawRect(splitterRect, new Color(0.16f, 0.16f, 0.16f, 1f));
+
+        var e = Event.current;
+        if (e.type == EventType.MouseDown && splitterRect.Contains(e.mousePosition) && e.button == 0)
         {
-            horizontalScope = new HorizontalScope();
-            DrawLeftColumn(hasRecipes);
-            DrawMiddleColumn(hasRecipes);
-            CaptureHoveredTooltip();
-            DrawHelpPanel(hasRecipes);
+            draggingSplitter = true;
+            e.Use();
         }
-        catch (Exception ex)
+
+        if (draggingSplitter && e.type == EventType.MouseDrag)
         {
-            logs += $"[Error] UI exception: {ex.Message}\n";
+            leftPanelWidth = Mathf.Clamp(e.mousePosition.x, LeftMinWidth, maxLeftWidth);
             Repaint();
+            e.Use();
         }
-        finally
+
+        if (draggingSplitter && (e.type == EventType.MouseUp || e.rawType == EventType.MouseUp))
         {
-            horizontalScope?.Dispose();
+            draggingSplitter = false;
+            e.Use();
         }
     }
 
     private void DrawLeftColumn(bool hasRecipes)
     {
-        using (new VerticalScope(GUILayout.Width(360f), GUILayout.ExpandHeight(true)))
-        using (var scroll = new ScrollScope(leftPanelScroll))
+        using (new VerticalScope())
         {
-            leftPanelScroll = scroll.Position;
+            using (var scroll = new ScrollScope(leftPanelScroll, GUILayout.ExpandHeight(true)))
+            {
+                leftPanelScroll = scroll.Position;
+                if (!hasRecipes)
+                {
+                    EditorGUILayout.HelpBox("No recipes registered.", MessageType.Warning);
+                }
+                else
+                {
+                    DrawRecipeAndGridControls();
+                    DrawSettingsControls();
+                    DrawActionButtons();
+                }
+            }
+        }
+    }
 
+    private void DrawMiddleColumn(bool hasRecipes)
+    {
+        var previewHeaderHeight = 54f;
+        var overlayHeight = 64f;
+        var logHeight = 120f;
+        var availableHeight = Mathf.Max(180f, position.height - previewHeaderHeight - overlayHeight - logHeight - 24f);
+
+        using (new VerticalScope())
+        {
+            DrawPreviewHeader();
+            var previewRect = GUILayoutUtility.GetRect(10f, availableHeight, GUILayout.ExpandWidth(true), GUILayout.Height(availableHeight));
+            DrawPreviewCanvas(previewRect, hasRecipes);
+            DrawOverlayRow();
+            DrawLogPanel(logHeight);
+        }
+    }
+
+    private void DrawPreviewHeader()
+    {
+        using (new HorizontalScope(EditorStyles.toolbar))
+        {
+            EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel, GUILayout.Width(56f));
+            previewMode = (PreviewMode)EditorGUILayout.EnumPopup(previewMode, EditorStyles.toolbarPopup, GUILayout.Width(130f));
+            autoFitPreview = GUILayout.Toggle(autoFitPreview, new GUIContent("Auto-fit", "Fit map bounds into preview area."), EditorStyles.toolbarButton, GUILayout.Width(70f));
+
+            if (previewMode == PreviewMode.Height)
+            {
+                GUILayout.Space(8f);
+                EditorGUILayout.LabelField(new GUIContent("Contrast", "Expands/reduces visible height variation."), GUILayout.Width(54f));
+                var nextContrast = EditorGUILayout.Slider(heightContrast, 0.25f, 4f);
+                if (!Mathf.Approximately(nextContrast, heightContrast))
+                {
+                    heightContrast = nextContrast;
+                    BuildPreviewTexture();
+                }
+
+                EditorGUILayout.LabelField(new GUIContent("Gamma", "Brightness curve in Height preview."), GUILayout.Width(44f));
+                var nextGamma = EditorGUILayout.Slider(heightGamma, 0.5f, 2.4f);
+                if (!Mathf.Approximately(nextGamma, heightGamma))
+                {
+                    heightGamma = nextGamma;
+                    BuildPreviewTexture();
+                }
+
+                GUILayout.Space(6f);
+                EditorGUILayout.LabelField($"Min {previewHeightMin:0.###} / Max {previewHeightMax:0.###}", GUILayout.Width(150f));
+            }
+
+            GUILayout.FlexibleSpace();
+        }
+    }
+
+    private void DrawPreviewCanvas(Rect previewRect, bool hasRecipes)
+    {
+        EditorGUI.DrawRect(previewRect, new Color(0.08f, 0.08f, 0.08f, 1f));
+
+        if (hasRecipes && previewMap != null && IsGridValid(previewMap.grid))
+        {
+            if (autoFitPreview || !previewTransform.IsValid)
+                previewTransform = PreviewTransform.Create(previewRect, ComputeWorldRect(previewMap.grid), 8f);
+
+            if (previewTexture != null)
+                GUI.DrawTexture(previewTransform.PixelRect, previewTexture, ScaleMode.StretchToFill, false);
+
+            DrawOverlays();
+        }
+        else
+        {
+            GUI.Label(new Rect(previewRect.x + 12f, previewRect.y + 8f, previewRect.width - 24f, 24f), "Generate a preview to visualize the selected recipe.");
+        }
+
+        GUI.Label(new Rect(previewRect.x + 8f, previewRect.yMax - 22f, previewRect.width - 16f, 20f), GetMouseReadout());
+    }
+
+    private void DrawOverlays()
+    {
+        if (previewMap == null || !previewTransform.IsValid) return;
+
+        Handles.BeginGUI();
+        DrawPreviewBounds();
+
+        if ((previewMode == PreviewMode.Beauty || previewMode == PreviewMode.Splines) && previewMap.splines != null)
+        {
+            foreach (var spline in previewMap.splines)
+            {
+                if (spline?.points == null || spline.points.Count < 2) continue;
+                var thickness = Mathf.Max(1f, spline.baseWidth / Mathf.Max(0.001f, previewMap.grid.cellSize));
+                Handles.color = Color.cyan;
+                for (var i = 1; i < spline.points.Count; i++)
+                    Handles.DrawAAPolyLine(thickness, WorldToRect(spline.points[i - 1]), WorldToRect(spline.points[i]));
+
+                if (previewMode == PreviewMode.Splines)
+                {
+                    Handles.color = new Color(1f, 0.75f, 0.25f, 0.95f);
+                    foreach (var point in spline.points)
+                        Handles.DrawSolidDisc(WorldToRect(point), Vector3.forward, 2.2f);
+                }
+            }
+        }
+
+        if ((previewMode == PreviewMode.Beauty || previewMode == PreviewMode.Scatter) && previewMap.scatters != null)
+        {
+            foreach (var scatter in previewMap.scatters.Values)
+            {
+                if (scatter?.points == null) continue;
+                Handles.color = new Color(0.35f, 1f, 0.35f, 0.85f);
+                foreach (var point in scatter.points)
+                    Handles.DrawSolidDisc(WorldToRect(point.pos), Vector3.forward, 1.4f);
+            }
+
+            if (showLaneAnchors && previewMap.scatters.TryGetValue("anchors_lane", out var laneAnchors) && laneAnchors?.points != null)
+            {
+                Handles.color = new Color(1f, 0.3f, 1f, 0.95f);
+                foreach (var point in laneAnchors.points) Handles.DrawSolidDisc(WorldToRect(point.pos), Vector3.forward, 1.8f);
+            }
+
+            if (showNodeAnchors && previewMap.scatters.TryGetValue("anchors_nodes", out var nodeAnchors) && nodeAnchors?.points != null)
+            {
+                Handles.color = new Color(1f, 0.95f, 0.2f, 0.95f);
+                foreach (var point in nodeAnchors.points) Handles.DrawSolidDisc(WorldToRect(point.pos), Vector3.forward, 3f);
+            }
+        }
+
+        Handles.EndGUI();
+    }
+
+    private void DrawOverlayRow()
+    {
+        using (new VerticalScope(EditorStyles.helpBox))
+        {
+            using (new HorizontalScope())
+            {
+                showNodeAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Node Anchors", "Show anchors_nodes points."), showNodeAnchors, GUILayout.Width(120f));
+                showLaneAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Lane Anchors", "Show anchors_lane points."), showLaneAnchors, GUILayout.Width(120f));
+                livePreview = EditorGUILayout.ToggleLeft(new GUIContent("Live Preview", "Regenerate preview automatically when settings change."), livePreview, GUILayout.Width(110f));
+                GUILayout.FlexibleSpace();
+                if (GUILayout.Button(new GUIContent("Rebuild Texture", "Recompute preview visualization from current map."), GUILayout.Width(115f))) BuildPreviewTexture();
+            }
+        }
+    }
+
+    private void DrawLogPanel(float logHeight)
+    {
+        EditorGUILayout.LabelField("Log", EditorStyles.boldLabel);
+        using (new VerticalScope(EditorStyles.helpBox, GUILayout.Height(logHeight), GUILayout.ExpandWidth(true)))
+        using (var scroll = new ScrollScope(logsScroll, GUILayout.ExpandHeight(true)))
+        {
+            logsScroll = scroll.Position;
+            EditorGUILayout.SelectableLabel(string.IsNullOrEmpty(logs) ? "No log messages yet." : logs, EditorStyles.wordWrappedLabel, GUILayout.ExpandHeight(true));
+        }
+    }
+
+    private void DrawHelpPanel(bool hasRecipes)
+    {
+        using (new VerticalScope(EditorStyles.helpBox, GUILayout.ExpandHeight(true)))
+        {
+            EditorGUILayout.LabelField("Help", EditorStyles.boldLabel);
             if (!hasRecipes)
             {
-                EditorGUILayout.HelpBox("No recipes registered.", MessageType.Warning);
+                EditorGUILayout.HelpBox("Register a recipe to start using WorldGen Lab.", MessageType.Info);
                 return;
             }
 
-            DrawRecipeAndGridControls();
-            DrawSettingsControls();
-            DrawActionButtons();
+            var message = !string.IsNullOrEmpty(hoveredHelp)
+                ? hoveredHelp
+                : (!string.IsNullOrEmpty(pinnedHelp) ? pinnedHelp : DefaultRecipeHelp());
+            EditorGUILayout.HelpBox(message, MessageType.Info);
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Recommended preset values", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox(
+                "Natural River\n- RiverWidth: 4.5\n- MeanderAmp: 0.14\n- MeanderFreq: 1.8\n- FloodplainWidth: 13\n- HeightNoise amplitude: 0.45\n\nBig Meanders\n- RiverWidth: 7.0\n- MeanderAmp: 0.28\n- MeanderFreq: 1.2\n- RiverWarpAmplitude: 7.5\n- RiverWarpFrequency: 0.02", MessageType.None);
         }
+    }
+
+    private string DefaultRecipeHelp()
+    {
+        if (selectedRecipe < 0 || selectedRecipe >= recipeNames.Length) return "Hover a setting to see help.";
+        if (recipeNames[selectedRecipe] != "SavannaRiver") return "Hover a setting to see help.";
+
+        return "SavannaRiver tip: seed affects all registered noises and warp offset. River shape is strongly driven by MeanderAmp/Freq and RiverWarp settings; if shape changes feel subtle, increase WarpAmplitude or MeanderAmp.";
     }
 
     private void DrawRecipeAndGridControls()
@@ -137,99 +369,138 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         if (EditorGUI.EndChangeCheck())
         {
             RecreateSettings();
-        RefreshPresets();
+            RefreshPresets();
             MarkLiveDirty();
         }
 
+        EditorGUI.BeginChangeCheck();
         DrawPresetControls();
 
         using (new HorizontalScope())
         {
-            seed = EditorGUILayout.IntField(new GUIContent("Seed", "Seed used for deterministic world generation."), seed);
-            if (GUILayout.Button(new GUIContent("Randomize", "Set seed to current UTC ticks."), GUILayout.Width(100f)))
+            seed = EditorGUILayout.IntField(new GUIContent("Seed", "Signed int seed. Negative values are valid and deterministic."), seed);
+            if (GUILayout.Button(new GUIContent("Randomize", "Use a random 32-bit seed across full int range."), GUILayout.Width(96f)))
             {
-                seed = (int)DateTime.UtcNow.Ticks;
+                seed = Guid.NewGuid().GetHashCode();
                 MarkLiveDirty();
             }
         }
 
-        mapId = EditorGUILayout.TextField(new GUIContent("Map ID", "Identifier stored with the generated map assets."), mapId);
+        treatSeedAsUnsigned = EditorGUILayout.Toggle(new GUIContent("Treat seed as unsigned", "Display and edit seed via uint representation while preserving exact bits."), treatSeedAsUnsigned);
+        if (treatSeedAsUnsigned)
+        {
+            var seedUnsigned = unchecked((uint)seed);
+            var nextUnsigned = (uint)EditorGUILayout.LongField(new GUIContent("Seed (uint)", "Unsigned 32-bit view of the seed."), seedUnsigned);
+            if (nextUnsigned != seedUnsigned)
+            {
+                seed = unchecked((int)nextUnsigned);
+                MarkLiveDirty();
+            }
+        }
+        else
+        {
+            EditorGUILayout.LabelField(new GUIContent("Seed (uint)", "Unsigned 32-bit view of the same seed bits."), unchecked((uint)seed).ToString());
+        }
+
+        mapId = EditorGUILayout.TextField(new GUIContent("Map ID", "Identifier stored with generated map assets."), mapId);
 
         EditorGUILayout.LabelField("Grid", EditorStyles.boldLabel);
         width = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Width", "Grid width in cells."), width));
         height = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Height", "Grid height in cells."), height));
         cellSize = Mathf.Max(0.01f, EditorGUILayout.FloatField(new GUIContent("Cell Size", "Size of one world grid cell."), cellSize));
         origin = EditorGUILayout.Vector2Field(new GUIContent("Origin", "World-space origin of the generated grid."), origin);
-        livePreview = EditorGUILayout.Toggle(new GUIContent("Live Preview", "Automatically regenerate preview after settings changes."), livePreview);
-    }
 
+        if (EditorGUI.EndChangeCheck())
+            MarkLiveDirty();
+    }
 
     private void DrawPresetControls()
     {
         using (new HorizontalScope())
         {
             EditorGUI.BeginDisabledGroup(presetNames.Length == 0);
-            selectedPreset = EditorGUILayout.Popup(new GUIContent("Preset", "Select a saved preset for the active recipe."), Mathf.Clamp(selectedPreset, 0, Mathf.Max(0, presetNames.Length - 1)), presetNames.Length == 0 ? new[] { "(none)" } : presetNames);
-            if (GUILayout.Button(new GUIContent("Apply Preset", "Apply the selected preset to current settings."), GUILayout.Width(105f)))
-            {
-                ApplySelectedPreset();
-            }
+            selectedPreset = EditorGUILayout.Popup(new GUIContent("Preset", "Select a saved preset for current recipe."), Mathf.Clamp(selectedPreset, 0, Mathf.Max(0, presetNames.Length - 1)), presetNames.Length == 0 ? new[] { "(none)" } : presetNames);
+            if (GUILayout.Button(new GUIContent("Apply", "Apply selected preset to grid and settings."), GUILayout.Width(58f))) ApplySelectedPreset();
             EditorGUI.EndDisabledGroup();
 
-            if (GUILayout.Button(new GUIContent("Save Preset...", "Save current recipe settings as a reusable preset asset."), GUILayout.Width(105f)))
-            {
-                SavePreset();
-            }
+            presetUseCurrentGrid = EditorGUILayout.ToggleLeft(new GUIContent("Use current grid", "If enabled, applying preset keeps the current grid values."), presetUseCurrentGrid, GUILayout.Width(110f));
+            if (GUILayout.Button(new GUIContent("Save", "Save current settings as a preset asset."), GUILayout.Width(58f))) SavePreset();
         }
+    }
+
+    private void DrawSettingsControls()
+    {
+        if (settings == null) return;
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
+
+        EditorGUI.BeginChangeCheck();
+        settingsEditor?.OnInspectorGUI();
+        if (EditorGUI.EndChangeCheck())
+        {
+            EditorUtility.SetDirty(settings);
+            MarkLiveDirty();
+        }
+
+        DrawSavannaKeyHelpHints();
+    }
+
+    private void DrawSavannaKeyHelpHints()
+    {
+        if (!(settings is SavannaRiverSettingsSO)) return;
+
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("SavannaRiver quick help", EditorStyles.miniBoldLabel);
+        DrawHelpLine("RiverWidth", "Channel width of main river spline.");
+        DrawHelpLine("MeanderAmp", "How far river oscillates from centerline.");
+        DrawHelpLine("MeanderFreq", "How many meander cycles across map.");
+        DrawHelpLine("FloodplainWidth", "Distance where floodplain carving/wetness fades.");
+        DrawHelpLine("BankWidth", "Transition width around river edge.");
+        DrawHelpLine("WaterLevel", "Biome threshold for high/low elevation decisions.");
+        DrawHelpLine("CarveStrength", "Depth/strength of river carving in height field.");
+        DrawHelpLine("HeightNoise", "Noise type/frequency/octaves/lacunarity/gain/amplitude blended into terrain height.");
+        DrawHelpLine("RiverWarpAmplitude", "Amount of warp applied to spline points.");
+        DrawHelpLine("RiverWarpFrequency", "Frequency for warp noise sampling.");
+    }
+
+    private void DrawHelpLine(string label, string help)
+    {
+        EditorGUILayout.LabelField(new GUIContent(label, help), EditorStyles.miniLabel);
+    }
+
+    private void DrawActionButtons()
+    {
+        EditorGUILayout.Space();
+        using (new HorizontalScope())
+        {
+            if (GUILayout.Button(new GUIContent("Generate", "Generate preview map with current settings."))) GeneratePreview();
+            if (GUILayout.Button(new GUIContent("Bake", "Bake world map assets to content folder."))) Bake(false);
+            if (GUILayout.Button(new GUIContent("Bake & Ping", "Bake and ping output folder."))) Bake(true);
+        }
+
+        if (GUILayout.Button(new GUIContent("Load provenance.json + Rebuild", "Load world provenance json and regenerate that world.")))
+            RebuildFromProvenance();
     }
 
     private void RefreshPresets()
     {
-        availablePresets = new List<WorldRecipePresetSO>();
+        availablePresets.Clear();
+        presetNames = Array.Empty<string>();
+        selectedPreset = -1;
+        if (recipes == null || recipes.Count == 0) return;
+
         var recipeId = recipes[selectedRecipe].RecipeId;
         foreach (var guid in AssetDatabase.FindAssets("t:WorldRecipePresetSO"))
         {
             var path = AssetDatabase.GUIDToAssetPath(guid);
             var preset = AssetDatabase.LoadAssetAtPath<WorldRecipePresetSO>(path);
-            if (preset != null && string.Equals(preset.recipeId, recipeId, StringComparison.Ordinal))
-            {
-                availablePresets.Add(preset);
-            }
+            if (preset == null || !string.Equals(preset.recipeId, recipeId, StringComparison.Ordinal)) continue;
+            availablePresets.Add(preset);
         }
 
-        availablePresets = availablePresets.OrderBy(p => p.presetName).ToList();
+        availablePresets = availablePresets.OrderBy(p => p.presetName, StringComparer.OrdinalIgnoreCase).ToList();
         presetNames = availablePresets.Select(p => p.presetName).ToArray();
         selectedPreset = presetNames.Length > 0 ? 0 : -1;
-    }
-
-    private void SavePreset()
-    {
-        if (settings == null) return;
-
-        var recipeId = recipes[selectedRecipe].RecipeId;
-        var root = $"Assets/Content/WorldPresets/{recipeId}";
-        EnsureFolder(root);
-
-        var proposedName = $"{recipeId}_Preset";
-        var path = EditorUtility.SaveFilePanelInProject("Save World Preset", proposedName, "asset", "Choose where to save preset asset.", root);
-        if (string.IsNullOrEmpty(path)) return;
-
-        var fileName = Path.GetFileNameWithoutExtension(path);
-        var preset = WorldRecipePresetSO.Create(
-            recipeId,
-            fileName,
-            CurrentGrid(),
-            true,
-            WorldPresetIO.CaptureSettingsJson(settings),
-            CaptureNoiseJson(),
-            settings.GetType().AssemblyQualifiedName);
-
-        AssetDatabase.CreateAsset(preset, path);
-        AssetDatabase.SaveAssets();
-        AssetDatabase.Refresh();
-        RefreshPresets();
-        selectedPreset = Mathf.Max(0, availablePresets.FindIndex(p => p == preset));
-        Log($"Saved preset '{fileName}' to {path}");
     }
 
     private void ApplySelectedPreset()
@@ -237,13 +508,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         if (selectedPreset < 0 || selectedPreset >= availablePresets.Count || settings == null) return;
 
         var preset = availablePresets[selectedPreset];
-        if (!string.IsNullOrEmpty(preset.settingsJson))
-        {
-            WorldPresetIO.ApplySettingsJson(settings, preset.settingsJson);
-            EditorUtility.SetDirty(settings);
-            settingsEditor = Editor.CreateEditor(settings);
-        }
-
         if (!preset.useCurrentGrid && IsGridValid(preset.gridDefaults))
         {
             width = preset.gridDefaults.width;
@@ -252,20 +516,64 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             origin = preset.gridDefaults.originWorld;
         }
 
-        activeNoise = string.IsNullOrEmpty(preset.noiseJson) ? new NoiseSet() : JsonUtility.FromJson<NoiseSet>(preset.noiseJson) ?? new NoiseSet();
+        if (!string.IsNullOrWhiteSpace(preset.settingsJson))
+            WorldPresetIO.ApplySettingsJson(settings, preset.settingsJson);
 
-        if (livePreview)
-        {
-            MarkLiveDirty();
-        }
+        EditorUtility.SetDirty(settings);
+        if (settingsEditor != null) DestroyImmediate(settingsEditor);
+        settingsEditor = Editor.CreateEditor(settings);
 
-        Repaint();
         Log($"Applied preset '{preset.presetName}'.");
+        if (livePreview) GeneratePreview();
+        Repaint();
+    }
+
+    private void SavePreset()
+    {
+        if (settings == null || recipes == null || recipes.Count == 0) return;
+
+        var recipeId = recipes[selectedRecipe].RecipeId;
+        var presetName = EditorUtility.SaveFilePanelInProject(
+            "Save World Recipe Preset",
+            $"{recipeId}_Preset",
+            "asset",
+            "Enter a preset name and save location under recipe presets.",
+            $"Assets/Content/Worlds/_Presets/{recipeId}");
+
+        if (string.IsNullOrWhiteSpace(presetName)) return;
+
+        var fileName = Path.GetFileNameWithoutExtension(presetName);
+        var forcedFolder = $"Assets/Content/Worlds/_Presets/{recipeId}";
+        EnsureFolder(forcedFolder);
+        var fullPath = $"{forcedFolder}/{fileName}.asset";
+
+        var preset = WorldRecipePresetSO.Create(
+            recipeId,
+            fileName,
+            CurrentGrid(),
+            presetUseCurrentGrid,
+            WorldPresetIO.CaptureSettingsJson(settings),
+            CaptureNoiseJson(),
+            settings.GetType().AssemblyQualifiedName);
+
+        var existing = AssetDatabase.LoadAssetAtPath<WorldRecipePresetSO>(fullPath);
+        if (existing != null) AssetDatabase.DeleteAsset(fullPath);
+        AssetDatabase.CreateAsset(preset, fullPath);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+
+        RefreshPresets();
+        selectedPreset = Mathf.Max(0, availablePresets.FindIndex(p => p == preset));
+        Selection.activeObject = preset;
+        EditorGUIUtility.PingObject(preset);
+        Log($"Saved preset '{fileName}' at {fullPath}.");
     }
 
     private string CaptureNoiseJson()
     {
         var snapshot = new NoiseSet();
+        if (settings == null) return string.Empty;
+
         foreach (var field in settings.GetType().GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
             if (field.FieldType != typeof(NoiseDescriptor)) continue;
@@ -286,141 +594,133 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         if (!AssetDatabase.IsValidFolder(folder)) AssetDatabase.CreateFolder(parent, leaf);
     }
 
-    private void DrawSettingsControls()
+    private void GeneratePreview()
     {
-        if (settings == null) return;
+        if (recipes == null || recipes.Count == 0 || settings == null) return;
 
-        EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
-        EditorGUI.BeginChangeCheck();
-        settingsEditor?.OnInspectorGUI();
+        logs = string.Empty;
+        activeNoise = activeNoise ?? new NoiseSet();
+        activeNoise.descriptors.Clear();
 
-        if (EditorGUI.EndChangeCheck())
+        var recipe = recipes[selectedRecipe];
+        previewMap = recipe.Generate(settings, seed, CurrentGrid(), activeNoise, this);
+        if (previewMap != null && string.IsNullOrEmpty(previewMap.mapId)) previewMap.mapId = mapId;
+        BuildPreviewTexture();
+    }
+
+    private void BuildPreviewTexture()
+    {
+        if (previewMap == null || !IsGridValid(previewMap.grid)) return;
+
+        if (previewTexture != null) DestroyImmediate(previewTexture);
+        previewTexture = new Texture2D(previewMap.grid.width, previewMap.grid.height, TextureFormat.RGBA32, false)
         {
-            EditorUtility.SetDirty(settings);
-            MarkLiveDirty();
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp
+        };
+
+        var pixels = new Color[previewMap.grid.width * previewMap.grid.height];
+        var hasHeight = TryGetScalar("height", out var heightField);
+        var hasWalkable = TryGetMask("walkable", out var walkableField);
+        var hasWater = TryGetMask("water", out var waterField);
+        var hasZones = TryGetMask("zones", out var zonesField);
+
+        previewHeightMin = 0f;
+        previewHeightMax = 1f;
+        if (hasHeight && heightField.values != null && heightField.values.Length > 0)
+        {
+            previewHeightMin = float.MaxValue;
+            previewHeightMax = float.MinValue;
+            foreach (var value in heightField.values)
+            {
+                if (value < previewHeightMin) previewHeightMin = value;
+                if (value > previewHeightMax) previewHeightMax = value;
+            }
+
+            if (previewHeightMin > previewHeightMax)
+            {
+                previewHeightMin = 0f;
+                previewHeightMax = 1f;
+            }
+        }
+
+        for (var y = 0; y < previewMap.grid.height; y++)
+        for (var x = 0; x < previewMap.grid.width; x++)
+        {
+            var idx = previewMap.grid.Index(x, y);
+            var heightValue = hasHeight ? heightField[x, y] : 0f;
+            Color color;
+
+            switch (previewMode)
+            {
+                case PreviewMode.Height:
+                    color = HeightColor(heightValue);
+                    break;
+                case PreviewMode.Walkable:
+                    color = hasWalkable && walkableField[x, y] > 0 ? Color.white : Color.black;
+                    break;
+                case PreviewMode.Water:
+                    color = hasWater && waterField[x, y] > 0 ? new Color(0.12f, 0.45f, 1f, 1f) : new Color(0.06f, 0.06f, 0.06f, 1f);
+                    break;
+                case PreviewMode.Zones:
+                    color = hasZones ? ZoneColor(zonesField[x, y]) : new Color(0.1f, 0.1f, 0.1f, 1f);
+                    break;
+                case PreviewMode.Scatter:
+                case PreviewMode.Splines:
+                    color = HeightColor(heightValue);
+                    break;
+                default:
+                    color = BeautyColor(x, y, hasHeight ? heightField : null, hasWalkable ? walkableField : null, hasWater ? waterField : null, hasZones ? zonesField : null);
+                    break;
+            }
+
+            pixels[idx] = color;
+        }
+
+        previewTexture.SetPixels(pixels);
+        previewTexture.Apply();
+    }
+
+    private Color BeautyColor(int x, int y, ScalarField heightField, MaskField walkable, MaskField water, MaskField zones)
+    {
+        var baseColor = heightField != null ? HeightColor(heightField[x, y]) : new Color(0.2f, 0.2f, 0.2f, 1f);
+        if (water != null && water[x, y] > 0) baseColor = Color.Lerp(baseColor, new Color(0.12f, 0.45f, 1f, 1f), 0.8f);
+        if (walkable != null && walkable[x, y] == 0) baseColor = Color.Lerp(baseColor, Color.red, 0.3f);
+        if (zones != null) baseColor = Color.Lerp(baseColor, ZoneColor(zones[x, y]), 0.25f);
+        return baseColor;
+    }
+
+    private Color HeightColor(float h)
+    {
+        var normalized = Mathf.InverseLerp(previewHeightMin, previewHeightMax, h);
+        var contrasted = Mathf.Clamp01((normalized - 0.5f) * heightContrast + 0.5f);
+        var gammaAdjusted = Mathf.Pow(contrasted, heightGamma);
+        return new Color(gammaAdjusted, gammaAdjusted, gammaAdjusted, 1f);
+    }
+
+    private static Color ZoneColor(int zone)
+    {
+        switch (zone % 6)
+        {
+            case 0: return new Color(0.85f, 0.75f, 0.3f, 1f);
+            case 1: return new Color(0.3f, 0.85f, 0.35f, 1f);
+            case 2: return new Color(0.26f, 0.72f, 0.9f, 1f);
+            case 3: return new Color(0.82f, 0.44f, 0.85f, 1f);
+            case 4: return new Color(0.95f, 0.5f, 0.2f, 1f);
+            default: return new Color(0.85f, 0.85f, 0.85f, 1f);
         }
     }
 
-    private void DrawActionButtons()
+    private bool TryGetScalar(string id, out ScalarField field)
     {
-        EditorGUILayout.Space();
-        using (new HorizontalScope())
-        {
-            if (GUILayout.Button(new GUIContent("Generate", "Generate a preview map with current settings."))) GeneratePreview();
-            if (GUILayout.Button(new GUIContent("Bake", "Bake world map assets to the content folder."))) Bake(false);
-            if (GUILayout.Button("Bake & Ping Folder")) Bake(true);
-        }
-
-        if (GUILayout.Button("Load provenance.json + Rebuild"))
-        {
-            RebuildFromProvenance();
-        }
+        field = null;
+        return previewMap != null && previewMap.scalars != null && previewMap.scalars.TryGetValue(id, out field) && field != null;
     }
 
-    private void DrawMiddleColumn(bool hasRecipes)
+    private bool TryGetMask(string id, out MaskField field)
     {
-        using (new VerticalScope(GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true)))
-        {
-            DrawPreview(hasRecipes);
-
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Log", EditorStyles.boldLabel);
-            using (new VerticalScope(EditorStyles.helpBox, GUILayout.Height(88f), GUILayout.ExpandWidth(true)))
-            {
-                EditorGUILayout.LabelField(string.IsNullOrEmpty(logs) ? "No log messages yet." : logs, EditorStyles.wordWrappedLabel, GUILayout.ExpandHeight(true));
-            }
-        }
-    }
-
-    private void DrawHelpPanel(bool hasRecipes)
-    {
-        using (new VerticalScope(EditorStyles.helpBox, GUILayout.Width(280f), GUILayout.ExpandHeight(true)))
-        {
-            EditorGUILayout.LabelField("Help", EditorStyles.boldLabel);
-            var helpText = !hasRecipes
-                ? "Register a recipe to start using WorldGen Lab."
-                : (string.IsNullOrEmpty(hoveredHelp) ? "Hover a setting to see help." : hoveredHelp);
-            EditorGUILayout.HelpBox(helpText, MessageType.Info);
-        }
-    }
-
-    private void DrawPreview(bool hasRecipes)
-    {
-        EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel);
-
-        var previewRect = GUILayoutUtility.GetRect(10f, 380f, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
-        EditorGUI.DrawRect(previewRect, new Color(0.08f, 0.08f, 0.08f, 1f));
-
-        if (hasRecipes && previewMap != null && IsGridValid(previewMap.grid))
-        {
-            if (autoFitPreview || !previewTransform.IsValid)
-            {
-                previewTransform = PreviewTransform.Create(previewRect, ComputeWorldRect(previewMap.grid), 8f);
-            }
-
-            if (previewTexture != null)
-            {
-                GUI.DrawTexture(previewTransform.PixelRect, previewTexture, ScaleMode.StretchToFill, false);
-            }
-        }
-
-        Handles.BeginGUI();
-        if (hasRecipes && previewMap != null && previewTransform.IsValid)
-        {
-            DrawPreviewBounds();
-
-            if (showSplines && previewMap.splines != null)
-            {
-                foreach (var spline in previewMap.splines)
-                {
-                    if (spline?.points == null) continue;
-                    var thickness = Mathf.Max(1f, spline.baseWidth / Mathf.Max(0.001f, previewMap.grid.cellSize));
-                    Handles.color = Color.cyan;
-                    for (var i = 1; i < spline.points.Count; i++)
-                    {
-                        Handles.DrawAAPolyLine(thickness, WorldToRect(spline.points[i - 1]), WorldToRect(spline.points[i]));
-                    }
-                }
-            }
-
-            if (showScatter && previewMap.scatters != null)
-            {
-                if (showLaneAnchors && previewMap.scatters.TryGetValue("anchors_lane", out var laneAnchors) && laneAnchors?.points != null)
-                {
-                    Handles.color = new Color(1f, 0.3f, 1f, 0.95f);
-                    foreach (var pt in laneAnchors.points)
-                    {
-                        Handles.DrawSolidDisc(WorldToRect(pt.pos), Vector3.forward, 1.8f);
-                    }
-                }
-
-                if (showNodeAnchors && previewMap.scatters.TryGetValue("anchors_nodes", out var nodeAnchors) && nodeAnchors?.points != null)
-                {
-                    Handles.color = new Color(1f, 0.95f, 0.2f, 0.95f);
-                    foreach (var pt in nodeAnchors.points)
-                    {
-                        Handles.DrawSolidDisc(WorldToRect(pt.pos), Vector3.forward, 3.8f);
-                    }
-                }
-            }
-        }
-        Handles.EndGUI();
-
-        using (new HorizontalScope())
-        {
-            autoFitPreview = EditorGUILayout.ToggleLeft(new GUIContent("Auto-fit", "Fit map bounds into the preview area with a small padding."), autoFitPreview);
-            showWalkable = EditorGUILayout.ToggleLeft(new GUIContent("Walkable", "Show walkable mask overlay."), showWalkable);
-            showLanes = EditorGUILayout.ToggleLeft(new GUIContent("Lanes", "Show lane mask overlay."), showLanes);
-            showZones = EditorGUILayout.ToggleLeft(new GUIContent("Zones", "Show zones mask overlay."), showZones);
-            showSplines = EditorGUILayout.ToggleLeft(new GUIContent("Splines", "Show generated spline paths."), showSplines);
-            showScatter = EditorGUILayout.ToggleLeft(new GUIContent("Scatter", "Show scatter points."), showScatter);
-            showNodeAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Node Anchors", "Show anchors_nodes points."), showNodeAnchors);
-            showLaneAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Lane Anchors", "Show anchors_lane points."), showLaneAnchors);
-            overlayHeightPreview = EditorGUILayout.ToggleLeft(new GUIContent("Overlay Height", "Blend terrain height into lane/zone shading for easier noise inspection."), overlayHeightPreview);
-        }
-
-        EditorGUILayout.LabelField(GetMouseReadout());
+        field = null;
+        return previewMap != null && previewMap.masks != null && previewMap.masks.TryGetValue(id, out field) && field != null;
     }
 
     private string GetMouseReadout()
@@ -435,38 +735,13 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         var cy = Mathf.Clamp(Mathf.FloorToInt(localY), 0, Mathf.Max(0, previewMap.grid.height - 1));
 
         var msg = $"world {worldPos.x:0.##},{worldPos.y:0.##} | cell {cx},{cy}";
-        msg += $" | walkable:{WorldMapQuery.IsWalkable(previewMap, worldPos)}";
-
-        var nearestSpline = WorldMapQuery.GetNearestSpline(previewMap, worldPos);
-        if (nearestSpline != null)
-        {
-            var nearestPoint = WorldMapQuery.GetNearestPointOnSpline(nearestSpline, worldPos);
-            msg += $" | spline:{nearestSpline.id} d={Vector2.Distance(worldPos, nearestPoint):0.##}";
-        }
-
-        if (previewMap.scatters != null && previewMap.scatters.TryGetValue("anchors_nodes", out var nodes) && nodes?.points != null && nodes.points.Count > 0)
-        {
-            var nearestNodeIndex = -1;
-            var bestD2 = float.MaxValue;
-            for (var i = 0; i < nodes.points.Count; i++)
-            {
-                var d2 = (nodes.points[i].pos - worldPos).sqrMagnitude;
-                if (d2 >= bestD2) continue;
-                bestD2 = d2;
-                nearestNodeIndex = i;
-            }
-
-            if (nearestNodeIndex >= 0) msg += $" | nearestNode:{nearestNodeIndex} d={Mathf.Sqrt(bestD2):0.##}";
-        }
-
         if (previewMap.scalars != null)
         {
             foreach (var scalar in previewMap.scalars)
             {
                 var field = scalar.Value;
-                if (field == null || !IsGridValid(field.grid)) continue;
-                if (cx >= field.grid.width || cy >= field.grid.height) continue;
-                msg += $" | {scalar.Key}:{scalar.Value[cx, cy]:0.###}";
+                if (field == null || !IsGridValid(field.grid) || cx >= field.grid.width || cy >= field.grid.height) continue;
+                msg += $" | {scalar.Key}:{field[cx, cy]:0.###}";
             }
         }
 
@@ -475,10 +750,8 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
     private void CaptureHoveredTooltip()
     {
-        if (!string.IsNullOrEmpty(GUI.tooltip))
-        {
-            hoveredHelp = GUI.tooltip;
-        }
+        if (!string.IsNullOrEmpty(GUI.tooltip)) hoveredHelp = GUI.tooltip;
+        if (Event.current.type == EventType.MouseDown && !string.IsNullOrEmpty(hoveredHelp)) pinnedHelp = hoveredHelp;
     }
 
     private void DrawPreviewBounds()
@@ -507,12 +780,19 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
     }
 
+    private static bool IsGridValid(WorldGridSpec grid)
+    {
+        return grid.width > 0 && grid.height > 0;
+    }
+
     private void RecreateSettings()
     {
+        if (recipes == null || recipes.Count == 0 || selectedRecipe < 0 || selectedRecipe >= recipes.Count) return;
+
         if (settings != null) DestroyImmediate(settings);
+        if (settingsEditor != null) DestroyImmediate(settingsEditor);
         settings = CreateInstance((Type)recipes[selectedRecipe].SettingsType) as WorldRecipeSettingsSO;
-        settingsEditor = Editor.CreateEditor(settings);
-        MarkLiveDirty();
+        settingsEditor = settings != null ? Editor.CreateEditor(settings) : null;
     }
 
     private void MarkLiveDirty()
@@ -526,77 +806,22 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         return new WorldGridSpec { width = width, height = height, cellSize = cellSize, originWorld = origin };
     }
 
-    private void GeneratePreview()
-    {
-        logs = string.Empty;
-        activeNoise = activeNoise ?? new NoiseSet();
-        activeNoise.descriptors.Clear();
-        var recipe = recipes[selectedRecipe];
-        previewMap = recipe.Generate(settings, seed, CurrentGrid(), activeNoise, this);
-        if (string.IsNullOrEmpty(previewMap.mapId)) previewMap.mapId = mapId;
-        BuildPreviewTexture();
-    }
-
-    private void BuildPreviewTexture()
-    {
-        if (previewMap == null || !IsGridValid(previewMap.grid)) return;
-        if (previewTexture != null) DestroyImmediate(previewTexture);
-        previewTexture = new Texture2D(previewMap.grid.width, previewMap.grid.height, TextureFormat.RGBA32, false);
-        var pixels = new Color[previewMap.grid.width * previewMap.grid.height];
-
-        for (var y = 0; y < previewMap.grid.height; y++)
-        for (var x = 0; x < previewMap.grid.width; x++)
-        {
-            var idx = previewMap.grid.Index(x, y);
-            var c = new Color(0.1f, 0.1f, 0.1f, 1f);
-            if (previewMap.scalars != null && previewMap.scalars.TryGetValue("height", out var heightField) && heightField != null)
-            {
-                var h = heightField[x, y];
-                c = new Color(h, h, h, 1f);
-            }
-
-            if (overlayHeightPreview && previewMap.scalars != null && previewMap.scalars.TryGetValue("height", out var overlayHeight) && overlayHeight != null)
-            {
-                var overlay = Mathf.Clamp01((overlayHeight[x, y] - 0.5f) * 2f);
-                c = Color.Lerp(c, c + new Color(overlay, overlay, overlay, 0f), 0.15f);
-            }
-
-            if (showLanes && previewMap.masks != null && previewMap.masks.TryGetValue("lanes", out var lanes) && lanes != null && lanes[x, y] > 0)
-                c = Color.Lerp(c, new Color(0f, 0.8f, 1f, 1f), 0.65f);
-            if (showWalkable && previewMap.masks != null && previewMap.masks.TryGetValue("walkable", out var walkable) && walkable != null && walkable[x, y] == 0)
-                c = Color.Lerp(c, new Color(1f, 0f, 0f, 1f), 0.35f);
-            if (showZones && previewMap.masks != null && previewMap.masks.TryGetValue("zones", out var zones) && zones != null)
-            {
-                var z = zones[x, y] % 4;
-                var zc = z switch
-                {
-                    0 => new Color(0.8f, 0.8f, 0.2f, 1f),
-                    1 => new Color(0.2f, 0.8f, 0.2f, 1f),
-                    2 => new Color(0.2f, 0.8f, 0.8f, 1f),
-                    _ => new Color(0.8f, 0.3f, 0.8f, 1f)
-                };
-                c = Color.Lerp(c, zc, 0.25f);
-            }
-
-            pixels[idx] = c;
-        }
-
-        previewTexture.SetPixels(pixels);
-        previewTexture.Apply();
-    }
-
     private void Bake(bool pingFolder)
     {
         if (previewMap == null) GeneratePreview();
+        if (previewMap == null) return;
+
         previewMap.mapId = mapId;
         var outDir = $"Assets/Content/Worlds/{recipes[selectedRecipe].RecipeId}/{mapId}";
         WorldMapBaker.Bake(previewMap, recipes[selectedRecipe], settings, activeNoise, outDir);
         AssetDatabase.Refresh();
+
         if (pingFolder)
         {
             var folder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(outDir);
             if (folder != null) EditorGUIUtility.PingObject(folder);
         }
+
         Log($"Baked to {outDir}");
     }
 
@@ -604,6 +829,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     {
         var path = EditorUtility.OpenFilePanel("Select provenance.json", Application.dataPath, "json");
         if (string.IsNullOrEmpty(path)) return;
+
         var json = File.ReadAllText(path);
         var prov = JsonUtility.FromJson<WorldProvenance>(json);
         if (prov == null)
@@ -623,10 +849,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         RecreateSettings();
         RefreshPresets();
 
-        if (!string.IsNullOrEmpty(prov.settingsJson))
-        {
-            EditorJsonUtility.FromJsonOverwrite(prov.settingsJson, settings);
-        }
+        if (!string.IsNullOrEmpty(prov.settingsJson)) EditorJsonUtility.FromJsonOverwrite(prov.settingsJson, settings);
 
         seed = prov.seed;
         mapId = prov.mapId;
@@ -637,10 +860,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         activeNoise = prov.noiseDescriptors ?? new NoiseSet();
 
         GeneratePreview();
-        if (previewMap != null)
-        {
-            Log($"Rebuilt map {previewMap.mapId}. Verify key outputs (spline/scatter/mask coverage) manually.");
-        }
+        if (previewMap != null) Log($"Rebuilt map {previewMap.mapId}.");
     }
 
     public void Log(string message)
@@ -653,11 +873,29 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         logs += $"[Warn] {message}\n";
     }
 
+    private sealed class GUILayoutAreaScope : IDisposable
+    {
+        public GUILayoutAreaScope(Rect rect)
+        {
+            GUILayout.BeginArea(rect);
+        }
+
+        public void Dispose()
+        {
+            GUILayout.EndArea();
+        }
+    }
+
     private sealed class HorizontalScope : IDisposable
     {
         public HorizontalScope(params GUILayoutOption[] options)
         {
             EditorGUILayout.BeginHorizontal(options);
+        }
+
+        public HorizontalScope(GUIStyle style, params GUILayoutOption[] options)
+        {
+            EditorGUILayout.BeginHorizontal(style, options);
         }
 
         public void Dispose()
@@ -722,11 +960,10 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
             var worldWidth = Mathf.Max(0.0001f, worldRect.width);
             var worldHeight = Mathf.Max(0.0001f, worldRect.height);
-
             var scale = Mathf.Min(padded.width / worldWidth, padded.height / worldHeight);
+
             var fitW = worldWidth * scale;
             var fitH = worldHeight * scale;
-
             var pixelRect = new Rect(
                 padded.x + (padded.width - fitW) * 0.5f,
                 padded.y + (padded.height - fitH) * 0.5f,
@@ -740,18 +977,14 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         {
             var u = (world.x - WorldRect.xMin) / Mathf.Max(0.0001f, WorldRect.width);
             var v = (world.y - WorldRect.yMin) / Mathf.Max(0.0001f, WorldRect.height);
-            return new Vector2(
-                PixelRect.x + u * PixelRect.width,
-                PixelRect.y + (1f - v) * PixelRect.height);
+            return new Vector2(PixelRect.x + u * PixelRect.width, PixelRect.y + (1f - v) * PixelRect.height);
         }
 
         public Vector2 PixelToWorld(Vector2 pixel)
         {
             var u = (pixel.x - PixelRect.x) / Mathf.Max(0.0001f, PixelRect.width);
             var v = 1f - ((pixel.y - PixelRect.y) / Mathf.Max(0.0001f, PixelRect.height));
-            return new Vector2(
-                WorldRect.xMin + u * WorldRect.width,
-                WorldRect.yMin + v * WorldRect.height);
+            return new Vector2(WorldRect.xMin + u * WorldRect.width, WorldRect.yMin + v * WorldRect.height);
         }
     }
 }
