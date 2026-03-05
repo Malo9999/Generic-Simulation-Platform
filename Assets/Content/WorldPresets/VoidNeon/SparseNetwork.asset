@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c07d1ede7184eec833e207ea1092c0b, type: 3}
+  m_Name: SparseNetwork
+  m_EditorClassIdentifier: 
+  recipeId: VoidNeon
+  presetName: SparseNetwork
+  useCurrentGrid: 1
+  gridDefaults:
+    width: 128
+    height: 128
+    cellSize: 1
+    originWorld: {x: 0, y: 0}
+  settingsJson: '{"nodeCount":34,"nodeMinDist":10.0,"kNearest":2,"edgeWidthMin":2.2,"edgeWidthMax":4.7,"organicJitter":0.16,"smoothIterations":1,"marginCells":3,"anchorSpacing":7.0,"glowFalloff":8.0,"noiseScale":0.022,"HeightNoise":{"id":"voidneon_height","type":1,"octaves":3,"frequency":0.02,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2},"WetnessNoise":{"id":"voidneon_wetness","type":1,"octaves":3,"frequency":0.018,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2},"WarpNoise":{"id":"voidneon_warp","type":1,"octaves":3,"frequency":0.02,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2},"GlowNoise":{"id":"voidneon_glow","type":1,"octaves":2,"frequency":0.016,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2}}'
+  noiseJson: '{"descriptors":[]}'
+  settingsType: 
+  createdAtUtc: '2026-01-01T00:00:00.0000000Z'
