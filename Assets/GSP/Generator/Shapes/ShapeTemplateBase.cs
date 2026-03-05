@@ -8,7 +8,7 @@ public abstract class ShapeTemplateBase : ScriptableObject
     [SerializeField] private int ppu = 16;
 
     public string Id => shapeId;
-    public string CategoryFolder => string.IsNullOrWhiteSpace(categoryFolder) ? "Generated" : categoryFolder;
+    public string CategoryFolder => string.IsNullOrWhiteSpace(categoryFolder) ? "Dots" : categoryFolder;
     public int TextureSize => Mathf.Max(8, textureSize);
     public int PixelsPerUnit => Mathf.Max(1, ppu);
 

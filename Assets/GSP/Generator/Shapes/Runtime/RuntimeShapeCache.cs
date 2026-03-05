@@ -20,7 +20,7 @@ public static class RuntimeShapeCache
 
         if (library == null)
         {
-            library = Resources.Load<ShapeLibrary>("Shapes/Generated/Library/ShapeLibrary");
+            library = Resources.Load<ShapeLibrary>("ShapeLibrary");
         }
 
         if (library != null && library.TryGet(id, out var fromLibrary))
