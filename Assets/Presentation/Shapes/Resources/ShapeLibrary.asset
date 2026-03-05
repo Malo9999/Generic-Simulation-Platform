@@ -12,4 +12,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d69ab69c925a4a5bba373786b71f811a, type: 3}
   m_Name: ShapeLibrary
   m_EditorClassIdentifier: 
-  entries: []
+  entries:
+  - id: dot_core
+    sprite: {fileID: 21300000, guid: 82950f33fb1bf5c49a2cd951b23e3409, type: 3}
+    template: {fileID: 11400000, guid: 1ec12dc96d5e84642bd8af605eb59aa1, type: 2}
+  - id: dot_glow
+    sprite: {fileID: 21300000, guid: 4e8777c4c751382499143609ffe80af7, type: 3}
+    template: {fileID: 11400000, guid: 9489da8bd789e3c48af5722b35033c9f, type: 2}
+  - id: dot_glow_small
+    sprite: {fileID: 21300000, guid: 8eac221e393ac7d40ab7009210d13277, type: 3}
+    template: {fileID: 11400000, guid: 22e1625291b1f9440bdee9dc52646372, type: 2}
+  - id: ring_ping
+    sprite: {fileID: 21300000, guid: 5c2f6a6256dc8c041b299f9e517d7270, type: 3}
+    template: {fileID: 11400000, guid: 4143d2484b3ae2347b22ab8690a0085d, type: 2}
+  - id: organic_metaball
+    sprite: {fileID: 21300000, guid: 12c23956dd087f6478d8dee513e326ae, type: 3}
+    template: {fileID: 11400000, guid: e97419c8afca51648a33998d154e8954, type: 2}
+  - id: organic_amoeba
+    sprite: {fileID: 21300000, guid: 41e9c6bff8cbe324684beee4d01d3a09, type: 3}
+    template: {fileID: 11400000, guid: 6c098dafe966461418f3e1bbb9c89b07, type: 2}
+  - id: stroke_scribble
+    sprite: {fileID: 21300000, guid: 48c2a7092e3997b46b28431af80961d9, type: 3}
+    template: {fileID: 11400000, guid: 54ae156e5b0639f46a21ce55894ce222, type: 2}
