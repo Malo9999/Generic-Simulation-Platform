@@ -28,6 +28,9 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private bool showScatter = true;
     private bool showNodeAnchors = true;
     private bool showLaneAnchors = true;
+    private bool autoFitPreview = true;
+
+    private PreviewTransform previewTransform;
 
     private double nextLiveGenAt;
     private bool dirtyLiveGen;
@@ -234,14 +237,24 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         var previewRect = GUILayoutUtility.GetRect(10f, 380f, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
         EditorGUI.DrawRect(previewRect, new Color(0.08f, 0.08f, 0.08f, 1f));
 
-        if (hasRecipes && previewTexture != null && previewMap != null && IsGridValid(previewMap.grid))
+        if (hasRecipes && previewMap != null && IsGridValid(previewMap.grid))
         {
-            GUI.DrawTexture(previewRect, previewTexture, ScaleMode.ScaleToFit, false);
+            if (autoFitPreview || !previewTransform.IsValid)
+            {
+                previewTransform = PreviewTransform.Create(previewRect, ComputeWorldRect(previewMap.grid), 8f);
+            }
+
+            if (previewTexture != null)
+            {
+                GUI.DrawTexture(previewTransform.PixelRect, previewTexture, ScaleMode.StretchToFill, false);
+            }
         }
 
         Handles.BeginGUI();
-        if (hasRecipes && previewMap != null)
+        if (hasRecipes && previewMap != null && previewTransform.IsValid)
         {
+            DrawPreviewBounds();
+
             if (showSplines && previewMap.splines != null)
             {
                 foreach (var spline in previewMap.splines)
@@ -251,7 +264,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
                     Handles.color = Color.cyan;
                     for (var i = 1; i < spline.points.Count; i++)
                     {
-                        Handles.DrawAAPolyLine(thickness, WorldToRect(previewRect, spline.points[i - 1]), WorldToRect(previewRect, spline.points[i]));
+                        Handles.DrawAAPolyLine(thickness, WorldToRect(spline.points[i - 1]), WorldToRect(spline.points[i]));
                     }
                 }
             }
@@ -263,7 +276,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
                     Handles.color = new Color(1f, 0.3f, 1f, 0.95f);
                     foreach (var pt in laneAnchors.points)
                     {
-                        Handles.DrawSolidDisc(WorldToRect(previewRect, pt.pos), Vector3.forward, 1.8f);
+                        Handles.DrawSolidDisc(WorldToRect(pt.pos), Vector3.forward, 1.8f);
                     }
                 }
 
@@ -272,7 +285,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
                     Handles.color = new Color(1f, 0.95f, 0.2f, 0.95f);
                     foreach (var pt in nodeAnchors.points)
                     {
-                        Handles.DrawSolidDisc(WorldToRect(previewRect, pt.pos), Vector3.forward, 3.8f);
+                        Handles.DrawSolidDisc(WorldToRect(pt.pos), Vector3.forward, 3.8f);
                     }
                 }
             }
@@ -281,6 +294,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
         using (new HorizontalScope())
         {
+            autoFitPreview = EditorGUILayout.ToggleLeft(new GUIContent("Auto-fit", "Fit map bounds into the preview area with a small padding."), autoFitPreview);
             showWalkable = EditorGUILayout.ToggleLeft(new GUIContent("Walkable", "Show walkable mask overlay."), showWalkable);
             showLanes = EditorGUILayout.ToggleLeft(new GUIContent("Lanes", "Show lane mask overlay."), showLanes);
             showZones = EditorGUILayout.ToggleLeft(new GUIContent("Zones", "Show zones mask overlay."), showZones);
@@ -290,20 +304,19 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             showLaneAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Lane Anchors", "Show anchors_lane points."), showLaneAnchors);
         }
 
-        EditorGUILayout.LabelField(GetMouseReadout(previewRect));
+        EditorGUILayout.LabelField(GetMouseReadout());
     }
 
-    private string GetMouseReadout(Rect previewRect)
+    private string GetMouseReadout()
     {
-        if (previewMap == null || !IsGridValid(previewMap.grid) || !previewRect.Contains(Event.current.mousePosition))
+        if (previewMap == null || !IsGridValid(previewMap.grid) || !previewTransform.IsValid || !previewTransform.PixelRect.Contains(Event.current.mousePosition))
             return "Cell: -";
 
-        var uv = new Vector2(
-            (Event.current.mousePosition.x - previewRect.x) / Mathf.Max(1f, previewRect.width),
-            (Event.current.mousePosition.y - previewRect.y) / Mathf.Max(1f, previewRect.height));
-        var cx = Mathf.Clamp(Mathf.FloorToInt(uv.x * previewMap.grid.width), 0, Mathf.Max(0, previewMap.grid.width - 1));
-        var cy = Mathf.Clamp(Mathf.FloorToInt((1f - uv.y) * previewMap.grid.height), 0, Mathf.Max(0, previewMap.grid.height - 1));
-        var worldPos = previewMap.grid.CellCenterWorld(cx, cy);
+        var worldPos = previewTransform.PixelToWorld(Event.current.mousePosition);
+        var localX = (worldPos.x - previewMap.grid.originWorld.x) / Mathf.Max(0.0001f, previewMap.grid.cellSize);
+        var localY = (worldPos.y - previewMap.grid.originWorld.y) / Mathf.Max(0.0001f, previewMap.grid.cellSize);
+        var cx = Mathf.Clamp(Mathf.FloorToInt(localX), 0, Mathf.Max(0, previewMap.grid.width - 1));
+        var cy = Mathf.Clamp(Mathf.FloorToInt(localY), 0, Mathf.Max(0, previewMap.grid.height - 1));
 
         var msg = $"world {worldPos.x:0.##},{worldPos.y:0.##} | cell {cx},{cy}";
         msg += $" | walkable:{WorldMapQuery.IsWalkable(previewMap, worldPos)}";
@@ -352,14 +365,30 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         }
     }
 
-    
-
-    private Vector2 WorldToRect(Rect rect, Vector2 world)
+    private void DrawPreviewBounds()
     {
-        var g = previewMap.grid;
-        var u = (world.x - g.originWorld.x) / (g.width * g.cellSize);
-        var v = (world.y - g.originWorld.y) / (g.height * g.cellSize);
-        return new Vector2(rect.x + u * rect.width, rect.y + (1f - v) * rect.height);
+        var min = previewTransform.WorldRect.min;
+        var max = previewTransform.WorldRect.max;
+
+        var p0 = WorldToRect(new Vector2(min.x, min.y));
+        var p1 = WorldToRect(new Vector2(max.x, min.y));
+        var p2 = WorldToRect(new Vector2(max.x, max.y));
+        var p3 = WorldToRect(new Vector2(min.x, max.y));
+
+        Handles.color = new Color(1f, 0.55f, 0f, 1f);
+        Handles.DrawAAPolyLine(2f, p0, p1, p2, p3, p0);
+    }
+
+    private Vector2 WorldToRect(Vector2 world)
+    {
+        return previewTransform.WorldToPixel(world);
+    }
+
+    private static Rect ComputeWorldRect(WorldGridSpec grid)
+    {
+        var min = grid.originWorld;
+        var max = grid.originWorld + new Vector2(grid.width * grid.cellSize, grid.height * grid.cellSize);
+        return Rect.MinMaxRect(min.x, min.y, max.x, max.y);
     }
 
     private void RecreateSettings()
@@ -543,6 +572,62 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         public void Dispose()
         {
             EditorGUILayout.EndScrollView();
+        }
+    }
+
+    private readonly struct PreviewTransform
+    {
+        public readonly Rect WorldRect;
+        public readonly Rect PixelRect;
+        public readonly bool IsValid;
+
+        private PreviewTransform(Rect worldRect, Rect pixelRect, bool isValid)
+        {
+            WorldRect = worldRect;
+            PixelRect = pixelRect;
+            IsValid = isValid;
+        }
+
+        public static PreviewTransform Create(Rect canvasRect, Rect worldRect, float padding)
+        {
+            var padded = new Rect(
+                canvasRect.x + padding,
+                canvasRect.y + padding,
+                Mathf.Max(1f, canvasRect.width - padding * 2f),
+                Mathf.Max(1f, canvasRect.height - padding * 2f));
+
+            var worldWidth = Mathf.Max(0.0001f, worldRect.width);
+            var worldHeight = Mathf.Max(0.0001f, worldRect.height);
+
+            var scale = Mathf.Min(padded.width / worldWidth, padded.height / worldHeight);
+            var fitW = worldWidth * scale;
+            var fitH = worldHeight * scale;
+
+            var pixelRect = new Rect(
+                padded.x + (padded.width - fitW) * 0.5f,
+                padded.y + (padded.height - fitH) * 0.5f,
+                fitW,
+                fitH);
+
+            return new PreviewTransform(worldRect, pixelRect, worldRect.width > 0f && worldRect.height > 0f && pixelRect.width > 0f && pixelRect.height > 0f);
+        }
+
+        public Vector2 WorldToPixel(Vector2 world)
+        {
+            var u = (world.x - WorldRect.xMin) / Mathf.Max(0.0001f, WorldRect.width);
+            var v = (world.y - WorldRect.yMin) / Mathf.Max(0.0001f, WorldRect.height);
+            return new Vector2(
+                PixelRect.x + u * PixelRect.width,
+                PixelRect.y + (1f - v) * PixelRect.height);
+        }
+
+        public Vector2 PixelToWorld(Vector2 pixel)
+        {
+            var u = (pixel.x - PixelRect.x) / Mathf.Max(0.0001f, PixelRect.width);
+            var v = 1f - ((pixel.y - PixelRect.y) / Mathf.Max(0.0001f, PixelRect.height));
+            return new Vector2(
+                WorldRect.xMin + u * WorldRect.width,
+                WorldRect.yMin + v * WorldRect.height);
         }
     }
 }
