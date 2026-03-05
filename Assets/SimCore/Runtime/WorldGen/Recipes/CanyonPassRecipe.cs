@@ -5,10 +5,14 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
     public override string RecipeId => "CanyonPass";
     public override int Version => 1;
 
-    protected override WorldMap GenerateTyped(CanyonPassSettingsSO settings, int seed, WorldGridSpec grid, NoiseDescriptorSet noise, IWorldGenLogger log)
+    protected override WorldMap GenerateTyped(CanyonPassSettingsSO settings, int seed, WorldGridSpec grid, NoiseSet noise, IWorldGenLogger log)
     {
         var map = new WorldMap { recipeId = RecipeId, seed = seed, grid = grid };
         var rng = new WorldGenRng(seed);
+        noise.Register(settings.HeightNoise, seed);
+        noise.Register(settings.WetnessNoise, seed);
+        noise.Register(settings.WarpNoise, seed);
+        var heightNoise = noise.Get(settings.HeightNoise.id);
 
         var path = new WorldSpline { id = "path_main", baseWidth = settings.passWidth };
         var pts = Mathf.Max(10, grid.height / 2);
@@ -32,7 +36,7 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             var p = grid.CellCenterWorld(x, y);
             var d = MinDistanceToSpline(path, p);
             var edge = Mathf.Clamp01(d / Mathf.Max(0.01f, settings.passWidth));
-            var h = Mathf.Pow(edge, settings.wallSteepness) * settings.canyonDepth;
+            var h = Mathf.Pow(edge, settings.wallSteepness) * settings.canyonDepth + NoiseUtil.Sample2D(heightNoise, x, y, seed) * 0.08f;
             height[x, y] = h;
 
             var inPass = d <= settings.passWidth;

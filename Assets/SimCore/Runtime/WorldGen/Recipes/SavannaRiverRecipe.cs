@@ -5,7 +5,7 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
     public override string RecipeId => "SavannaRiver";
     public override int Version => 1;
 
-    protected override WorldMap GenerateTyped(SavannaRiverSettingsSO settings, int seed, WorldGridSpec grid, NoiseDescriptorSet noise, IWorldGenLogger log)
+    protected override WorldMap GenerateTyped(SavannaRiverSettingsSO settings, int seed, WorldGridSpec grid, NoiseSet noise, IWorldGenLogger log)
     {
         var map = new WorldMap { recipeId = RecipeId, seed = seed, grid = grid };
         var rng = new WorldGenRng(seed);
@@ -28,7 +28,11 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         var biomes = new MaskField("biomes", grid, MaskEncoding.Categorical) { categories = new[] { "savanna", "wetland", "rocky", "water" } };
         var zones = new MaskField("zones", grid, MaskEncoding.Categorical) { categories = new[] { "river", "north_plain", "south_plain" } };
 
-        var n = noise.GetOrCreate("savanna_base", rng.Fork("noise"));
+        noise.Register(settings.HeightNoise, seed);
+        noise.Register(settings.WetnessNoise, seed);
+        noise.Register(settings.WarpNoise, seed);
+        var heightNoise = noise.Get(settings.HeightNoise.id);
+        var wetnessNoise = noise.Get(settings.WetnessNoise.id);
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
         {
@@ -37,9 +41,9 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             var grad = ((x / (float)grid.width) * dir.x + (y / (float)grid.height) * dir.y) * 0.5f + 0.5f;
             var dist = MinDistanceToSpline(river, p);
             var riverFactor = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, settings.floodplainWidth));
-            var h = grad + NoiseUtil.Sample2D(n, x, y) * 0.2f - riverFactor * settings.carveStrength;
+            var h = grad + NoiseUtil.Sample2D(heightNoise, x, y, seed) * 0.2f - riverFactor * settings.carveStrength;
             height[x, y] = h;
-            wetness[x, y] = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, settings.floodplainWidth) + NoiseUtil.Sample2D(n, x + 73, y + 19) * 0.2f);
+            wetness[x, y] = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, settings.floodplainWidth) + NoiseUtil.Sample2D(wetnessNoise, x + 73, y + 19, seed) * 0.2f);
 
             var isWater = dist <= settings.riverWidth;
             water[x, y] = (byte)(isWater ? 1 : 0);
