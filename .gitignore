@@ -100,3 +100,10 @@ Assets/Presentation/Packs/**/Debug/
 Assets/Presentation/Packs/**/Blueprints/Generated/
 Assets/Presentation/Packs/**/ContentPack.asset
 Assets/Presentation/Packs/**/ContentPack.asset.meta
+
+# Keep committed shape library assets under generated shapes
+![Aa]ssets/[Pp]resentation/[Ss]hapes/[Gg]enerated/[Ll]ibrary/
+![Aa]ssets/[Pp]resentation/[Ss]hapes/[Gg]enerated/[Ll]ibrary/*.asset
+![Aa]ssets/[Pp]resentation/[Ss]hapes/[Gg]enerated/[Ll]ibrary/*.asset.meta
+![Aa]ssets/[Pp]resentation/[Ss]hapes/[Gg]enerated/[Ll]ibrary/*.cs
+![Aa]ssets/[Pp]resentation/[Ss]hapes/[Gg]enerated/[Ll]ibrary/*.cs.meta
