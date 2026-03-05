@@ -37,6 +37,11 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private string logs = string.Empty;
     private string hoveredHelp = string.Empty;
 
+    private static bool IsGridValid(WorldGridSpec grid)
+    {
+        return grid.width > 0 && grid.height > 0;
+    }
+
     [MenuItem("GSP/Generator/WorldGen Lab")]
     public static void Open()
     {
@@ -224,7 +229,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         var previewRect = GUILayoutUtility.GetRect(10f, 380f, GUILayout.ExpandWidth(true), GUILayout.ExpandHeight(true));
         EditorGUI.DrawRect(previewRect, new Color(0.08f, 0.08f, 0.08f, 1f));
 
-        if (hasRecipes && previewTexture != null)
+        if (hasRecipes && previewTexture != null && previewMap != null && IsGridValid(previewMap.grid))
         {
             GUI.DrawTexture(previewRect, previewTexture, ScaleMode.ScaleToFit, false);
         }
@@ -275,7 +280,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
     private string GetMouseReadout(Rect previewRect)
     {
-        if (previewMap == null || previewMap.grid == null || !previewRect.Contains(Event.current.mousePosition))
+        if (previewMap == null || !IsGridValid(previewMap.grid) || !previewRect.Contains(Event.current.mousePosition))
             return "Cell: -";
 
         var uv = new Vector2(
@@ -289,7 +294,9 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         {
             foreach (var scalar in previewMap.scalars)
             {
-                if (scalar.Value == null || cx >= scalar.Value.GetLength(0) || cy >= scalar.Value.GetLength(1)) continue;
+                var field = scalar.Value;
+                if (field == null || !IsGridValid(field.grid)) continue;
+                if (cx >= field.grid.width || cy >= field.grid.height) continue;
                 msg += $" | {scalar.Key}:{scalar.Value[cx, cy]:0.###}";
             }
         }
@@ -346,7 +353,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
     private void BuildPreviewTexture()
     {
-        if (previewMap == null) return;
+        if (previewMap == null || !IsGridValid(previewMap.grid)) return;
         if (previewTexture != null) DestroyImmediate(previewTexture);
         previewTexture = new Texture2D(previewMap.grid.width, previewMap.grid.height, TextureFormat.RGBA32, false);
         var pixels = new Color[previewMap.grid.width * previewMap.grid.height];
@@ -356,17 +363,17 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         {
             var idx = previewMap.grid.Index(x, y);
             var c = new Color(0.1f, 0.1f, 0.1f, 1f);
-            if (previewMap.scalars.TryGetValue("height", out var heightField))
+            if (previewMap.scalars != null && previewMap.scalars.TryGetValue("height", out var heightField) && heightField != null)
             {
                 var h = heightField[x, y];
                 c = new Color(h, h, h, 1f);
             }
 
-            if (showWater && previewMap.masks.TryGetValue("water", out var water) && water[x, y] > 0)
+            if (showWater && previewMap.masks != null && previewMap.masks.TryGetValue("water", out var water) && water != null && water[x, y] > 0)
                 c = Color.Lerp(c, new Color(0f, 0.4f, 1f, 1f), 0.7f);
-            if (showWalkable && previewMap.masks.TryGetValue("walkable", out var walkable) && walkable[x, y] == 0)
+            if (showWalkable && previewMap.masks != null && previewMap.masks.TryGetValue("walkable", out var walkable) && walkable != null && walkable[x, y] == 0)
                 c = Color.Lerp(c, new Color(1f, 0f, 0f, 1f), 0.35f);
-            if (showZones && previewMap.masks.TryGetValue("zones", out var zones))
+            if (showZones && previewMap.masks != null && previewMap.masks.TryGetValue("zones", out var zones) && zones != null)
             {
                 var z = zones[x, y] % 4;
                 var zc = z switch
