@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public static class NoiseUtil
+public static class RasterNoiseUtil
 {
     public static float Hash01(int x, int y, int seed)
     {

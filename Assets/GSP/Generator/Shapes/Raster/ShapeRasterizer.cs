@@ -92,9 +92,9 @@ public static class ShapeRasterizer
         for (var i = 0; i < lobeCount; i++)
         {
             var angle = (Mathf.PI * 2f * i) / lobeCount;
-            var rJitter = Mathf.Lerp(-jitter, jitter, NoiseUtil.Hash01(i, seed, seed + 17));
+            var rJitter = Mathf.Lerp(-jitter, jitter, RasterNoiseUtil.Hash01(i, seed, seed + 17));
             centers[i] = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * rJitter;
-            radii[i] = radius * Mathf.Lerp(0.8f, 1.2f, NoiseUtil.Hash01(seed, i, seed + 31));
+            radii[i] = radius * Mathf.Lerp(0.8f, 1.2f, RasterNoiseUtil.Hash01(seed, i, seed + 31));
         }
 
         for (var y = 0; y < size; y++)
@@ -104,7 +104,7 @@ public static class ShapeRasterizer
             var threshold = mode == OrganicBlobMode.Metaball ? 2.1f : 1.8f;
             if (mode == OrganicBlobMode.Amoeba)
             {
-                var wobble = NoiseUtil.ValueNoise01(x * 0.09f, y * 0.09f, seed) - 0.5f;
+                var wobble = RasterNoiseUtil.ValueNoise01(x * 0.09f, y * 0.09f, seed) - 0.5f;
                 threshold += wobble * 0.4f;
             }
 
@@ -125,7 +125,7 @@ public static class ShapeRasterizer
 
         for (var i = 0; i < steps; i++)
         {
-            var n = NoiseUtil.Hash01(i, seed, 17 + seed);
+            var n = RasterNoiseUtil.Hash01(i, seed, 17 + seed);
             angle += Mathf.Lerp(-0.9f, 0.9f, n);
             var next = p + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * stridePx;
             DrawSegment(pixels, size, p, next, widthPx, tint);
