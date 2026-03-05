@@ -16,8 +16,16 @@ MonoBehaviour:
   categoryFolder: Blobs
   textureSize: 96
   ppu: 16
-  mode: 0
-  seed: 1337
+  mode: 1
+  seed: 999
   lobeCount: 4
   radiusPx: 18
   jitterPx: 8
+  baseRadiusPx: 18
+  noiseAmplitudePx: 5
+  noiseFrequency: 3
+  noiseOctaves: 3
+  noiseLacunarity: 2
+  noiseGain: 0.5
+  rimSoftnessPx: 0
+  symmetryBreak: 0.35

@@ -69,11 +69,11 @@ public static class RuntimeShapeCache
                 size = 128;
                 break;
             case ShapeId.OrganicMetaball:
-                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.Metaball, 1337, 4, 18f, 8f);
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.Metaball, 1337, 4, 18f, 8f, 18, 4f, 2.5f, 3, 2f, 0.5f, 0, 0.35f);
                 size = 96;
                 break;
             case ShapeId.OrganicAmoeba:
-                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.Amoeba, 7331, 5, 17f, 10f);
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaNoise, 999, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f);
                 size = 96;
                 break;
             case ShapeId.StrokeScribble:
