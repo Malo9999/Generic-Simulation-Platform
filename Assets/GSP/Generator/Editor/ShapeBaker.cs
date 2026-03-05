@@ -26,7 +26,7 @@ public static class ShapeBaker
 
         var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(outputPath);
         var library = EnsureLibraryAsset();
-        library.Set(template.ShapeId, sprite, template);
+        library.Set(template.Id, sprite, template);
         EditorUtility.SetDirty(library);
         AssetDatabase.SaveAssets();
         return sprite;
