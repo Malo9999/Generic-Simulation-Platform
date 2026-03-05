@@ -91,11 +91,16 @@ public static class ShapeBaker
             t.ApplyAmoebaDefaults();
         }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<StrokeTemplate>("StrokeScribble_Default.asset", null));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<TriangleAgentTemplate>("TriangleAgent_Default.asset", null));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<DiamondAgentTemplate>("DiamondAgent_Default.asset", null));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<LineSegmentTemplate>("LineSegment_Default.asset", null));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<NoiseBlobTemplate>("NoiseBlob_Default.asset", null));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<PulseRingTemplate>("PulseRing_Default.asset", null));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<TriangleAgentTemplate>("TriangleAgent_Default.asset", t =>
+            t.ConfigureBase(ShapeId.TriangleAgent, "Agents", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<DiamondAgentTemplate>("DiamondAgent_Default.asset", t =>
+            t.ConfigureBase(ShapeId.DiamondAgent, "Agents", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<LineSegmentTemplate>("LineSegment_Default.asset", t =>
+            t.ConfigureBase(ShapeId.LineSegment, "Lines", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<NoiseBlobTemplate>("NoiseBlob_Default.asset", t =>
+            t.ConfigureBase(ShapeId.NoiseBlob, "Blobs", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<PulseRingTemplate>("PulseRing_Default.asset", t =>
+            t.ConfigureBase(ShapeId.PulseRing, "Rings", 64, 16)));
 
         if (changed)
         {
