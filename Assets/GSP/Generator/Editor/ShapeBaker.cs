@@ -102,6 +102,16 @@ public static class ShapeBaker
         changed |= EnsurePackTemplate(pack, CreateTemplate<PulseRingTemplate>("PulseRing_Default.asset", t =>
             t.ConfigureBase(ShapeId.PulseRing, "Rings", 64, 16)));
 
+        var templateCount = pack.templates.Count;
+        if (templateCount < 12)
+        {
+            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 12 templates, found {templateCount}.");
+        }
+        else if (changed)
+        {
+            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 12 templates.");
+        }
+
         if (changed)
         {
             EditorUtility.SetDirty(pack);
@@ -118,6 +128,7 @@ public static class ShapeBaker
         var existing = AssetDatabase.LoadAssetAtPath<T>(path);
         if (existing != null)
         {
+            ConfigureIfIncomplete(existing, configure);
             return existing;
         }
 
@@ -125,6 +136,27 @@ public static class ShapeBaker
         configure?.Invoke(created);
         AssetDatabase.CreateAsset(created, path);
         return created;
+    }
+
+    private static void ConfigureIfIncomplete<T>(T template, System.Action<T> configure) where T : ShapeTemplateBase
+    {
+        if (template == null || configure == null)
+        {
+            return;
+        }
+
+        var isIncomplete = string.IsNullOrWhiteSpace(template.Id)
+            || string.IsNullOrWhiteSpace(template.CategoryFolder)
+            || template.TextureSize <= 0
+            || template.PixelsPerUnit <= 0;
+
+        if (!isIncomplete)
+        {
+            return;
+        }
+
+        configure(template);
+        EditorUtility.SetDirty(template);
     }
 
     private static bool EnsurePackTemplate(ShapeTemplatePack pack, ShapeTemplateBase template)
