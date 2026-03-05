@@ -69,16 +69,36 @@ public static class RuntimeShapeCache
                 size = 128;
                 break;
             case ShapeId.OrganicMetaball:
-                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.Metaball, 1337, 4, 18f, 8f, 18, 4f, 2.5f, 3, 2f, 0.5f, 0, 0.35f);
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.Metaball, 1337, 4, 18f, 8f, 18, 4f, 2.5f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f);
                 size = 96;
                 break;
             case ShapeId.OrganicAmoeba:
-                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaNoise, 999, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f);
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaNoise, 999, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f);
                 size = 96;
                 break;
             case ShapeId.StrokeScribble:
                 pixels = ShapeRasterizer.RasterizeStroke(96, tint, 90210, 14, 2f, 4.5f);
                 size = 96;
+                break;
+            case ShapeId.TriangleAgent:
+                pixels = ShapeRasterizer.RasterizeTriangleAgent(64, tint, 20f, 18f, 6f, 0);
+                size = 64;
+                break;
+            case ShapeId.DiamondAgent:
+                pixels = ShapeRasterizer.RasterizeDiamondAgent(64, tint, 18f, 0);
+                size = 64;
+                break;
+            case ShapeId.LineSegment:
+                pixels = ShapeRasterizer.RasterizeLineSegment(64, tint, 44f, 2f, true);
+                size = 64;
+                break;
+            case ShapeId.NoiseBlob:
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaNoise, 2024, 4, 18f, 0f, 22, 2f, 1.2f, 2, 2f, 0.5f, 0, 0.2f, true, 6, 1f, 0.78f);
+                size = 96;
+                break;
+            case ShapeId.PulseRing:
+                pixels = ShapeRasterizer.RasterizeRingPing(128, tint, 28f, 2f, true, 10f, 0.18f);
+                size = 128;
                 break;
             default:
                 return null;
