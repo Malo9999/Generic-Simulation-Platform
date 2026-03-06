@@ -27,6 +27,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     [SerializeField] private float placeholderScale = 0.5f;
     [SerializeField] private bool useGlow = false;
     [SerializeField] private bool enableAnimatedShapes = true;
+    [SerializeField] private bool autoAssignShapeAnimationById = true;
 
     private bool debugEnabled;
     private DebugPlaceholderMode debugMode;
@@ -97,7 +98,7 @@ public class SimpleArtPipeline : ArtPipelineBase
                 && (string.Equals(glowShapeId, ShapeId.DotGlow, StringComparison.Ordinal)
                     || string.Equals(glowShapeId, ShapeId.PulseRing, StringComparison.Ordinal)))
             {
-                AttachAnimation(glowRenderer, AnimatedShapeProfile.CreateGlowPulse(), key.instanceId);
+                AttachAnimation(glowRenderer, AnimatedShapeProfile.CreateForShapeId(glowShapeId), key.instanceId);
             }
         }
 
@@ -165,27 +166,18 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     private void TryAttachBodyAnimation(SpriteRenderer renderer, string shapeId, int seed)
     {
-        if (renderer == null || string.IsNullOrWhiteSpace(shapeId))
+        if (renderer == null || string.IsNullOrWhiteSpace(shapeId) || !autoAssignShapeAnimationById)
         {
             return;
         }
 
-        if (string.Equals(shapeId, ShapeId.OrganicAmoeba, StringComparison.Ordinal))
+        var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
+        if (profile.animType == ShapeAnimType.None)
         {
-            AttachAnimation(renderer, AnimatedShapeProfile.CreateAmoebaWobble(), seed);
             return;
         }
 
-        if (string.Equals(shapeId, ShapeId.OrganicMetaball, StringComparison.Ordinal))
-        {
-            AttachAnimation(renderer, AnimatedShapeProfile.CreateAmoebaWobble(amplitude: 0.02f, frequency: 1.3f, scalePulse: 0.01f), seed);
-            return;
-        }
-
-        if (string.Equals(shapeId, ShapeId.Filament, StringComparison.Ordinal))
-        {
-            AttachAnimation(renderer, AnimatedShapeProfile.CreateFilamentWave(), seed);
-        }
+        AttachAnimation(renderer, profile, seed);
     }
 
     private static void AttachAnimation(SpriteRenderer renderer, AnimatedShapeProfile profile, int seed)

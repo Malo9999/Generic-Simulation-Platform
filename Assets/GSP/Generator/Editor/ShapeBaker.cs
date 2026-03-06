@@ -95,6 +95,12 @@ public static class ShapeBaker
             t.ConfigureBase(ShapeId.TriangleAgent, "Agents", 64, 16)));
         changed |= EnsurePackTemplate(pack, CreateTemplate<DiamondAgentTemplate>("DiamondAgent_Default.asset", t =>
             t.ConfigureBase(ShapeId.DiamondAgent, "Agents", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<ArrowAgentTemplate>("ArrowAgent_Default.asset", t =>
+            t.ConfigureBase(ShapeId.ArrowAgent, "Agents", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<CrossMarkerTemplate>("CrossMarker_Default.asset", t =>
+            t.ConfigureBase(ShapeId.CrossMarker, "Markers", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<ArcSectorTemplate>("ArcSector_Default.asset", t =>
+            t.ConfigureBase(ShapeId.ArcSector, "Markers", 96, 16)));
         changed |= EnsurePackTemplate(pack, CreateTemplate<LineSegmentTemplate>("LineSegment_Default.asset", t =>
             t.ConfigureBase(ShapeId.LineSegment, "Lines", 64, 16)));
         changed |= EnsurePackTemplate(pack, CreateTemplate<FilamentTemplate>("Filament_Default.asset", t =>
@@ -104,17 +110,19 @@ public static class ShapeBaker
         }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<NoiseBlobTemplate>("NoiseBlob_Default.asset", t =>
             t.ConfigureBase(ShapeId.NoiseBlob, "Blobs", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<FieldBlobTemplate>("FieldBlob_Default.asset", t =>
+            t.ConfigureBase(ShapeId.FieldBlob, "Fields", 128, 16)));
         changed |= EnsurePackTemplate(pack, CreateTemplate<PulseRingTemplate>("PulseRing_Default.asset", t =>
             t.ConfigureBase(ShapeId.PulseRing, "Rings", 64, 16)));
 
         var templateCount = pack.templates.Count;
-        if (templateCount < 13)
+        if (templateCount < 17)
         {
-            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 13 templates, found {templateCount}.");
+            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 17 templates, found {templateCount}.");
         }
         else if (changed)
         {
-            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 13 templates.");
+            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 17 templates.");
         }
 
         if (changed)
@@ -225,6 +233,8 @@ public static class ShapeBaker
         EnsureFolder(OutputRoot + "/Strokes");
         EnsureFolder(OutputRoot + "/Agents");
         EnsureFolder(OutputRoot + "/Lines");
+        EnsureFolder(OutputRoot + "/Markers");
+        EnsureFolder(OutputRoot + "/Fields");
         EnsureFolder(TemplatesRoot);
     }
 
