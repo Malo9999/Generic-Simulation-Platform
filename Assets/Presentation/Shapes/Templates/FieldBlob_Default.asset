@@ -16,6 +16,6 @@ MonoBehaviour:
   categoryFolder: Fields
   textureSize: 128
   ppu: 16
-  radiusPx: 28
+  radiusPx: 24
   falloffExponent: 2.4
   alphaMultiplier: 0.28

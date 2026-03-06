@@ -31,5 +31,5 @@ MonoBehaviour:
   symmetryBreak: 0.35
   useRimGradient: 1
   rimWidthPx: 6
-  innerMul: 1
+  innerMul: 0.85
   outerMul: 0.78

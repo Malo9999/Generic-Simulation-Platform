@@ -17,7 +17,7 @@ MonoBehaviour:
   textureSize: 64
   ppu: 16
   lengthPx: 32
-  headWidthPx: 16
-  tailLengthPx: 10
+  headWidthPx: 14
+  tailLengthPx: 12
   tailWidthPx: 4
   useOutline: 0
