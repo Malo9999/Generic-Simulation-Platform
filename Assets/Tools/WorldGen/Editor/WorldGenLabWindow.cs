@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -45,7 +46,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private float cellSize = 1f;
     private Vector2 origin;
 
-    private bool livePreview = true;
     private bool autoFitPreview = true;
     private bool showNodeAnchors = true;
     private bool showLaneAnchors = true;
@@ -66,8 +66,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private WorldMap previewMap;
     private NoiseSet activeNoise = new NoiseSet();
 
-    private bool dirtyLiveGen;
-    private double nextLiveGenAt;
     private string logs = string.Empty;
     private string hoveredHelp = string.Empty;
     private string pinnedHelp = string.Empty;
@@ -87,27 +85,16 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             selectedRecipe = Mathf.Clamp(selectedRecipe, 0, recipeNames.Length - 1);
             RecreateSettings();
             RefreshPresets();
-            MarkLiveDirty();
         }
 
         minSize = new Vector2(1150f, 720f);
-        EditorApplication.update += Tick;
     }
 
     private void OnDisable()
     {
-        EditorApplication.update -= Tick;
         if (settings != null) DestroyImmediate(settings);
         if (settingsEditor != null) DestroyImmediate(settingsEditor);
         if (previewTexture != null) DestroyImmediate(previewTexture);
-    }
-
-    private void Tick()
-    {
-        if (!livePreview || !dirtyLiveGen || EditorApplication.timeSinceStartup < nextLiveGenAt) return;
-        dirtyLiveGen = false;
-        GeneratePreview();
-        Repaint();
     }
 
     private void OnGUI()
@@ -314,9 +301,8 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             {
                 showNodeAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Node Anchors", "Show anchors_nodes points."), showNodeAnchors, GUILayout.Width(120f));
                 showLaneAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Lane Anchors", "Show anchors_lane points."), showLaneAnchors, GUILayout.Width(120f));
-                livePreview = EditorGUILayout.ToggleLeft(new GUIContent("Live Preview", "Regenerate preview automatically when settings change."), livePreview, GUILayout.Width(110f));
                 GUILayout.FlexibleSpace();
-                if (GUILayout.Button(new GUIContent("Rebuild Texture", "Recompute preview visualization from current map."), GUILayout.Width(115f))) BuildPreviewTexture();
+                if (GUILayout.Button(new GUIContent("Rebuild Texture", "Recompute preview visualization from current map."), GUILayout.Width(115f))) RebuildTextureOnly();
             }
         }
     }
@@ -371,7 +357,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         {
             RecreateSettings();
             RefreshPresets();
-            MarkLiveDirty();
         }
 
         EditorGUI.BeginChangeCheck();
@@ -383,7 +368,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             if (GUILayout.Button(new GUIContent("Randomize", "Use a random 32-bit seed across full int range."), GUILayout.Width(96f)))
             {
                 seed = Guid.NewGuid().GetHashCode();
-                MarkLiveDirty();
             }
         }
 
@@ -395,7 +379,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
             if (nextUnsigned != seedUnsigned)
             {
                 seed = unchecked((int)nextUnsigned);
-                MarkLiveDirty();
             }
         }
         else EditorGUILayout.LabelField(new GUIContent("Seed (uint)", "Unsigned 32-bit view of the same seed bits."), new GUIContent(unchecked((uint)seed).ToString()), EditorStyles.miniLabel);
@@ -407,9 +390,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         height = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Height", "Grid height in cells."), height));
         cellSize = Mathf.Max(0.01f, EditorGUILayout.FloatField(new GUIContent("Cell Size", "Size of one world grid cell."), cellSize));
         origin = EditorGUILayout.Vector2Field(new GUIContent("Origin", "World-space origin of the generated grid."), origin);
-
-        if (EditorGUI.EndChangeCheck())
-            MarkLiveDirty();
+        EditorGUI.EndChangeCheck();
     }
 
     private void DrawPresetControls()
@@ -437,7 +418,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         if (EditorGUI.EndChangeCheck())
         {
             EditorUtility.SetDirty(settings);
-            MarkLiveDirty();
         }
 
         DrawSavannaKeyHelpHints();
@@ -469,9 +449,12 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private void DrawActionButtons()
     {
         EditorGUILayout.Space();
+        EditorGUILayout.HelpBox(
+            "Manual mode: settings do not regenerate the preview until you click Generate.\nPreview updates only when Generate is clicked.",
+            MessageType.None);
         using (new HorizontalScope())
         {
-            if (GUILayout.Button(new GUIContent("Generate", "Generate preview map with current settings."))) GeneratePreview();
+            if (GUILayout.Button(new GUIContent("Generate", "Generate preview map with current settings."))) GenerateMapAndPreview();
             if (GUILayout.Button(new GUIContent("Bake", "Bake world map assets to content folder."))) Bake(false);
             if (GUILayout.Button(new GUIContent("Bake & Ping", "Bake and ping output folder."))) Bake(true);
         }
@@ -522,7 +505,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         settingsEditor = Editor.CreateEditor(settings);
 
         Log($"Applied preset '{preset.presetName}'.");
-        if (livePreview) GeneratePreview();
         Repaint();
     }
 
@@ -592,9 +574,22 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         if (!AssetDatabase.IsValidFolder(folder)) AssetDatabase.CreateFolder(parent, leaf);
     }
 
-    private void GeneratePreview()
+    private void GenerateMapAndPreview()
     {
-        if (recipes == null || recipes.Count == 0 || settings == null) return;
+        var mapStopwatch = Stopwatch.StartNew();
+        if (!GenerateWorldMap()) return;
+        mapStopwatch.Stop();
+        Log($"Generation took {mapStopwatch.ElapsedMilliseconds} ms.");
+
+        var textureStopwatch = Stopwatch.StartNew();
+        BuildPreviewTexture();
+        textureStopwatch.Stop();
+        Log($"Texture build took {textureStopwatch.ElapsedMilliseconds} ms.");
+    }
+
+    private bool GenerateWorldMap()
+    {
+        if (recipes == null || recipes.Count == 0 || settings == null) return false;
 
         logs = string.Empty;
         activeNoise = activeNoise ?? new NoiseSet();
@@ -603,7 +598,17 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         var recipe = recipes[selectedRecipe];
         previewMap = recipe.Generate(settings, seed, CurrentGrid(), activeNoise, this);
         if (previewMap != null && string.IsNullOrEmpty(previewMap.mapId)) previewMap.mapId = mapId;
+        return previewMap != null;
+    }
+
+    private void RebuildTextureOnly()
+    {
+        if (previewMap == null || !IsGridValid(previewMap.grid)) return;
+
+        var stopwatch = Stopwatch.StartNew();
         BuildPreviewTexture();
+        stopwatch.Stop();
+        Log($"Texture build took {stopwatch.ElapsedMilliseconds} ms.");
     }
 
     private void BuildPreviewTexture()
@@ -798,12 +803,6 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         settingsEditor = settings != null ? Editor.CreateEditor(settings) : null;
     }
 
-    private void MarkLiveDirty()
-    {
-        dirtyLiveGen = true;
-        nextLiveGenAt = EditorApplication.timeSinceStartup + 0.2;
-    }
-
     private WorldGridSpec CurrentGrid()
     {
         return new WorldGridSpec { width = width, height = height, cellSize = cellSize, originWorld = origin };
@@ -811,7 +810,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
     private void Bake(bool pingFolder)
     {
-        if (previewMap == null) GeneratePreview();
+        if (previewMap == null) GenerateMapAndPreview();
         if (previewMap == null) return;
 
         previewMap.mapId = mapId;
@@ -862,7 +861,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         origin = prov.grid.originWorld;
         activeNoise = prov.noiseDescriptors ?? new NoiseSet();
 
-        GeneratePreview();
+        GenerateMapAndPreview();
         if (previewMap != null) Log($"Rebuilt map {previewMap.mapId}.");
     }
 
