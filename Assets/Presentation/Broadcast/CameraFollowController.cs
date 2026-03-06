@@ -9,6 +9,9 @@ public class CameraFollowController : MonoBehaviour
     public Rect worldBounds = new Rect(-32f, -32f, 64f, 64f);
     public bool clampToBounds = true;
     public float smoothTime = 0f;
+    public bool fitArenaOnStart = true;
+
+    private bool hasInitialFit;
 
     private Vector3 velocity;
 
@@ -18,6 +21,8 @@ public class CameraFollowController : MonoBehaviour
         {
             return;
         }
+
+        EnsureInitialArenaFit();
 
         mainCamera.transform.position = GetTargetCameraPosition(mainCamera.transform.position);
     }
@@ -65,5 +70,39 @@ public class CameraFollowController : MonoBehaviour
         }
 
         return worldBounds;
+    }
+
+    private void EnsureInitialArenaFit()
+    {
+        if (!fitArenaOnStart || hasInitialFit)
+        {
+            return;
+        }
+
+        var boundsRect = ResolveWorldBounds();
+        var worldBoundsForFit = new Bounds(
+            new Vector3(boundsRect.center.x, boundsRect.center.y, 0f),
+            new Vector3(boundsRect.width, boundsRect.height, 0f));
+
+        if (arenaCameraPolicy == null)
+        {
+            arenaCameraPolicy = FindAnyObjectByType<ArenaCameraPolicy>();
+        }
+
+        if (arenaCameraPolicy != null)
+        {
+            arenaCameraPolicy.FitToBounds(mainCamera, worldBoundsForFit);
+        }
+        else
+        {
+            var height = worldBoundsForFit.size.y * 0.5f;
+            var width = worldBoundsForFit.size.x * 0.5f;
+            var sizeFromHeight = height;
+            var sizeFromWidth = width / Mathf.Max(0.01f, mainCamera.aspect);
+            mainCamera.orthographic = true;
+            mainCamera.orthographicSize = Mathf.Max(sizeFromHeight, sizeFromWidth);
+        }
+
+        hasInitialFit = true;
     }
 }

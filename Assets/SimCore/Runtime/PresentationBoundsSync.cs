@@ -80,7 +80,7 @@ public static class PresentationBoundsSync
 
         mainCamera.orthographic = true;
         var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
-        var canRouteThroughPolicy = arenaCameraPolicy != null && arenaCameraPolicy.targetCamera == mainCamera;
+        var canRouteThroughPolicy = arenaCameraPolicy != null;
 
         var position = mainCamera.transform.position;
         position.x = bounds.center.x;
@@ -94,20 +94,21 @@ public static class PresentationBoundsSync
             mainCamera.transform.position = position;
         }
 
-        var halfH = bounds.height * 0.5f;
-        var halfW = bounds.width * 0.5f;
-        var aspect = Screen.height > 0 ? (Screen.width / (float)Screen.height) : 1.777f;
-        var sizeToFitWidth = halfW / Mathf.Max(0.01f, aspect);
-        var baseSize = Mathf.Max(halfH, sizeToFitWidth);
-        var pad = Mathf.Clamp(baseSize * 0.08f, 1.5f, 6f);
-        var framingOrtho = baseSize + pad;
+        var fitBounds = new Bounds(
+            new Vector3(bounds.center.x, bounds.center.y, 0f),
+            new Vector3(bounds.width, bounds.height, 0f));
+
         if (canRouteThroughPolicy)
         {
-            arenaCameraPolicy.SetOrthoFromExternal(framingOrtho, "PresentationBoundsSync.EnsureMainCameraFraming", syncZoomLevel: true);
+            arenaCameraPolicy.FitToBounds(mainCamera, fitBounds);
         }
         else
         {
-            mainCamera.orthographicSize = framingOrtho;
+            var height = fitBounds.size.y * 0.5f;
+            var width = fitBounds.size.x * 0.5f;
+            var sizeFromHeight = height;
+            var sizeFromWidth = width / Mathf.Max(0.01f, mainCamera.aspect);
+            mainCamera.orthographicSize = Mathf.Max(sizeFromHeight, sizeFromWidth);
         }
     }
 
