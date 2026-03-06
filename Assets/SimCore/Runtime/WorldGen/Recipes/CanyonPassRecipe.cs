@@ -5,11 +5,12 @@ using UnityEngine;
 public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 {
     public override string RecipeId => "CanyonPass";
-    public override int Version => 4;
+    public override int Version => 5;
 
-    private const int MaxControlPoints = 64;
-    private const int MinControlPoints = 32;
-    private const int MaxPathIterations = 512;
+    private const int FastMinControlPoints = 22;
+    private const int FastMaxControlPoints = 36;
+    private const int SlowMinControlPoints = 30;
+    private const int SlowMaxControlPoints = 56;
     private const int MaxPreviewScatter = 256;
     private const float Epsilon = 1e-5f;
 
@@ -26,7 +27,8 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         var mapRect = new Rect(grid.originWorld.x, grid.originWorld.y, grid.width * grid.cellSize, grid.height * grid.cellSize);
 
         var pathTimer = Stopwatch.StartNew();
-        var passPoints = BuildPassCenterline(settings, grid, mapRect, seed, warpNoise, log);
+        int controlStationCount;
+        var passPoints = BuildPassCenterline(settings, grid, mapRect, seed, warpNoise, out controlStationCount, log);
         var spline = new WorldSpline { id = "pass_main", baseWidth = Mathf.Max(0.75f, settings.passWidth), points = passPoints };
         map.splines = SplineClipper.ClipToRectParts(spline, mapRect);
         pathTimer.Stop();
@@ -36,18 +38,24 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         var walkable = new MaskField("walkable", grid, MaskEncoding.Boolean);
         var zones = new MaskField("zones", grid, MaskEncoding.Categorical) { categories = new[] { "pass_floor", "wall", "upland" } };
 
-        var floorHalf = Mathf.Max(0.6f, settings.passWidth * 0.5f);
-        var wallOuter = Mathf.Max(floorHalf + grid.cellSize, floorHalf + settings.passWidth * 0.8f);
+        var floorHalfBase = Mathf.Max(0.6f, settings.passWidth * 0.5f);
+        var wallOuterBase = Mathf.Max(floorHalfBase + grid.cellSize, floorHalfBase + settings.passWidth * 0.8f);
+        var widthPhase = Mathf.Abs(Mathf.Sin(seed * 0.119f)) * Mathf.PI * 2f;
 
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
         {
             var p = grid.CellCenterWorld(x, y);
-            var dist = DistanceToPolyline(passPoints, p);
+            var dist = DistanceToPolylineWithT(passPoints, p, out var tAlong);
+
+            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 1.4f + 9f, seed * 0.0023f, seed + 73) * 2f - 1f;
+            var widthScale = Mathf.Clamp(1f + Mathf.Sin(tAlong * Mathf.PI * 2f + widthPhase) * 0.09f + widthNoise * 0.07f, 0.82f, 1.18f);
+            var floorHalf = floorHalfBase * widthScale;
+            var wallOuter = wallOuterBase * Mathf.Lerp(0.95f, 1.08f, tAlong);
 
             var slope = 0.35f + SlopeSample(grid, x, y) * 0.65f;
-            var low = (NoiseUtil.Sample2D(heightNoise, p.x * 0.28f, p.y * 0.28f, seed) * 2f - 1f) * settings.noiseStrength;
-            var wallNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 1.1f + 13f, p.y * 1.1f - 7f, seed + 23) * 2f - 1f) * settings.wallRoughness * 0.2f;
+            var low = (NoiseUtil.Sample2D(heightNoise, p.x * 0.22f, p.y * 0.22f, seed) * 2f - 1f) * settings.noiseStrength;
+            var wallNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.9f + 13f, p.y * 0.9f - 7f, seed + 23) * 2f - 1f) * settings.wallRoughness * 0.2f;
 
             var floorCarve = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, floorHalf));
             var wallBand = Mathf.Clamp01(1f - Mathf.Abs(dist - floorHalf) / Mathf.Max(0.01f, wallOuter - floorHalf));
@@ -56,7 +64,7 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             height[x, y] = h;
 
             var inFloor = dist <= floorHalf;
-            var inWall = !inFloor && dist <= wallOuter * (1f + wallNoise);
+            var inWall = !inFloor && dist <= wallOuter * (1f + wallNoise * 0.5f);
             walkable[x, y] = (byte)(inFloor ? 1 : 0);
             zones[x, y] = (byte)(inFloor ? 0 : inWall ? 1 : 2);
         }
@@ -91,45 +99,68 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         map.scatters["boulders"] = boulders;
         scatterTimer.Stop();
 
+        var textureTimer = Stopwatch.StartNew();
+        textureTimer.Stop();
+
         map.EnsureRequiredOutputs();
-        log.Log($"CanyonPass stages: path={pathTimer.ElapsedMilliseconds} ms | masks={maskTimer.ElapsedMilliseconds} ms | scatter={scatterTimer.ElapsedMilliseconds} ms");
-        log.Log($"Generated CanyonPass ({settings.qualityMode}): path={passPoints.Count} boulders={boulders.points.Count} splines={map.splines.Count}");
+        log.Log($"CanyonPass stages: path={pathTimer.ElapsedMilliseconds} ms | masks={maskTimer.ElapsedMilliseconds} ms | scatter={scatterTimer.ElapsedMilliseconds} ms | texture={textureTimer.ElapsedMilliseconds} ms");
+        log.Log($"CanyonPass path stats: controlStations={controlStationCount} splinePoints={passPoints.Count}");
+        log.Log($"Generated CanyonPass ({settings.qualityMode}): boulders={boulders.points.Count} splines={map.splines.Count}");
         return map;
     }
 
-    private static List<Vector2> BuildPassCenterline(CanyonPassSettingsSO settings, WorldGridSpec grid, Rect mapRect, int seed, NoiseDescriptor warpNoise, IWorldGenLogger log)
+    private static List<Vector2> BuildPassCenterline(CanyonPassSettingsSO settings, WorldGridSpec grid, Rect mapRect, int seed, NoiseDescriptor warpNoise, out int controlStationCount, IWorldGenLogger log)
     {
-        var start = new Vector2(mapRect.xMin, Mathf.Lerp(mapRect.yMin, mapRect.yMax, Mathf.Abs(Mathf.Sin(seed * 0.021f))));
-        var end = new Vector2(mapRect.xMax, Mathf.Lerp(mapRect.yMin, mapRect.yMax, Mathf.Abs(Mathf.Cos(seed * 0.017f))));
+        var flowDir = settings.gradientDir.sqrMagnitude > Epsilon ? settings.gradientDir.normalized : Vector2.right;
+        var progressDir = DominantCardinal(flowDir);
+        var lateralDir = new Vector2(-progressDir.y, progressDir.x);
 
-        var estimated = Mathf.Clamp(Mathf.RoundToInt(Mathf.Max(grid.width, grid.height) * 0.4f), MinControlPoints, MaxControlPoints);
-        var count = Mathf.Min(estimated, MaxPathIterations);
+        var start = EdgePoint(mapRect, progressDir, true, seed + 3);
+        var end = EdgePoint(mapRect, progressDir, false, seed + 19);
+
+        var maxDim = Mathf.Max(grid.width, grid.height);
+        var estimated = Mathf.RoundToInt(maxDim * 0.2f);
+        var count = settings.qualityMode == QualityMode.FastPreview
+            ? Mathf.Clamp(estimated, FastMinControlPoints, FastMaxControlPoints)
+            : Mathf.Clamp(estimated, SlowMinControlPoints, SlowMaxControlPoints);
+
         if (count <= 2)
         {
-            log.Warn("CanyonPass baseline path cap reached too early. Falling back to straight path.");
+            controlStationCount = 2;
+            log.Warn("CanyonPass path control station count too low. Falling back to straight path.");
             return new List<Vector2> { start, end };
         }
 
+        controlStationCount = count;
         var controls = new List<Vector2>(count) { start };
-        var warpAmp = Mathf.Max(0f, settings.WarpAmplitude);
+
+        var freq = Mathf.Max(0.01f, settings.MeanderFrequency);
+        var amp = Mathf.Max(grid.cellSize, settings.TwistAmplitude * grid.cellSize * 0.75f);
+        var warpAmp = Mathf.Max(0f, settings.WarpAmplitude) * grid.cellSize * 0.35f;
         var warpFreq = Mathf.Max(0.0001f, settings.WarpFrequency);
+        var phase = Mathf.Abs(Mathf.Sin(seed * 0.0241f)) * Mathf.PI * 2f;
+        var inset = InsetRect(mapRect, grid.cellSize * 1.25f);
 
         for (var i = 1; i < count - 1; i++)
         {
             var t = i / (float)(count - 1);
             var basePoint = Vector2.Lerp(start, end, t);
-            var twist = (NoiseUtil.Sample2D(warpNoise, t * settings.PathNoiseStrength * 19f, seed * 0.009f, seed + 13) * 2f - 1f) * settings.TwistAmplitude;
-            var warpY = (NoiseUtil.Sample2D(warpNoise, basePoint.x * warpFreq, basePoint.y * warpFreq, seed + 41) * 2f - 1f) * warpAmp;
-            var p = new Vector2(basePoint.x, basePoint.y + twist + warpY * 0.4f);
-            controls.Add(ClampToRect(p, mapRect));
+            var sinOffset = Mathf.Sin(t * freq * Mathf.PI * 2f + phase) * amp;
+            var lowNoise = (NoiseUtil.Sample2D(warpNoise, t * 1.7f + 5f, seed * 0.006f, seed + 13) * 2f - 1f) * amp * 0.2f;
+            var warp = (NoiseUtil.Sample2D(warpNoise, basePoint.x * warpFreq, basePoint.y * warpFreq, seed + 41) * 2f - 1f) * warpAmp;
+            var taper = Mathf.Pow(Mathf.Sin(t * Mathf.PI), 0.9f);
+
+            var p = basePoint + lateralDir * ((sinOffset + lowNoise + warp) * taper);
+            controls.Add(ClampToRect(p, inset));
         }
 
         controls.Add(end);
-        return Chaikin(controls, 1);
+        return Chaikin(controls, 2);
     }
 
-    private static float DistanceToPolyline(List<Vector2> points, Vector2 p)
+    private static float DistanceToPolylineWithT(List<Vector2> points, Vector2 p, out float tAlong)
     {
+        tAlong = 0f;
         if (points == null || points.Count < 2) return float.MaxValue;
         var best = float.MaxValue;
 
@@ -144,7 +175,11 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             var t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / lenSq);
             var proj = a + ab * t;
             var d = Vector2.Distance(p, proj);
-            if (d < best) best = d;
+            if (d < best)
+            {
+                best = d;
+                tAlong = ((i - 1) + t) / Mathf.Max(1f, points.Count - 1f);
+            }
         }
 
         return best;
@@ -155,6 +190,36 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         var nx = grid.width <= 1 ? 0f : x / (float)(grid.width - 1);
         var ny = grid.height <= 1 ? 0f : y / (float)(grid.height - 1);
         return nx * 0.45f + (1f - ny) * 0.55f;
+    }
+
+    private static Vector2 DominantCardinal(Vector2 dir)
+    {
+        if (Mathf.Abs(dir.x) > Mathf.Abs(dir.y))
+            return new Vector2(Mathf.Sign(dir.x), 0f);
+        return new Vector2(0f, Mathf.Sign(dir.y));
+    }
+
+    private static Vector2 EdgePoint(Rect rect, Vector2 direction, bool isStart, int seed)
+    {
+        var u = Mathf.Lerp(0.2f, 0.8f, Mathf.Abs(Mathf.Sin(seed * 0.017f)));
+        if (Mathf.Abs(direction.x) > 0.5f)
+        {
+            var x = (isStart ? direction.x > 0f : direction.x < 0f) ? rect.xMin : rect.xMax;
+            return new Vector2(x, Mathf.Lerp(rect.yMin, rect.yMax, u));
+        }
+
+        var y = (isStart ? direction.y > 0f : direction.y < 0f) ? rect.yMin : rect.yMax;
+        return new Vector2(Mathf.Lerp(rect.xMin, rect.xMax, u), y);
+    }
+
+    private static Rect InsetRect(Rect rect, float inset)
+    {
+        var minX = rect.xMin + inset;
+        var maxX = rect.xMax - inset;
+        var minY = rect.yMin + inset;
+        var maxY = rect.yMax - inset;
+        if (maxX <= minX || maxY <= minY) return rect;
+        return Rect.MinMaxRect(minX, minY, maxX, maxY);
     }
 
     private static Vector2 ClampToRect(Vector2 p, Rect rect)
