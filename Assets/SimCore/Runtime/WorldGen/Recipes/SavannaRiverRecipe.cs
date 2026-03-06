@@ -5,14 +5,26 @@ using UnityEngine;
 public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 {
     public override string RecipeId => "SavannaRiver";
-    public override int Version => 8;
+    public override int Version => 9;
 
     private const int FastMinControlPoints = 24;
     private const int FastMaxControlPoints = 40;
     private const int SlowMinControlPoints = 32;
     private const int SlowMaxControlPoints = 64;
     private const int MaxPreviewScatter = 256;
+    private const int MaxTributaries = 3;
     private const float Epsilon = 1e-5f;
+
+    private struct RiverPathData
+    {
+        public List<Vector2> main;
+        public List<List<Vector2>> tributaries;
+        public List<Vector2> oxbow;
+        public List<int> cutoffRemovedIndices;
+        public int mainControlStations;
+        public int tributaryControlStations;
+        public int cutoffApplied;
+    }
 
     protected override WorldMap GenerateTyped(SavannaRiverSettingsSO settings, int seed, WorldGridSpec grid, NoiseSet noise, IWorldGenLogger log)
     {
@@ -30,10 +42,27 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         var flowDir = settings.gradientDir.sqrMagnitude > Epsilon ? settings.gradientDir.normalized : Vector2.down;
 
         var pathTimer = Stopwatch.StartNew();
-        int controlStationCount;
-        var riverPoints = BuildRiverCenterline(settings, grid, mapRect, flowDir, seed, wetnessNoise, warpNoise, out controlStationCount, log);
-        var spline = new WorldSpline { id = "river_main", baseWidth = Mathf.Max(0.5f, settings.riverWidth), points = riverPoints };
-        map.splines = SplineClipper.ClipToRectParts(spline, mapRect);
+        var riverData = BuildRiverSystem(settings, grid, mapRect, flowDir, seed, wetnessNoise, warpNoise, log);
+        var splines = new List<WorldSpline>
+        {
+            new WorldSpline { id = "river_main", baseWidth = Mathf.Max(0.5f, settings.riverWidth), points = riverData.main }
+        };
+
+        for (var i = 0; i < riverData.tributaries.Count; i++)
+        {
+            var tribWidth = Mathf.Max(0.35f, settings.riverWidth * Mathf.Clamp(settings.TributaryWidthFactor, 0.2f, 0.9f));
+            splines.Add(new WorldSpline { id = $"river_trib_{i}", baseWidth = tribWidth, points = riverData.tributaries[i] });
+        }
+
+        if (riverData.oxbow != null && riverData.oxbow.Count > 1)
+        {
+            var oxbowWidth = Mathf.Max(0.25f, settings.riverWidth * Mathf.Clamp(settings.OxbowWidthFactor, 0.2f, 0.8f));
+            splines.Add(new WorldSpline { id = "river_oxbow", baseWidth = oxbowWidth, points = riverData.oxbow });
+        }
+
+        map.splines = new List<WorldSpline>();
+        foreach (var spline in splines)
+            map.splines.AddRange(SplineClipper.ClipToRectParts(spline, mapRect));
         pathTimer.Stop();
 
         var maskTimer = Stopwatch.StartNew();
@@ -48,45 +77,96 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         var floodRadiusBase = Mathf.Max(riverHalfBase + 0.75f, settings.floodplainWidth);
         var bankRadiusBase = Mathf.Max(riverHalfBase + 0.25f, settings.bankWidth + riverHalfBase);
         var valleyWidthBase = Mathf.Max(floodRadiusBase + grid.cellSize * 1.5f, settings.valleyWidth);
+        var tribHalfBase = riverHalfBase * Mathf.Clamp(settings.TributaryWidthFactor, 0.2f, 0.9f);
+        var tribFloodScale = Mathf.Lerp(0.58f, 0.8f, Mathf.Clamp01(settings.TributaryWidthFactor));
         var widthPhase = Mathf.Abs(Mathf.Sin(seed * 0.173f)) * Mathf.PI * 2f;
+        var terraceCount = Mathf.Max(1, settings.TerraceCount);
+        var terraceStrength = Mathf.Clamp01(settings.TerraceStrength);
+        var bankRoughStrength = Mathf.Clamp01(settings.BankRoughnessStrength);
 
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
         {
             var p = grid.CellCenterWorld(x, y);
-            var dist = DistanceToPolylineWithT(riverPoints, p, out var tAlong);
+            var distMain = DistanceToPolylineWithT(riverData.main, p, out var tAlongMain);
 
-            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.75f + 11f, seed * 0.0027f, seed + 101) * 2f - 1f;
-            var widthWave = Mathf.Sin(tAlong * Mathf.PI * 1.6f + widthPhase) * 0.06f;
+            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlongMain * 0.75f + 11f, seed * 0.0027f, seed + 101) * 2f - 1f;
+            var widthWave = Mathf.Sin(tAlongMain * Mathf.PI * 1.6f + widthPhase) * 0.06f;
             var widthVariation = widthNoise * Mathf.Clamp01(settings.WidthVariationStrength) * 0.16f;
             var widthScale = Mathf.Clamp(1f + widthWave + widthVariation, 0.85f, 1.2f);
 
-            var riverHalf = riverHalfBase * widthScale;
-            var floodRadius = floodRadiusBase * (1f + widthWave * 0.12f + widthVariation * 0.45f);
-            var bankRadius = bankRadiusBase * Mathf.Lerp(0.96f, 1.04f, 1f - tAlong);
-            var valleyRadius = valleyWidthBase * (1f + widthVariation * 0.3f);
+            var riverHalfMain = riverHalfBase * widthScale;
+            var floodRadiusMain = floodRadiusBase * (1f + widthWave * 0.12f + widthVariation * 0.45f);
+            var bankRadiusMain = bankRadiusBase * Mathf.Lerp(0.96f, 1.04f, 1f - tAlongMain);
+            var valleyRadiusMain = valleyWidthBase * (1f + widthVariation * 0.3f);
+
+            var distRiver = distMain;
+            var tAlongRiver = tAlongMain;
+            var riverHalf = riverHalfMain;
+            var floodRadius = floodRadiusMain;
+            var bankRadius = bankRadiusMain;
+            var valleyRadius = valleyRadiusMain;
+            var nearestTrib = float.MaxValue;
+
+            for (var i = 0; i < riverData.tributaries.Count; i++)
+            {
+                var tribDist = DistanceToPolylineWithT(riverData.tributaries[i], p, out var tAlongTrib);
+                if (tribDist < nearestTrib) nearestTrib = tribDist;
+                if (tribDist < distRiver)
+                {
+                    distRiver = tribDist;
+                    tAlongRiver = tAlongTrib;
+                    riverHalf = tribHalfBase * Mathf.Lerp(0.86f, 1.05f, 1f - tAlongTrib);
+                    floodRadius = floodRadiusBase * tribFloodScale * Mathf.Lerp(0.88f, 1.02f, 1f - tAlongTrib);
+                    bankRadius = bankRadiusBase * tribFloodScale;
+                    valleyRadius = valleyWidthBase * Mathf.Lerp(0.62f, 0.78f, 1f - tAlongTrib);
+                }
+            }
+
+            var oxbowHint = 0f;
+            if (riverData.oxbow != null && riverData.oxbow.Count > 1)
+            {
+                var oxbowDist = DistanceToPolylineWithT(riverData.oxbow, p, out _);
+                var oxbowWidth = Mathf.Max(0.25f, settings.riverWidth * Mathf.Clamp(settings.OxbowWidthFactor, 0.2f, 0.8f));
+                oxbowHint = Mathf.Clamp01(1f - oxbowDist / Mathf.Max(0.01f, oxbowWidth * 2f));
+            }
 
             var slope = SlopeSample(grid, x, y, flowDir);
             var terrainNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.21f, p.y * 0.21f, seed) * 2f - 1f) * settings.heightNoiseStrength * 0.22f;
             var floodNoise = (NoiseUtil.Sample2D(wetnessNoise, p.x * 0.07f, p.y * 0.07f, seed + 17) * 2f - 1f) * 0.17f;
             var valleyNoise = (NoiseUtil.Sample2D(warpNoise, p.x * 0.045f + 5f, p.y * 0.045f - 9f, seed + 203) * 2f - 1f) * 0.12f;
+            var bankNoiseA = (NoiseUtil.Sample2D(warpNoise, p.x * 0.13f + 41f, p.y * 0.13f - 27f, seed + 223) * 2f - 1f);
+            var bankNoiseB = (NoiseUtil.Sample2D(heightNoise, p.x * 0.29f - 13f, p.y * 0.29f + 7f, seed + 317) * 2f - 1f);
 
             var floodEdge = Mathf.Max(0.01f, floodRadius * (1f + floodNoise * 0.4f));
-            var floodFactor = Mathf.Clamp01(1f - dist / floodEdge);
+            var floodFactor = Mathf.Clamp01(1f - distRiver / floodEdge);
             var floodplainMask = Mathf.SmoothStep(0f, 1f, floodFactor + floodNoise * 0.2f);
-            var bankFactor = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, bankRadius));
-            var valleyDist = Mathf.Clamp01(dist / Mathf.Max(0.01f, valleyRadius));
+            var bankFactor = Mathf.Clamp01(1f - distRiver / Mathf.Max(0.01f, bankRadius));
+            var valleyDist = Mathf.Clamp01(distRiver / Mathf.Max(0.01f, valleyRadius));
             var valleyFactor = 1f - Mathf.SmoothStep(0f, 1f, valleyDist + valleyNoise * 0.15f);
-            var isWater = dist <= riverHalf;
+            var isWater = distRiver <= riverHalf;
+
+            var confluenceBoost = nearestTrib < float.MaxValue ? Mathf.Clamp01(1f - nearestTrib / Mathf.Max(0.01f, floodRadiusBase * 0.9f)) : 0f;
+            floodplainMask = Mathf.Clamp01(floodplainMask + confluenceBoost * 0.14f);
+
+            var bendStrength = Mathf.Abs(Mathf.Sin(tAlongRiver * Mathf.PI * 2f * Mathf.Max(0.5f, settings.MeanderFreq)));
+            var roughEnvelope = Mathf.SmoothStep(0f, 1f, 1f - Mathf.Clamp01(distRiver / Mathf.Max(0.01f, bankRadius * 1.8f)));
+            var bankRough = (bankNoiseA * 0.65f + bankNoiseB * 0.35f) * roughEnvelope * bankRoughStrength * Mathf.Lerp(0.75f, 1.2f, bendStrength);
+            var terraceInput = Mathf.Clamp01(Mathf.Clamp01(distRiver / Mathf.Max(0.01f, valleyRadius)) + valleyNoise * 0.08f);
+            var terraced = Mathf.Floor(terraceInput * terraceCount) / terraceCount;
+            var terraceDelta = (terraced - terraceInput) * terraceStrength * valleyFactor;
 
             var h = slope + terrainNoise;
             h -= valleyFactor * settings.valleyDepth;
             h -= floodplainMask * settings.carveStrength;
+            h += terraceDelta;
+            h += bankRough;
             h -= isWater ? 0.07f : 0f;
+            h -= oxbowHint * 0.02f;
             h = Mathf.Lerp(h, settings.waterLevel, 0.24f * floodplainMask);
 
             height[x, y] = h;
-            wetness[x, y] = Mathf.Clamp01(floodplainMask * 0.82f + valleyFactor * 0.2f + (0.5f - slope) * 0.12f + 0.08f + floodNoise * 0.06f);
+            wetness[x, y] = Mathf.Clamp01(floodplainMask * 0.82f + valleyFactor * 0.2f + oxbowHint * 0.18f + (0.5f - slope) * 0.12f + 0.08f + floodNoise * 0.06f);
             water[x, y] = (byte)(isWater ? 1 : 0);
             walkable[x, y] = (byte)(isWater ? 0 : 1);
             zones[x, y] = (byte)(bankFactor > 0.05f || valleyFactor > 0.1f ? 0 : 1);
@@ -116,7 +196,10 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         for (var x = 0; x < grid.width; x++)
         {
             var p = grid.CellCenterWorld(x, y);
-            var dist = DistanceToPolylineWithT(riverPoints, p, out _);
+            var dist = DistanceToPolylineWithT(riverData.main, p, out _);
+            for (var i = 0; i < riverData.tributaries.Count; i++)
+                dist = Mathf.Min(dist, DistanceToPolylineWithT(riverData.tributaries[i], p, out _));
+
             if (water[x, y] > 0) continue;
 
             var valleyRange = Mathf.Max(0.01f, valleyWidthBase);
@@ -149,9 +232,43 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 
         map.EnsureRequiredOutputs();
         log.Log($"SavannaRiver stages: path={pathTimer.ElapsedMilliseconds} ms | masks={maskTimer.ElapsedMilliseconds} ms | scatter={scatterTimer.ElapsedMilliseconds} ms | texture={textureTimer.ElapsedMilliseconds} ms");
-        log.Log($"SavannaRiver path stats: controlStations={controlStationCount} splinePoints={riverPoints.Count}");
+        log.Log($"SavannaRiver path stats: mainControl={riverData.mainControlStations} tributaryControl={riverData.tributaryControlStations} tributaries={riverData.tributaries.Count} cutoff={riverData.cutoffApplied} splinePoints={riverData.main.Count}");
         log.Log($"Generated SavannaRiver ({settings.qualityMode}): trees={trees.points.Count} rocks={rocks.points.Count} splines={map.splines.Count}");
         return map;
+    }
+
+    private static RiverPathData BuildRiverSystem(SavannaRiverSettingsSO settings, WorldGridSpec grid, Rect mapRect, Vector2 flowDir, int seed, NoiseDescriptor meanderNoise, NoiseDescriptor warpNoise, IWorldGenLogger log)
+    {
+        var data = new RiverPathData
+        {
+            tributaries = new List<List<Vector2>>(),
+            cutoffRemovedIndices = new List<int>()
+        };
+
+        data.main = BuildRiverCenterline(settings, grid, mapRect, flowDir, seed, meanderNoise, warpNoise, out data.mainControlStations, log);
+        TryApplyCutoff(settings, seed, data.main, out data.oxbow, out data.cutoffRemovedIndices, out data.cutoffApplied);
+
+        var requestedTributaries = Mathf.Clamp(settings.TributaryCount, 0, MaxTributaries);
+        var progressDir = DominantCardinal(flowDir);
+        var lateralDir = new Vector2(-progressDir.y, progressDir.x);
+
+        for (var i = 0; i < requestedTributaries; i++)
+        {
+            var joinT = Mathf.Lerp(0.18f, 0.86f, i / (float)Mathf.Max(1, requestedTributaries - 1));
+            joinT += (Mathf.Sin((seed + 101 * (i + 1)) * 0.013f) * 0.5f + 0.5f - 0.5f) * 0.18f;
+            joinT = Mathf.Clamp(joinT, 0.12f, 0.9f);
+            var joinPoint = SamplePolyline(data.main, joinT, out var joinTangent);
+            var sideSign = (i % 2 == 0) ? 1f : -1f;
+            var sideJitter = Mathf.Sin((seed + i * 47) * 0.031f) * 0.35f;
+            var sideDir = (lateralDir * sideSign + progressDir * sideJitter).normalized;
+
+            var trib = BuildTributaryPath(settings, grid, mapRect, joinPoint, joinTangent, sideDir, seed + i * 97, meanderNoise, warpNoise, out var controls);
+            data.tributaryControlStations += controls;
+            if (trib != null && trib.Count > 1)
+                data.tributaries.Add(trib);
+        }
+
+        return data;
     }
 
     private static List<Vector2> BuildRiverCenterline(SavannaRiverSettingsSO settings, WorldGridSpec grid, Rect mapRect, Vector2 flowDir, int seed, NoiseDescriptor meanderNoise, NoiseDescriptor warpNoise, out int controlStationCount, IWorldGenLogger log)
@@ -207,6 +324,126 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 
         controls.Add(end);
         return Chaikin(controls, 2);
+    }
+
+    private static List<Vector2> BuildTributaryPath(SavannaRiverSettingsSO settings, WorldGridSpec grid, Rect mapRect, Vector2 joinPoint, Vector2 joinTangent, Vector2 sideDir, int seed, NoiseDescriptor meanderNoise, NoiseDescriptor warpNoise, out int controlStations)
+    {
+        var source = EdgePointByNormal(mapRect, joinPoint, sideDir, seed + 3);
+        var toJoin = joinPoint - source;
+        var len = toJoin.magnitude;
+        controlStations = 0;
+        if (len < grid.cellSize * 3f)
+            return null;
+
+        var dir = toJoin / len;
+        var start = source;
+        var end = joinPoint - joinTangent.normalized * Mathf.Max(grid.cellSize * 1.2f, settings.riverWidth * 0.28f);
+
+        var count = settings.qualityMode == QualityMode.FastPreview ? 8 : 12;
+        var inset = InsetRect(mapRect, grid.cellSize);
+        var controls = new List<Vector2>(count) { start };
+        var meanderFactor = Mathf.Clamp(settings.TributaryMeanderFactor, 0.2f, 0.9f);
+        var amp = len * 0.08f * meanderFactor;
+        var lateral = new Vector2(-dir.y, dir.x);
+        var phase = Mathf.Abs(Mathf.Sin(seed * 0.017f)) * Mathf.PI * 2f;
+
+        for (var i = 1; i < count - 1; i++)
+        {
+            var t = i / (float)(count - 1);
+            var basePoint = Vector2.Lerp(start, end, t);
+            var approachDamp = Mathf.SmoothStep(1f, 0f, t);
+            var meander = Mathf.Sin(t * Mathf.PI * 2f * Mathf.Lerp(0.6f, 1.1f, meanderFactor) + phase) * amp * approachDamp;
+            var lowNoise = (NoiseUtil.Sample2D(meanderNoise, t * 0.9f + 7f, seed * 0.0053f, seed + 19) * 2f - 1f) * amp * 0.2f * approachDamp;
+            var warp = (NoiseUtil.Sample2D(warpNoise, basePoint.x * Mathf.Max(0.0001f, settings.RiverWarpFrequency), basePoint.y * Mathf.Max(0.0001f, settings.RiverWarpFrequency), seed + 29) * 2f - 1f) * amp * 0.14f;
+            controls.Add(ClampToRect(basePoint + lateral * (meander + lowNoise + warp), inset));
+        }
+
+        controls.Add(end);
+        controls.Add(joinPoint);
+        controlStations = controls.Count;
+        return Chaikin(controls, 1);
+    }
+
+    private static void TryApplyCutoff(SavannaRiverSettingsSO settings, int seed, List<Vector2> points, out List<Vector2> oxbow, out List<int> removedIndices, out int cutoffApplied)
+    {
+        oxbow = null;
+        removedIndices = new List<int>();
+        cutoffApplied = 0;
+        if (points == null || points.Count < 18) return;
+        if (Mathf.Clamp01(settings.CutoffChance) <= 0f) return;
+
+        var rand = Mathf.Abs(Mathf.Sin(seed * 0.0193f));
+        if (rand > settings.CutoffChance) return;
+
+        var step = 3;
+        var minIndexGap = Mathf.Max(10, points.Count / 8);
+        var maxCloseDist = Vector2.Distance(points[0], points[points.Count - 1]) * 0.16f;
+        var bestScore = float.MinValue;
+        var bestI = -1;
+        var bestJ = -1;
+
+        for (var i = step; i < points.Count - step; i += step)
+        {
+            for (var j = i + minIndexGap; j < points.Count - step; j += step)
+            {
+                var d = Vector2.Distance(points[i], points[j]);
+                if (d > maxCloseDist) continue;
+                var alongGap = (j - i) / (float)points.Count;
+                var score = alongGap - d / Mathf.Max(Epsilon, maxCloseDist);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestI = i;
+                    bestJ = j;
+                }
+            }
+        }
+
+        if (bestI < 0 || bestJ <= bestI + 2) return;
+
+        oxbow = new List<Vector2>();
+        for (var k = bestI; k <= bestJ; k++)
+            oxbow.Add(points[k]);
+
+        var rebuilt = new List<Vector2>(points.Count - (bestJ - bestI) + 1);
+        for (var k = 0; k <= bestI; k++) rebuilt.Add(points[k]);
+        rebuilt.Add(Vector2.Lerp(points[bestI], points[bestJ], 0.5f));
+        for (var k = bestJ; k < points.Count; k++) rebuilt.Add(points[k]);
+
+        for (var k = bestI + 1; k < bestJ; k++) removedIndices.Add(k);
+
+        points.Clear();
+        points.AddRange(rebuilt);
+        cutoffApplied = 1;
+    }
+
+    private static Vector2 SamplePolyline(List<Vector2> points, float t, out Vector2 tangent)
+    {
+        tangent = Vector2.right;
+        if (points == null || points.Count == 0) return Vector2.zero;
+        if (points.Count == 1) return points[0];
+
+        var ft = Mathf.Clamp01(t) * (points.Count - 1);
+        var i = Mathf.Clamp(Mathf.FloorToInt(ft), 0, points.Count - 2);
+        var lt = ft - i;
+        tangent = (points[i + 1] - points[i]).normalized;
+        if (tangent.sqrMagnitude < Epsilon) tangent = Vector2.right;
+        return Vector2.Lerp(points[i], points[i + 1], lt);
+    }
+
+    private static Vector2 EdgePointByNormal(Rect rect, Vector2 anchor, Vector2 dir, int seed)
+    {
+        var direction = DominantCardinal(dir);
+        var spread = Mathf.Lerp(0.12f, 0.88f, Mathf.Abs(Mathf.Sin(seed * 0.027f)));
+
+        if (Mathf.Abs(direction.x) > 0.5f)
+        {
+            var x = direction.x > 0f ? rect.xMax : rect.xMin;
+            return new Vector2(x, Mathf.Lerp(rect.yMin, rect.yMax, spread));
+        }
+
+        var y = direction.y > 0f ? rect.yMax : rect.yMin;
+        return new Vector2(Mathf.Lerp(rect.xMin, rect.xMax, spread), y);
     }
 
     private static Vector2 DominantCardinal(Vector2 dir)
