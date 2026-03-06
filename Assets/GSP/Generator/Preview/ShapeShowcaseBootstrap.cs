@@ -59,6 +59,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private readonly HashSet<string> missingLogged = new();
     private ShapeCategoryPalette runtimeFallbackPalette;
+    private ShapeMaterialPalette runtimeMaterialPalette;
 
     private void Start()
     {
@@ -135,7 +136,16 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         sr.color = GetTint(shapeId);
-        sr.sharedMaterial = ResolveMaterialPalette().GetMaterialForShape(shapeId);
+
+        var palette = ResolveMaterialPalette();
+        if (palette != null)
+        {
+            var mat = palette.GetMaterialForShape(shapeId);
+            if (mat != null)
+            {
+                sr.sharedMaterial = mat;
+            }
+        }
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
         if (profile.animType != ShapeAnimType.None)
@@ -204,7 +214,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             return shapeMaterialPalette;
         }
 
-        return ShapeMaterialPaletteLoader.Load();
+        if (runtimeMaterialPalette == null)
+        {
+            runtimeMaterialPalette = ShapeMaterialPaletteLoader.Load();
+        }
+
+        return runtimeMaterialPalette;
     }
 
     private readonly struct ShowcaseCategory
