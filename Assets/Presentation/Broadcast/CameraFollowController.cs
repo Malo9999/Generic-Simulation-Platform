@@ -91,7 +91,7 @@ public class CameraFollowController : MonoBehaviour
 
         if (arenaCameraPolicy != null)
         {
-            arenaCameraPolicy.FitToBounds(mainCamera, worldBoundsForFit);
+            arenaCameraPolicy.FitToBounds();
         }
         else
         {

@@ -84,6 +84,78 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         {
             SpawnSlimeMoldMiniDemo();
         }
+
+        FitCameraToSpawnedContent();
+    }
+
+    private void FitCameraToSpawnedContent()
+    {
+        var cameraRef = Camera.main;
+        if (cameraRef == null)
+        {
+            return;
+        }
+
+        var policy = cameraRef.GetComponent<ArenaCameraPolicy>();
+        if (policy == null)
+        {
+            policy = FindAnyObjectByType<ArenaCameraPolicy>();
+        }
+
+        if (policy == null || !TryCalculateShowcaseBounds(out var bounds))
+        {
+            return;
+        }
+
+        policy.SetWorldSizeAndRefresh(new Vector2(bounds.size.x, bounds.size.y));
+        policy.FitToBounds();
+    }
+
+    private bool TryCalculateShowcaseBounds(out Bounds bounds)
+    {
+        bounds = default;
+        var hasBounds = false;
+
+        var spriteRenderers = GetComponentsInChildren<SpriteRenderer>();
+        for (var i = 0; i < spriteRenderers.Length; i++)
+        {
+            if (!spriteRenderers[i].enabled || spriteRenderers[i].sprite == null)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = spriteRenderers[i].bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(spriteRenderers[i].bounds);
+            }
+        }
+
+        var textMeshes = GetComponentsInChildren<TextMesh>();
+        for (var i = 0; i < textMeshes.Length; i++)
+        {
+            var renderer = textMeshes[i].GetComponent<Renderer>();
+            if (renderer == null || !renderer.enabled)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return hasBounds;
     }
 
     private void SetupTrailSystem()
