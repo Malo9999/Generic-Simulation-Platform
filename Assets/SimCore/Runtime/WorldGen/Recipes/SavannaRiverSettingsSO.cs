@@ -9,6 +9,8 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public float riverWidth = 5f;
     public float floodplainWidth = 12f;
     public float bankWidth = 4f;
+    public float valleyWidth = 26f;
+    public float valleyDepth = 0.22f;
     public float treeDensity = 0.08f;
     public float rockDensity = 0.03f;
     public Vector2 gradientDir = new Vector2(0f, 1f);
@@ -18,6 +20,8 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public float MeanderFreq = 1.6f; // Meander Frequency (cycles across map)
     public float RiverWarpAmplitude = 0.9f; // River Warp Strength
     public float RiverWarpFrequency = 0.025f;
+    public float WidthVariationStrength = 0.2f;
+    public float CurvatureNoiseStrength = 0.3f;
     public float heightNoiseStrength = 1f;
 
     public NoiseDescriptor HeightNoise = NoiseDescriptor.CreateDefault("savanna_height");
