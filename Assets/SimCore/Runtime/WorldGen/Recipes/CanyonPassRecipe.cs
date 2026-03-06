@@ -5,7 +5,7 @@ using UnityEngine;
 public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 {
     public override string RecipeId => "CanyonPass";
-    public override int Version => 7;
+    public override int Version => 8;
 
     private const int FastMinControlPoints = 22;
     private const int FastMaxControlPoints = 36;
@@ -40,7 +40,6 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 
         var floorHalfBase = Mathf.Max(0.6f, settings.passWidth * 0.5f);
         var wallOuterBase = Mathf.Max(floorHalfBase + grid.cellSize, floorHalfBase + settings.passWidth * 0.95f);
-        var widthPhase = Mathf.Abs(Mathf.Sin(seed * 0.119f)) * Mathf.PI * 2f;
 
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
@@ -49,33 +48,35 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             var dist = DistanceToPolylineWithT(passPoints, p, out var tAlong);
             var side = SignedSideToPolyline(passPoints, p);
 
-            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.8f + 9f, seed * 0.0023f, seed + 73) * 2f - 1f;
-            var widthScale = Mathf.Clamp(1f + Mathf.Sin(tAlong * Mathf.PI * 1.4f + widthPhase) * 0.05f + widthNoise * 0.1f, 0.84f, 1.18f);
+            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.5f, seed * 0.0031f + 19f, seed + 73) * 2f - 1f;
+            var widthScale = Mathf.Clamp(1f + widthNoise * settings.widthVariation, 0.75f, 1.35f);
             var floorHalf = floorHalfBase * widthScale;
+            var wallOuter = wallOuterBase * Mathf.Lerp(0.94f, 1.08f, tAlong) * widthScale;
 
-            var sideNoiseLeft = (NoiseUtil.Sample2D(warpNoise, tAlong * 0.55f + 37f, 3.1f + seed * 0.0019f, seed + 211) * 2f - 1f) * settings.WallAsymmetryStrength;
-            var sideNoiseRight = (NoiseUtil.Sample2D(warpNoise, tAlong * 0.61f - 29f, -4.4f + seed * 0.0013f, seed + 257) * 2f - 1f) * settings.WallAsymmetryStrength;
-            var sideBias = side >= 0f ? sideNoiseRight : sideNoiseLeft;
+            var floorMask = Mathf.SmoothStep(floorHalf, floorHalf * 1.6f, dist);
+            var floorCarve = 1f - floorMask;
+            var wallMask = Mathf.Clamp01((dist - floorHalf) / Mathf.Max(0.01f, wallOuter - floorHalf));
+            var wallRoughNoise = NoiseUtil.Sample2D(heightNoise, dist * 0.15f + 11f, tAlong * 0.35f + seed * 0.0017f, seed + 311) * 2f - 1f;
+            wallMask *= Mathf.Max(0f, 1f + wallRoughNoise * settings.wallRoughness);
+            wallMask = Mathf.Clamp01(wallMask);
 
-            var wallOuter = wallOuterBase * Mathf.Lerp(0.95f, 1.08f, tAlong) * (1f + sideBias * 0.22f);
+            var noiseL = NoiseUtil.Sample2D(warpNoise, tAlong * 0.73f + 37f, dist * 0.04f + seed * 0.0021f, seed + 211) * 2f - 1f;
+            var noiseR = NoiseUtil.Sample2D(warpNoise, tAlong * 0.69f - 29f, dist * 0.04f - seed * 0.0013f, seed + 257) * 2f - 1f;
+            var leftHeight = wallMask * settings.canyonDepth * (1f + noiseL * settings.asymmetryStrength);
+            var rightHeight = wallMask * settings.canyonDepth * (1f + noiseR * settings.asymmetryStrength);
+            var sideHeight = side >= 0f ? rightHeight : leftHeight;
 
             var slope = 0.35f + SlopeSample(grid, x, y) * 0.65f;
             var low = (NoiseUtil.Sample2D(heightNoise, p.x * 0.22f, p.y * 0.22f, seed) * 2f - 1f) * settings.noiseStrength;
-            var wallNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.95f + 13f, p.y * 0.95f - 7f, seed + 23) * 2f - 1f) * settings.WallRoughnessStrength * 0.25f;
-            var wallTransitionNoise = (NoiseUtil.Sample2D(warpNoise, p.x * 0.08f + 17f, p.y * 0.08f - 15f, seed + 313) * 2f - 1f) * settings.WallRoughnessStrength;
-
-            var noisyFloorHalf = floorHalf * (1f + wallTransitionNoise * 0.08f);
-            var noisyWallOuter = wallOuter * (1f + wallTransitionNoise * 0.14f);
-            var floorCarve = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, noisyFloorHalf));
-            var wallBand = Mathf.Clamp01(1f - Mathf.Abs(dist - noisyFloorHalf) / Mathf.Max(0.01f, noisyWallOuter - noisyFloorHalf));
-            var wallRise = Mathf.Clamp01((dist - noisyFloorHalf) / Mathf.Max(0.01f, noisyWallOuter - noisyFloorHalf));
-
-            var asymHeight = sideBias * settings.wallSteepness * 0.12f * wallRise;
-            var h = slope + low - floorCarve * settings.canyonDepth + wallBand * settings.wallSteepness * 0.14f + wallNoise + asymHeight;
+            var floorFlatten = 1f - Mathf.SmoothStep(floorHalf, floorHalf * 1.6f, dist);
+            var h = slope + low;
+            h = Mathf.Lerp(h, slope - settings.canyonDepth * 0.82f, floorFlatten);
+            h += sideHeight * settings.wallSteepness * 0.22f;
+            h -= floorCarve * settings.canyonDepth;
             height[x, y] = h;
 
-            var inFloor = dist <= noisyFloorHalf;
-            var inWall = !inFloor && dist <= noisyWallOuter;
+            var inFloor = dist <= floorHalf;
+            var inWall = !inFloor && dist <= wallOuter;
             walkable[x, y] = (byte)(inFloor ? 1 : 0);
             zones[x, y] = (byte)(inFloor ? 0 : inWall ? 1 : 2);
         }
