@@ -13,6 +13,9 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
     private const int SlowMaxControlPoints = 64;
     private const int MaxPreviewScatter = 256;
     private const int MaxTributaries = 3;
+    private const int TributaryStartSearchAttempts = 24;
+    private const int TributaryTraceMaxSteps = 160;
+    private const int TributaryParallelAbortSteps = 14;
     private const float Epsilon = 1e-5f;
 
     private struct RiverPathData
@@ -257,12 +260,12 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             var joinT = Mathf.Lerp(0.18f, 0.86f, i / (float)Mathf.Max(1, requestedTributaries - 1));
             joinT += (Mathf.Sin((seed + 101 * (i + 1)) * 0.013f) * 0.5f + 0.5f - 0.5f) * 0.18f;
             joinT = Mathf.Clamp(joinT, 0.12f, 0.9f);
-            var joinPoint = SamplePolyline(data.main, joinT, out var joinTangent);
+            var joinPoint = SamplePolyline(data.main, joinT, out _);
             var sideSign = (i % 2 == 0) ? 1f : -1f;
             var sideJitter = Mathf.Sin((seed + i * 47) * 0.031f) * 0.35f;
             var sideDir = (lateralDir * sideSign + progressDir * sideJitter).normalized;
 
-            var trib = BuildTributaryPath(settings, grid, mapRect, joinPoint, joinTangent, sideDir, seed + i * 97, meanderNoise, warpNoise, out var controls);
+            var trib = BuildTributaryPath(settings, grid, mapRect, data.main, joinPoint, sideDir, flowDir, seed + i * 97, meanderNoise, out var controls);
             data.tributaryControlStations += controls;
             if (trib != null && trib.Count > 1)
                 data.tributaries.Add(trib);
@@ -326,42 +329,181 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         return Chaikin(controls, 2);
     }
 
-    private static List<Vector2> BuildTributaryPath(SavannaRiverSettingsSO settings, WorldGridSpec grid, Rect mapRect, Vector2 joinPoint, Vector2 joinTangent, Vector2 sideDir, int seed, NoiseDescriptor meanderNoise, NoiseDescriptor warpNoise, out int controlStations)
+    private static List<Vector2> BuildTributaryPath(SavannaRiverSettingsSO settings, WorldGridSpec grid, Rect mapRect, List<Vector2> mainRiver, Vector2 joinPoint, Vector2 sideDir, Vector2 flowDir, int seed, NoiseDescriptor meanderNoise, out int controlStations)
     {
-        var source = EdgePointByNormal(mapRect, joinPoint, sideDir, seed + 3);
-        var toJoin = joinPoint - source;
-        var len = toJoin.magnitude;
         controlStations = 0;
-        if (len < grid.cellSize * 3f)
+        if (mainRiver == null || mainRiver.Count < 2)
             return null;
 
-        var dir = toJoin / len;
-        var start = source;
-        var end = joinPoint - joinTangent.normalized * Mathf.Max(grid.cellSize * 1.2f, settings.riverWidth * 0.28f);
+        if (!TryFindTributaryStart(settings, grid, mapRect, mainRiver, joinPoint, sideDir, flowDir, seed, out var start))
+            return null;
 
-        var count = settings.qualityMode == QualityMode.FastPreview ? 8 : 12;
+        var step = Mathf.Max(grid.cellSize * 1.1f, settings.riverWidth * 0.55f);
+        var riverJoinDistance = Mathf.Max(settings.riverWidth, step * 0.6f);
+        var nearRiverBand = Mathf.Max(settings.riverWidth * 2f, step * 2f);
+        var meanderFactor = Mathf.Clamp(settings.TributaryMeanderFactor, 0.15f, 0.85f);
+        var sideNoiseScale = 0.18f * meanderFactor;
         var inset = InsetRect(mapRect, grid.cellSize);
-        var controls = new List<Vector2>(count) { start };
-        var meanderFactor = Mathf.Clamp(settings.TributaryMeanderFactor, 0.2f, 0.9f);
-        var amp = len * 0.08f * meanderFactor;
-        var lateral = new Vector2(-dir.y, dir.x);
-        var phase = Mathf.Abs(Mathf.Sin(seed * 0.017f)) * Mathf.PI * 2f;
+        var points = new List<Vector2> { start };
+        var consecutiveNearRiver = 0;
+        var current = start;
+        var currentHeight = TerrainHeightEstimate(mapRect, current, flowDir);
 
-        for (var i = 1; i < count - 1; i++)
+        for (var i = 0; i < TributaryTraceMaxSteps; i++)
         {
-            var t = i / (float)(count - 1);
-            var basePoint = Vector2.Lerp(start, end, t);
-            var approachDamp = Mathf.SmoothStep(1f, 0f, t);
-            var meander = Mathf.Sin(t * Mathf.PI * 2f * Mathf.Lerp(0.6f, 1.1f, meanderFactor) + phase) * amp * approachDamp;
-            var lowNoise = (NoiseUtil.Sample2D(meanderNoise, t * 0.9f + 7f, seed * 0.0053f, seed + 19) * 2f - 1f) * amp * 0.2f * approachDamp;
-            var warp = (NoiseUtil.Sample2D(warpNoise, basePoint.x * Mathf.Max(0.0001f, settings.RiverWarpFrequency), basePoint.y * Mathf.Max(0.0001f, settings.RiverWarpFrequency), seed + 29) * 2f - 1f) * amp * 0.14f;
-            controls.Add(ClampToRect(basePoint + lateral * (meander + lowNoise + warp), inset));
+            var toJoin = joinPoint - current;
+            var toJoinMag = toJoin.magnitude;
+            if (toJoinMag < step * 0.8f)
+                break;
+
+            var direction = toJoin / Mathf.Max(Epsilon, toJoinMag);
+            var perpendicular = new Vector2(-direction.y, direction.x);
+            var noise = (NoiseUtil.Sample2D(meanderNoise, current.x * 0.05f + seed * 0.0017f, current.y * 0.05f + i * 0.033f, seed + 19) * 2f - 1f) * sideNoiseScale;
+            direction = (direction + perpendicular * noise).normalized;
+            var next = ClampToRect(current + direction * step, inset);
+
+            var nextHeight = TerrainHeightEstimate(mapRect, next, flowDir);
+            if (nextHeight >= currentHeight - Epsilon)
+                next = PickLowerStep(current, direction, step, inset, mapRect, flowDir, currentHeight);
+
+            if ((next - current).sqrMagnitude < grid.cellSize * grid.cellSize * 0.08f)
+                return null;
+
+            current = next;
+            currentHeight = TerrainHeightEstimate(mapRect, current, flowDir);
+            points.Add(current);
+
+            var distToRiver = DistanceToPolylineWithT(mainRiver, current, out _);
+            consecutiveNearRiver = distToRiver <= nearRiverBand ? consecutiveNearRiver + 1 : 0;
+            if (consecutiveNearRiver > TributaryParallelAbortSteps)
+                return null;
+
+            if (distToRiver < riverJoinDistance)
+            {
+                var riverSnap = ClosestPointOnPolyline(mainRiver, current);
+                points.Add(riverSnap);
+                break;
+            }
         }
 
-        controls.Add(end);
-        controls.Add(joinPoint);
-        controlStations = controls.Count;
-        return Chaikin(controls, 1);
+        if (points.Count < 3)
+            return null;
+
+        var last = points[points.Count - 1];
+        if (DistanceToPolylineWithT(mainRiver, last, out _) >= riverJoinDistance)
+            return null;
+
+        controlStations = points.Count;
+        return Chaikin(points, 1);
+    }
+
+    private static bool TryFindTributaryStart(SavannaRiverSettingsSO settings, WorldGridSpec grid, Rect mapRect, List<Vector2> mainRiver, Vector2 joinPoint, Vector2 sideDir, Vector2 flowDir, int seed, out Vector2 start)
+    {
+        start = Vector2.zero;
+        var minDistanceToRiver = settings.valleyWidth * 2f;
+        var joinHeight = TerrainHeightEstimate(mapRect, joinPoint, flowDir);
+        var outward = sideDir.sqrMagnitude > Epsilon ? sideDir.normalized : Vector2.right;
+        var inset = InsetRect(mapRect, grid.cellSize);
+
+        for (var attempt = 0; attempt < TributaryStartSearchAttempts; attempt++)
+        {
+            var radiusLerp = Mathf.Lerp(2f, 3.8f, attempt / (float)Mathf.Max(1, TributaryStartSearchAttempts - 1));
+            var radialDist = settings.valleyWidth * radiusLerp;
+            var jitter = (NoiseUtil.Sample2D(settings.HeightNoise, attempt * 0.17f + seed * 0.0011f, seed * 0.013f, seed + 33) * 2f - 1f) * 0.6f;
+            var rotated = Rotate(outward, jitter * 55f);
+            var candidate = ClampToRect(joinPoint + rotated * radialDist, inset);
+
+            var distanceToRiver = DistanceToPolylineWithT(mainRiver, candidate, out _);
+            if (distanceToRiver <= minDistanceToRiver)
+                continue;
+
+            var startHeight = TerrainHeightEstimate(mapRect, candidate, flowDir);
+            if (startHeight <= joinHeight + Epsilon)
+                continue;
+
+            start = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static Vector2 PickLowerStep(Vector2 current, Vector2 preferredDir, float step, Rect bounds, Rect mapRect, Vector2 flowDir, float currentHeight)
+    {
+        var candidates = new[]
+        {
+            preferredDir,
+            Rotate(preferredDir, 25f),
+            Rotate(preferredDir, -25f),
+            Rotate(preferredDir, 50f),
+            Rotate(preferredDir, -50f),
+            new Vector2(0f, -1f),
+            new Vector2(-1f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(0f, 1f)
+        };
+
+        var best = current;
+        var bestHeight = currentHeight;
+        for (var i = 0; i < candidates.Length; i++)
+        {
+            var dir = candidates[i].normalized;
+            if (dir.sqrMagnitude < Epsilon) continue;
+
+            var sample = ClampToRect(current + dir * step, bounds);
+            var sampleHeight = TerrainHeightEstimate(mapRect, sample, flowDir);
+            if (sampleHeight < bestHeight)
+            {
+                best = sample;
+                bestHeight = sampleHeight;
+            }
+        }
+
+        return best;
+    }
+
+    private static float TerrainHeightEstimate(Rect mapRect, Vector2 point, Vector2 flowDir)
+    {
+        var nx = Mathf.InverseLerp(mapRect.xMin, mapRect.xMax, point.x);
+        var ny = Mathf.InverseLerp(mapRect.yMin, mapRect.yMax, point.y);
+        var local = new Vector2(nx * 2f - 1f, ny * 2f - 1f);
+        return Vector2.Dot(local, flowDir.normalized) * 0.5f + 0.5f;
+    }
+
+    private static Vector2 ClosestPointOnPolyline(List<Vector2> points, Vector2 p)
+    {
+        if (points == null || points.Count == 0) return p;
+        if (points.Count == 1) return points[0];
+
+        var best = points[0];
+        var bestDist = float.MaxValue;
+        for (var i = 1; i < points.Count; i++)
+        {
+            var a = points[i - 1];
+            var b = points[i];
+            var ab = b - a;
+            var lenSq = ab.sqrMagnitude;
+            if (lenSq < Epsilon) continue;
+
+            var t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / lenSq);
+            var proj = a + ab * t;
+            var d = (p - proj).sqrMagnitude;
+            if (d < bestDist)
+            {
+                bestDist = d;
+                best = proj;
+            }
+        }
+
+        return best;
+    }
+
+    private static Vector2 Rotate(Vector2 v, float degrees)
+    {
+        var rad = degrees * Mathf.Deg2Rad;
+        var cos = Mathf.Cos(rad);
+        var sin = Mathf.Sin(rad);
+        return new Vector2(v.x * cos - v.y * sin, v.x * sin + v.y * cos);
     }
 
     private static void TryApplyCutoff(SavannaRiverSettingsSO settings, int seed, List<Vector2> points, out List<Vector2> oxbow, out List<int> removedIndices, out int cutoffApplied)
