@@ -5,7 +5,7 @@ using UnityEngine;
 public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 {
     public override string RecipeId => "SavannaRiver";
-    public override int Version => 7;
+    public override int Version => 8;
 
     private const int FastMinControlPoints = 24;
     private const int FastMaxControlPoints = 40;
@@ -42,11 +42,12 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         var water = new MaskField("water", grid, MaskEncoding.Boolean);
         var walkable = new MaskField("walkable", grid, MaskEncoding.Boolean);
         var zones = new MaskField("zones", grid, MaskEncoding.Categorical) { categories = new[] { "river_corridor", "upland" } };
-        var biomes = new MaskField("biomes", grid, MaskEncoding.Categorical) { categories = new[] { "upland", "floodplain", "water" } };
+        var biomes = new MaskField("biomes", grid, MaskEncoding.Categorical) { categories = new[] { "upland", "valley", "floodplain", "water" } };
 
         var riverHalfBase = Mathf.Max(0.5f, settings.riverWidth * 0.5f);
         var floodRadiusBase = Mathf.Max(riverHalfBase + 0.75f, settings.floodplainWidth);
         var bankRadiusBase = Mathf.Max(riverHalfBase + 0.25f, settings.bankWidth + riverHalfBase);
+        var valleyWidthBase = Mathf.Max(floodRadiusBase + grid.cellSize * 1.5f, settings.valleyWidth);
         var widthPhase = Mathf.Abs(Mathf.Sin(seed * 0.173f)) * Mathf.PI * 2f;
 
         for (var y = 0; y < grid.height; y++)
@@ -56,30 +57,40 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             var dist = DistanceToPolylineWithT(riverPoints, p, out var tAlong);
 
             var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.75f + 11f, seed * 0.0027f, seed + 101) * 2f - 1f;
-            var widthWave = Mathf.Sin(tAlong * Mathf.PI * 1.6f + widthPhase) * 0.08f;
-            var widthScale = Mathf.Clamp(1f + widthWave + widthNoise * 0.06f, 0.88f, 1.16f);
+            var widthWave = Mathf.Sin(tAlong * Mathf.PI * 1.6f + widthPhase) * 0.06f;
+            var widthVariation = widthNoise * Mathf.Clamp01(settings.WidthVariationStrength) * 0.16f;
+            var widthScale = Mathf.Clamp(1f + widthWave + widthVariation, 0.85f, 1.2f);
 
             var riverHalf = riverHalfBase * widthScale;
-            var floodRadius = floodRadiusBase * (1f + widthWave * 0.15f + widthNoise * 0.04f);
+            var floodRadius = floodRadiusBase * (1f + widthWave * 0.12f + widthVariation * 0.45f);
             var bankRadius = bankRadiusBase * Mathf.Lerp(0.96f, 1.04f, 1f - tAlong);
+            var valleyRadius = valleyWidthBase * (1f + widthVariation * 0.3f);
 
             var slope = SlopeSample(grid, x, y, flowDir);
-            var terrainNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.21f, p.y * 0.21f, seed) * 2f - 1f) * settings.heightNoiseStrength * 0.25f;
+            var terrainNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.21f, p.y * 0.21f, seed) * 2f - 1f) * settings.heightNoiseStrength * 0.22f;
             var floodNoise = (NoiseUtil.Sample2D(wetnessNoise, p.x * 0.07f, p.y * 0.07f, seed + 17) * 2f - 1f) * 0.17f;
+            var valleyNoise = (NoiseUtil.Sample2D(warpNoise, p.x * 0.045f + 5f, p.y * 0.045f - 9f, seed + 203) * 2f - 1f) * 0.12f;
 
             var floodEdge = Mathf.Max(0.01f, floodRadius * (1f + floodNoise * 0.4f));
             var floodFactor = Mathf.Clamp01(1f - dist / floodEdge);
+            var floodplainMask = Mathf.SmoothStep(0f, 1f, floodFactor + floodNoise * 0.2f);
             var bankFactor = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, bankRadius));
+            var valleyDist = Mathf.Clamp01(dist / Mathf.Max(0.01f, valleyRadius));
+            var valleyFactor = 1f - Mathf.SmoothStep(0f, 1f, valleyDist + valleyNoise * 0.15f);
             var isWater = dist <= riverHalf;
 
-            var h = slope + terrainNoise - floodFactor * settings.carveStrength - (isWater ? 0.06f : 0f);
-            h = Mathf.Lerp(h, settings.waterLevel, 0.22f * floodFactor);
+            var h = slope + terrainNoise;
+            h -= valleyFactor * settings.valleyDepth;
+            h -= floodplainMask * settings.carveStrength;
+            h -= isWater ? 0.07f : 0f;
+            h = Mathf.Lerp(h, settings.waterLevel, 0.24f * floodplainMask);
+
             height[x, y] = h;
-            wetness[x, y] = Mathf.Clamp01(floodFactor * 0.8f + (0.5f - slope) * 0.2f + 0.1f + floodNoise * 0.08f);
+            wetness[x, y] = Mathf.Clamp01(floodplainMask * 0.82f + valleyFactor * 0.2f + (0.5f - slope) * 0.12f + 0.08f + floodNoise * 0.06f);
             water[x, y] = (byte)(isWater ? 1 : 0);
             walkable[x, y] = (byte)(isWater ? 0 : 1);
-            zones[x, y] = (byte)(bankFactor > 0.05f ? 0 : 1);
-            biomes[x, y] = isWater ? (byte)2 : (floodFactor > 0.2f ? (byte)1 : (byte)0);
+            zones[x, y] = (byte)(bankFactor > 0.05f || valleyFactor > 0.1f ? 0 : 1);
+            biomes[x, y] = isWater ? (byte)3 : (floodplainMask > 0.3f ? (byte)2 : (valleyFactor > 0.18f ? (byte)1 : (byte)0));
         }
 
         height.Normalize01InPlace();
@@ -108,17 +119,23 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             var dist = DistanceToPolylineWithT(riverPoints, p, out _);
             if (water[x, y] > 0) continue;
 
-            if (dist <= floodRadiusBase && trees.points.Count < previewCap)
+            var valleyRange = Mathf.Max(0.01f, valleyWidthBase);
+            var floodRange = Mathf.Max(0.01f, floodRadiusBase);
+            var valleyPresence = Mathf.Clamp01(1f - dist / valleyRange);
+            var floodPresence = Mathf.Clamp01(1f - dist / floodRange);
+            var valleyEdge = Mathf.Clamp01((dist - floodRange * 0.72f) / Mathf.Max(0.01f, valleyRange - floodRange * 0.72f));
+
+            if (trees.points.Count < previewCap)
             {
-                var chance = settings.treeDensity * Mathf.Clamp01(1f - dist / floodRadiusBase);
-                if (rng.NextFloat01() < chance)
+                var treeChance = settings.treeDensity * Mathf.Clamp01(0.2f + floodPresence * 0.85f + valleyPresence * 0.35f - valleyEdge * 0.25f);
+                if (rng.NextFloat01() < treeChance)
                     trees.points.Add(new ScatterPoint { pos = p, scale = 0.8f + rng.NextFloat01() * 0.8f, typeId = 0, tags = new[] { "tree" } });
             }
 
-            if (dist >= bankRadiusBase && rocks.points.Count < previewCap)
+            if (rocks.points.Count < previewCap)
             {
-                var chance = settings.rockDensity * Mathf.Clamp01((dist - bankRadiusBase) / Mathf.Max(0.01f, floodRadiusBase));
-                if (rng.NextFloat01() < chance)
+                var rockChance = settings.rockDensity * Mathf.Clamp01(valleyEdge * 0.85f + (1f - valleyPresence) * 0.45f);
+                if (rng.NextFloat01() < rockChance)
                     rocks.points.Add(new ScatterPoint { pos = p, scale = 0.7f + rng.NextFloat01(), typeId = 0, tags = new[] { "rock" } });
             }
         }
@@ -174,9 +191,12 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         {
             var t = i / (float)(count - 1);
             var basePoint = Vector2.Lerp(start, end, t);
+            var curvatureNoise = (NoiseUtil.Sample2D(meanderNoise, t * 0.65f + 17f, seed * 0.0039f, seed + 151) * 2f - 1f) * Mathf.Clamp01(settings.CurvatureNoiseStrength);
+            var localAmp = meanderAmp * (1f + curvatureNoise * 0.25f);
+            var localPhase = phase + curvatureNoise * Mathf.PI * 0.22f;
 
-            var sineOffset = Mathf.Sin(t * meanderFreq * Mathf.PI * 2f + phase) * meanderAmp;
-            var lowFreqNoise = (NoiseUtil.Sample2D(meanderNoise, t * 1.1f + 3f, seed * 0.0043f, seed + 31) * 2f - 1f) * meanderAmp * 0.22f;
+            var sineOffset = Mathf.Sin(t * meanderFreq * Mathf.PI * 2f + localPhase) * localAmp;
+            var lowFreqNoise = (NoiseUtil.Sample2D(meanderNoise, t * 1.1f + 3f, seed * 0.0043f, seed + 31) * 2f - 1f) * localAmp * 0.22f;
             var warpNoiseSample = (NoiseUtil.Sample2D(warpNoise, basePoint.x * warpFreq, basePoint.y * warpFreq, seed + 47) * 2f - 1f) * warpAmp;
             var taper = Mathf.SmoothStep(0f, 1f, Mathf.Sin(t * Mathf.PI));
 

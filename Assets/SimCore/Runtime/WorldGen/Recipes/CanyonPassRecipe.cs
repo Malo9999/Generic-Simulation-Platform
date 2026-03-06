@@ -5,7 +5,7 @@ using UnityEngine;
 public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 {
     public override string RecipeId => "CanyonPass";
-    public override int Version => 6;
+    public override int Version => 7;
 
     private const int FastMinControlPoints = 22;
     private const int FastMaxControlPoints = 36;
@@ -39,7 +39,7 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         var zones = new MaskField("zones", grid, MaskEncoding.Categorical) { categories = new[] { "pass_floor", "wall", "upland" } };
 
         var floorHalfBase = Mathf.Max(0.6f, settings.passWidth * 0.5f);
-        var wallOuterBase = Mathf.Max(floorHalfBase + grid.cellSize, floorHalfBase + settings.passWidth * 0.8f);
+        var wallOuterBase = Mathf.Max(floorHalfBase + grid.cellSize, floorHalfBase + settings.passWidth * 0.95f);
         var widthPhase = Mathf.Abs(Mathf.Sin(seed * 0.119f)) * Mathf.PI * 2f;
 
         for (var y = 0; y < grid.height; y++)
@@ -47,24 +47,35 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         {
             var p = grid.CellCenterWorld(x, y);
             var dist = DistanceToPolylineWithT(passPoints, p, out var tAlong);
+            var side = SignedSideToPolyline(passPoints, p);
 
             var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.8f + 9f, seed * 0.0023f, seed + 73) * 2f - 1f;
-            var widthScale = Mathf.Clamp(1f + Mathf.Sin(tAlong * Mathf.PI * 1.4f + widthPhase) * 0.07f + widthNoise * 0.05f, 0.86f, 1.14f);
+            var widthScale = Mathf.Clamp(1f + Mathf.Sin(tAlong * Mathf.PI * 1.4f + widthPhase) * 0.05f + widthNoise * 0.1f, 0.84f, 1.18f);
             var floorHalf = floorHalfBase * widthScale;
-            var wallOuter = wallOuterBase * Mathf.Lerp(0.95f, 1.08f, tAlong);
+
+            var sideNoiseLeft = (NoiseUtil.Sample2D(warpNoise, tAlong * 0.55f + 37f, 3.1f + seed * 0.0019f, seed + 211) * 2f - 1f) * settings.WallAsymmetryStrength;
+            var sideNoiseRight = (NoiseUtil.Sample2D(warpNoise, tAlong * 0.61f - 29f, -4.4f + seed * 0.0013f, seed + 257) * 2f - 1f) * settings.WallAsymmetryStrength;
+            var sideBias = side >= 0f ? sideNoiseRight : sideNoiseLeft;
+
+            var wallOuter = wallOuterBase * Mathf.Lerp(0.95f, 1.08f, tAlong) * (1f + sideBias * 0.22f);
 
             var slope = 0.35f + SlopeSample(grid, x, y) * 0.65f;
             var low = (NoiseUtil.Sample2D(heightNoise, p.x * 0.22f, p.y * 0.22f, seed) * 2f - 1f) * settings.noiseStrength;
-            var wallNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.9f + 13f, p.y * 0.9f - 7f, seed + 23) * 2f - 1f) * settings.wallRoughness * 0.2f;
+            var wallNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.95f + 13f, p.y * 0.95f - 7f, seed + 23) * 2f - 1f) * settings.WallRoughnessStrength * 0.25f;
+            var wallTransitionNoise = (NoiseUtil.Sample2D(warpNoise, p.x * 0.08f + 17f, p.y * 0.08f - 15f, seed + 313) * 2f - 1f) * settings.WallRoughnessStrength;
 
-            var floorCarve = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, floorHalf));
-            var wallBand = Mathf.Clamp01(1f - Mathf.Abs(dist - floorHalf) / Mathf.Max(0.01f, wallOuter - floorHalf));
+            var noisyFloorHalf = floorHalf * (1f + wallTransitionNoise * 0.08f);
+            var noisyWallOuter = wallOuter * (1f + wallTransitionNoise * 0.14f);
+            var floorCarve = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, noisyFloorHalf));
+            var wallBand = Mathf.Clamp01(1f - Mathf.Abs(dist - noisyFloorHalf) / Mathf.Max(0.01f, noisyWallOuter - noisyFloorHalf));
+            var wallRise = Mathf.Clamp01((dist - noisyFloorHalf) / Mathf.Max(0.01f, noisyWallOuter - noisyFloorHalf));
 
-            var h = slope + low - floorCarve * settings.canyonDepth + wallBand * settings.wallSteepness * 0.12f + wallNoise;
+            var asymHeight = sideBias * settings.wallSteepness * 0.12f * wallRise;
+            var h = slope + low - floorCarve * settings.canyonDepth + wallBand * settings.wallSteepness * 0.14f + wallNoise + asymHeight;
             height[x, y] = h;
 
-            var inFloor = dist <= floorHalf;
-            var inWall = !inFloor && dist <= wallOuter * (1f + wallNoise * 0.5f);
+            var inFloor = dist <= noisyFloorHalf;
+            var inWall = !inFloor && dist <= noisyWallOuter;
             walkable[x, y] = (byte)(inFloor ? 1 : 0);
             zones[x, y] = (byte)(inFloor ? 0 : inWall ? 1 : 2);
         }
@@ -91,7 +102,9 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             if (zones[x, y] != 1) continue;
 
             var p = grid.CellCenterWorld(x, y);
-            var chance = settings.boulderDensity * 0.7f;
+            var dist = DistanceToPolylineWithT(passPoints, p, out _);
+            var wallBandUpper = Mathf.Clamp01((dist - floorHalfBase * 1.05f) / Mathf.Max(0.01f, wallOuterBase - floorHalfBase));
+            var chance = settings.boulderDensity * Mathf.Clamp01(0.25f + wallBandUpper * 0.95f);
             if (rng.NextFloat01() < chance)
                 boulders.points.Add(new ScatterPoint { pos = p, scale = 0.9f + rng.NextFloat01() * 1.4f, typeId = 0, tags = new[] { "boulder" } });
         }
@@ -185,6 +198,35 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         }
 
         return best;
+    }
+
+    private static float SignedSideToPolyline(List<Vector2> points, Vector2 p)
+    {
+        if (points == null || points.Count < 2) return 1f;
+        var best = float.MaxValue;
+        var sign = 1f;
+
+        for (var i = 1; i < points.Count; i++)
+        {
+            var a = points[i - 1];
+            var b = points[i];
+            var ab = b - a;
+            var lenSq = ab.sqrMagnitude;
+            if (lenSq < Epsilon) continue;
+
+            var t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / lenSq);
+            var proj = a + ab * t;
+            var delta = p - proj;
+            var dSq = delta.sqrMagnitude;
+            if (dSq < best)
+            {
+                best = dSq;
+                sign = Mathf.Sign(ab.x * (p.y - a.y) - ab.y * (p.x - a.x));
+                if (Mathf.Abs(sign) < Epsilon) sign = 1f;
+            }
+        }
+
+        return sign;
     }
 
     private static float SlopeSample(WorldGridSpec grid, int x, int y)

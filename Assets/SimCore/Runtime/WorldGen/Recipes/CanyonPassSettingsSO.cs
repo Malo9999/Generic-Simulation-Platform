@@ -12,6 +12,8 @@ public class CanyonPassSettingsSO : WorldRecipeSettingsSO
     public float boulderDensity = 0.05f;
     public float noiseStrength = 0.2f;
     public float wallRoughness = 0.35f;
+    public float WallAsymmetryStrength = 0.35f;
+    public float WallRoughnessStrength = 0.4f;
     public Vector2 gradientDir = new Vector2(1f, 0f);
     public float TwistAmplitude = 0.85f;
     public float MeanderFrequency = 1.35f;
