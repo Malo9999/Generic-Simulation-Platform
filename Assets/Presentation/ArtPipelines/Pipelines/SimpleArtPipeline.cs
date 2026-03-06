@@ -28,10 +28,12 @@ public class SimpleArtPipeline : ArtPipelineBase
     [SerializeField] private bool useGlow = false;
     [SerializeField] private bool enableAnimatedShapes = true;
     [SerializeField] private bool autoAssignShapeAnimationById = true;
+    [SerializeField] private bool useShapeMaterialPalette = true;
     [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
 
     private bool debugEnabled;
     private DebugPlaceholderMode debugMode;
+    private ShapeMaterialPalette runtimeMaterialPalette;
 
     public override ArtMode Mode => ArtMode.Simple;
     public override string DisplayName => "Simple";
@@ -77,7 +79,7 @@ public class SimpleArtPipeline : ArtPipelineBase
                 ? fallbackCore
                 : DebugShapeSpriteFactory.GetCircleSprite();
         dotRenderer.color = PlaceholderColorPalette.GetColor(key);
-        dotRenderer.sharedMaterial = ResolveMaterialPalette().GetMaterialForShape(bodyShapeId);
+        TryAssignShapeMaterial(dotRenderer, bodyShapeId);
         RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
 
         if (enableAnimatedShapes)
@@ -93,7 +95,7 @@ public class SimpleArtPipeline : ArtPipelineBase
             var glowRenderer = glowObject.AddComponent<SpriteRenderer>();
             glowRenderer.sprite = glowSprite;
             glowRenderer.color = new Color(1f, 1f, 1f, 0.35f);
-            glowRenderer.sharedMaterial = ResolveMaterialPalette().GetMaterialForShape(glowShapeId);
+            TryAssignShapeMaterial(glowRenderer, glowShapeId);
             glowObject.transform.localScale = Vector3.one * 1.6f;
             RenderOrder.Apply(glowRenderer, RenderOrder.EntityBody - 2);
 
@@ -134,7 +136,32 @@ public class SimpleArtPipeline : ArtPipelineBase
             return shapeMaterialPalette;
         }
 
-        return ShapeMaterialPaletteLoader.Load();
+        if (runtimeMaterialPalette == null)
+        {
+            runtimeMaterialPalette = ShapeMaterialPaletteLoader.Load();
+        }
+
+        return runtimeMaterialPalette;
+    }
+
+    private void TryAssignShapeMaterial(SpriteRenderer renderer, string shapeId)
+    {
+        if (!useShapeMaterialPalette || renderer == null || string.IsNullOrWhiteSpace(shapeId))
+        {
+            return;
+        }
+
+        var palette = ResolveMaterialPalette();
+        if (palette == null)
+        {
+            return;
+        }
+
+        var material = palette.GetMaterialForShape(shapeId);
+        if (material != null)
+        {
+            renderer.sharedMaterial = material;
+        }
     }
     private static string ResolveBodyShapeId(VisualKey key)
     {
