@@ -16,6 +16,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Color labelColor = new(0.82f, 0.95f, 1f, 1f);
     [SerializeField] private Color cameraBackground = Color.black;
     [SerializeField] private ShapeCategoryPalette shapeCategoryPalette;
+    [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -134,6 +135,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         sr.color = GetTint(shapeId);
+        sr.sharedMaterial = ResolveMaterialPalette().GetMaterialForShape(shapeId);
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
         if (profile.animType != ShapeAnimType.None)
@@ -177,32 +179,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private Color GetTint(string shapeId)
     {
-        return ResolvePalette().GetColor(ShapeIdToCategory(shapeId));
-    }
-
-    private static ShapePaletteCategory ShapeIdToCategory(string shapeId)
-    {
-        return shapeId switch
-        {
-            ShapeId.DotCore => ShapePaletteCategory.Core,
-            ShapeId.DotGlow => ShapePaletteCategory.Core,
-            ShapeId.DotGlowSmall => ShapePaletteCategory.Core,
-            ShapeId.RingPing => ShapePaletteCategory.Core,
-            ShapeId.PulseRing => ShapePaletteCategory.Core,
-            ShapeId.OrganicMetaball => ShapePaletteCategory.Organic,
-            ShapeId.OrganicAmoeba => ShapePaletteCategory.Organic,
-            ShapeId.NoiseBlob => ShapePaletteCategory.Organic,
-            ShapeId.FieldBlob => ShapePaletteCategory.Organic,
-            ShapeId.TriangleAgent => ShapePaletteCategory.Agents,
-            ShapeId.DiamondAgent => ShapePaletteCategory.Agents,
-            ShapeId.ArrowAgent => ShapePaletteCategory.Agents,
-            ShapeId.CrossMarker => ShapePaletteCategory.Markers,
-            ShapeId.ArcSector => ShapePaletteCategory.Markers,
-            ShapeId.LineSegment => ShapePaletteCategory.Lines,
-            ShapeId.StrokeScribble => ShapePaletteCategory.Lines,
-            ShapeId.Filament => ShapePaletteCategory.Lines,
-            _ => ShapePaletteCategory.Core
-        };
+        return ResolvePalette().GetColor(ShapeMaterialPalette.ShapeIdToCategory(shapeId));
     }
 
     private ShapeCategoryPalette ResolvePalette()
@@ -218,6 +195,16 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
 
         return runtimeFallbackPalette;
+    }
+
+    private ShapeMaterialPalette ResolveMaterialPalette()
+    {
+        if (shapeMaterialPalette != null)
+        {
+            return shapeMaterialPalette;
+        }
+
+        return ShapeMaterialPaletteLoader.Load();
     }
 
     private readonly struct ShowcaseCategory
