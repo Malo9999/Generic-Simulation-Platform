@@ -14,9 +14,9 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public Vector2 gradientDir = new Vector2(0f, 1f);
     public float waterLevel = 0.45f;
     public float carveStrength = 0.35f;
-    public float MeanderAmp = 3f;
+    public float MeanderAmp = 3f; // Flow / Meander Strength
     public float MeanderFreq = 0.06f;
-    public float RiverWarpAmplitude = 3f;
+    public float RiverWarpAmplitude = 3f; // River Warp Strength
     public float RiverWarpFrequency = 0.025f;
     public float heightNoiseStrength = 1f;
 
