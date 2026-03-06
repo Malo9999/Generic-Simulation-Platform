@@ -15,8 +15,6 @@
 [Aa]rchives/
 [Mm]l/
 [Rr]ecovery/
-[Aa]ssets/_[Rr]ecovery/
-[Aa]ssets/_[Rr]ecovery.meta
 
 # User-specific settings
 [Uu]ser[Ss]ettings/
@@ -94,7 +92,12 @@ pip-wheel-metadata/
 _References/
 _References.meta
 
-# Generated simulation art packs
+# Generated Unity content / local baked outputs
+[Aa]ssets/_Recovery/
+[Aa]ssets/[Cc]reated[Aa]ssets/
+[Aa]ssets/[Pp]resentation/[Bb]aked/
+
+# Generated simulation art pack outputs
 Assets/Presentation/Packs/**/Generated/
 Assets/Presentation/Packs/**/Debug/
 Assets/Presentation/Packs/**/Blueprints/Generated/
