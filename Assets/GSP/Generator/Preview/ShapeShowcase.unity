@@ -318,9 +318,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c476160e877d44f493a1159efab9d6ec, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  columns: 5
-  spacing: 2
+  horizontalSpacing: 4.15
+  verticalSpacing: 3.5
+  categoryGap: 1.8
   spriteScale: 1
+  headerOffset: 1.7
+  labelOffset: 1.45
+  headerColor: {r: 0.95, g: 0.98, b: 1, a: 1}
+  labelColor: {r: 0.82, g: 0.95, b: 1, a: 1}
+  cameraBackground: {r: 0, g: 0, b: 0, a: 1}
+  shapeCategoryPalette: {fileID: 0}
+  shapeMaterialPalette: {fileID: 0}
+  enableTrailDemo: 1
+  enableSlimeMoldMiniDemo: 1
+  trailPreset: {fileID: 11400000, guid: 084cb4af24db4de2a58e80af598f07f0, type: 2}
+  trailSettings:
+    textureWidth: 512
+    textureHeight: 288
+    depositRadiusPx: 2
+    depositStrength: 1.2
+    decayPerSecond: 0.8
+    diffuseStrength: 0.07
+    tintColor: {r: 0.35, g: 0.95, b: 1, a: 1}
+    alphaMultiplier: 0.35
+  slimeSteeringSettings:
+    sensorDistance: 1.2
+    sensorAngleDeg: 35
+    turnStrength: 0.8
+    forwardSpeed: 1
+    jitter: 0.05
+  headerFontSize: 58
+  labelFontSize: 32
 --- !u!1 &38755031
 GameObject:
   m_ObjectHideFlags: 0

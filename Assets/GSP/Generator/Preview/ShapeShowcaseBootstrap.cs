@@ -21,8 +21,9 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [Header("Trails")]
     [SerializeField] private bool enableTrailDemo = true;
     [SerializeField] private bool enableSlimeMoldMiniDemo = true;
-    [SerializeField] private TrailBufferSettings trailSettings = new();
-    [SerializeField] private SlimeMoldTrailPreset slimeMoldPreset;
+    [SerializeField] private TrailShowcasePreset trailPreset;
+    [SerializeField] private TrailVisualSettings trailSettings = new();
+    [SerializeField] private SlimeMoldSteeringSettings slimeSteeringSettings = new();
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -70,6 +71,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void Start()
     {
+        ApplyTrailPreset();
         ApplySceneBackground();
         if (enableTrailDemo)
         {
@@ -90,17 +92,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         trailRoot.transform.SetParent(transform, false);
 
         trailBufferController = trailRoot.AddComponent<TrailBufferController>();
-        trailBufferController.Settings.textureWidth = trailSettings.textureWidth;
-        trailBufferController.Settings.textureHeight = trailSettings.textureHeight;
-        trailBufferController.Settings.pixelsPerUnit = trailSettings.pixelsPerUnit;
-        trailBufferController.Settings.worldBounds = trailSettings.worldBounds;
-        trailBufferController.Settings.useWorldBounds = trailSettings.useWorldBounds;
-        trailBufferController.Settings.decayPerSecond = trailSettings.decayPerSecond;
-        trailBufferController.Settings.diffuseStrength = trailSettings.diffuseStrength;
-        trailBufferController.Settings.depositStrength = trailSettings.depositStrength;
-        trailBufferController.Settings.depositRadiusPx = trailSettings.depositRadiusPx;
-        trailBufferController.Settings.useAdditiveComposite = trailSettings.useAdditiveComposite;
-        trailBufferController.Settings.tintColor = trailSettings.tintColor;
+        trailSettings.ApplyTo(trailBufferController.Settings);
 
         var renderer = trailRoot.AddComponent<TrailBufferRenderer>();
         renderer.Configure(trailBufferController);
@@ -237,9 +229,6 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             return;
         }
 
-        var preset = slimeMoldPreset != null ? slimeMoldPreset : ScriptableObject.CreateInstance<SlimeMoldTrailPreset>();
-        preset.ApplyTo(trailBufferController.Settings);
-
         var parent = new GameObject("SlimeMoldMiniDemo");
         parent.transform.SetParent(transform, false);
 
@@ -261,11 +250,21 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             sr.color = new Color(0.6f, 1f, 0.85f, 0.85f);
 
             var emitter = agentGo.AddComponent<TrailEmitter>();
-            emitter.Configure(trailBufferController, preset.depositStrength, 0.8f);
+            emitter.Configure(trailBufferController, trailSettings.depositStrength, 0.8f);
 
             var agent = agentGo.AddComponent<SlimeMoldDemoAgent>();
-            agent.Configure(trailBufferController, preset, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
+            agent.Configure(trailBufferController, slimeSteeringSettings, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
         }
+    }
+
+    private void ApplyTrailPreset()
+    {
+        if (trailPreset == null)
+        {
+            return;
+        }
+
+        trailPreset.ApplyTo(trailSettings, slimeSteeringSettings);
     }
 
     private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)
