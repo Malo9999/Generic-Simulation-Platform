@@ -18,6 +18,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private ShapeCategoryPalette shapeCategoryPalette;
     [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
 
+    [Header("Trails")]
+    [SerializeField] private bool enableTrailDemo = true;
+    [SerializeField] private bool enableSlimeMoldMiniDemo = true;
+    [SerializeField] private TrailBufferSettings trailSettings = new();
+    [SerializeField] private SlimeMoldTrailPreset slimeMoldPreset;
+
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
 
@@ -60,11 +66,44 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     private readonly HashSet<string> missingLogged = new();
     private ShapeCategoryPalette runtimeFallbackPalette;
     private ShapeMaterialPalette runtimeMaterialPalette;
+    private TrailBufferController trailBufferController;
 
     private void Start()
     {
         ApplySceneBackground();
+        if (enableTrailDemo)
+        {
+            SetupTrailSystem();
+        }
+
         SpawnShowcase();
+
+        if (enableTrailDemo && enableSlimeMoldMiniDemo)
+        {
+            SpawnSlimeMoldMiniDemo();
+        }
+    }
+
+    private void SetupTrailSystem()
+    {
+        var trailRoot = new GameObject("TrailBuffer");
+        trailRoot.transform.SetParent(transform, false);
+
+        trailBufferController = trailRoot.AddComponent<TrailBufferController>();
+        trailBufferController.Settings.textureWidth = trailSettings.textureWidth;
+        trailBufferController.Settings.textureHeight = trailSettings.textureHeight;
+        trailBufferController.Settings.pixelsPerUnit = trailSettings.pixelsPerUnit;
+        trailBufferController.Settings.worldBounds = trailSettings.worldBounds;
+        trailBufferController.Settings.useWorldBounds = trailSettings.useWorldBounds;
+        trailBufferController.Settings.decayPerSecond = trailSettings.decayPerSecond;
+        trailBufferController.Settings.diffuseStrength = trailSettings.diffuseStrength;
+        trailBufferController.Settings.depositStrength = trailSettings.depositStrength;
+        trailBufferController.Settings.depositRadiusPx = trailSettings.depositRadiusPx;
+        trailBufferController.Settings.useAdditiveComposite = trailSettings.useAdditiveComposite;
+        trailBufferController.Settings.tintColor = trailSettings.tintColor;
+
+        var renderer = trailRoot.AddComponent<TrailBufferRenderer>();
+        renderer.Configure(trailBufferController);
     }
 
     private void ApplySceneBackground()
@@ -115,7 +154,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
                 }
 
                 var position = new Vector3(startX + (col * horizontalSpacing), y, 0f);
-                SpawnShape(id, sprite, position, spawnedCount);
+                SpawnShape(id, category.Category, sprite, position, spawnedCount);
                 spawnedCount++;
             }
         }
@@ -126,7 +165,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
     }
 
-    private void SpawnShape(string shapeId, Sprite sprite, Vector3 localPosition, int sequence)
+    private void SpawnShape(string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence)
     {
         var go = new GameObject(shapeId);
         go.transform.SetParent(transform, false);
@@ -154,7 +193,79 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             driver.Configure(sr, profile, sequence * 97);
         }
 
+        ConfigureTrailDemo(go, shapeId, category, sequence);
         SpawnLabel(shapeId, go.transform, labelOffset);
+    }
+
+    private void ConfigureTrailDemo(GameObject go, string shapeId, ShapePaletteCategory category, int sequence)
+    {
+        if (!enableTrailDemo || trailBufferController == null)
+        {
+            return;
+        }
+
+        var motion = go.AddComponent<ShowcaseTrailMotion>();
+        motion.Configure(sequence + 17, category == ShapePaletteCategory.Organic ? 0.9f : 1f);
+
+        if (category == ShapePaletteCategory.Markers || category == ShapePaletteCategory.Agents)
+        {
+            return;
+        }
+
+        var emitter = go.AddComponent<TrailEmitter>();
+        var strength = 1f;
+        var radiusScale = 1f;
+
+        if (category == ShapePaletteCategory.Organic)
+        {
+            strength = 0.65f;
+            radiusScale = 1.25f;
+        }
+        else if (shapeId == ShapeId.Filament)
+        {
+            strength = 1.1f;
+            radiusScale = 0.85f;
+        }
+
+        emitter.Configure(trailBufferController, strength, radiusScale);
+    }
+
+    private void SpawnSlimeMoldMiniDemo()
+    {
+        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out var dotSprite))
+        {
+            return;
+        }
+
+        var preset = slimeMoldPreset != null ? slimeMoldPreset : ScriptableObject.CreateInstance<SlimeMoldTrailPreset>();
+        preset.ApplyTo(trailBufferController.Settings);
+
+        var parent = new GameObject("SlimeMoldMiniDemo");
+        parent.transform.SetParent(transform, false);
+
+        var center = trailBufferController.WorldBounds.center;
+        var radius = Mathf.Min(trailBufferController.WorldBounds.width, trailBufferController.WorldBounds.height) * 0.25f;
+
+        for (var i = 0; i < 10; i++)
+        {
+            var angle = (Mathf.PI * 2f * i) / 10f;
+            var pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+
+            var agentGo = new GameObject($"slime_agent_{i:00}");
+            agentGo.transform.SetParent(parent.transform, false);
+            agentGo.transform.position = new Vector3(pos.x, pos.y, 0f);
+            agentGo.transform.localScale = Vector3.one * 0.8f;
+
+            var sr = agentGo.AddComponent<SpriteRenderer>();
+            sr.sprite = dotSprite;
+            sr.color = new Color(0.6f, 1f, 0.85f, 0.85f);
+
+            var emitter = agentGo.AddComponent<TrailEmitter>();
+            emitter.Configure(trailBufferController, preset.depositStrength, 0.8f);
+
+            var agent = agentGo.AddComponent<SlimeMoldDemoAgent>();
+            agent.Configure(trailBufferController, preset, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
+        }
     }
 
     private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)
