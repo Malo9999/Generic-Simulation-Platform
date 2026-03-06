@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
 
 public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
@@ -20,32 +21,45 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         var wetnessNoise = noise.Get(settings.WetnessNoise.id);
         var warpNoise = noise.Get(settings.WarpNoise.id);
 
+        var isFast = settings.qualityMode == QualityMode.FastPreview;
+        var useAdvancedFeatures = settings.qualityMode == QualityMode.Bake;
+        var workGrid = BuildWorkGrid(grid, isFast ? 64 : grid.width, isFast ? 64 : grid.height);
+
         var mapRect = new Rect(grid.originWorld.x, grid.originWorld.y, grid.width * grid.cellSize, grid.height * grid.cellSize);
         var flowDir = settings.gradientDir.sqrMagnitude < Epsilon ? Vector2.down : settings.gradientDir.normalized;
 
-        var terrain = BuildTerrainField(settings, grid, seed, heightNoise, warpNoise, flowDir, mapRect);
-        var source = PickEdgeCell(grid, terrain, flowDir, true, settings.SourceEdgeBias, rng);
-        var sink = PickEdgeCell(grid, terrain, flowDir, false, settings.SourceEdgeBias, rng);
+        var terrainTimer = Stopwatch.StartNew();
+        var workTerrain = BuildTerrainField(settings, workGrid, seed, heightNoise, warpNoise, flowDir, mapRect);
+        var terrain = workGrid.width == grid.width && workGrid.height == grid.height
+            ? workTerrain
+            : UpscaleField(workTerrain, workGrid, grid);
+        terrainTimer.Stop();
 
-        var mainPath = TraceFlowPath(grid, terrain, source, sink, settings.FlowInertia, settings.FlowNoiseStrength, seed, wetnessNoise);
-        var mainPoints = PathToWorldPoints(grid, mainPath);
-        mainPoints = Chaikin(mainPoints, 2);
-        TryApplyCutoff(mainPoints, settings.CutoffChance, settings.riverWidth, rng);
+        var pathTimer = Stopwatch.StartNew();
+        var source = PickEdgeCell(workGrid, workTerrain, flowDir, true, settings.SourceEdgeBias, rng);
+        var sink = PickEdgeCell(workGrid, workTerrain, flowDir, false, settings.SourceEdgeBias, rng);
+        var mainPath = TraceFlowPath(workGrid, workTerrain, source, sink, settings.FlowInertia, settings.FlowNoiseStrength, seed, wetnessNoise);
+        var mainPoints = Chaikin(PathToWorldPoints(workGrid, mainPath), 2);
+        if (useAdvancedFeatures)
+            TryApplyCutoff(mainPoints, settings.CutoffChance, settings.riverWidth, rng);
 
         var splines = new List<WorldSpline>
         {
             new WorldSpline { id = "river_main", baseWidth = settings.riverWidth, points = mainPoints }
         };
 
-        AddSideChannels(splines, mainPath, terrain, settings, grid, rng, seed, wetnessNoise);
+        if (useAdvancedFeatures)
+            AddSideChannels(splines, mainPath, workTerrain, settings, workGrid, rng, seed, wetnessNoise);
 
         var clippedSplines = new List<WorldSpline>();
         foreach (var spline in splines)
             clippedSplines.AddRange(SplineClipper.ClipToRectParts(spline, mapRect));
         map.splines = clippedSplines;
+        pathTimer.Stop();
 
-        var wetlandSeeds = BuildFeatureSeeds(settings.WetlandCount, mapRect, rng);
-        var kopjeSeeds = BuildFeatureSeeds(settings.KopjeCount, mapRect, rng);
+        var maskTimer = Stopwatch.StartNew();
+        var wetlandSeeds = useAdvancedFeatures ? BuildFeatureSeeds(settings.WetlandCount, mapRect, rng) : new List<Vector2>();
+        var kopjeSeeds = useAdvancedFeatures ? BuildFeatureSeeds(settings.KopjeCount, mapRect, rng) : new List<Vector2>();
 
         var height = new ScalarField("height", grid);
         var wetness = new ScalarField("wetness", grid);
@@ -58,7 +72,6 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         var rocks = new ScatterSet { id = "rocks" };
 
         var perp = new Vector2(-flowDir.y, flowDir.x);
-
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
         {
@@ -69,53 +82,38 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 
             var terrainH = terrain[x, y];
             var wetNoise = NoiseUtil.Sample2D(wetnessNoise, p.x, p.y, seed) * 2f - 1f;
-            var floodExtent = width * (2.4f + settings.WetlandNoiseStrength * 1.2f * wetNoise);
+            var floodExtent = width * (2.2f + (useAdvancedFeatures ? settings.WetlandNoiseStrength * 1.2f * wetNoise : 0f));
             var floodFactor = Mathf.Clamp01(1f - nearest.distance / Mathf.Max(0.01f, floodExtent));
 
-            var wetlandBlob = FeatureBlobInfluence(p, wetlandSeeds, settings.floodplainWidth * 0.9f);
-            var wetnessValue = Mathf.Clamp01(floodFactor * 0.65f + wetlandBlob * 0.45f + Mathf.Clamp01(0.5f - terrainH) * 0.35f + (wetNoise * 0.5f + 0.5f) * 0.2f);
+            var wetlandBlob = useAdvancedFeatures ? FeatureBlobInfluence(p, wetlandSeeds, settings.floodplainWidth * 0.9f) : 0f;
+            var wetnessValue = Mathf.Clamp01(floodFactor * 0.78f + wetlandBlob * 0.35f + Mathf.Clamp01(0.5f - terrainH) * 0.25f + (wetNoise * 0.5f + 0.5f) * 0.18f);
             wetness[x, y] = wetnessValue;
 
             var isWater = nearest.distance < width * 0.5f;
             var bankNoise = NoiseUtil.Sample2D(warpNoise, p.x * 0.06f, p.y * 0.06f, seed) * 2f - 1f;
             var isBank = nearest.distance < width * (0.8f + bankNoise * 0.25f);
 
-            var kopjeNoise = NoiseUtil.Sample2D(heightNoise, p.x * 1.9f, p.y * 1.9f, seed + 41) * 2f - 1f;
-            var kopjeBlob = FeatureBlobInfluence(p, kopjeSeeds, settings.floodplainWidth * 0.7f);
-            var isKopje = !isWater && wetnessValue < 0.4f && terrainH > settings.waterLevel + 0.14f && (kopjeBlob + kopjeNoise * settings.KopjeNoiseStrength) > 0.52f;
+            var isKopje = false;
+            if (useAdvancedFeatures)
+            {
+                var kopjeNoise = NoiseUtil.Sample2D(heightNoise, p.x * 1.9f, p.y * 1.9f, seed + 41) * 2f - 1f;
+                var kopjeBlob = FeatureBlobInfluence(p, kopjeSeeds, settings.floodplainWidth * 0.7f);
+                isKopje = !isWater && wetnessValue < 0.4f && terrainH > settings.waterLevel + 0.14f && (kopjeBlob + kopjeNoise * settings.KopjeNoiseStrength) > 0.52f;
+            }
 
-            var heightValue = terrainH - floodFactor * settings.carveStrength - (isWater ? 0.07f : 0f) + (isKopje ? 0.06f : 0f);
-            height[x, y] = heightValue;
-
+            height[x, y] = terrainH - floodFactor * settings.carveStrength - (isWater ? 0.07f : 0f) + (isKopje ? 0.06f : 0f);
             water[x, y] = (byte)(isWater ? 1 : 0);
             walkable[x, y] = (byte)(isWater ? 0 : 1);
 
-            byte biome;
-            if (isWater) biome = 3;
-            else if (isKopje) biome = 2;
-            else if (isBank || wetnessValue > 0.58f) biome = 1;
-            else biome = 0;
-            biomes[x, y] = biome;
+            biomes[x, y] = isWater ? (byte)3 : isKopje ? (byte)2 : (isBank || wetnessValue > 0.58f) ? (byte)1 : (byte)0;
 
-            byte zone;
-            if (isWater || isBank) zone = 0;
-            else if (wetnessValue > 0.62f || wetlandBlob > 0.58f) zone = 1;
-            else if (isKopje) zone = 4;
+            if (isWater || isBank) zones[x, y] = 0;
+            else if (wetnessValue > 0.62f || wetlandBlob > 0.58f) zones[x, y] = 1;
+            else if (isKopje) zones[x, y] = 4;
             else
             {
                 var side = Vector2.Dot(p - nearest.closestPoint, perp);
-                zone = (byte)(side >= 0f ? 2 : 3);
-            }
-            zones[x, y] = zone;
-
-            if (!isWater)
-            {
-                var treeWeight = Mathf.Clamp01(wetnessValue * 0.8f + floodFactor * 0.5f - terrainH * 0.2f);
-                var rockWeight = Mathf.Clamp01((isKopje ? 0.75f : 0.2f) + terrainH * 0.45f - wetnessValue * 0.6f);
-                if (rng.NextFloat01() < settings.treeDensity * treeWeight)
-                    trees.points.Add(new ScatterPoint { pos = p, scale = 0.75f + rng.NextFloat01(), typeId = 0, tags = new[] { "tree" } });
-                if (rng.NextFloat01() < settings.rockDensity * rockWeight)
-                    rocks.points.Add(new ScatterPoint { pos = p, scale = 0.7f + rng.NextFloat01() * 1.3f, typeId = 0, tags = new[] { "rock" } });
+                zones[x, y] = (byte)(side >= 0f ? 2 : 3);
             }
         }
 
@@ -130,9 +128,45 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         map.masks["walkable"] = walkable;
         map.masks["biomes"] = biomes;
         map.masks["zones"] = zones;
+        maskTimer.Stop();
+
+        var scatterTimer = Stopwatch.StartNew();
+        var treeDensity = settings.treeDensity;
+        var rockDensity = settings.rockDensity;
+        if (isFast)
+        {
+            treeDensity *= 0.45f;
+            rockDensity *= 0.35f;
+        }
+
+        for (var y = 0; y < grid.height; y++)
+        for (var x = 0; x < grid.width; x++)
+        {
+            if (water[x, y] > 0) continue;
+            var p = grid.CellCenterWorld(x, y);
+            var wetnessValue = wetness[x, y];
+            var terrainH = height[x, y];
+            var nearWater = wetnessValue > 0.45f;
+            var dryHighGround = wetnessValue < 0.35f && terrainH > settings.waterLevel;
+
+            if (nearWater)
+            {
+                var treeWeight = Mathf.Clamp01(wetnessValue * 0.9f - terrainH * 0.15f);
+                if (rng.NextFloat01() < treeDensity * treeWeight)
+                    trees.points.Add(new ScatterPoint { pos = p, scale = 0.75f + rng.NextFloat01(), typeId = 0, tags = new[] { "tree" } });
+            }
+
+            if (dryHighGround)
+            {
+                var rockWeight = Mathf.Clamp01(terrainH * 0.7f - wetnessValue * 0.35f);
+                if (rng.NextFloat01() < rockDensity * rockWeight)
+                    rocks.points.Add(new ScatterPoint { pos = p, scale = 0.7f + rng.NextFloat01() * 1.2f, typeId = 0, tags = new[] { "rock" } });
+            }
+        }
 
         map.scatters["trees"] = trees;
         map.scatters["rocks"] = rocks;
+        scatterTimer.Stop();
 
         map.zones["river_corridor"] = new ZoneDef { zoneId = 0, name = "river_corridor" };
         map.zones["wetland"] = new ZoneDef { zoneId = 1, name = "wetland" };
@@ -141,8 +175,49 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         map.zones["kopje"] = new ZoneDef { zoneId = 4, name = "kopje" };
 
         map.EnsureRequiredOutputs();
-        log.Log($"Generated SavannaRiver terrain-first: path={mainPoints.Count} trees={trees.points.Count} rocks={rocks.points.Count} splines={map.splines.Count}");
+        log.Log($"SavannaRiver stages: terrain field={terrainTimer.ElapsedMilliseconds} ms | path generation={pathTimer.ElapsedMilliseconds} ms | masks={maskTimer.ElapsedMilliseconds} ms | scatter={scatterTimer.ElapsedMilliseconds} ms | preview texture=0 ms");
+        log.Log($"Generated SavannaRiver ({settings.qualityMode}): path={mainPoints.Count} trees={trees.points.Count} rocks={rocks.points.Count} splines={map.splines.Count}");
         return map;
+    }
+
+    private static WorldGridSpec BuildWorkGrid(WorldGridSpec source, int targetWidth, int targetHeight)
+    {
+        var scaleX = (float)source.width / Mathf.Max(1, targetWidth);
+        var scaleY = (float)source.height / Mathf.Max(1, targetHeight);
+        var scale = Mathf.Max(1f, Mathf.Max(scaleX, scaleY));
+        var width = Mathf.Clamp(Mathf.RoundToInt(source.width / scale), 16, source.width);
+        var height = Mathf.Clamp(Mathf.RoundToInt(source.height / scale), 16, source.height);
+        return new WorldGridSpec
+        {
+            width = width,
+            height = height,
+            cellSize = source.cellSize * scale,
+            originWorld = source.originWorld
+        };
+    }
+
+    private static float[,] UpscaleField(float[,] sourceValues, WorldGridSpec sourceGrid, WorldGridSpec targetGrid)
+    {
+        var output = new float[targetGrid.width, targetGrid.height];
+        for (var y = 0; y < targetGrid.height; y++)
+        for (var x = 0; x < targetGrid.width; x++)
+        {
+            var u = targetGrid.width <= 1 ? 0f : (float)x / (targetGrid.width - 1);
+            var v = targetGrid.height <= 1 ? 0f : (float)y / (targetGrid.height - 1);
+            var sx = u * (sourceGrid.width - 1);
+            var sy = v * (sourceGrid.height - 1);
+            var x0 = Mathf.Clamp(Mathf.FloorToInt(sx), 0, sourceGrid.width - 1);
+            var y0 = Mathf.Clamp(Mathf.FloorToInt(sy), 0, sourceGrid.height - 1);
+            var x1 = Mathf.Min(sourceGrid.width - 1, x0 + 1);
+            var y1 = Mathf.Min(sourceGrid.height - 1, y0 + 1);
+            var tx = sx - x0;
+            var ty = sy - y0;
+            var a = Mathf.Lerp(sourceValues[x0, y0], sourceValues[x1, y0], tx);
+            var b = Mathf.Lerp(sourceValues[x0, y1], sourceValues[x1, y1], tx);
+            output[x, y] = Mathf.Lerp(a, b, ty);
+        }
+
+        return output;
     }
 
     private static float[,] BuildTerrainField(SavannaRiverSettingsSO settings, WorldGridSpec grid, int seed, NoiseDescriptor heightNoise, NoiseDescriptor warpNoise, Vector2 flowDir, Rect mapRect)
@@ -168,7 +243,8 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 
             var low = NoiseUtil.Sample2D(heightNoise, wp.x * 0.42f, wp.y * 0.42f, seed) * 2f - 1f;
             var med = NoiseUtil.Sample2D(heightNoise, wp.x * 1.6f + 31f, wp.y * 1.6f - 19f, seed + 13) * 2f - 1f;
-            terrain[x, y] = slopeSample + low * 0.42f + med * 0.25f;
+            var noiseStrength = Mathf.Max(0f, settings.heightNoiseStrength);
+            terrain[x, y] = slopeSample + (low * 0.42f + med * 0.25f) * noiseStrength;
         }
 
         NormalizeArray01(terrain, grid.width, grid.height);
