@@ -13,6 +13,7 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
     private Vector3 baseScale = Vector3.one;
     private float baseRotation;
     private Color baseColor = Color.white;
+    private Vector3 baseLocalPosition;
     private float runtimePhase;
     private bool initialized;
 
@@ -44,6 +45,7 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
 
         targetRenderer.transform.localScale = baseScale;
         targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation);
+        targetRenderer.transform.localPosition = baseLocalPosition;
         targetRenderer.color = baseColor;
     }
 
@@ -67,6 +69,7 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
 
         baseScale = targetRenderer.transform.localScale;
         baseRotation = targetRenderer.transform.localEulerAngles.z;
+        baseLocalPosition = targetRenderer.transform.localPosition;
         baseColor = targetRenderer.color;
         runtimePhase = ComputeRuntimePhase();
         initialized = true;
@@ -80,7 +83,8 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
         }
 
         var animationTime = profile.useUnscaledTime ? Time.unscaledTime : Time.time;
-        var t = (animationTime * profile.frequency) + profile.phaseOffset + runtimePhase;
+        var autoPhase = profile.enableAutoPhase && Mathf.Approximately(profile.phaseOffset, 0f) ? runtimePhase : 0f;
+        var t = (animationTime * profile.frequency) + profile.phaseOffset + autoPhase;
 
         switch (profile.animType)
         {
@@ -92,6 +96,24 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
                 break;
             case ShapeAnimType.FilamentWave:
                 ApplyFilamentWave(t);
+                break;
+            case ShapeAnimType.Spin:
+                ApplySpin(t);
+                break;
+            case ShapeAnimType.Drift:
+                ApplyDrift(t);
+                break;
+            case ShapeAnimType.Flicker:
+                ApplyFlicker(t);
+                break;
+            case ShapeAnimType.Breathe:
+                ApplyBreathe(t);
+                break;
+            case ShapeAnimType.Ripple:
+                ApplyRipple(t);
+                break;
+            case ShapeAnimType.Orbit:
+                ApplyOrbit(t);
                 break;
         }
     }
@@ -109,7 +131,7 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
 
         var rotation = baseRotation + (Mathf.Sin(t * 0.91f) * AmoebaMaxRotationDegrees);
         targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, rotation);
-
+        targetRenderer.transform.localPosition = baseLocalPosition;
         targetRenderer.color = baseColor;
     }
 
@@ -121,13 +143,8 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
 
         targetRenderer.transform.localScale = baseScale * scaleMul;
         targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation);
-
-        var color = baseColor;
-        color.r = Mathf.Clamp01(color.r * brightnessMul);
-        color.g = Mathf.Clamp01(color.g * brightnessMul);
-        color.b = Mathf.Clamp01(color.b * brightnessMul);
-        color.a = Mathf.Clamp01(color.a * brightnessMul);
-        targetRenderer.color = color;
+        targetRenderer.transform.localPosition = baseLocalPosition;
+        targetRenderer.color = ScaleColor(baseColor, brightnessMul);
     }
 
     private void ApplyFilamentWave(float t)
@@ -143,7 +160,78 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
 
         var rotation = baseRotation + (Mathf.Sin(t * 0.72f) * FilamentMaxRotationDegrees);
         targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, rotation);
+        targetRenderer.transform.localPosition = baseLocalPosition;
         targetRenderer.color = baseColor;
+    }
+
+    private void ApplySpin(float t)
+    {
+        targetRenderer.transform.localScale = baseScale;
+        targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation + (t * profile.rotationSpeedDeg));
+        targetRenderer.transform.localPosition = baseLocalPosition;
+        targetRenderer.color = baseColor;
+    }
+
+    private void ApplyDrift(float t)
+    {
+        targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation);
+        targetRenderer.transform.localScale = baseScale;
+        targetRenderer.transform.localPosition = baseLocalPosition + new Vector3(
+            Mathf.Sin(t * 0.71f) * profile.amplitude,
+            Mathf.Cos(t * 0.93f) * profile.amplitude,
+            0f);
+        targetRenderer.color = baseColor;
+    }
+
+    private void ApplyFlicker(float t)
+    {
+        targetRenderer.transform.localScale = baseScale;
+        targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation);
+        targetRenderer.transform.localPosition = baseLocalPosition;
+        var pulse = 0.5f + (0.5f * Mathf.Sin(t));
+        var brightness = 1f + ((pulse * 2f - 1f) * profile.brightnessPulse);
+        targetRenderer.color = ScaleColor(baseColor, brightness);
+    }
+
+    private void ApplyBreathe(float t)
+    {
+        var scaleMul = 1f + (Mathf.Sin(t) * profile.scalePulse);
+        targetRenderer.transform.localScale = baseScale * scaleMul;
+        targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation);
+        targetRenderer.transform.localPosition = baseLocalPosition;
+        targetRenderer.color = baseColor;
+    }
+
+    private void ApplyRipple(float t)
+    {
+        var pulse = Mathf.Sin(t);
+        var scaleMul = 1f + (pulse * profile.scalePulse);
+        var brightness = 1f + (pulse * profile.brightnessPulse);
+        targetRenderer.transform.localScale = baseScale * scaleMul;
+        targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation);
+        targetRenderer.transform.localPosition = baseLocalPosition;
+        targetRenderer.color = ScaleColor(baseColor, brightness);
+    }
+
+    private void ApplyOrbit(float t)
+    {
+        targetRenderer.transform.localScale = baseScale;
+        targetRenderer.transform.localRotation = Quaternion.Euler(0f, 0f, baseRotation);
+        targetRenderer.transform.localPosition = baseLocalPosition + new Vector3(
+            Mathf.Cos(t) * profile.orbitRadius,
+            Mathf.Sin(t) * profile.orbitRadius,
+            0f);
+        targetRenderer.color = baseColor;
+    }
+
+    private static Color ScaleColor(Color source, float brightness)
+    {
+        var mul = Mathf.Max(0f, brightness);
+        return new Color(
+            Mathf.Clamp01(source.r * mul),
+            Mathf.Clamp01(source.g * mul),
+            Mathf.Clamp01(source.b * mul),
+            Mathf.Clamp01(source.a * mul));
     }
 
     private float ComputeRuntimePhase()
@@ -158,7 +246,6 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
             hash = (hash * 31) + Mathf.RoundToInt(position.x * 100f);
             hash = (hash * 31) + Mathf.RoundToInt(position.y * 100f);
             hash = (hash * 31) + optionalSeed;
-
             var normalized = (hash & 0xFFFF) / 65535f;
             return normalized * Mathf.PI * 2f;
         }

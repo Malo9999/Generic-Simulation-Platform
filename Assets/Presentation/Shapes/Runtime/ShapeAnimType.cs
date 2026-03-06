@@ -3,5 +3,11 @@ public enum ShapeAnimType
     None,
     AmoebaWobble,
     GlowPulse,
-    FilamentWave
+    FilamentWave,
+    Spin,
+    Drift,
+    Flicker,
+    Breathe,
+    Ripple,
+    Orbit
 }
