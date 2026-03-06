@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using UnityEngine;
 
 public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
@@ -20,22 +21,37 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         var wetnessNoise = noise.Get(settings.WetnessNoise.id);
         var warpNoise = noise.Get(settings.WarpNoise.id);
 
+        var isFast = settings.qualityMode == QualityMode.FastPreview;
+        var isPreview = settings.qualityMode != QualityMode.Bake;
+        var useAdvancedFeatures = settings.qualityMode == QualityMode.Bake;
+        var workGrid = BuildWorkGrid(grid, isFast ? 64 : grid.width, isFast ? 64 : grid.height);
+
         var mapRect = new Rect(grid.originWorld.x, grid.originWorld.y, grid.width * grid.cellSize, grid.height * grid.cellSize);
-        var baseTerrain = BuildBaseTerrain(grid, settings, seed, heightNoise, warpNoise, mapRect);
 
-        var start = new Vector2Int(Mathf.FloorToInt(grid.width * 0.1f + rng.NextFloat01() * grid.width * 0.25f), grid.height - 1);
-        var sink = new Vector2Int(Mathf.FloorToInt(grid.width * 0.65f + rng.NextFloat01() * grid.width * 0.25f), 0);
-        var mainPath = TracePassPath(grid, baseTerrain, start, sink, settings.FlowInertia, settings.PathNoiseStrength, seed, warpNoise);
+        var terrainTimer = Stopwatch.StartNew();
+        var coarseTerrain = BuildBaseTerrain(workGrid, settings, seed, heightNoise, warpNoise, mapRect);
+        var baseTerrain = workGrid.width == grid.width && workGrid.height == grid.height
+            ? coarseTerrain
+            : UpscaleField(coarseTerrain, workGrid, grid);
+        terrainTimer.Stop();
 
-        var passPoints = Chaikin(PathToWorldPoints(grid, mainPath), 2);
+        var pathTimer = Stopwatch.StartNew();
+        var start = new Vector2Int(Mathf.FloorToInt(workGrid.width * 0.1f + rng.NextFloat01() * workGrid.width * 0.25f), workGrid.height - 1);
+        var sink = new Vector2Int(Mathf.FloorToInt(workGrid.width * 0.65f + rng.NextFloat01() * workGrid.width * 0.25f), 0);
+        var mainPath = TracePassPath(workGrid, coarseTerrain, start, sink, settings.FlowInertia, settings.PathNoiseStrength, seed, warpNoise);
+
+        var passPoints = Chaikin(PathToWorldPoints(workGrid, mainPath), 2);
         map.splines.AddRange(SplineClipper.ClipToRectParts(new WorldSpline { id = "pass_main", baseWidth = settings.passWidth, points = passPoints }, mapRect));
 
-        var sideGullies = BuildSideGullies(settings, grid, baseTerrain, mainPath, rng, seed, wetnessNoise);
+        var sideGullies = useAdvancedFeatures ? BuildSideGullies(settings, workGrid, coarseTerrain, mainPath, rng, seed, wetnessNoise) : new List<WorldSpline>();
         foreach (var gully in sideGullies)
             map.splines.AddRange(SplineClipper.ClipToRectParts(gully, mapRect));
+        pathTimer.Stop();
 
-        var chokeCenters = BuildFeatureCenters(Mathf.Clamp(settings.chokeCount, 1, 3), rng, 0.15f, 0.85f);
-        var basinCenters = BuildFeatureCenters(Mathf.Clamp(settings.BasinCount, 0, 2), rng, 0.1f, 0.9f);
+        var maskTimer = Stopwatch.StartNew();
+        var chokeCount = isPreview ? Mathf.Clamp(settings.chokeCount, 1, 2) : Mathf.Clamp(settings.chokeCount, 1, 3);
+        var chokeCenters = BuildFeatureCenters(chokeCount, rng, 0.15f, 0.85f);
+        var basinCenters = useAdvancedFeatures ? BuildFeatureCenters(Mathf.Clamp(settings.BasinCount, 0, 2), rng, 0.1f, 0.9f) : new List<float>();
 
         var height = new ScalarField("height", grid);
         var walkable = new MaskField("walkable", grid, MaskEncoding.Boolean);
@@ -50,12 +66,12 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 
             var width = PassWidth(settings, along, p, seed, warpNoise, chokeCenters, basinCenters);
             var floorHalf = width * 0.5f;
-            var basinBoost = FeatureBand(along, basinCenters, 0.12f);
+            var basinBoost = useAdvancedFeatures ? FeatureBand(along, basinCenters, 0.12f) : 0f;
             var chokeBand = FeatureBand(along, chokeCenters, 0.08f);
 
-            var asym = NoiseUtil.Sample2D(warpNoise, p.x * 0.05f, p.y * 0.05f, seed) * 2f - 1f;
+            var asym = useAdvancedFeatures ? (NoiseUtil.Sample2D(warpNoise, p.x * 0.05f, p.y * 0.05f, seed) * 2f - 1f) : 0f;
             var rough = NoiseUtil.Sample2D(heightNoise, p.x * 1.7f + 12f, p.y * 1.7f - 6f, seed + 33) * 2f - 1f;
-            var erosion = NoiseUtil.Sample2D(wetnessNoise, p.x * 0.11f, p.y * 0.11f, seed + 71) * 2f - 1f;
+            var erosion = useAdvancedFeatures ? (NoiseUtil.Sample2D(wetnessNoise, p.x * 0.11f, p.y * 0.11f, seed + 71) * 2f - 1f) : 0f;
 
             var sideSign = Mathf.Sign(Vector2.Dot(p - closestPoint, new Vector2(-tangent.y, tangent.x)));
             if (Mathf.Approximately(sideSign, 0f)) sideSign = 1f;
@@ -82,12 +98,6 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             else if (distanceToPass <= width * (1.1f + settings.wallRoughness * 0.2f)) zone = (byte)(sideSign > 0f ? 3 : 4);
             else zone = 5;
             zones[x, y] = zone;
-
-            var slopeProxy = Mathf.Abs(wallFactor * (settings.wallSteepness + wallNoise));
-            var basinEdge = Mathf.Clamp01(1f - Mathf.Abs(distanceToPass - floorHalf) / Mathf.Max(grid.cellSize * 2f, width * 0.2f));
-            var boulderWeight = Mathf.Clamp01(slopeProxy * 0.6f + basinEdge * basinBoost * 0.55f);
-            if (!inPass && rng.NextFloat01() < settings.boulderDensity * boulderWeight)
-                boulders.points.Add(new ScatterPoint { pos = p, scale = 0.9f + rng.NextFloat01() * 1.4f, typeId = 0, tags = new[] { "boulder" } });
         }
 
         height.Normalize01InPlace();
@@ -95,7 +105,31 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         map.scalars["height"] = height;
         map.masks["walkable"] = walkable;
         map.masks["zones"] = zones;
+        maskTimer.Stop();
+
+        var scatterTimer = Stopwatch.StartNew();
+        var boulderDensity = settings.boulderDensity;
+        if (isPreview) boulderDensity *= isFast ? 0.35f : 0.65f;
+
+        for (var y = 0; y < grid.height; y++)
+        for (var x = 0; x < grid.width; x++)
+        {
+            if (walkable[x, y] > 0) continue;
+            var p = grid.CellCenterWorld(x, y);
+            var along = PolylineProjectionT(passPoints, p, out var distanceToPass, out _, out _);
+            var width = PassWidth(settings, along, p, seed, warpNoise, chokeCenters, basinCenters);
+            var edgeBand = Mathf.Abs(distanceToPass - width * 0.5f);
+            var nearWall = edgeBand <= Mathf.Max(grid.cellSize * 1.5f, width * 0.3f);
+            if (!nearWall) continue;
+
+            var wallRough = Mathf.Abs(NoiseUtil.Sample2D(heightNoise, p.x * 1.2f, p.y * 1.2f, seed + 77) * 2f - 1f);
+            var boulderWeight = Mathf.Clamp01(0.3f + wallRough * 0.6f);
+            if (rng.NextFloat01() < boulderDensity * boulderWeight)
+                boulders.points.Add(new ScatterPoint { pos = p, scale = 0.9f + rng.NextFloat01() * 1.2f, typeId = 0, tags = new[] { "boulder" } });
+        }
+
         map.scatters["boulders"] = boulders;
+        scatterTimer.Stop();
 
         map.zones["pass_floor"] = new ZoneDef { zoneId = 0, name = "pass_floor" };
         map.zones["choke"] = new ZoneDef { zoneId = 1, name = "choke" };
@@ -105,8 +139,49 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         map.zones["upland"] = new ZoneDef { zoneId = 5, name = "upland" };
 
         map.EnsureRequiredOutputs();
-        log.Log($"Generated CanyonPass terrain-first: boulders={boulders.points.Count} splines={map.splines.Count} chokes={chokeCenters.Count} basins={basinCenters.Count}");
+        log.Log($"CanyonPass stages: terrain field={terrainTimer.ElapsedMilliseconds} ms | pass path={pathTimer.ElapsedMilliseconds} ms | masks={maskTimer.ElapsedMilliseconds} ms | scatter={scatterTimer.ElapsedMilliseconds} ms | preview texture=0 ms");
+        log.Log($"Generated CanyonPass ({settings.qualityMode}): boulders={boulders.points.Count} splines={map.splines.Count} chokes={chokeCenters.Count} basins={basinCenters.Count}");
         return map;
+    }
+
+    private static WorldGridSpec BuildWorkGrid(WorldGridSpec source, int targetWidth, int targetHeight)
+    {
+        var scaleX = (float)source.width / Mathf.Max(1, targetWidth);
+        var scaleY = (float)source.height / Mathf.Max(1, targetHeight);
+        var scale = Mathf.Max(1f, Mathf.Max(scaleX, scaleY));
+        var width = Mathf.Clamp(Mathf.RoundToInt(source.width / scale), 16, source.width);
+        var height = Mathf.Clamp(Mathf.RoundToInt(source.height / scale), 16, source.height);
+        return new WorldGridSpec
+        {
+            width = width,
+            height = height,
+            cellSize = source.cellSize * scale,
+            originWorld = source.originWorld
+        };
+    }
+
+    private static float[,] UpscaleField(float[,] sourceValues, WorldGridSpec sourceGrid, WorldGridSpec targetGrid)
+    {
+        var output = new float[targetGrid.width, targetGrid.height];
+        for (var y = 0; y < targetGrid.height; y++)
+        for (var x = 0; x < targetGrid.width; x++)
+        {
+            var u = targetGrid.width <= 1 ? 0f : (float)x / (targetGrid.width - 1);
+            var v = targetGrid.height <= 1 ? 0f : (float)y / (targetGrid.height - 1);
+            var sx = u * (sourceGrid.width - 1);
+            var sy = v * (sourceGrid.height - 1);
+            var x0 = Mathf.Clamp(Mathf.FloorToInt(sx), 0, sourceGrid.width - 1);
+            var y0 = Mathf.Clamp(Mathf.FloorToInt(sy), 0, sourceGrid.height - 1);
+            var x1 = Mathf.Min(sourceGrid.width - 1, x0 + 1);
+            var y1 = Mathf.Min(sourceGrid.height - 1, y0 + 1);
+            var tx = sx - x0;
+            var ty = sy - y0;
+            var a = Mathf.Lerp(sourceValues[x0, y0], sourceValues[x1, y0], tx);
+            var b = Mathf.Lerp(sourceValues[x0, y1], sourceValues[x1, y1], tx);
+            output[x, y] = Mathf.Lerp(a, b, ty);
+        }
+
+        return output;
     }
 
     private static float[,] BuildBaseTerrain(WorldGridSpec grid, CanyonPassSettingsSO settings, int seed, NoiseDescriptor heightNoise, NoiseDescriptor warpNoise, Rect mapRect)

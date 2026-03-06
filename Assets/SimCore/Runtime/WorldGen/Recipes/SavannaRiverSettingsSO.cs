@@ -3,6 +3,8 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "GSP/WorldGen/Settings/SavannaRiver")]
 public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
 {
+    public QualityMode qualityMode = QualityMode.FastPreview;
+
     public float riverWidth = 5f;
     public float floodplainWidth = 12f;
     public float bankWidth = 4f;
@@ -11,6 +13,7 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public Vector2 gradientDir = new Vector2(0f, 1f);
     public float waterLevel = 0.45f;
     public float carveStrength = 0.35f;
+    public float heightNoiseStrength = 1f;
 
     public float SourceEdgeBias = 0.75f;
     public float FlowInertia = 0.55f;

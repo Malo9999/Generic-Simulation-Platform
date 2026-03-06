@@ -3,6 +3,8 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "GSP/WorldGen/Settings/CanyonPass")]
 public class CanyonPassSettingsSO : WorldRecipeSettingsSO
 {
+    public QualityMode qualityMode = QualityMode.FastPreview;
+
     public float canyonDepth = 0.6f;
     public float wallSteepness = 2.5f;
     public float passWidth = 10f;

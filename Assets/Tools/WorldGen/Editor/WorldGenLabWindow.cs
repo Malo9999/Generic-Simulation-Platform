@@ -49,6 +49,8 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     private bool autoFitPreview = true;
     private bool showNodeAnchors = true;
     private bool showLaneAnchors = true;
+    private bool showSavannaAdvanced;
+    private bool showCanyonAdvanced;
 
     private float leftPanelWidth = LeftDefaultWidth;
     private bool draggingSplitter;
@@ -402,14 +404,119 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("Settings", EditorStyles.boldLabel);
 
-        EditorGUI.BeginChangeCheck();
-        settingsEditor?.OnInspectorGUI();
-        if (EditorGUI.EndChangeCheck())
+        var serialized = new SerializedObject(settings);
+        serialized.Update();
+
+        var changed = false;
+        var quality = serialized.FindProperty("qualityMode");
+        if (quality != null)
         {
+            EditorGUI.BeginChangeCheck();
+            EditorGUILayout.PropertyField(quality, new GUIContent("Quality Mode"));
+            changed |= EditorGUI.EndChangeCheck();
+        }
+
+        if (settings is SavannaRiverSettingsSO)
+        {
+            DrawCoreProperty(serialized, ref changed, "riverWidth", "River Width");
+            DrawCoreProperty(serialized, ref changed, "FlowNoiseStrength", "Flow / Meander Strength");
+            DrawCoreProperty(serialized, ref changed, "floodplainWidth", "Floodplain Width");
+            DrawCoreProperty(serialized, ref changed, "waterLevel", "Water Level");
+            DrawCoreProperty(serialized, ref changed, "carveStrength", "Carve Strength");
+            DrawCoreProperty(serialized, ref changed, "RiverWarpAmplitude", "River Warp Strength");
+            DrawCoreProperty(serialized, ref changed, "heightNoiseStrength", "Height Noise Strength");
+
+            EditorGUILayout.Space(4f);
+            showSavannaAdvanced = EditorGUILayout.Foldout(showSavannaAdvanced, "Advanced", true);
+            if (showSavannaAdvanced)
+            {
+                DrawPropertyByName(serialized, ref changed, "SourceEdgeBias");
+                DrawPropertyByName(serialized, ref changed, "FlowInertia");
+                DrawPropertyByName(serialized, ref changed, "FlowNoiseStrength");
+                DrawPropertyByName(serialized, ref changed, "WidthVariation");
+                DrawPropertyByName(serialized, ref changed, "SideChannelCount");
+                DrawPropertyByName(serialized, ref changed, "SideChannelWidthFactor");
+                DrawPropertyByName(serialized, ref changed, "CutoffChance");
+                DrawPropertyByName(serialized, ref changed, "WetlandCount");
+                DrawPropertyByName(serialized, ref changed, "WetlandNoiseStrength");
+                DrawPropertyByName(serialized, ref changed, "KopjeCount");
+                DrawPropertyByName(serialized, ref changed, "KopjeNoiseStrength");
+                DrawPropertyByName(serialized, ref changed, "HeightContrast");
+                DrawPropertyByName(serialized, ref changed, "HeightGamma");
+                DrawPropertyByName(serialized, ref changed, "WetnessContrast");
+                DrawPropertyByName(serialized, ref changed, "WetnessGamma");
+                DrawPropertyByName(serialized, ref changed, "bankWidth");
+                DrawPropertyByName(serialized, ref changed, "treeDensity");
+                DrawPropertyByName(serialized, ref changed, "rockDensity");
+                DrawPropertyByName(serialized, ref changed, "gradientDir");
+                DrawPropertyByName(serialized, ref changed, "RiverWarpFrequency");
+                DrawPropertyByName(serialized, ref changed, "WetnessNoise");
+                DrawPropertyByName(serialized, ref changed, "WarpNoise");
+            }
+        }
+        else if (settings is CanyonPassSettingsSO)
+        {
+            DrawCoreProperty(serialized, ref changed, "passWidth", "Pass Width");
+            DrawCoreProperty(serialized, ref changed, "PathNoiseStrength", "Twist");
+            DrawCoreProperty(serialized, ref changed, "chokeCount", "Choke Count");
+            DrawCoreProperty(serialized, ref changed, "wallSteepness", "Wall Steepness");
+            DrawCoreProperty(serialized, ref changed, "canyonDepth", "Canyon Depth");
+
+            EditorGUILayout.Space(4f);
+            showCanyonAdvanced = EditorGUILayout.Foldout(showCanyonAdvanced, "Advanced", true);
+            if (showCanyonAdvanced)
+            {
+                DrawPropertyByName(serialized, ref changed, "BasinCount");
+                DrawPropertyByName(serialized, ref changed, "SideGullyCount");
+                DrawPropertyByName(serialized, ref changed, "boulderDensity");
+                DrawPropertyByName(serialized, ref changed, "asymmetryStrength");
+                DrawPropertyByName(serialized, ref changed, "wallRoughness");
+                DrawPropertyByName(serialized, ref changed, "erosionStrength");
+                DrawPropertyByName(serialized, ref changed, "noiseStrength");
+                DrawPropertyByName(serialized, ref changed, "FlowInertia");
+                DrawPropertyByName(serialized, ref changed, "PathNoiseStrength");
+                DrawPropertyByName(serialized, ref changed, "WidthVariation");
+                DrawPropertyByName(serialized, ref changed, "WarpAmplitude");
+                DrawPropertyByName(serialized, ref changed, "WarpFrequency");
+                DrawPropertyByName(serialized, ref changed, "HeightContrast");
+                DrawPropertyByName(serialized, ref changed, "HeightGamma");
+                DrawPropertyByName(serialized, ref changed, "HeightNoise");
+                DrawPropertyByName(serialized, ref changed, "WetnessNoise");
+                DrawPropertyByName(serialized, ref changed, "WarpNoise");
+            }
+        }
+        else
+        {
+            EditorGUI.BeginChangeCheck();
+            settingsEditor?.OnInspectorGUI();
+            changed |= EditorGUI.EndChangeCheck();
+        }
+
+        if (changed)
+        {
+            serialized.ApplyModifiedProperties();
             EditorUtility.SetDirty(settings);
         }
 
         DrawSavannaKeyHelpHints();
+    }
+
+    private static void DrawCoreProperty(SerializedObject serialized, ref bool changed, string name, string label)
+    {
+        var prop = serialized.FindProperty(name);
+        if (prop == null) return;
+        EditorGUI.BeginChangeCheck();
+        EditorGUILayout.PropertyField(prop, new GUIContent(label));
+        changed |= EditorGUI.EndChangeCheck();
+    }
+
+    private static void DrawPropertyByName(SerializedObject serialized, ref bool changed, string name)
+    {
+        var prop = serialized.FindProperty(name);
+        if (prop == null) return;
+        EditorGUI.BeginChangeCheck();
+        EditorGUILayout.PropertyField(prop);
+        changed |= EditorGUI.EndChangeCheck();
     }
 
     private void DrawSavannaKeyHelpHints()
@@ -418,21 +525,11 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
 
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("SavannaRiver quick help", EditorStyles.miniBoldLabel);
-        DrawHelpLine("RiverWidth", "Channel width of main river spline.");
-        DrawHelpLine("MeanderAmp", "How far river oscillates from centerline.");
-        DrawHelpLine("MeanderFreq", "How many meander cycles across map.");
-        DrawHelpLine("FloodplainWidth", "Distance where floodplain carving/wetness fades.");
-        DrawHelpLine("BankWidth", "Transition width around river edge.");
-        DrawHelpLine("WaterLevel", "Biome threshold for high/low elevation decisions.");
-        DrawHelpLine("CarveStrength", "Depth/strength of river carving in height field.");
-        DrawHelpLine("HeightNoise", "Noise type/frequency/octaves/lacunarity/gain/amplitude blended into terrain height.");
-        DrawHelpLine("RiverWarpAmplitude", "Amount of warp applied to spline points.");
-        DrawHelpLine("RiverWarpFrequency", "Frequency for warp noise sampling.");
-    }
-
-    private void DrawHelpLine(string label, string help)
-    {
-        EditorGUILayout.LabelField(new GUIContent(label, help), EditorStyles.miniLabel);
+        DrawHelpLine("Quality Mode", "FastPreview disables side channels/cutoffs/wetlands/kopjes and reduces scatter.");
+        DrawHelpLine("Flow / Meander Strength", "Higher values increase bend/twist influence in path tracing.");
+        DrawHelpLine("Floodplain Width", "Sets how far wetness and low riverbanks spread around the main channel.");
+        DrawHelpLine("River Warp Strength", "Controls broad river displacement and shape variation.");
+        DrawHelpLine("Advanced", "Use Advanced only for fine tuning once core river shape reads well.");
     }
 
     private void DrawActionButtons()
@@ -574,6 +671,15 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         BuildPreviewTexture();
         textureStopwatch.Stop();
         Log($"Texture build took {textureStopwatch.ElapsedMilliseconds} ms.");
+
+        if (recipes != null && selectedRecipe >= 0 && selectedRecipe < recipes.Count)
+        {
+            var recipeId = recipes[selectedRecipe].RecipeId;
+            if (recipeId == "SavannaRiver")
+                Log($"SavannaRiver stages: terrain field=see recipe log | path generation=see recipe log | masks=see recipe log | scatter=see recipe log | preview texture={textureStopwatch.ElapsedMilliseconds} ms");
+            else if (recipeId == "CanyonPass")
+                Log($"CanyonPass stages: terrain field=see recipe log | pass path=see recipe log | masks=see recipe log | scatter=see recipe log | preview texture={textureStopwatch.ElapsedMilliseconds} ms");
+        }
     }
 
     private bool GenerateWorldMap()
