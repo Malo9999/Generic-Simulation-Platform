@@ -131,8 +131,7 @@ GameObject:
   - component: {fileID: 100002}
   - component: {fileID: 100003}
   - component: {fileID: 100004}
-  - component: {fileID: 100005}
-  - component: {fileID: 100006}
+  - component: {fileID: 100007}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -258,7 +257,7 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
---- !u!114 &100005
+--- !u!114 &100007
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -267,36 +266,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 100000}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8af9a7bc10fad514e961af4c7892454f, type: 3}
+  m_Script: {fileID: 11500000, guid: 38af691f66ee4462a11dd04e4ca3f0dc, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CameraFollowController
-  mainCamera: {fileID: 100002}
-  target: {fileID: 0}
-  arenaCameraPolicy: {fileID: 0}
-  followEnabled: 1
-  worldBounds:
-    serializedVersion: 2
-    x: -32
-    y: -32
-    width: 64
-    height: 64
-  clampToBounds: 1
-  smoothTime: 0
---- !u!114 &100006
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 100000}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0e3cde908d3080f49be0a59fe4c7a327, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GameClickSelector
-  worldCamera: {fileID: 100002}
-  selectionService: {fileID: 38755032}
-  maxPickRadius: 1.5
+  m_EditorClassIdentifier: 
+  zoomSpeed: 2
+  minOrthoSize: 2
+  maxOrthoSize: 40
+  panSpeed: 1
+  frameMargin: 1.1
 --- !u!1 &200000
 GameObject:
   m_ObjectHideFlags: 0
