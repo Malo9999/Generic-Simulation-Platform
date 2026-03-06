@@ -23,6 +23,14 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public float WidthVariationStrength = 0.2f;
     public float CurvatureNoiseStrength = 0.3f;
     public float heightNoiseStrength = 1f;
+    [Range(0, 3)] public int TributaryCount = 2;
+    public float TributaryWidthFactor = 0.52f;
+    public float TributaryMeanderFactor = 0.62f;
+    [Range(0f, 1f)] public float CutoffChance = 0.18f;
+    public float OxbowWidthFactor = 0.45f;
+    [Range(0f, 1f)] public float TerraceStrength = 0.28f;
+    [Range(1, 8)] public int TerraceCount = 4;
+    [Range(0f, 1f)] public float BankRoughnessStrength = 0.25f;
 
     public NoiseDescriptor HeightNoise = NoiseDescriptor.CreateDefault("savanna_height");
     public NoiseDescriptor WetnessNoise = NoiseDescriptor.CreateDefault("savanna_wetness");
@@ -35,7 +43,6 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public float WidthVariation = 0.55f;
     public int SideChannelCount = 1;
     public float SideChannelWidthFactor = 0.6f;
-    public float CutoffChance = 0.25f;
     public int WetlandCount = 3;
     public float WetlandNoiseStrength = 0.5f;
     public int KopjeCount = 3;

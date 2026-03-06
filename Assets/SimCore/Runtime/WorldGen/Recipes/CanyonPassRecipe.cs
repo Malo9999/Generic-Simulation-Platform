@@ -5,7 +5,7 @@ using UnityEngine;
 public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 {
     public override string RecipeId => "CanyonPass";
-    public override int Version => 8;
+    public override int Version => 9;
 
     private const int FastMinControlPoints = 22;
     private const int FastMaxControlPoints = 36;
@@ -40,6 +40,9 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 
         var floorHalfBase = Mathf.Max(0.6f, settings.passWidth * 0.5f);
         var wallOuterBase = Mathf.Max(floorHalfBase + grid.cellSize, floorHalfBase + settings.passWidth * 0.95f);
+        var terraceCount = Mathf.Max(1, settings.TerraceCount);
+        var terraceStrength = Mathf.Clamp01(settings.TerraceStrength);
+        var wallRoughnessStrength = Mathf.Clamp01(settings.WallRoughnessStrength);
 
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
@@ -55,10 +58,17 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 
             var floorMask = Mathf.SmoothStep(floorHalf, floorHalf * 1.6f, dist);
             var floorCarve = 1f - floorMask;
-            var wallMask = Mathf.Clamp01((dist - floorHalf) / Mathf.Max(0.01f, wallOuter - floorHalf));
-            var wallRoughNoise = NoiseUtil.Sample2D(heightNoise, dist * 0.15f + 11f, tAlong * 0.35f + seed * 0.0017f, seed + 311) * 2f - 1f;
-            wallMask *= Mathf.Max(0f, 1f + wallRoughNoise * settings.wallRoughness);
-            wallMask = Mathf.Clamp01(wallMask);
+            var wallBand = Mathf.Clamp01((dist - floorHalf) / Mathf.Max(0.01f, wallOuter - floorHalf));
+
+            var wallNoisePrimary = NoiseUtil.Sample2D(heightNoise, p.x * 0.16f + 11f, p.y * 0.16f - 7f, seed + 311) * 2f - 1f;
+            var wallNoiseSecondary = NoiseUtil.Sample2D(warpNoise, tAlong * 1.2f + 17f, dist * 0.08f + seed * 0.0031f, seed + 271) * 2f - 1f;
+            var sidePhase = side >= 0f ? 37f : -29f;
+            var sideNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.75f + sidePhase, dist * 0.05f + seed * 0.002f, seed + 257) * 2f - 1f;
+            var roughNoise = (wallNoisePrimary * 0.55f + wallNoiseSecondary * 0.3f + sideNoise * 0.15f) * wallRoughnessStrength;
+
+            var terracedBand = Mathf.Floor(wallBand * terraceCount) / terraceCount;
+            var terraceDelta = (terracedBand - wallBand) * terraceStrength;
+            var wallMask = Mathf.Clamp01(wallBand + terraceDelta + roughNoise * 0.25f);
 
             var noiseL = NoiseUtil.Sample2D(warpNoise, tAlong * 0.73f + 37f, dist * 0.04f + seed * 0.0021f, seed + 211) * 2f - 1f;
             var noiseR = NoiseUtil.Sample2D(warpNoise, tAlong * 0.69f - 29f, dist * 0.04f - seed * 0.0013f, seed + 257) * 2f - 1f;
@@ -73,6 +83,8 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             h = Mathf.Lerp(h, slope - settings.canyonDepth * 0.82f, floorFlatten);
             h += sideHeight * settings.wallSteepness * 0.22f;
             h -= floorCarve * settings.canyonDepth;
+            h += roughNoise * 0.08f;
+            h += terraceDelta * settings.canyonDepth * 0.35f;
             height[x, y] = h;
 
             var inFloor = dist <= floorHalf;
