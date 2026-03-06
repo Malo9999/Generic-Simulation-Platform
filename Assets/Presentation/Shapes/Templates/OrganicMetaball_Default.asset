@@ -21,7 +21,7 @@ MonoBehaviour:
   lobeCount: 4
   radiusPx: 18
   jitterPx: 8
-  baseRadiusPx: 18
+  baseRadiusPx: 14
   noiseAmplitudePx: 4
   noiseFrequency: 2.5
   noiseOctaves: 3
@@ -29,3 +29,7 @@ MonoBehaviour:
   noiseGain: 0.5
   rimSoftnessPx: 0
   symmetryBreak: 0.35
+  useRimGradient: 1
+  rimWidthPx: 6
+  innerMul: 1
+  outerMul: 0.78

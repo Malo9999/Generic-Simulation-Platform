@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9881b65027ca42ef9e47c744e15f6531, type: 3}
+  m_Name: ArrowAgent_Default
+  m_EditorClassIdentifier: Assembly-CSharp::ArrowAgentTemplate
+  shapeId: arrow_agent
+  categoryFolder: Agents
+  textureSize: 64
+  ppu: 16
+  lengthPx: 32
+  headWidthPx: 16
+  tailLengthPx: 10
+  tailWidthPx: 4
+  useOutline: 0

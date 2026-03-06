@@ -22,8 +22,8 @@ MonoBehaviour:
   radiusPx: 18
   jitterPx: 8
   baseRadiusPx: 20
-  noiseAmplitudePx: 5
-  noiseFrequency: 2.8
+  noiseAmplitudePx: 4
+  noiseFrequency: 2.4
   noiseOctaves: 3
   noiseLacunarity: 2
   noiseGain: 0.5

@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d69ab69c925a4a5bba373786b71f811a, type: 3}
   m_Name: ShapeLibrary
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShapeLibrary
   entries:
   - id: dot_core
     sprite: {fileID: 21300000, guid: 82950f33fb1bf5c49a2cd951b23e3409, type: 3}
@@ -52,3 +52,15 @@ MonoBehaviour:
   - id: filament
     sprite: {fileID: 21300000, guid: fc73d1e20c8fe4d45964559a6d53857b, type: 3}
     template: {fileID: 11400000, guid: de5c23b6f8e02f84aa6be7d4cfb9edb1, type: 2}
+  - id: arrow_agent
+    sprite: {fileID: 21300000, guid: a23b8ce8b98869c459acb2da676313ab, type: 3}
+    template: {fileID: 11400000, guid: 42a0b986c72d123428430ff1109f4180, type: 2}
+  - id: cross_marker
+    sprite: {fileID: 21300000, guid: 33d0a04415068734384610897aea4af0, type: 3}
+    template: {fileID: 11400000, guid: 6909163018aa552408dcf6f1c4e79a52, type: 2}
+  - id: arc_sector
+    sprite: {fileID: 21300000, guid: 15d583a3809d64b4f82f6521009ac8e3, type: 3}
+    template: {fileID: 11400000, guid: 5a88eea224e88ec40a9f2cbd0d5c15fa, type: 2}
+  - id: field_blob
+    sprite: {fileID: 21300000, guid: 5762fc04f7375f24da0752ac22721cda, type: 3}
+    template: {fileID: 11400000, guid: 1baa0c45e2294ff43977628fbdc51efa, type: 2}
