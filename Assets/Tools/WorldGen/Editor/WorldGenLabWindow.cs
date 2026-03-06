@@ -189,27 +189,15 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         using (new HorizontalScope(EditorStyles.toolbar))
         {
             EditorGUILayout.LabelField("Preview", EditorStyles.boldLabel, GUILayout.Width(56f));
-            previewMode = (PreviewMode)EditorGUILayout.EnumPopup(previewMode, EditorStyles.toolbarPopup, GUILayout.Width(130f));
-            autoFitPreview = GUILayout.Toggle(autoFitPreview, new GUIContent("Auto-fit", "Fit map bounds into preview area."), EditorStyles.toolbarButton, GUILayout.Width(70f));
 
             if (previewMode == PreviewMode.Height)
             {
                 GUILayout.Space(8f);
                 EditorGUILayout.LabelField(new GUIContent("Contrast", "Expands/reduces visible height variation."), GUILayout.Width(54f));
-                var nextContrast = EditorGUILayout.Slider(heightContrast, 0.25f, 4f);
-                if (!Mathf.Approximately(nextContrast, heightContrast))
-                {
-                    heightContrast = nextContrast;
-                    BuildPreviewTexture();
-                }
+                heightContrast = EditorGUILayout.Slider(heightContrast, 0.25f, 4f);
 
                 EditorGUILayout.LabelField(new GUIContent("Gamma", "Brightness curve in Height preview."), GUILayout.Width(44f));
-                var nextGamma = EditorGUILayout.Slider(heightGamma, 0.5f, 2.4f);
-                if (!Mathf.Approximately(nextGamma, heightGamma))
-                {
-                    heightGamma = nextGamma;
-                    BuildPreviewTexture();
-                }
+                heightGamma = EditorGUILayout.Slider(heightGamma, 0.5f, 2.4f);
 
                 GUILayout.Space(6f);
                 EditorGUILayout.LabelField($"Min {previewHeightMin:0.###} / Max {previewHeightMax:0.###}", GUILayout.Width(150f));
@@ -299,8 +287,9 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         {
             using (new HorizontalScope())
             {
-                showNodeAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Node Anchors", "Show anchors_nodes points."), showNodeAnchors, GUILayout.Width(120f));
-                showLaneAnchors = EditorGUILayout.ToggleLeft(new GUIContent("Lane Anchors", "Show anchors_lane points."), showLaneAnchors, GUILayout.Width(120f));
+                EditorGUILayout.LabelField("Mode", GUILayout.Width(34f));
+                previewMode = (PreviewMode)EditorGUILayout.EnumPopup(previewMode, GUILayout.Width(130f));
+                autoFitPreview = GUILayout.Toggle(autoFitPreview, new GUIContent("Auto-fit", "Fit map bounds into preview area."), EditorStyles.toolbarButton, GUILayout.Width(70f));
                 GUILayout.FlexibleSpace();
                 if (GUILayout.Button(new GUIContent("Rebuild Texture", "Recompute preview visualization from current map."), GUILayout.Width(115f))) RebuildTextureOnly();
             }
@@ -450,7 +439,7 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     {
         EditorGUILayout.Space();
         EditorGUILayout.HelpBox(
-            "Manual mode: settings do not regenerate the preview until you click Generate.\nPreview updates only when Generate is clicked.",
+            "Manual mode: preview updates only when Generate is clicked.",
             MessageType.None);
         using (new HorizontalScope())
         {
