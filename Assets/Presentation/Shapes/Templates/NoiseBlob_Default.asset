@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 956f8a5c222f4588b211d24250d916a0, type: 3}
+  m_Name: NoiseBlob_Default
+  m_EditorClassIdentifier: Assembly-CSharp::NoiseBlobTemplate
+  shapeId: noise_blob
+  categoryFolder: Blobs
+  textureSize: 64
+  ppu: 16
+  seed: 2024
+  baseRadiusPx: 22
+  amplitudePx: 2
+  frequency: 1.2
+  octaves: 2
+  lacunarity: 2
+  gain: 0.5
+  useRimGradient: 1
+  rimWidthPx: 6
+  innerMul: 1
+  outerMul: 0.78

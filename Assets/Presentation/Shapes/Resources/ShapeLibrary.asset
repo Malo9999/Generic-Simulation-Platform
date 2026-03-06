@@ -34,3 +34,18 @@ MonoBehaviour:
   - id: stroke_scribble
     sprite: {fileID: 21300000, guid: 48c2a7092e3997b46b28431af80961d9, type: 3}
     template: {fileID: 11400000, guid: 54ae156e5b0639f46a21ce55894ce222, type: 2}
+  - id: triangle_agent
+    sprite: {fileID: 21300000, guid: d1359cde12f1d884d8d9858f5b714ff4, type: 3}
+    template: {fileID: 11400000, guid: e13ce8be2686e0e4883a0c0e75f9b54a, type: 2}
+  - id: diamond_agent
+    sprite: {fileID: 21300000, guid: 36a83c05e3bca9648b71ea148e684dde, type: 3}
+    template: {fileID: 11400000, guid: a2c63227fabe988499668d9a8422e211, type: 2}
+  - id: line_segment
+    sprite: {fileID: 21300000, guid: 7534785fd5523f24cb4c6aef0a0be825, type: 3}
+    template: {fileID: 11400000, guid: 1e54f08b5301e9c48aaa9b5c21f2cc1d, type: 2}
+  - id: noise_blob
+    sprite: {fileID: 21300000, guid: 1e2e405cf9bdb02499fd19c531062939, type: 3}
+    template: {fileID: 11400000, guid: 1f5c2064d49724e43b3b6a6f0448b614, type: 2}
+  - id: pulse_ring
+    sprite: {fileID: 21300000, guid: b07d22166df7da24d9110edd77794f5f, type: 3}
+    template: {fileID: 11400000, guid: 112e2d2c55ed6614799f39f3d91b5d15, type: 2}

@@ -22,13 +22,13 @@ MonoBehaviour:
   radiusPx: 18
   jitterPx: 8
   baseRadiusPx: 20
-  noiseAmplitudePx: 3
-  noiseFrequency: 2
+  noiseAmplitudePx: 5
+  noiseFrequency: 2.8
   noiseOctaves: 3
   noiseLacunarity: 2
   noiseGain: 0.5
   rimSoftnessPx: 0
-  symmetryBreak: 0.35
+  symmetryBreak: 0.55
   useRimGradient: 1
   rimWidthPx: 6
   innerMul: 1
