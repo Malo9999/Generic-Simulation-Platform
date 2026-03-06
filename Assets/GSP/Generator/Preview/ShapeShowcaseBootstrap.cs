@@ -12,17 +12,17 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private float labelOffset = 1.45f;
 
     [Header("Visuals")]
-    [SerializeField] private Color defaultTint = new(0.55f, 0.98f, 1f, 1f);
     [SerializeField] private Color headerColor = new(0.95f, 0.98f, 1f, 1f);
     [SerializeField] private Color labelColor = new(0.82f, 0.95f, 1f, 1f);
     [SerializeField] private Color cameraBackground = Color.black;
+    [SerializeField] private ShapeCategoryPalette shapeCategoryPalette;
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
 
     private static readonly ShowcaseCategory[] Categories =
     {
-        new("CORE", new[]
+        new("CORE", ShapePaletteCategory.Core, new[]
         {
             ShapeId.DotCore,
             ShapeId.DotGlow,
@@ -30,22 +30,25 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             ShapeId.RingPing,
             ShapeId.PulseRing
         }),
-        new("ORGANIC", new[]
+        new("ORGANIC", ShapePaletteCategory.Organic, new[]
         {
             ShapeId.OrganicMetaball,
             ShapeId.OrganicAmoeba,
             ShapeId.NoiseBlob,
             ShapeId.FieldBlob
         }),
-        new("AGENTS / MARKERS", new[]
+        new("AGENTS", ShapePaletteCategory.Agents, new[]
         {
             ShapeId.TriangleAgent,
             ShapeId.DiamondAgent,
-            ShapeId.ArrowAgent,
+            ShapeId.ArrowAgent
+        }),
+        new("MARKERS", ShapePaletteCategory.Markers, new[]
+        {
             ShapeId.CrossMarker,
             ShapeId.ArcSector
         }),
-        new("LINES / MOTION", new[]
+        new("LINES", ShapePaletteCategory.Lines, new[]
         {
             ShapeId.LineSegment,
             ShapeId.StrokeScribble,
@@ -54,6 +57,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     };
 
     private readonly HashSet<string> missingLogged = new();
+    private ShapeCategoryPalette runtimeFallbackPalette;
 
     private void Start()
     {
@@ -90,7 +94,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         {
             var category = Categories[row];
             var y = originY - (row * (verticalSpacing + categoryGap));
-            SpawnHeader(category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f));
+            SpawnHeader(category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f), category.Category);
 
             var width = (category.ShapeIds.Length - 1) * horizontalSpacing;
             var startX = -width * 0.5f;
@@ -109,7 +113,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
                 }
 
                 var position = new Vector3(startX + (col * horizontalSpacing), y, 0f);
-                SpawnShape(category, id, sprite, position, spawnedCount);
+                SpawnShape(id, sprite, position, spawnedCount);
                 spawnedCount++;
             }
         }
@@ -120,7 +124,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
     }
 
-    private void SpawnShape(ShowcaseCategory category, string shapeId, Sprite sprite, Vector3 localPosition, int sequence)
+    private void SpawnShape(string shapeId, Sprite sprite, Vector3 localPosition, int sequence)
     {
         var go = new GameObject(shapeId);
         go.transform.SetParent(transform, false);
@@ -129,7 +133,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
-        sr.color = GetTint(category.Name, shapeId);
+        sr.color = GetTint(shapeId);
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
         if (profile.animType != ShapeAnimType.None)
@@ -141,7 +145,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         SpawnLabel(shapeId, go.transform, labelOffset);
     }
 
-    private void SpawnHeader(string text, Vector3 localPosition)
+    private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)
     {
         var header = new GameObject($"Header_{text}");
         header.transform.SetParent(transform, false);
@@ -153,7 +157,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         mesh.alignment = TextAlignment.Left;
         mesh.characterSize = 0.08f;
         mesh.fontSize = headerFontSize;
-        mesh.color = headerColor;
+        mesh.color = Color.Lerp(headerColor, ResolvePalette().GetColor(category), 0.45f);
     }
 
     private void SpawnLabel(string id, Transform parent, float yOffset)
@@ -171,30 +175,62 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         mesh.color = labelColor;
     }
 
-    private Color GetTint(string categoryName, string shapeId)
+    private Color GetTint(string shapeId)
     {
-        if (shapeId == ShapeId.FieldBlob)
+        return ResolvePalette().GetColor(ShapeIdToCategory(shapeId));
+    }
+
+    private static ShapePaletteCategory ShapeIdToCategory(string shapeId)
+    {
+        return shapeId switch
         {
-            return new Color(0.52f, 0.88f, 1f, 0.95f);
+            ShapeId.DotCore => ShapePaletteCategory.Core,
+            ShapeId.DotGlow => ShapePaletteCategory.Core,
+            ShapeId.DotGlowSmall => ShapePaletteCategory.Core,
+            ShapeId.RingPing => ShapePaletteCategory.Core,
+            ShapeId.PulseRing => ShapePaletteCategory.Core,
+            ShapeId.OrganicMetaball => ShapePaletteCategory.Organic,
+            ShapeId.OrganicAmoeba => ShapePaletteCategory.Organic,
+            ShapeId.NoiseBlob => ShapePaletteCategory.Organic,
+            ShapeId.FieldBlob => ShapePaletteCategory.Organic,
+            ShapeId.TriangleAgent => ShapePaletteCategory.Agents,
+            ShapeId.DiamondAgent => ShapePaletteCategory.Agents,
+            ShapeId.ArrowAgent => ShapePaletteCategory.Agents,
+            ShapeId.CrossMarker => ShapePaletteCategory.Markers,
+            ShapeId.ArcSector => ShapePaletteCategory.Markers,
+            ShapeId.LineSegment => ShapePaletteCategory.Lines,
+            ShapeId.StrokeScribble => ShapePaletteCategory.Lines,
+            ShapeId.Filament => ShapePaletteCategory.Lines,
+            _ => ShapePaletteCategory.Core
+        };
+    }
+
+    private ShapeCategoryPalette ResolvePalette()
+    {
+        if (shapeCategoryPalette != null)
+        {
+            return shapeCategoryPalette;
         }
 
-        if (categoryName == "AGENTS / MARKERS")
+        if (runtimeFallbackPalette == null)
         {
-            return new Color(0.78f, 1f, 0.92f, 1f);
+            runtimeFallbackPalette = ScriptableObject.CreateInstance<ShapeCategoryPalette>();
         }
 
-        return defaultTint;
+        return runtimeFallbackPalette;
     }
 
     private readonly struct ShowcaseCategory
     {
-        public ShowcaseCategory(string name, string[] shapeIds)
+        public ShowcaseCategory(string name, ShapePaletteCategory category, string[] shapeIds)
         {
             Name = name;
+            Category = category;
             ShapeIds = shapeIds;
         }
 
         public string Name { get; }
+        public ShapePaletteCategory Category { get; }
         public string[] ShapeIds { get; }
     }
 }
