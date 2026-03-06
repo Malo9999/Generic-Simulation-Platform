@@ -3,15 +3,14 @@ using UnityEngine;
 public sealed class SlimeMoldDemoAgent : MonoBehaviour
 {
     [SerializeField] private TrailBufferController trailBuffer;
-    [SerializeField] private SlimeMoldTrailPreset preset;
-    [SerializeField] private float moveSpeed = 1.7f;
+    [SerializeField] private SlimeMoldSteeringSettings steeringSettings = new();
 
     private Vector2 direction;
 
-    public void Configure(TrailBufferController buffer, SlimeMoldTrailPreset demoPreset, Vector2 initialDirection)
+    public void Configure(TrailBufferController buffer, SlimeMoldSteeringSettings settings, Vector2 initialDirection)
     {
         trailBuffer = buffer;
-        preset = demoPreset;
+        steeringSettings = settings ?? new SlimeMoldSteeringSettings();
         direction = initialDirection.sqrMagnitude > 0.0001f ? initialDirection.normalized : Vector2.right;
     }
 
@@ -22,14 +21,11 @@ public sealed class SlimeMoldDemoAgent : MonoBehaviour
             return;
         }
 
-        if (preset != null)
-        {
-            var bias = TrailSteeringUtility.ComputeSteeringBias(trailBuffer, transform.position, direction, preset);
-            var noise = (Mathf.PerlinNoise(Time.time * 0.45f, transform.GetInstanceID() * 0.013f) - 0.5f) * 0.35f;
-            direction = Rotate(direction, bias + noise * 0.1f).normalized;
-        }
+        var bias = TrailSteeringUtility.ComputeSteeringBias(trailBuffer, transform.position, direction, steeringSettings);
+        var noise = (Mathf.PerlinNoise(Time.time * 0.45f, transform.GetInstanceID() * 0.013f) - 0.5f) * 0.35f;
+        direction = Rotate(direction, bias + noise * steeringSettings.jitter).normalized;
 
-        var pos = (Vector2)transform.position + (direction * moveSpeed * Time.deltaTime);
+        var pos = (Vector2)transform.position + (direction * steeringSettings.forwardSpeed * Time.deltaTime);
         var bounds = trailBuffer.WorldBounds;
 
         if (pos.x < bounds.xMin || pos.x > bounds.xMax)
