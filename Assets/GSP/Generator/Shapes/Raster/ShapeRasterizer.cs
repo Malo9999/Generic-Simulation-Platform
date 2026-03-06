@@ -168,6 +168,80 @@ public static class ShapeRasterizer
         return pixels;
     }
 
+
+    public static Color32[] RasterizeFilament(
+        int size,
+        Color tint,
+        float lengthPx,
+        float thicknessStartPx,
+        float thicknessEndPx,
+        float bend,
+        float waveAmpPx,
+        float waveFreq,
+        int seed,
+        bool useRimGradient,
+        int rimWidthPx,
+        float innerMul,
+        float outerMul)
+    {
+        var pixels = NewPixels(size);
+        var center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+        var halfLength = Mathf.Clamp(lengthPx * 0.5f, 1f, (size - 2) * 0.5f);
+        var margin = Mathf.Max(1f, center.x - halfLength);
+        var p0 = new Vector2(margin, center.y);
+        var p2 = new Vector2(size - 1 - margin, center.y);
+        var p1 = new Vector2(center.x, center.y + (bend * (size * 0.25f)));
+        var sampleSteps = 64;
+        var tau = Mathf.PI * 2f;
+        var seedOffset = RasterNoiseUtil.Hash01(seed, 113, 977);
+
+        for (var y = 0; y < size; y++)
+        for (var x = 0; x < size; x++)
+        {
+            var pixel = new Vector2(x, y);
+            var nearestT = 0f;
+            var nearestDistSq = float.MaxValue;
+
+            for (var i = 0; i <= sampleSteps; i++)
+            {
+                var t = i / (float)sampleSteps;
+                var point = QuadraticBezier(p0, p1, p2, t);
+                var distSq = (pixel - point).sqrMagnitude;
+                if (distSq >= nearestDistSq)
+                {
+                    continue;
+                }
+
+                nearestDistSq = distSq;
+                nearestT = t;
+            }
+
+            var thick = Mathf.Lerp(thicknessStartPx, thicknessEndPx, nearestT);
+            if (waveAmpPx > 0f && waveFreq > 0f)
+            {
+                thick += Mathf.Sin(((nearestT * waveFreq) + seedOffset) * tau) * waveAmpPx;
+            }
+
+            var halfThickness = Mathf.Max(0.5f, thick * 0.5f);
+            var dist = Mathf.Sqrt(nearestDistSq);
+            if (dist > halfThickness)
+            {
+                continue;
+            }
+
+            var brightness = innerMul;
+            if (useRimGradient)
+            {
+                var distToEdgePx = halfThickness - dist;
+                brightness = ApplyRimGradient(distToEdgePx, rimWidthPx, innerMul, outerMul);
+            }
+
+            pixels[(y * size) + x] = MultiplyColor(tint, brightness, 1f);
+        }
+
+        return pixels;
+    }
+
     public static Color32[] RasterizeOrganic(
         int size,
         Color tint,
@@ -350,6 +424,13 @@ public static class ShapeRasterizer
         }
 
         return pixels;
+    }
+
+
+    private static Vector2 QuadraticBezier(Vector2 p0, Vector2 p1, Vector2 p2, float t)
+    {
+        var u = 1f - t;
+        return (u * u * p0) + (2f * u * t * p1) + (t * t * p2);
     }
 
     private static void DrawSegment(Color32[] pixels, int size, Vector2 a, Vector2 b, float width, Color color)
