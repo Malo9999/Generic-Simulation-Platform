@@ -532,6 +532,11 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         DrawHelpLine("Advanced", "Use Advanced only for fine tuning once core river shape reads well.");
     }
 
+    private static void DrawHelpLine(string label, string description)
+    {
+        EditorGUILayout.LabelField($"• {label}: {description}", EditorStyles.wordWrappedMiniLabel);
+    }
+
     private void DrawActionButtons()
     {
         EditorGUILayout.Space();

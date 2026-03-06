@@ -6,7 +6,6 @@ public class FieldBlobTemplate : ShapeTemplateBase
     [SerializeField] private float radiusPx = 28f;
     [SerializeField] private float falloffExponent = 2.4f;
     [SerializeField, Range(0f, 1f)] private float alphaMultiplier = 0.28f;
-    [SerializeField] private bool useRimGradient;
 
     private void Reset()
     {
@@ -14,7 +13,6 @@ public class FieldBlobTemplate : ShapeTemplateBase
         radiusPx = 28f;
         falloffExponent = 2.4f;
         alphaMultiplier = 0.28f;
-        useRimGradient = false;
     }
 
     public override Color32[] Rasterize(Color tint)
