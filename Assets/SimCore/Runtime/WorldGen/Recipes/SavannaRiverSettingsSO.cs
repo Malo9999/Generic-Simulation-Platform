@@ -4,8 +4,6 @@ using UnityEngine;
 public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
 {
     public float riverWidth = 5f;
-    public float meanderAmp = 0.15f;
-    public float meanderFreq = 2f;
     public float floodplainWidth = 12f;
     public float bankWidth = 4f;
     public float treeDensity = 0.08f;
@@ -13,14 +11,27 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public Vector2 gradientDir = new Vector2(0f, 1f);
     public float waterLevel = 0.45f;
     public float carveStrength = 0.35f;
-    public float RiverWarpAmplitude = 5f;
-    public float RiverWarpFrequency = 0.025f;
-    public int CutoffCount = 1;
-    public float CutoffChance = 0.25f;
+
+    public float SourceEdgeBias = 0.75f;
+    public float FlowInertia = 0.55f;
+    public float FlowNoiseStrength = 0.22f;
+    public float WidthVariation = 0.55f;
     public int SideChannelCount = 1;
     public float SideChannelWidthFactor = 0.6f;
-    public float BankNoiseStrength = 0.35f;
-    public float FloodplainNoiseStrength = 0.45f;
+    public float CutoffChance = 0.25f;
+    public int WetlandCount = 3;
+    public float WetlandNoiseStrength = 0.5f;
+    public int KopjeCount = 3;
+    public float KopjeNoiseStrength = 0.5f;
+
+    public float RiverWarpAmplitude = 3f;
+    public float RiverWarpFrequency = 0.025f;
+
+    public float HeightContrast = 1.25f;
+    public float HeightGamma = 0.95f;
+    public float WetnessContrast = 1.15f;
+    public float WetnessGamma = 0.9f;
+
     public NoiseDescriptor HeightNoise = NoiseDescriptor.CreateDefault("savanna_height");
     public NoiseDescriptor WetnessNoise = NoiseDescriptor.CreateDefault("savanna_wetness");
     public NoiseDescriptor WarpNoise = NoiseDescriptor.CreateDefault("savanna_warp");
