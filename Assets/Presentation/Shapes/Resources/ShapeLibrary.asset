@@ -49,3 +49,6 @@ MonoBehaviour:
   - id: pulse_ring
     sprite: {fileID: 21300000, guid: b07d22166df7da24d9110edd77794f5f, type: 3}
     template: {fileID: 11400000, guid: 112e2d2c55ed6614799f39f3d91b5d15, type: 2}
+  - id: filament
+    sprite: {fileID: 21300000, guid: fc73d1e20c8fe4d45964559a6d53857b, type: 3}
+    template: {fileID: 11400000, guid: de5c23b6f8e02f84aa6be7d4cfb9edb1, type: 2}
