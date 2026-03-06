@@ -5,7 +5,7 @@ using UnityEngine;
 public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
 {
     public override string RecipeId => "CanyonPass";
-    public override int Version => 5;
+    public override int Version => 6;
 
     private const int FastMinControlPoints = 22;
     private const int FastMaxControlPoints = 36;
@@ -48,8 +48,8 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             var p = grid.CellCenterWorld(x, y);
             var dist = DistanceToPolylineWithT(passPoints, p, out var tAlong);
 
-            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 1.4f + 9f, seed * 0.0023f, seed + 73) * 2f - 1f;
-            var widthScale = Mathf.Clamp(1f + Mathf.Sin(tAlong * Mathf.PI * 2f + widthPhase) * 0.09f + widthNoise * 0.07f, 0.82f, 1.18f);
+            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.8f + 9f, seed * 0.0023f, seed + 73) * 2f - 1f;
+            var widthScale = Mathf.Clamp(1f + Mathf.Sin(tAlong * Mathf.PI * 1.4f + widthPhase) * 0.07f + widthNoise * 0.05f, 0.86f, 1.14f);
             var floorHalf = floorHalfBase * widthScale;
             var wallOuter = wallOuterBase * Mathf.Lerp(0.95f, 1.08f, tAlong);
 
@@ -134,9 +134,11 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         controlStationCount = count;
         var controls = new List<Vector2>(count) { start };
 
-        var freq = Mathf.Max(0.01f, settings.MeanderFrequency);
-        var amp = Mathf.Max(grid.cellSize, settings.TwistAmplitude * grid.cellSize * 0.75f);
-        var warpAmp = Mathf.Max(0f, settings.WarpAmplitude) * grid.cellSize * 0.35f;
+        var freq = Mathf.Max(0.2f, settings.MeanderFrequency);
+        var trendLen = Vector2.Distance(start, end);
+        var ampLimit = Mathf.Max(grid.cellSize * 1.5f, trendLen * 0.16f);
+        var amp = Mathf.Clamp(settings.TwistAmplitude * trendLen * 0.1f, grid.cellSize * 1.2f, ampLimit);
+        var warpAmp = Mathf.Max(0f, settings.WarpAmplitude) * amp * 0.28f;
         var warpFreq = Mathf.Max(0.0001f, settings.WarpFrequency);
         var phase = Mathf.Abs(Mathf.Sin(seed * 0.0241f)) * Mathf.PI * 2f;
         var inset = InsetRect(mapRect, grid.cellSize * 1.25f);
@@ -146,9 +148,9 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
             var t = i / (float)(count - 1);
             var basePoint = Vector2.Lerp(start, end, t);
             var sinOffset = Mathf.Sin(t * freq * Mathf.PI * 2f + phase) * amp;
-            var lowNoise = (NoiseUtil.Sample2D(warpNoise, t * 1.7f + 5f, seed * 0.006f, seed + 13) * 2f - 1f) * amp * 0.2f;
+            var lowNoise = (NoiseUtil.Sample2D(warpNoise, t * 1.15f + 5f, seed * 0.006f, seed + 13) * 2f - 1f) * amp * 0.18f;
             var warp = (NoiseUtil.Sample2D(warpNoise, basePoint.x * warpFreq, basePoint.y * warpFreq, seed + 41) * 2f - 1f) * warpAmp;
-            var taper = Mathf.Pow(Mathf.Sin(t * Mathf.PI), 0.9f);
+            var taper = Mathf.SmoothStep(0f, 1f, Mathf.Sin(t * Mathf.PI));
 
             var p = basePoint + lateralDir * ((sinOffset + lowNoise + warp) * taper);
             controls.Add(ClampToRect(p, inset));

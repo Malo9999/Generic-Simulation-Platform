@@ -13,9 +13,9 @@ public class CanyonPassSettingsSO : WorldRecipeSettingsSO
     public float noiseStrength = 0.2f;
     public float wallRoughness = 0.35f;
     public Vector2 gradientDir = new Vector2(1f, 0f);
-    public float TwistAmplitude = 3f;
-    public float MeanderFrequency = 0.05f;
-    public float WarpAmplitude = 2f;
+    public float TwistAmplitude = 0.85f;
+    public float MeanderFrequency = 1.35f;
+    public float WarpAmplitude = 0.6f;
     public float WarpFrequency = 0.03f;
 
     public NoiseDescriptor HeightNoise = NoiseDescriptor.CreateDefault("canyon_height");

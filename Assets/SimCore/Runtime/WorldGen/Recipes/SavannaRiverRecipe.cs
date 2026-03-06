@@ -5,7 +5,7 @@ using UnityEngine;
 public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 {
     public override string RecipeId => "SavannaRiver";
-    public override int Version => 6;
+    public override int Version => 7;
 
     private const int FastMinControlPoints = 24;
     private const int FastMaxControlPoints = 40;
@@ -55,19 +55,19 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             var p = grid.CellCenterWorld(x, y);
             var dist = DistanceToPolylineWithT(riverPoints, p, out var tAlong);
 
-            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 1.7f + 11f, seed * 0.0031f, seed + 101) * 2f - 1f;
-            var widthWave = Mathf.Sin(tAlong * Mathf.PI * 2.2f + widthPhase) * 0.12f;
-            var widthScale = Mathf.Clamp(1f + widthWave + widthNoise * 0.08f, 0.8f, 1.25f);
+            var widthNoise = NoiseUtil.Sample2D(warpNoise, tAlong * 0.75f + 11f, seed * 0.0027f, seed + 101) * 2f - 1f;
+            var widthWave = Mathf.Sin(tAlong * Mathf.PI * 1.6f + widthPhase) * 0.08f;
+            var widthScale = Mathf.Clamp(1f + widthWave + widthNoise * 0.06f, 0.88f, 1.16f);
 
             var riverHalf = riverHalfBase * widthScale;
-            var floodRadius = floodRadiusBase * Mathf.Lerp(0.95f, 1.1f, tAlong);
-            var bankRadius = bankRadiusBase * Mathf.Lerp(0.95f, 1.05f, 1f - tAlong);
+            var floodRadius = floodRadiusBase * (1f + widthWave * 0.15f + widthNoise * 0.04f);
+            var bankRadius = bankRadiusBase * Mathf.Lerp(0.96f, 1.04f, 1f - tAlong);
 
             var slope = SlopeSample(grid, x, y, flowDir);
             var terrainNoise = (NoiseUtil.Sample2D(heightNoise, p.x * 0.21f, p.y * 0.21f, seed) * 2f - 1f) * settings.heightNoiseStrength * 0.25f;
-            var floodNoise = (NoiseUtil.Sample2D(wetnessNoise, p.x * 0.08f, p.y * 0.08f, seed + 17) * 2f - 1f) * 0.2f;
+            var floodNoise = (NoiseUtil.Sample2D(wetnessNoise, p.x * 0.07f, p.y * 0.07f, seed + 17) * 2f - 1f) * 0.17f;
 
-            var floodEdge = Mathf.Max(0.01f, floodRadius * (1f + floodNoise * 0.5f));
+            var floodEdge = Mathf.Max(0.01f, floodRadius * (1f + floodNoise * 0.4f));
             var floodFactor = Mathf.Clamp01(1f - dist / floodEdge);
             var bankFactor = Mathf.Clamp01(1f - dist / Mathf.Max(0.01f, bankRadius));
             var isWater = dist <= riverHalf;
@@ -161,9 +161,11 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         controlStationCount = count;
         var controls = new List<Vector2>(count) { start };
 
-        var meanderFreq = Mathf.Max(0.01f, settings.MeanderFreq);
-        var meanderAmp = Mathf.Max(grid.cellSize * 1.5f, settings.MeanderAmp * grid.cellSize);
-        var warpAmp = Mathf.Max(0f, settings.RiverWarpAmplitude) * grid.cellSize * 0.55f;
+        var meanderFreq = Mathf.Max(0.2f, settings.MeanderFreq);
+        var trendLen = Vector2.Distance(start, end);
+        var ampLimit = Mathf.Max(grid.cellSize * 2f, trendLen * 0.28f);
+        var meanderAmp = Mathf.Clamp(settings.MeanderAmp * trendLen * 0.18f, grid.cellSize * 2f, ampLimit);
+        var warpAmp = Mathf.Max(0f, settings.RiverWarpAmplitude) * meanderAmp * 0.35f;
         var warpFreq = Mathf.Max(0.0001f, settings.RiverWarpFrequency);
         var phase = Mathf.Abs(Mathf.Sin(seed * 0.0217f)) * Mathf.PI * 2f;
         var inset = InsetRect(mapRect, grid.cellSize * 1.5f);
@@ -174,9 +176,9 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             var basePoint = Vector2.Lerp(start, end, t);
 
             var sineOffset = Mathf.Sin(t * meanderFreq * Mathf.PI * 2f + phase) * meanderAmp;
-            var lowFreqNoise = (NoiseUtil.Sample2D(meanderNoise, t * 2.2f + 7f, seed * 0.005f, seed + 31) * 2f - 1f) * meanderAmp * 0.28f;
+            var lowFreqNoise = (NoiseUtil.Sample2D(meanderNoise, t * 1.1f + 3f, seed * 0.0043f, seed + 31) * 2f - 1f) * meanderAmp * 0.22f;
             var warpNoiseSample = (NoiseUtil.Sample2D(warpNoise, basePoint.x * warpFreq, basePoint.y * warpFreq, seed + 47) * 2f - 1f) * warpAmp;
-            var taper = Mathf.Pow(Mathf.Sin(t * Mathf.PI), 0.85f);
+            var taper = Mathf.SmoothStep(0f, 1f, Mathf.Sin(t * Mathf.PI));
 
             var offset = (sineOffset + lowFreqNoise + warpNoiseSample) * taper;
             var p = basePoint + lateralDir * offset;
