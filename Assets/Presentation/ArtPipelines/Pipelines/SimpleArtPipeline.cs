@@ -28,6 +28,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     [SerializeField] private bool useGlow = false;
     [SerializeField] private bool enableAnimatedShapes = true;
     [SerializeField] private bool autoAssignShapeAnimationById = true;
+    [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
 
     private bool debugEnabled;
     private DebugPlaceholderMode debugMode;
@@ -76,6 +77,7 @@ public class SimpleArtPipeline : ArtPipelineBase
                 ? fallbackCore
                 : DebugShapeSpriteFactory.GetCircleSprite();
         dotRenderer.color = PlaceholderColorPalette.GetColor(key);
+        dotRenderer.sharedMaterial = ResolveMaterialPalette().GetMaterialForShape(bodyShapeId);
         RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
 
         if (enableAnimatedShapes)
@@ -91,6 +93,7 @@ public class SimpleArtPipeline : ArtPipelineBase
             var glowRenderer = glowObject.AddComponent<SpriteRenderer>();
             glowRenderer.sprite = glowSprite;
             glowRenderer.color = new Color(1f, 1f, 1f, 0.35f);
+            glowRenderer.sharedMaterial = ResolveMaterialPalette().GetMaterialForShape(glowShapeId);
             glowObject.transform.localScale = Vector3.one * 1.6f;
             RenderOrder.Apply(glowRenderer, RenderOrder.EntityBody - 2);
 
@@ -123,6 +126,16 @@ public class SimpleArtPipeline : ArtPipelineBase
         return rendererObject;
     }
 
+
+    private ShapeMaterialPalette ResolveMaterialPalette()
+    {
+        if (shapeMaterialPalette != null)
+        {
+            return shapeMaterialPalette;
+        }
+
+        return ShapeMaterialPaletteLoader.Load();
+    }
     private static string ResolveBodyShapeId(VisualKey key)
     {
         var normalizedKind = NormalizeSegment(key.kind, string.Empty);
