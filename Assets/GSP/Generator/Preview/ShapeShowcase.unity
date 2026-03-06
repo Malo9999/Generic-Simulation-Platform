@@ -362,9 +362,9 @@ MonoBehaviour:
     textureHeight: 288
     depositRadiusPx: 2
     depositStrength: 1.2
-    decayPerSecond: 0.8
-    diffuseStrength: 0.07
-    tintColor: {r: 0.35, g: 0.95, b: 1, a: 1}
+    decayPerSecond: 0.82
+    diffuseStrength: 0.05
+    tintColor: {r: 0.3, g: 0.92, b: 1, a: 1}
     alphaMultiplier: 0.35
   slimeSteeringSettings:
     sensorDistance: 1.2

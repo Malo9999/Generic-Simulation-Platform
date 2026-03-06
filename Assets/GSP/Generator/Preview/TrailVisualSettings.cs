@@ -7,9 +7,9 @@ public sealed class TrailVisualSettings
     [Min(16)] public int textureHeight = 288;
     [Min(1)] public int depositRadiusPx = 2;
     [Min(0f)] public float depositStrength = 1.2f;
-    [Range(0f, 1f)] public float decayPerSecond = 0.80f;
-    [Range(0f, 1f)] public float diffuseStrength = 0.07f;
-    public Color tintColor = new(0.35f, 0.95f, 1f, 1f);
+    [Range(0f, 1f)] public float decayPerSecond = 0.82f;
+    [Range(0f, 1f)] public float diffuseStrength = 0.05f;
+    public Color tintColor = new(0.3f, 0.92f, 1f, 1f);
     [Range(0f, 1f)] public float alphaMultiplier = 0.35f;
 
     public void ApplyTo(TrailBufferSettings target)
