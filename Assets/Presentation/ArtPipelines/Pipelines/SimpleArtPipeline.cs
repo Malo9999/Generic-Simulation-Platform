@@ -26,6 +26,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     [SerializeField] private DebugPlaceholderMode defaultDebugMode = DebugPlaceholderMode.Replace;
     [SerializeField] private float placeholderScale = 0.5f;
     [SerializeField] private bool useGlow = false;
+    [SerializeField] private bool enableAnimatedShapes = true;
 
     private bool debugEnabled;
     private DebugPlaceholderMode debugMode;
@@ -67,13 +68,22 @@ public class SimpleArtPipeline : ArtPipelineBase
         var spriteObject = new GameObject(PlaceholderSpriteName);
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
-        dotRenderer.sprite = ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out var coreSprite)
+        var bodyShapeId = ResolveBodyShapeId(key);
+        dotRenderer.sprite = ShapeLibraryProvider.TryGetSprite(bodyShapeId, out var coreSprite)
             ? coreSprite
-            : DebugShapeSpriteFactory.GetCircleSprite();
+            : ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out var fallbackCore)
+                ? fallbackCore
+                : DebugShapeSpriteFactory.GetCircleSprite();
         dotRenderer.color = PlaceholderColorPalette.GetColor(key);
         RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
 
-        if (useGlow && ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlow, out var glowSprite))
+        if (enableAnimatedShapes)
+        {
+            TryAttachBodyAnimation(dotRenderer, bodyShapeId, key.instanceId);
+        }
+
+        var glowShapeId = ResolveGlowShapeId(key);
+        if (useGlow && ShapeLibraryProvider.TryGetSprite(glowShapeId, out var glowSprite))
         {
             var glowObject = new GameObject(PlaceholderGlowName);
             glowObject.transform.SetParent(rendererObject.transform, false);
@@ -82,6 +92,13 @@ public class SimpleArtPipeline : ArtPipelineBase
             glowRenderer.color = new Color(1f, 1f, 1f, 0.35f);
             glowObject.transform.localScale = Vector3.one * 1.6f;
             RenderOrder.Apply(glowRenderer, RenderOrder.EntityBody - 2);
+
+            if (enableAnimatedShapes
+                && (string.Equals(glowShapeId, ShapeId.DotGlow, StringComparison.Ordinal)
+                    || string.Equals(glowShapeId, ShapeId.PulseRing, StringComparison.Ordinal)))
+            {
+                AttachAnimation(glowRenderer, AnimatedShapeProfile.CreateGlowPulse(), key.instanceId);
+            }
         }
 
         var outlineObject = new GameObject(PlaceholderOutlineName);
@@ -103,6 +120,88 @@ public class SimpleArtPipeline : ArtPipelineBase
         animator.Initialize(dotRenderer, outlineRenderer, arrowRenderer, placeholderScale);
 
         return rendererObject;
+    }
+
+    private static string ResolveBodyShapeId(VisualKey key)
+    {
+        var normalizedKind = NormalizeSegment(key.kind, string.Empty);
+        var normalizedState = NormalizeSegment(key.state, string.Empty);
+
+        if (normalizedKind.IndexOf("amoeba", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("amoeba", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.OrganicAmoeba;
+        }
+
+        if (normalizedKind.IndexOf("metaball", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("metaball", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.OrganicMetaball;
+        }
+
+        if (normalizedKind.IndexOf("filament", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("filament", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.Filament;
+        }
+
+        return ShapeId.DotCore;
+    }
+
+    private static string ResolveGlowShapeId(VisualKey key)
+    {
+        var normalizedKind = NormalizeSegment(key.kind, string.Empty);
+        var normalizedState = NormalizeSegment(key.state, string.Empty);
+        if (normalizedKind.IndexOf("pulse", StringComparison.Ordinal) >= 0
+            || normalizedKind.IndexOf("ring", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("pulse", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("ring", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.PulseRing;
+        }
+
+        return ShapeId.DotGlow;
+    }
+
+    private void TryAttachBodyAnimation(SpriteRenderer renderer, string shapeId, int seed)
+    {
+        if (renderer == null || string.IsNullOrWhiteSpace(shapeId))
+        {
+            return;
+        }
+
+        if (string.Equals(shapeId, ShapeId.OrganicAmoeba, StringComparison.Ordinal))
+        {
+            AttachAnimation(renderer, AnimatedShapeProfile.CreateAmoebaWobble(), seed);
+            return;
+        }
+
+        if (string.Equals(shapeId, ShapeId.OrganicMetaball, StringComparison.Ordinal))
+        {
+            AttachAnimation(renderer, AnimatedShapeProfile.CreateAmoebaWobble(amplitude: 0.02f, frequency: 1.3f, scalePulse: 0.01f), seed);
+            return;
+        }
+
+        if (string.Equals(shapeId, ShapeId.Filament, StringComparison.Ordinal))
+        {
+            AttachAnimation(renderer, AnimatedShapeProfile.CreateFilamentWave(), seed);
+        }
+    }
+
+    private static void AttachAnimation(SpriteRenderer renderer, AnimatedShapeProfile profile, int seed)
+    {
+        if (renderer == null || profile == null)
+        {
+            return;
+        }
+
+        var driver = renderer.GetComponent<AnimatedShapeDriver>();
+        if (driver == null)
+        {
+            driver = renderer.gameObject.AddComponent<AnimatedShapeDriver>();
+        }
+
+        driver.Configure(renderer, profile, seed);
     }
 
     public override void ApplyVisual(GameObject renderer, VisualKey key, Vector2 velocity, float deltaTime)
