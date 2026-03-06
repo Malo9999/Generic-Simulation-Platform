@@ -1,96 +1,200 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 {
-    [SerializeField] private int columns = 5;
-    [SerializeField] private float spacing = 2f;
+    [Header("Layout")]
+    [SerializeField] private float horizontalSpacing = 4.15f;
+    [SerializeField] private float verticalSpacing = 3.5f;
+    [SerializeField] private float categoryGap = 1.8f;
     [SerializeField] private float spriteScale = 1f;
+    [SerializeField] private float headerOffset = 1.7f;
+    [SerializeField] private float labelOffset = 1.45f;
 
-    private static readonly string[] ShowcaseShapeIds =
+    [Header("Visuals")]
+    [SerializeField] private Color defaultTint = new(0.55f, 0.98f, 1f, 1f);
+    [SerializeField] private Color headerColor = new(0.95f, 0.98f, 1f, 1f);
+    [SerializeField] private Color labelColor = new(0.82f, 0.95f, 1f, 1f);
+    [SerializeField] private Color cameraBackground = Color.black;
+
+    [SerializeField] private int headerFontSize = 58;
+    [SerializeField] private int labelFontSize = 32;
+
+    private static readonly ShowcaseCategory[] Categories =
     {
-        ShapeId.DotCore,
-        ShapeId.DotGlow,
-        ShapeId.DotGlowSmall,
-        ShapeId.RingPing,
-        ShapeId.PulseRing,
-        ShapeId.OrganicMetaball,
-        ShapeId.OrganicAmoeba,
-        ShapeId.NoiseBlob,
-        ShapeId.FieldBlob,
-        ShapeId.TriangleAgent,
-        ShapeId.DiamondAgent,
-        ShapeId.ArrowAgent,
-        ShapeId.LineSegment,
-        ShapeId.StrokeScribble,
-        ShapeId.Filament,
-        ShapeId.CrossMarker,
-        ShapeId.ArcSector
+        new("CORE", new[]
+        {
+            ShapeId.DotCore,
+            ShapeId.DotGlow,
+            ShapeId.DotGlowSmall,
+            ShapeId.RingPing,
+            ShapeId.PulseRing
+        }),
+        new("ORGANIC", new[]
+        {
+            ShapeId.OrganicMetaball,
+            ShapeId.OrganicAmoeba,
+            ShapeId.NoiseBlob,
+            ShapeId.FieldBlob
+        }),
+        new("AGENTS / MARKERS", new[]
+        {
+            ShapeId.TriangleAgent,
+            ShapeId.DiamondAgent,
+            ShapeId.ArrowAgent,
+            ShapeId.CrossMarker,
+            ShapeId.ArcSector
+        }),
+        new("LINES / MOTION", new[]
+        {
+            ShapeId.LineSegment,
+            ShapeId.StrokeScribble,
+            ShapeId.Filament
+        })
     };
+
+    private readonly HashSet<string> missingLogged = new();
 
     private void Start()
     {
-        SpawnGrid();
+        ApplySceneBackground();
+        SpawnShowcase();
     }
 
-    private void SpawnGrid()
+    private void ApplySceneBackground()
     {
-        var total = ShowcaseShapeIds.Length;
-        var rows = Mathf.CeilToInt(total / (float)Mathf.Max(1, columns));
-        var xOffset = (Mathf.Max(1, columns) - 1) * spacing * 0.5f;
-        var yOffset = (rows - 1) * spacing * 0.5f;
-
-        for (var i = 0; i < total; i++)
+        var cameraRef = Camera.main;
+        if (cameraRef == null)
         {
-            var id = ShowcaseShapeIds[i];
-            if (!ShapeLibraryProvider.TryGetSprite(id, out var sprite))
+            return;
+        }
+
+        cameraRef.backgroundColor = cameraBackground;
+        cameraRef.clearFlags = CameraClearFlags.SolidColor;
+    }
+
+    private void SpawnShowcase()
+    {
+        var maxColumns = 0;
+        foreach (var category in Categories)
+        {
+            maxColumns = Mathf.Max(maxColumns, category.ShapeIds.Length);
+        }
+
+        var totalRows = Categories.Length;
+        var originX = -((Mathf.Max(1, maxColumns) - 1) * horizontalSpacing * 0.5f);
+        var originY = ((Mathf.Max(1, totalRows) - 1) * (verticalSpacing + categoryGap) * 0.5f);
+
+        var spawnedCount = 0;
+        for (var row = 0; row < Categories.Length; row++)
+        {
+            var category = Categories[row];
+            var y = originY - (row * (verticalSpacing + categoryGap));
+            SpawnHeader(category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f));
+
+            var width = (category.ShapeIds.Length - 1) * horizontalSpacing;
+            var startX = -width * 0.5f;
+
+            for (var col = 0; col < category.ShapeIds.Length; col++)
             {
-                continue;
+                var id = category.ShapeIds[col];
+                if (!ShapeLibraryProvider.TryGetSprite(id, out var sprite))
+                {
+                    if (missingLogged.Add(id))
+                    {
+                        Debug.LogWarning($"Shape showcase missing sprite id: {id}");
+                    }
+
+                    continue;
+                }
+
+                var position = new Vector3(startX + (col * horizontalSpacing), y, 0f);
+                SpawnShape(category, id, sprite, position, spawnedCount);
+                spawnedCount++;
             }
+        }
 
-            var col = i % columns;
-            var row = i / columns;
-            var position = new Vector3((col * spacing) - xOffset, yOffset - (row * spacing), 0f);
-
-            var go = new GameObject(id);
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = position;
-            go.transform.localScale = Vector3.one * spriteScale;
-
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = sprite;
-            sr.color = GetTint(id);
-
-            var profile = AnimatedShapeProfile.CreateForShapeId(id);
-            if (profile.animType != ShapeAnimType.None)
-            {
-                var driver = go.AddComponent<AnimatedShapeDriver>();
-                driver.Configure(sr, profile, i * 97);
-            }
+        if (spawnedCount == 0)
+        {
+            Debug.LogError("Shape showcase could not resolve any sprites from ShapeLibraryProvider.");
         }
     }
 
-    private static Color GetTint(string shapeId)
+    private void SpawnShape(ShowcaseCategory category, string shapeId, Sprite sprite, Vector3 localPosition, int sequence)
+    {
+        var go = new GameObject(shapeId);
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = localPosition;
+        go.transform.localScale = Vector3.one * spriteScale;
+
+        var sr = go.AddComponent<SpriteRenderer>();
+        sr.sprite = sprite;
+        sr.color = GetTint(category.Name, shapeId);
+
+        var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
+        if (profile.animType != ShapeAnimType.None)
+        {
+            var driver = go.AddComponent<AnimatedShapeDriver>();
+            driver.Configure(sr, profile, sequence * 97);
+        }
+
+        SpawnLabel(shapeId, go.transform, labelOffset);
+    }
+
+    private void SpawnHeader(string text, Vector3 localPosition)
+    {
+        var header = new GameObject($"Header_{text}");
+        header.transform.SetParent(transform, false);
+        header.transform.localPosition = localPosition;
+
+        var mesh = header.AddComponent<TextMesh>();
+        mesh.text = text;
+        mesh.anchor = TextAnchor.MiddleLeft;
+        mesh.alignment = TextAlignment.Left;
+        mesh.characterSize = 0.08f;
+        mesh.fontSize = headerFontSize;
+        mesh.color = headerColor;
+    }
+
+    private void SpawnLabel(string id, Transform parent, float yOffset)
+    {
+        var label = new GameObject($"Label_{id}");
+        label.transform.SetParent(parent, false);
+        label.transform.localPosition = new Vector3(0f, -yOffset, 0f);
+
+        var mesh = label.AddComponent<TextMesh>();
+        mesh.text = id;
+        mesh.anchor = TextAnchor.MiddleCenter;
+        mesh.alignment = TextAlignment.Center;
+        mesh.characterSize = 0.055f;
+        mesh.fontSize = labelFontSize;
+        mesh.color = labelColor;
+    }
+
+    private Color GetTint(string categoryName, string shapeId)
     {
         if (shapeId == ShapeId.FieldBlob)
         {
-            return new Color(0.45f, 0.9f, 1f, 0.95f);
+            return new Color(0.52f, 0.88f, 1f, 0.95f);
         }
 
-        if (shapeId == ShapeId.DotGlow || shapeId == ShapeId.DotGlowSmall || shapeId == ShapeId.PulseRing || shapeId == ShapeId.RingPing)
+        if (categoryName == "AGENTS / MARKERS")
         {
-            return new Color(0.55f, 1f, 1f, 1f);
+            return new Color(0.78f, 1f, 0.92f, 1f);
         }
 
-        if (shapeId == ShapeId.TriangleAgent || shapeId == ShapeId.DiamondAgent || shapeId == ShapeId.ArrowAgent || shapeId == ShapeId.CrossMarker)
+        return defaultTint;
+    }
+
+    private readonly struct ShowcaseCategory
+    {
+        public ShowcaseCategory(string name, string[] shapeIds)
         {
-            return new Color(1f, 0.95f, 0.65f, 1f);
+            Name = name;
+            ShapeIds = shapeIds;
         }
 
-        if (shapeId == ShapeId.LineSegment || shapeId == ShapeId.StrokeScribble || shapeId == ShapeId.Filament || shapeId == ShapeId.ArcSector)
-        {
-            return new Color(0.75f, 1f, 0.8f, 1f);
-        }
-
-        return new Color(0.8f, 1f, 0.9f, 1f);
+        public string Name { get; }
+        public string[] ShapeIds { get; }
     }
 }

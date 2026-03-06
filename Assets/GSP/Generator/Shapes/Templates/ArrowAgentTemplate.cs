@@ -3,7 +3,7 @@ using UnityEngine;
 [CreateAssetMenu(menuName = "GSP/Generator/Templates/Arrow Agent", fileName = "ArrowAgentTemplate")]
 public class ArrowAgentTemplate : ShapeTemplateBase
 {
-    [SerializeField] private float lengthPx = 26f;
+    [SerializeField] private float lengthPx = 28f;
     [SerializeField] private float headWidthPx = 18f;
     [SerializeField] private float tailLengthPx = 10f;
     [SerializeField] private float tailWidthPx = 6f;
@@ -12,7 +12,7 @@ public class ArrowAgentTemplate : ShapeTemplateBase
     private void Reset()
     {
         ConfigureBase(ShapeId.ArrowAgent, "Agents", 64, 16);
-        lengthPx = 26f;
+        lengthPx = 28f;
         headWidthPx = 18f;
         tailLengthPx = 10f;
         tailWidthPx = 6f;
