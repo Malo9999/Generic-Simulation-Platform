@@ -97,19 +97,24 @@ public static class ShapeBaker
             t.ConfigureBase(ShapeId.DiamondAgent, "Agents", 64, 16)));
         changed |= EnsurePackTemplate(pack, CreateTemplate<LineSegmentTemplate>("LineSegment_Default.asset", t =>
             t.ConfigureBase(ShapeId.LineSegment, "Lines", 64, 16)));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<FilamentTemplate>("Filament_Default.asset", t =>
+        {
+            t.ConfigureBase(ShapeId.Filament, "Lines", 128, 16);
+            t.ApplyDefaultSettings();
+        }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<NoiseBlobTemplate>("NoiseBlob_Default.asset", t =>
             t.ConfigureBase(ShapeId.NoiseBlob, "Blobs", 64, 16)));
         changed |= EnsurePackTemplate(pack, CreateTemplate<PulseRingTemplate>("PulseRing_Default.asset", t =>
             t.ConfigureBase(ShapeId.PulseRing, "Rings", 64, 16)));
 
         var templateCount = pack.templates.Count;
-        if (templateCount < 12)
+        if (templateCount < 13)
         {
-            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 12 templates, found {templateCount}.");
+            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 13 templates, found {templateCount}.");
         }
         else if (changed)
         {
-            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 12 templates.");
+            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 13 templates.");
         }
 
         if (changed)

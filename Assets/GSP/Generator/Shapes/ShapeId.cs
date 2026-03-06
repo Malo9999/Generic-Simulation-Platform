@@ -10,6 +10,7 @@ public static class ShapeId
     public const string TriangleAgent = "triangle_agent";
     public const string DiamondAgent = "diamond_agent";
     public const string LineSegment = "line_segment";
+    public const string Filament = "filament";
     public const string NoiseBlob = "noise_blob";
     public const string PulseRing = "pulse_ring";
 }
