@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public class WorldDebugOverlay : MonoBehaviour
 {
@@ -36,14 +37,17 @@ public class WorldDebugOverlay : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetKeyDown(toggleKey)) showOverlay = !showOverlay;
+        if (IsTogglePressed(toggleKey)) showOverlay = !showOverlay;
         if (!showOverlay) return;
 
         TryRefreshRuntime(false);
         activeCamera = Camera.main;
         if (activeCamera == null) return;
 
-        var ray = activeCamera.ScreenPointToRay(Input.mousePosition);
+        var mouse = Mouse.current;
+        if (mouse == null) return;
+
+        var ray = activeCamera.ScreenPointToRay(mouse.position.ReadValue());
         var ground = new Plane(Vector3.up, Vector3.zero);
         hoverInBounds = false;
         if (!ground.Raycast(ray, out var enter)) return;
@@ -52,6 +56,29 @@ public class WorldDebugOverlay : MonoBehaviour
         hoverWorld = new Vector2(hit.x, hit.z);
         if (runtime == null) return;
         hoverInBounds = WorldMapQuery.TryGetCell(runtime.grid, hoverWorld, out hoverX, out hoverY);
+    }
+
+    private static bool IsTogglePressed(KeyCode key)
+    {
+        var keyboard = Keyboard.current;
+        if (keyboard == null) return false;
+
+        switch (key)
+        {
+            case KeyCode.F1: return keyboard.f1Key.wasPressedThisFrame;
+            case KeyCode.F2: return keyboard.f2Key.wasPressedThisFrame;
+            case KeyCode.F3: return keyboard.f3Key.wasPressedThisFrame;
+            case KeyCode.F4: return keyboard.f4Key.wasPressedThisFrame;
+            case KeyCode.F5: return keyboard.f5Key.wasPressedThisFrame;
+            case KeyCode.F6: return keyboard.f6Key.wasPressedThisFrame;
+            case KeyCode.F7: return keyboard.f7Key.wasPressedThisFrame;
+            case KeyCode.F8: return keyboard.f8Key.wasPressedThisFrame;
+            case KeyCode.F9: return keyboard.f9Key.wasPressedThisFrame;
+            case KeyCode.F10: return keyboard.f10Key.wasPressedThisFrame;
+            case KeyCode.F11: return keyboard.f11Key.wasPressedThisFrame;
+            case KeyCode.F12: return keyboard.f12Key.wasPressedThisFrame;
+            default: return false;
+        }
     }
 
     private void OnRenderObject()
