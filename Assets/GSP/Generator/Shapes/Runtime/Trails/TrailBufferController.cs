@@ -12,10 +12,12 @@ public sealed class TrailBufferController : MonoBehaviour, IFieldDepositBuffer
     private Color32[] uploadPixels;
     private Texture2D trailTexture;
     private Rect worldBounds;
+    private bool hasVisibleContent;
 
     public TrailBufferSettings Settings => settings;
     public Texture2D TrailTexture => trailTexture;
     public Rect WorldBounds => worldBounds;
+    public bool HasVisibleContent => hasVisibleContent;
 
     private void Awake()
     {
@@ -141,6 +143,7 @@ public sealed class TrailBufferController : MonoBehaviour, IFieldDepositBuffer
         intensity = new float[pixelCount];
         scratch = new float[pixelCount];
         uploadPixels = new Color32[pixelCount];
+        hasVisibleContent = false;
         depositQueue.Clear();
         UploadTexture();
     }
@@ -236,10 +239,16 @@ public sealed class TrailBufferController : MonoBehaviour, IFieldDepositBuffer
         var g = Mathf.Clamp01(tint.g);
         var b = Mathf.Clamp01(tint.b);
         var alphaMul = settings.AlphaMultiplier;
+        hasVisibleContent = false;
 
         for (var i = 0; i < intensity.Length; i++)
         {
             var value = Mathf.Clamp01(intensity[i]);
+            if (value > 0f)
+            {
+                hasVisibleContent = true;
+            }
+
             uploadPixels[i] = new Color(r * value, g * value, b * value, value * alphaMul);
         }
 

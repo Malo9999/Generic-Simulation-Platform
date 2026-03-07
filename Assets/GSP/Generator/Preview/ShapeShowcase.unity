@@ -354,6 +354,7 @@ MonoBehaviour:
   cameraBackground: {r: 0, g: 0, b: 0, a: 1}
   shapeCategoryPalette: {fileID: 0}
   shapeMaterialPalette: {fileID: 0}
+  useMaterialPaletteInShowcase: 0
   enableTrailDemo: 1
   enableSlimeMoldMiniDemo: 1
   trailPreset: {fileID: 11400000, guid: 084cb4af24db4de2a58e80af598f07f0, type: 2}
