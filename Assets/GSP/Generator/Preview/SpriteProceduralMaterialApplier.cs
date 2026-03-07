@@ -4,15 +4,30 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
 {
-    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int ColorId = Shader.PropertyToID("_Color");
+    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
     private static readonly int TintId = Shader.PropertyToID("_Tint");
     private static readonly int TintColorId = Shader.PropertyToID("_TintColor");
+    private static readonly int FillColorId = Shader.PropertyToID("_FillColor");
+    private static readonly int MainColorId = Shader.PropertyToID("_MainColor");
+    private static readonly int EmissionColorId = Shader.PropertyToID("_EmissionColor");
+
     private static readonly int MotionEnabledId = Shader.PropertyToID("_MotionEnabled");
     private static readonly int MotionTimeId = Shader.PropertyToID("_MotionTime");
     private static readonly int MotionPhaseId = Shader.PropertyToID("_MotionPhase");
     private static readonly int MotionAmplitudeId = Shader.PropertyToID("_MotionAmplitude");
     private static readonly int MotionTintStrengthId = Shader.PropertyToID("_MotionTintStrength");
+    private static readonly int RendererColorId = Shader.PropertyToID("_RendererColor");
+
+    private static readonly int[] PrimaryColorPropertyIds =
+    {
+        ColorId,
+        BaseColorId,
+        TintId,
+        TintColorId,
+        FillColorId,
+        MainColorId
+    };
 
     private static readonly HashSet<string> LoggedFailures = new();
 
@@ -20,7 +35,12 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
     private Material baselineSharedMaterial;
     private Material runtimeInstanceMaterial;
     private MaterialPropertyBlock propertyBlock;
+    private Color baseTint = Color.white;
     private float intensity = 1f;
+    private float phase;
+    private bool shaderUsesSpriteVertexColor;
+    private int resolvedPrimaryColorProperty = -1;
+    private int resolvedEmissionColorProperty = -1;
 
     public ProceduralMaterialApplyStatus TryApply(
         SpriteRenderer renderer,
@@ -66,32 +86,16 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
         };
 
         renderer.material = runtimeInstanceMaterial;
+
         intensity = config.ResolveIntensity(shapeId);
+        phase = ComputeStablePhase(shapeId, seed);
+        baseTint = renderer.color;
 
-        var phase = ComputeStablePhase(shapeId, seed);
-        var paletteTint = renderer.color;
-        renderer.color = Color.white;
-        renderer.GetPropertyBlock(propertyBlock);
-        ApplyProceduralTint(renderer, runtimeInstanceMaterial, paletteTint, intensity);
-        propertyBlock.SetFloat(MotionEnabledId, 1f);
-        if (runtimeInstanceMaterial.HasProperty(MotionPhaseId))
-        {
-            propertyBlock.SetFloat(MotionPhaseId, phase);
-        }
+        resolvedPrimaryColorProperty = ResolvePrimaryColorProperty(runtimeInstanceMaterial);
+        resolvedEmissionColorProperty = ResolveEmissionColorProperty(runtimeInstanceMaterial);
+        shaderUsesSpriteVertexColor = ShaderUsesSpriteVertexColor(runtimeInstanceMaterial);
 
-        if (runtimeInstanceMaterial.HasProperty(MotionAmplitudeId))
-        {
-            propertyBlock.SetFloat(MotionAmplitudeId, intensity);
-        }
-
-        if (runtimeInstanceMaterial.HasProperty(MotionTintStrengthId))
-        {
-            var sourceStrength = runtimeInstanceMaterial.GetFloat(MotionTintStrengthId);
-            var safeStrength = Mathf.Clamp01(sourceStrength) * Mathf.Clamp01(intensity);
-            propertyBlock.SetFloat(MotionTintStrengthId, safeStrength);
-        }
-
-        renderer.SetPropertyBlock(propertyBlock);
+        ApplyProceduralState(animationTime: 0f, animationAmplitude: 1f);
         return ProceduralMaterialApplyStatus.Applied;
     }
 
@@ -102,7 +106,36 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
             return;
         }
 
-        targetRenderer.GetPropertyBlock(propertyBlock);
+        ApplyProceduralState(animationTime, animationAmplitude);
+    }
+
+    private void ApplyProceduralState(float animationTime, float animationAmplitude)
+    {
+        if (targetRenderer == null || runtimeInstanceMaterial == null)
+        {
+            return;
+        }
+
+        targetRenderer.GetPropertyBlock(propertyBlock ??= new MaterialPropertyBlock());
+        propertyBlock.Clear();
+
+        // Tint contract: apply body tint exactly once.
+        // - For sprite shaders that consume vertex/sprite color, keep SpriteRenderer.color = tint and neutralize material primary tint to white.
+        // - For non-sprite shaders, set SpriteRenderer.color = white and write tint to the material primary color property/properties.
+        var safeTint = SanitizeColor(baseTint);
+        if (shaderUsesSpriteVertexColor)
+        {
+            targetRenderer.color = safeTint;
+            ApplyPrimaryTint(Color.white);
+        }
+        else
+        {
+            targetRenderer.color = Color.white;
+            ApplyPrimaryTint(safeTint);
+        }
+
+        ApplyEmissionTint(safeTint);
+
         if (runtimeInstanceMaterial.HasProperty(MotionEnabledId))
         {
             propertyBlock.SetFloat(MotionEnabledId, 1f);
@@ -113,12 +146,76 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
             propertyBlock.SetFloat(MotionTimeId, animationTime);
         }
 
+        if (runtimeInstanceMaterial.HasProperty(MotionPhaseId))
+        {
+            propertyBlock.SetFloat(MotionPhaseId, phase);
+        }
+
         if (runtimeInstanceMaterial.HasProperty(MotionAmplitudeId))
         {
-            propertyBlock.SetFloat(MotionAmplitudeId, Mathf.Max(0f, animationAmplitude) * intensity);
+            var safeAmplitude = Mathf.Max(0f, animationAmplitude) * Mathf.Max(0f, intensity);
+            propertyBlock.SetFloat(MotionAmplitudeId, safeAmplitude);
+        }
+
+        if (runtimeInstanceMaterial.HasProperty(MotionTintStrengthId))
+        {
+            var sourceStrength = runtimeInstanceMaterial.GetFloat(MotionTintStrengthId);
+            var safeStrength = Mathf.Clamp01(sourceStrength) * Mathf.Clamp(Mathf.Max(0f, intensity), 0f, 2f);
+            propertyBlock.SetFloat(MotionTintStrengthId, safeStrength);
         }
 
         targetRenderer.SetPropertyBlock(propertyBlock);
+    }
+
+    private void ApplyPrimaryTint(Color tint)
+    {
+        var wroteAny = false;
+        for (var i = 0; i < PrimaryColorPropertyIds.Length; i++)
+        {
+            var propertyId = PrimaryColorPropertyIds[i];
+            if (!runtimeInstanceMaterial.HasProperty(propertyId))
+            {
+                continue;
+            }
+
+            propertyBlock.SetColor(propertyId, tint);
+            wroteAny = true;
+        }
+
+        if (!wroteAny && resolvedPrimaryColorProperty == -1)
+        {
+            LogFailureOnce(ProceduralMaterialApplyStatus.FallbackMissingProperty, runtimeInstanceMaterial.name);
+        }
+    }
+
+    private void ApplyEmissionTint(Color bodyTint)
+    {
+        if (resolvedEmissionColorProperty == -1)
+        {
+            return;
+        }
+
+        var sourceEmission = runtimeInstanceMaterial.GetColor(resolvedEmissionColorProperty);
+        var safeEmission = SanitizeColor(sourceEmission);
+        var tintInfluence = Color.Lerp(Color.white, bodyTint, 0.55f);
+        var intensityScale = Mathf.Lerp(0.7f, 1.4f, Mathf.Clamp01(intensity));
+        var emission = MultiplyRgb(safeEmission, tintInfluence) * intensityScale;
+        emission.a = safeEmission.a;
+        propertyBlock.SetColor(resolvedEmissionColorProperty, emission);
+    }
+
+    private static Color MultiplyRgb(Color a, Color b)
+    {
+        return new Color(a.r * b.r, a.g * b.g, a.b * b.b, a.a);
+    }
+
+    private static Color SanitizeColor(Color color)
+    {
+        return new Color(
+            Mathf.Clamp(color.r, 0f, 2f),
+            Mathf.Clamp(color.g, 0f, 2f),
+            Mathf.Clamp(color.b, 0f, 2f),
+            Mathf.Clamp01(color.a));
     }
 
     private ProceduralMaterialApplyStatus HandleFailure(ProceduralMaterialApplyStatus status, string shapeId, ShapeShowcaseProceduralMaterialConfig config)
@@ -161,36 +258,44 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
         }
     }
 
-    private void ApplyProceduralTint(SpriteRenderer renderer, Material material, Color tint, float intensityValue)
+    private static int ResolvePrimaryColorProperty(Material material)
     {
-        if (renderer == null || material == null)
+        if (material == null)
         {
-            return;
+            return -1;
         }
 
-        renderer.GetPropertyBlock(propertyBlock);
-
-        var materialTint = tint * Mathf.Max(0f, intensityValue);
-        materialTint.a = tint.a;
-
-        if (material.HasProperty(ColorId))
+        for (var i = 0; i < PrimaryColorPropertyIds.Length; i++)
         {
-            propertyBlock.SetColor(ColorId, materialTint);
-        }
-        else if (material.HasProperty(BaseColorId))
-        {
-            propertyBlock.SetColor(BaseColorId, materialTint);
-        }
-        else if (material.HasProperty(TintId))
-        {
-            propertyBlock.SetColor(TintId, materialTint);
-        }
-        else if (material.HasProperty(TintColorId))
-        {
-            propertyBlock.SetColor(TintColorId, materialTint);
+            var propertyId = PrimaryColorPropertyIds[i];
+            if (material.HasProperty(propertyId))
+            {
+                return propertyId;
+            }
         }
 
-        renderer.SetPropertyBlock(propertyBlock);
+        return -1;
+    }
+
+    private static int ResolveEmissionColorProperty(Material material)
+    {
+        if (material == null)
+        {
+            return -1;
+        }
+
+        return material.HasProperty(EmissionColorId) ? EmissionColorId : -1;
+    }
+
+    private static bool ShaderUsesSpriteVertexColor(Material material)
+    {
+        if (material == null)
+        {
+            return false;
+        }
+
+        // ShapeMotion2D (and sprite shaders in this project) consume sprite vertex color.
+        return material.HasProperty(RendererColorId);
     }
 }
 
