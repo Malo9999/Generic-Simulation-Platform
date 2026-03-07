@@ -4,6 +4,18 @@ using UnityEngine;
 [DisallowMultipleComponent]
 public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
 {
+    private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
+    private static readonly int ColorId = Shader.PropertyToID("_Color");
+    private static readonly int TintId = Shader.PropertyToID("_Tint");
+    private static readonly int TintColorId = Shader.PropertyToID("_TintColor");
+    private static readonly int[] TintColorPropertyIds =
+    {
+        BaseColorId,
+        ColorId,
+        TintId,
+        TintColorId
+    };
+
     private static readonly int MotionEnabledId = Shader.PropertyToID("_MotionEnabled");
     private static readonly int MotionTimeId = Shader.PropertyToID("_MotionTime");
     private static readonly int MotionPhaseId = Shader.PropertyToID("_MotionPhase");
@@ -66,6 +78,7 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
 
         var phase = ComputeStablePhase(shapeId, seed);
         renderer.GetPropertyBlock(propertyBlock);
+        ApplyProceduralTint(renderer, runtimeInstanceMaterial, renderer.color, intensity);
         propertyBlock.SetFloat(MotionEnabledId, 1f);
         if (runtimeInstanceMaterial.HasProperty(MotionPhaseId))
         {
@@ -79,7 +92,9 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
 
         if (runtimeInstanceMaterial.HasProperty(MotionTintStrengthId))
         {
-            propertyBlock.SetFloat(MotionTintStrengthId, Mathf.Clamp01(intensity));
+            var sourceStrength = runtimeInstanceMaterial.GetFloat(MotionTintStrengthId);
+            var safeStrength = Mathf.Clamp01(sourceStrength) * Mathf.Clamp01(intensity);
+            propertyBlock.SetFloat(MotionTintStrengthId, safeStrength);
         }
 
         renderer.SetPropertyBlock(propertyBlock);
@@ -149,6 +164,57 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
 
             var normalized = (hash & 0x7FFFFFFF) / (float)int.MaxValue;
             return normalized * Mathf.PI * 2f;
+        }
+    }
+
+    private static int ResolveColorProperty(Material material)
+    {
+        if (material == null)
+        {
+            return -1;
+        }
+
+        for (var i = 0; i < TintColorPropertyIds.Length; i++)
+        {
+            var propertyId = TintColorPropertyIds[i];
+            if (material.HasProperty(propertyId))
+            {
+                return propertyId;
+            }
+        }
+
+        return -1;
+    }
+
+    private void ApplyProceduralTint(SpriteRenderer renderer, Material material, Color tint, float intensityValue)
+    {
+        if (renderer == null || material == null)
+        {
+            return;
+        }
+
+        var resolvedColorProperty = ResolveColorProperty(material);
+        if (resolvedColorProperty < 0)
+        {
+            return;
+        }
+
+        renderer.color = Color.white;
+
+        var tintStrength = Mathf.Clamp(intensityValue, 0f, 1f);
+        var materialTint = Color.Lerp(Color.white, tint, tintStrength);
+        materialTint.a = tint.a;
+
+        propertyBlock.SetColor(resolvedColorProperty, materialTint);
+        for (var i = 0; i < TintColorPropertyIds.Length; i++)
+        {
+            var propertyId = TintColorPropertyIds[i];
+            if (propertyId == resolvedColorProperty || !material.HasProperty(propertyId))
+            {
+                continue;
+            }
+
+            propertyBlock.SetColor(propertyId, Color.white);
         }
     }
 }
