@@ -8,14 +8,6 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
     private static readonly int ColorId = Shader.PropertyToID("_Color");
     private static readonly int TintId = Shader.PropertyToID("_Tint");
     private static readonly int TintColorId = Shader.PropertyToID("_TintColor");
-    private static readonly int[] TintColorPropertyIds =
-    {
-        BaseColorId,
-        ColorId,
-        TintId,
-        TintColorId
-    };
-
     private static readonly int MotionEnabledId = Shader.PropertyToID("_MotionEnabled");
     private static readonly int MotionTimeId = Shader.PropertyToID("_MotionTime");
     private static readonly int MotionPhaseId = Shader.PropertyToID("_MotionPhase");
@@ -77,8 +69,10 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
         intensity = config.ResolveIntensity(shapeId);
 
         var phase = ComputeStablePhase(shapeId, seed);
+        var paletteTint = renderer.color;
+        renderer.color = Color.white;
         renderer.GetPropertyBlock(propertyBlock);
-        ApplyProceduralTint(renderer, runtimeInstanceMaterial, renderer.color, intensity);
+        ApplyProceduralTint(renderer, runtimeInstanceMaterial, paletteTint, intensity);
         propertyBlock.SetFloat(MotionEnabledId, 1f);
         if (runtimeInstanceMaterial.HasProperty(MotionPhaseId))
         {
@@ -167,25 +161,6 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
         }
     }
 
-    private static int ResolveColorProperty(Material material)
-    {
-        if (material == null)
-        {
-            return -1;
-        }
-
-        for (var i = 0; i < TintColorPropertyIds.Length; i++)
-        {
-            var propertyId = TintColorPropertyIds[i];
-            if (material.HasProperty(propertyId))
-            {
-                return propertyId;
-            }
-        }
-
-        return -1;
-    }
-
     private void ApplyProceduralTint(SpriteRenderer renderer, Material material, Color tint, float intensityValue)
     {
         if (renderer == null || material == null)
@@ -193,29 +168,29 @@ public sealed class SpriteProceduralMaterialApplier : MonoBehaviour
             return;
         }
 
-        var resolvedColorProperty = ResolveColorProperty(material);
-        if (resolvedColorProperty < 0)
-        {
-            return;
-        }
+        renderer.GetPropertyBlock(propertyBlock);
 
-        renderer.color = Color.white;
-
-        var tintStrength = Mathf.Clamp(intensityValue, 0f, 1f);
-        var materialTint = Color.Lerp(Color.white, tint, tintStrength);
+        var materialTint = tint * Mathf.Max(0f, intensityValue);
         materialTint.a = tint.a;
 
-        propertyBlock.SetColor(resolvedColorProperty, materialTint);
-        for (var i = 0; i < TintColorPropertyIds.Length; i++)
+        if (material.HasProperty(ColorId))
         {
-            var propertyId = TintColorPropertyIds[i];
-            if (propertyId == resolvedColorProperty || !material.HasProperty(propertyId))
-            {
-                continue;
-            }
-
-            propertyBlock.SetColor(propertyId, Color.white);
+            propertyBlock.SetColor(ColorId, materialTint);
         }
+        else if (material.HasProperty(BaseColorId))
+        {
+            propertyBlock.SetColor(BaseColorId, materialTint);
+        }
+        else if (material.HasProperty(TintId))
+        {
+            propertyBlock.SetColor(TintId, materialTint);
+        }
+        else if (material.HasProperty(TintColorId))
+        {
+            propertyBlock.SetColor(TintColorId, materialTint);
+        }
+
+        renderer.SetPropertyBlock(propertyBlock);
     }
 }
 
