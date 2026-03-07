@@ -17,6 +17,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Color cameraBackground = Color.black;
     [SerializeField] private ShapeCategoryPalette shapeCategoryPalette;
     [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
+    [SerializeField] private bool useMaterialPaletteInShowcase = false;
 
     [Header("Trails")]
     [SerializeField] private bool enableTrailDemo = true;
@@ -197,6 +198,8 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void SetupFieldOverlaySystem()
     {
+        DestroyStaleFieldOverlayObjects();
+
         var fieldRoot = new GameObject("FieldOverlay");
         fieldRoot.transform.SetParent(transform, false);
 
@@ -225,6 +228,21 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
         var renderer = fieldRoot.AddComponent<FieldOverlayRenderer>();
         renderer.Configure(fieldBufferController);
+    }
+
+
+    private void DestroyStaleFieldOverlayObjects()
+    {
+        for (var i = transform.childCount - 1; i >= 0; i--)
+        {
+            var child = transform.GetChild(i);
+            if (!child.name.StartsWith("FieldOverlay"))
+            {
+                continue;
+            }
+
+            Destroy(child.gameObject);
+        }
     }
 
     private static void ApplyHeatmapProfile(FieldOverlaySettings settings)
@@ -310,14 +328,21 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         sr.sprite = sprite;
         sr.color = GetTint(shapeId);
 
-        var palette = ResolveMaterialPalette();
-        if (palette != null)
+        if (useMaterialPaletteInShowcase)
         {
-            var mat = palette.GetMaterialForShape(shapeId);
-            if (mat != null)
+            var palette = ResolveMaterialPalette();
+            if (palette != null)
             {
-                sr.sharedMaterial = mat;
+                var mat = palette.GetMaterialForShape(shapeId);
+                if (mat != null)
+                {
+                    sr.sharedMaterial = mat;
+                }
             }
+        }
+        else
+        {
+            sr.sharedMaterial = null;
         }
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
