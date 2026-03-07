@@ -210,6 +210,8 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             ApplyHeatmapProfile(fieldBufferController.Settings);
         }
 
+        ApplyKnownGoodFieldOverlayDefaults(fieldBufferController.Settings);
+
         var renderer = fieldRoot.AddComponent<FieldOverlayRenderer>();
         renderer.Configure(fieldBufferController);
     }
@@ -221,10 +223,47 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         settings.decayPerSecond = 0.80f;
         settings.diffuseStrength = 0.05f;
         settings.intensity = 1f;
-        settings.alphaMultiplier = 0.45f;
-        settings.blendMode = FieldOverlayBlendMode.Additive;
+        settings.alphaMultiplier = 0.40f;
+        settings.blendMode = FieldOverlayBlendMode.Alpha;
         settings.tintLow = FieldOverlayPalette.DefaultLow;
-        settings.tintHigh = FieldOverlayPalette.HeatOrange;
+        settings.tintHigh = new Color(0.95f, 0.72f, 0.30f, 1f);
+    }
+
+    private void ApplyKnownGoodFieldOverlayDefaults(FieldOverlaySettings settings)
+    {
+        if (settings == null)
+        {
+            return;
+        }
+
+        settings.tintLow = new Color(0f, 0f, 0f, 0f);
+        settings.blendMode = FieldOverlayBlendMode.Alpha;
+        settings.alphaMultiplier = 0.35f;
+        settings.intensity = 1f;
+        settings.decayPerSecond = 0.80f;
+        settings.diffuseStrength = 0.05f;
+
+        if (overlayMode == FieldOverlayDemoMode.Heatmap)
+        {
+            settings.tintHigh = new Color(0.95f, 0.72f, 0.30f, 1f);
+        }
+        else
+        {
+            settings.tintHigh = new Color(0.3f, 0.92f, 1f, 1f);
+        }
+
+        if (settings.tintHigh.a <= 0f)
+        {
+            settings.tintHigh = new Color(settings.tintHigh.r, settings.tintHigh.g, settings.tintHigh.b, 1f);
+        }
+
+        var looksMagenta = settings.tintHigh.r >= 0.85f && settings.tintHigh.g <= 0.2f && settings.tintHigh.b >= 0.85f;
+        if (looksMagenta)
+        {
+            settings.tintHigh = overlayMode == FieldOverlayDemoMode.Heatmap
+                ? new Color(0.95f, 0.72f, 0.30f, 1f)
+                : new Color(0.3f, 0.92f, 1f, 1f);
+        }
     }
 
     private void ApplySceneBackground()
