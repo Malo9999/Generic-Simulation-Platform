@@ -190,6 +190,20 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
 
         map.zones["river_corridor"] = new ZoneDef { zoneId = 0, name = "river_corridor" };
         map.zones["upland"] = new ZoneDef { zoneId = 1, name = "upland" };
+
+        var terrainFields = TerrainFieldBuilder.Build(
+            grid,
+            height,
+            riverData.main,
+            new TerrainFieldBuildParams
+            {
+                valleyRadius = valleyWidthBase,
+                floodplainRadius = floodRadiusBase,
+                ridgeRadius = Mathf.Max(valleyWidthBase * 2.4f, floodRadiusBase * 3f),
+                rockSlopeWeight = 0.72f,
+                rockDrynessWeight = 0.28f
+            });
+        terrainFields.WriteTo(map);
         maskTimer.Stop();
 
         var scatterTimer = Stopwatch.StartNew();

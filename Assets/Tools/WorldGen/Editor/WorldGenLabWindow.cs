@@ -18,6 +18,12 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
     {
         Beauty,
         Height,
+        Slope,
+        DistanceToMainChannel,
+        Valley,
+        Floodplain,
+        Ridge,
+        Rockiness,
         Wetness,
         Walkable,
         Water,
@@ -728,6 +734,12 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         var hasWater = TryGetMask("water", out var waterField);
         var hasZones = TryGetMask("zones", out var zonesField);
         var hasWetness = TryGetScalar("wetness", out var wetnessField);
+        var hasSlope = TryGetScalar("terrain_slope", out var slopeField);
+        var hasDistanceToMainChannel = TryGetScalar("terrain_distance_to_main_channel", out var distanceToMainChannelField);
+        var hasValley = TryGetScalar("terrain_valley", out var valleyField);
+        var hasFloodplain = TryGetScalar("terrain_floodplain", out var floodplainField);
+        var hasRidge = TryGetScalar("terrain_ridge", out var ridgeField);
+        var hasRockiness = TryGetScalar("terrain_rockiness", out var rockinessField);
 
         previewHeightMin = 0f;
         previewHeightMax = 1f;
@@ -760,9 +772,27 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
                 case PreviewMode.Height:
                     color = HeightColor(heightValue);
                     break;
+                case PreviewMode.Slope:
+                    color = Grayscale(hasSlope ? slopeField[x, y] : 0f);
+                    break;
+                case PreviewMode.DistanceToMainChannel:
+                    color = DistanceToWaterColor(hasDistanceToMainChannel ? distanceToMainChannelField[x, y] : 1f);
+                    break;
+                case PreviewMode.Valley:
+                    color = Grayscale(hasValley ? valleyField[x, y] : 0f);
+                    break;
+                case PreviewMode.Floodplain:
+                    color = Grayscale(hasFloodplain ? floodplainField[x, y] : 0f);
+                    break;
+                case PreviewMode.Ridge:
+                    color = Grayscale(hasRidge ? ridgeField[x, y] : 0f);
+                    break;
+                case PreviewMode.Rockiness:
+                    color = Grayscale(hasRockiness ? rockinessField[x, y] : 0f);
+                    break;
                 case PreviewMode.Wetness:
                     var wetValue = hasWetness ? wetnessField[x, y] : 0f;
-                    color = new Color(wetValue, wetValue, wetValue, 1f);
+                    color = Grayscale(wetValue);
                     break;
                 case PreviewMode.Walkable:
                     color = hasWalkable && walkableField[x, y] > 0 ? Color.white : Color.black;
@@ -804,6 +834,20 @@ public class WorldGenLabWindow : EditorWindow, IWorldGenLogger
         var contrasted = Mathf.Clamp01((normalized - 0.5f) * heightContrast + 0.5f);
         var gammaAdjusted = Mathf.Pow(contrasted, heightGamma);
         return new Color(gammaAdjusted, gammaAdjusted, gammaAdjusted, 1f);
+    }
+
+    private static Color Grayscale(float value)
+    {
+        var v = Mathf.Clamp01(value);
+        return new Color(v, v, v, 1f);
+    }
+
+    private static Color DistanceToWaterColor(float value)
+    {
+        var t = Mathf.Clamp01(value);
+        var nearWater = new Color(0.15f, 0.55f, 1f, 1f);
+        var farFromWater = new Color(0.95f, 0.8f, 0.25f, 1f);
+        return Color.Lerp(nearWater, farFromWater, t);
     }
 
     private static Color ZoneColor(int zone)
