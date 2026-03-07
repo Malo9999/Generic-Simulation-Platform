@@ -14,6 +14,18 @@ public sealed class ShapeShowcaseProceduralMaterialConfig
     public bool UseProceduralMaterials => useProceduralMaterials;
     public bool FallbackToBaselineOnFailure => fallbackToBaselineOnFailure;
 
+    public ShapeShowcaseProceduralMaterialConfig CreateRuntimeCopy(ShapeMaterialPalette paletteOverride, bool hasIntensityOverride, float intensityOverride)
+    {
+        return new ShapeShowcaseProceduralMaterialConfig
+        {
+            useProceduralMaterials = useProceduralMaterials,
+            fallbackToBaselineOnFailure = fallbackToBaselineOnFailure,
+            materialPalette = paletteOverride != null ? paletteOverride : materialPalette,
+            defaultIntensity = hasIntensityOverride ? Mathf.Max(0f, intensityOverride) : defaultIntensity,
+            perShapeOverrides = perShapeOverrides
+        };
+    }
+
     public bool TryGetShapeOverride(string shapeId, out ShapeProceduralOverride shapeOverride)
     {
         shapeOverride = null;
