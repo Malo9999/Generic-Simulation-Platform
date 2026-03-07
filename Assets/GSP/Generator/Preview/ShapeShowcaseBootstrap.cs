@@ -71,11 +71,17 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     };
 
     private readonly HashSet<string> missingLogged = new();
-    private ShapeCategoryPalette runtimeFallbackPalette;
     private ShapeMaterialPalette runtimeMaterialPalette;
     private TrailBufferController trailBufferController;
     private FieldBufferController fieldBufferController;
     private bool loggedMaterialPaletteMode;
+    private bool loggedCategoryPaletteMode;
+
+    private static readonly Color CoreFallbackColor = new(70f / 255f, 242f / 255f, 1f, 1f);
+    private static readonly Color OrganicFallbackColor = new(47f / 255f, 175f / 255f, 142f / 255f, 1f);
+    private static readonly Color AgentsFallbackColor = new(143f / 255f, 227f / 255f, 179f / 255f, 1f);
+    private static readonly Color MarkersFallbackColor = new(127f / 255f, 184f / 255f, 216f / 255f, 1f);
+    private static readonly Color LinesFallbackColor = new(62f / 255f, 214f / 255f, 224f / 255f, 1f);
 
     private void Start()
     {
@@ -193,6 +199,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
         trailBufferController = trailRoot.AddComponent<TrailBufferController>();
         trailSettings.ApplyTo(trailBufferController.Settings);
+        EnsureSafeTrailTint(trailBufferController.Settings);
 
         var renderer = trailRoot.AddComponent<TrailBufferRenderer>();
         renderer.Configure(trailBufferController);
@@ -329,7 +336,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
-        sr.color = ResolvePalette().GetColor(category);
+        sr.color = ResolveCategoryColor(category);
 
         if (useMaterialPaletteInShowcase)
         {
@@ -397,6 +404,20 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         {
             emitter.Configure(trailBufferController, strength, radiusScale);
         }
+    }
+
+
+    private static void EnsureSafeTrailTint(TrailBufferSettings settings)
+    {
+        var tint = settings.tintColor;
+        var hasNoRgb = tint.r <= 0.001f && tint.g <= 0.001f && tint.b <= 0.001f;
+        var isDebugMagenta = tint.r >= 0.95f && tint.g <= 0.1f && tint.b >= 0.95f;
+        if (!hasNoRgb && !isDebugMagenta)
+        {
+            return;
+        }
+
+        settings.tintColor = new Color(62f / 255f, 214f / 255f, 224f / 255f, 0.35f);
     }
 
     private void SpawnSlimeMoldMiniDemo()
@@ -513,7 +534,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         mesh.alignment = TextAlignment.Left;
         mesh.characterSize = 0.08f;
         mesh.fontSize = headerFontSize;
-        mesh.color = Color.Lerp(headerColor, ResolvePalette().GetColor(category), 0.45f);
+        mesh.color = Color.Lerp(headerColor, ResolveCategoryColor(category), 0.45f);
     }
 
     private void SpawnLabel(string id, Transform parent, float yOffset)
@@ -533,22 +554,64 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private Color GetTint(string shapeId)
     {
-        return ResolvePalette().GetColor(ShapeMaterialPalette.ShapeIdToCategory(shapeId));
+        return ResolveCategoryColor(ShapeMaterialPalette.ShapeIdToCategory(shapeId));
     }
 
-    private ShapeCategoryPalette ResolvePalette()
+    private Color ResolveCategoryColor(ShapePaletteCategory category)
+    {
+        var palette = ResolveAssignedCategoryPalette();
+        if (palette != null)
+        {
+            return palette.GetColor(category);
+        }
+
+        return category switch
+        {
+            ShapePaletteCategory.Core => CoreFallbackColor,
+            ShapePaletteCategory.Organic => OrganicFallbackColor,
+            ShapePaletteCategory.Agents => AgentsFallbackColor,
+            ShapePaletteCategory.Markers => MarkersFallbackColor,
+            ShapePaletteCategory.Lines => LinesFallbackColor,
+            _ => CoreFallbackColor
+        };
+    }
+
+    private ShapeCategoryPalette ResolveAssignedCategoryPalette()
     {
         if (shapeCategoryPalette != null)
         {
+            LogCategoryPaletteMode(usingAssignedPalette: true);
             return shapeCategoryPalette;
         }
 
-        if (runtimeFallbackPalette == null)
+        shapeCategoryPalette = Resources.Load<ShapeCategoryPalette>("ShapeCategoryPalette");
+        if (shapeCategoryPalette != null)
         {
-            runtimeFallbackPalette = ScriptableObject.CreateInstance<ShapeCategoryPalette>();
+            LogCategoryPaletteMode(usingAssignedPalette: true);
+            return shapeCategoryPalette;
         }
 
-        return runtimeFallbackPalette;
+        LogCategoryPaletteMode(usingAssignedPalette: false);
+        return null;
+    }
+
+    private void LogCategoryPaletteMode(bool usingAssignedPalette)
+    {
+        if (loggedCategoryPaletteMode)
+        {
+            return;
+        }
+
+        if (usingAssignedPalette)
+        {
+            Debug.Log("[ShapeShowcase] using assigned category palette", this);
+        }
+        else
+        {
+            Debug.Log("[ShapeShowcase] category palette missing; using hardcoded safe fallback colors", this);
+        }
+
+        loggedCategoryPaletteMode = true;
     }
 
     private ShapeMaterialPalette ResolveMaterialPalette()

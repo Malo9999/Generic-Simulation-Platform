@@ -14,6 +14,8 @@ public sealed class TrailBufferController : MonoBehaviour, IFieldDepositBuffer
     private Rect worldBounds;
     private bool hasVisibleContent;
 
+    private static readonly Color SafeTrailTint = new(62f / 255f, 214f / 255f, 224f / 255f, 0.35f);
+
     public TrailBufferSettings Settings => settings;
     public Texture2D TrailTexture => trailTexture;
     public Rect WorldBounds => worldBounds;
@@ -234,11 +236,11 @@ public sealed class TrailBufferController : MonoBehaviour, IFieldDepositBuffer
 
     private void UploadTexture()
     {
-        var tint = settings.tintColor;
+        var tint = ResolveTintColor(settings.tintColor);
         var r = Mathf.Clamp01(tint.r);
         var g = Mathf.Clamp01(tint.g);
         var b = Mathf.Clamp01(tint.b);
-        var alphaMul = settings.AlphaMultiplier;
+        var alphaMul = Mathf.Clamp01(tint.a);
         hasVisibleContent = false;
 
         for (var i = 0; i < intensity.Length; i++)
@@ -254,6 +256,23 @@ public sealed class TrailBufferController : MonoBehaviour, IFieldDepositBuffer
 
         trailTexture.SetPixels32(uploadPixels);
         trailTexture.Apply(false, false);
+    }
+
+    private static Color ResolveTintColor(Color tintColor)
+    {
+        var hasNoRgb = tintColor.r <= 0.001f && tintColor.g <= 0.001f && tintColor.b <= 0.001f;
+        var isDebugMagenta = tintColor.r >= 0.95f && tintColor.g <= 0.1f && tintColor.b >= 0.95f;
+        if (hasNoRgb || isDebugMagenta)
+        {
+            return SafeTrailTint;
+        }
+
+        if (tintColor.a <= 0.001f)
+        {
+            tintColor.a = SafeTrailTint.a;
+        }
+
+        return tintColor;
     }
 
     private bool TryWorldToPixel(Vector2 worldPos, out int px, out int py)
