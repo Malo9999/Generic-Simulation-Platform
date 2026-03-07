@@ -90,25 +90,38 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void FitCameraToSpawnedContent()
     {
+        if (!TryCalculateShowcaseBounds(out var bounds))
+        {
+            return;
+        }
+
+        FrameMainCameraToBounds(bounds);
+    }
+
+    private void FrameMainCameraToBounds(Bounds bounds)
+    {
         var cameraRef = Camera.main;
-        if (cameraRef == null)
+        if (cameraRef == null || !cameraRef.orthographic)
         {
             return;
         }
 
-        var policy = cameraRef.GetComponent<ArenaCameraPolicy>();
-        if (policy == null)
-        {
-            policy = FindAnyObjectByType<ArenaCameraPolicy>();
-        }
+        var center = bounds.center;
+        var halfHeight = bounds.extents.y;
+        var halfWidth = bounds.extents.x;
 
-        if (policy == null || !TryCalculateShowcaseBounds(out var bounds))
-        {
-            return;
-        }
+        var sizeFromHeight = halfHeight;
+        var sizeFromWidth = halfWidth / Mathf.Max(0.01f, cameraRef.aspect);
+        var targetSize = Mathf.Max(sizeFromHeight, sizeFromWidth, 1f) * 1.15f;
 
-        policy.SetWorldSizeAndRefresh(new Vector2(bounds.size.x, bounds.size.y));
-        policy.FitToBounds();
+        cameraRef.transform.position = new Vector3(center.x, center.y, cameraRef.transform.position.z);
+        cameraRef.orthographicSize = targetSize;
+
+        var followController = cameraRef.GetComponent<CameraFollowController>();
+        if (followController != null)
+        {
+            followController.enabled = false;
+        }
     }
 
     private bool TryCalculateShowcaseBounds(out Bounds bounds)
