@@ -27,6 +27,8 @@ public class SimpleArtPipeline : ArtPipelineBase
     [SerializeField] private float placeholderScale = 0.5f;
     [SerializeField] private bool useGlow = false;
     [SerializeField] private bool enableAnimatedShapes = true;
+    [SerializeField] private bool enableMotionShaderLayer = true;
+    [SerializeField] private MotionShaderProfile motionShaderProfile;
     [SerializeField] private bool autoAssignShapeAnimationById = true;
     [SerializeField] private bool useShapeMaterialPalette = true;
     [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
@@ -34,6 +36,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     private bool debugEnabled;
     private DebugPlaceholderMode debugMode;
     private ShapeMaterialPalette runtimeMaterialPalette;
+    private MotionShaderProfile runtimeMotionProfile;
 
     public override ArtMode Mode => ArtMode.Simple;
     public override string DisplayName => "Simple";
@@ -85,6 +88,11 @@ public class SimpleArtPipeline : ArtPipelineBase
         if (enableAnimatedShapes)
         {
             TryAttachBodyAnimation(dotRenderer, bodyShapeId, key.instanceId);
+        }
+
+        if (enableMotionShaderLayer)
+        {
+            TryAttachMotionShader(dotRenderer, bodyShapeId, key);
         }
 
         var glowShapeId = ResolveGlowShapeId(key);
@@ -186,7 +194,46 @@ public class SimpleArtPipeline : ArtPipelineBase
             return ShapeId.Filament;
         }
 
+        if (normalizedKind.IndexOf("field", StringComparison.Ordinal) >= 0
+            || normalizedKind.IndexOf("blob", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("field", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("blob", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.FieldBlob;
+        }
+
         return ShapeId.DotCore;
+    }
+
+    private MotionShaderProfile ResolveMotionProfile()
+    {
+        if (motionShaderProfile != null)
+        {
+            return motionShaderProfile;
+        }
+
+        if (runtimeMotionProfile == null)
+        {
+            runtimeMotionProfile = MotionShaderProfile.LoadRuntimeProfile();
+        }
+
+        return runtimeMotionProfile;
+    }
+
+    private void TryAttachMotionShader(SpriteRenderer renderer, string shapeId, VisualKey key)
+    {
+        if (renderer == null || !MotionShaderProfile.TryResolveFamily(shapeId, out _))
+        {
+            return;
+        }
+
+        var driver = renderer.GetComponent<MotionShaderDriver>();
+        if (driver == null)
+        {
+            driver = renderer.gameObject.AddComponent<MotionShaderDriver>();
+        }
+
+        driver.Configure(renderer, key, shapeId, ResolveMotionProfile());
     }
 
     private static string ResolveGlowShapeId(VisualKey key)
