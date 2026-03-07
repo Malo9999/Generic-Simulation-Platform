@@ -8,7 +8,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
 
     private SpriteRenderer spriteRenderer;
     private Sprite sprite;
-    private bool hasLoggedBlendMaterialSelection;
+    private bool hasLoggedAdditiveFallback;
 
     public void Configure(FieldBufferController controller)
     {
@@ -78,45 +78,25 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
 
     private void ApplyBlendMode(FieldOverlayBlendMode blendMode)
     {
-        var useAdditiveMaterial = blendMode == FieldOverlayBlendMode.Additive && IsUsableMaterial(additiveOverlayMaterial);
-
-        if (!hasLoggedBlendMaterialSelection)
+        if (blendMode == FieldOverlayBlendMode.Additive)
         {
-            LogBlendMaterialSelection(blendMode, useAdditiveMaterial);
-            hasLoggedBlendMaterialSelection = true;
-        }
+            if (IsUsableMaterial(additiveOverlayMaterial))
+            {
+                spriteRenderer.sharedMaterial = additiveOverlayMaterial;
+                return;
+            }
 
-        if (useAdditiveMaterial)
-        {
-            spriteRenderer.sharedMaterial = additiveOverlayMaterial;
+            if (!hasLoggedAdditiveFallback)
+            {
+                Debug.Log("[FieldOverlayRenderer] additiveOverlayMaterial missing or unsupported; using default SpriteRenderer material");
+                hasLoggedAdditiveFallback = true;
+            }
+
+            spriteRenderer.sharedMaterial = null;
             return;
         }
 
         spriteRenderer.sharedMaterial = null;
-    }
-
-    private void LogBlendMaterialSelection(FieldOverlayBlendMode blendMode, bool useAdditiveMaterial)
-    {
-        if (blendMode == FieldOverlayBlendMode.Additive)
-        {
-            if (additiveOverlayMaterial == null)
-            {
-                Debug.Log("[FieldOverlayRenderer] blend=Additive material=null using default sprite material fallback");
-                return;
-            }
-
-            var shaderName = additiveOverlayMaterial.shader != null ? additiveOverlayMaterial.shader.name : "<null>";
-            if (!useAdditiveMaterial)
-            {
-                Debug.Log($"[FieldOverlayRenderer] blend=Additive material={additiveOverlayMaterial.name} shader={shaderName} using default sprite material fallback");
-                return;
-            }
-
-            Debug.Log($"[FieldOverlayRenderer] blend=Additive material={additiveOverlayMaterial.name} shader={shaderName} using additive overlay material");
-            return;
-        }
-
-        Debug.Log($"[FieldOverlayRenderer] blend={blendMode} using default sprite material fallback");
     }
 
     private static bool IsUsableMaterial(Material mat)
