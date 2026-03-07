@@ -3,30 +3,53 @@ using UnityEngine;
 public sealed class SlimeMoldDemoAgent : MonoBehaviour
 {
     [SerializeField] private TrailBufferController trailBuffer;
+    [SerializeField] private FieldBufferController fieldOverlayBuffer;
     [SerializeField] private SlimeMoldSteeringSettings steeringSettings = new();
 
+    private IFieldDepositBuffer buffer;
     private Vector2 direction;
 
-    public void Configure(TrailBufferController buffer, SlimeMoldSteeringSettings settings, Vector2 initialDirection)
+    public void Configure(TrailBufferController sourceBuffer, SlimeMoldSteeringSettings settings, Vector2 initialDirection)
     {
-        trailBuffer = buffer;
+        trailBuffer = sourceBuffer;
+        fieldOverlayBuffer = null;
+        buffer = sourceBuffer;
         steeringSettings = settings ?? new SlimeMoldSteeringSettings();
         direction = initialDirection.sqrMagnitude > 0.0001f ? initialDirection.normalized : Vector2.right;
     }
 
+    public void Configure(FieldBufferController sourceBuffer, SlimeMoldSteeringSettings settings, Vector2 initialDirection)
+    {
+        fieldOverlayBuffer = sourceBuffer;
+        trailBuffer = null;
+        buffer = sourceBuffer;
+        steeringSettings = settings ?? new SlimeMoldSteeringSettings();
+        direction = initialDirection.sqrMagnitude > 0.0001f ? initialDirection.normalized : Vector2.right;
+    }
+
+    private void Awake()
+    {
+        ResolveBuffer();
+    }
+
+    private void OnValidate()
+    {
+        ResolveBuffer();
+    }
+
     private void Update()
     {
-        if (trailBuffer == null)
+        if (buffer == null)
         {
             return;
         }
 
-        var bias = TrailSteeringUtility.ComputeSteeringBias(trailBuffer, transform.position, direction, steeringSettings);
+        var bias = TrailSteeringUtility.ComputeSteeringBias(buffer, transform.position, direction, steeringSettings);
         var noise = (Mathf.PerlinNoise(Time.time * 0.45f, transform.GetInstanceID() * 0.013f) - 0.5f) * 0.35f;
         direction = Rotate(direction, bias + noise * steeringSettings.jitter).normalized;
 
         var pos = (Vector2)transform.position + (direction * steeringSettings.forwardSpeed * Time.deltaTime);
-        var bounds = trailBuffer.WorldBounds;
+        var bounds = buffer.WorldBounds;
 
         if (pos.x < bounds.xMin || pos.x > bounds.xMax)
         {
@@ -41,6 +64,17 @@ public sealed class SlimeMoldDemoAgent : MonoBehaviour
         }
 
         transform.position = new Vector3(pos.x, pos.y, transform.position.z);
+    }
+
+    private void ResolveBuffer()
+    {
+        if (fieldOverlayBuffer != null)
+        {
+            buffer = fieldOverlayBuffer;
+            return;
+        }
+
+        buffer = trailBuffer;
     }
 
     private static Vector2 Rotate(Vector2 vector, float amount)
