@@ -24,6 +24,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [Header("Field Overlay")]
     [SerializeField] private bool enableFieldOverlayDemo = true;
     [SerializeField] private FieldOverlayDemoMode overlayMode = FieldOverlayDemoMode.Pheromone;
+    [SerializeField] private bool forceSafeFieldOverlayDefaults = true;
     [SerializeField] private bool enableSlimeMoldMiniDemo = true;
     [SerializeField] private TrailShowcasePreset trailPreset;
     [SerializeField] private TrailVisualSettings trailSettings = new();
@@ -210,7 +211,17 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             ApplyHeatmapProfile(fieldBufferController.Settings);
         }
 
-        ApplyKnownGoodFieldOverlayDefaults(fieldBufferController.Settings);
+        if (forceSafeFieldOverlayDefaults && overlayMode == FieldOverlayDemoMode.Heatmap)
+        {
+            fieldBufferController.Settings.tintLow = FieldOverlayPalette.DefaultLow;
+            fieldBufferController.Settings.tintHigh = FieldOverlayPalette.HeatOrange;
+            fieldBufferController.Settings.blendMode = FieldOverlayBlendMode.Alpha;
+            fieldBufferController.Settings.alphaMultiplier = 0.45f;
+            fieldBufferController.Settings.intensity = 1f;
+        }
+
+        var settings = fieldBufferController.Settings;
+        Debug.Log($"[ShapeShowcaseField] mode={overlayMode} blend={settings.blendMode} tintLow={settings.tintLow} tintHigh={settings.tintHigh} alpha={settings.alphaMultiplier} intensity={settings.intensity}");
 
         var renderer = fieldRoot.AddComponent<FieldOverlayRenderer>();
         renderer.Configure(fieldBufferController);
@@ -226,44 +237,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         settings.alphaMultiplier = 0.40f;
         settings.blendMode = FieldOverlayBlendMode.Alpha;
         settings.tintLow = FieldOverlayPalette.DefaultLow;
-        settings.tintHigh = new Color(0.95f, 0.72f, 0.30f, 1f);
-    }
-
-    private void ApplyKnownGoodFieldOverlayDefaults(FieldOverlaySettings settings)
-    {
-        if (settings == null)
-        {
-            return;
-        }
-
-        settings.tintLow = new Color(0f, 0f, 0f, 0f);
-        settings.blendMode = FieldOverlayBlendMode.Alpha;
-        settings.alphaMultiplier = 0.35f;
-        settings.intensity = 1f;
-        settings.decayPerSecond = 0.80f;
-        settings.diffuseStrength = 0.05f;
-
-        if (overlayMode == FieldOverlayDemoMode.Heatmap)
-        {
-            settings.tintHigh = new Color(0.95f, 0.72f, 0.30f, 1f);
-        }
-        else
-        {
-            settings.tintHigh = new Color(0.3f, 0.92f, 1f, 1f);
-        }
-
-        if (settings.tintHigh.a <= 0f)
-        {
-            settings.tintHigh = new Color(settings.tintHigh.r, settings.tintHigh.g, settings.tintHigh.b, 1f);
-        }
-
-        var looksMagenta = settings.tintHigh.r >= 0.85f && settings.tintHigh.g <= 0.2f && settings.tintHigh.b >= 0.85f;
-        if (looksMagenta)
-        {
-            settings.tintHigh = overlayMode == FieldOverlayDemoMode.Heatmap
-                ? new Color(0.95f, 0.72f, 0.30f, 1f)
-                : new Color(0.3f, 0.92f, 1f, 1f);
-        }
+        settings.tintHigh = FieldOverlayPalette.HeatOrange;
     }
 
     private void ApplySceneBackground()
