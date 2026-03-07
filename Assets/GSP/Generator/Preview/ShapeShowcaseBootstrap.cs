@@ -23,6 +23,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [Header("Theme Verification")]
     [SerializeField] private List<ShowcaseThemeEntry> themes = new();
     [SerializeField, Min(0)] private int selectedThemeIndex;
+    [SerializeField] private bool enableRuntimeThemeCycleWithT;
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -73,12 +74,73 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     private static readonly Color MarkersColor = new(127f / 255f, 184f / 255f, 216f / 255f, 1f); // #7FB8D8
     private static readonly Color LinesColor = new(62f / 255f, 214f / 255f, 224f / 255f, 1f);   // #3ED6E0
 
+    private Transform generatedRoot;
+
     private void Start()
     {
         ApplySceneBackground();
         ClearStaleShowcaseSpriteMaterials();
+        RebuildShowcase();
+    }
+
+    private void Update()
+    {
+        if (!enableRuntimeThemeCycleWithT || !Input.GetKeyDown(KeyCode.T))
+        {
+            return;
+        }
+
+        if (themes == null || themes.Count <= 1)
+        {
+            return;
+        }
+
+        selectedThemeIndex = (selectedThemeIndex + 1) % themes.Count;
+        RebuildShowcase();
+    }
+
+    private void RebuildShowcase()
+    {
+        ClearGeneratedShowcaseContent();
         SpawnShowcase();
         FitCameraToSpawnedContent();
+    }
+
+    private void ClearGeneratedShowcaseContent()
+    {
+        var root = EnsureGeneratedRoot();
+        for (var i = root.childCount - 1; i >= 0; i--)
+        {
+            var child = root.GetChild(i);
+            if (Application.isPlaying)
+            {
+                Destroy(child.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(child.gameObject);
+            }
+        }
+    }
+
+    private Transform EnsureGeneratedRoot()
+    {
+        if (generatedRoot != null)
+        {
+            return generatedRoot;
+        }
+
+        var existing = transform.Find("__GeneratedShapeShowcase");
+        if (existing != null)
+        {
+            generatedRoot = existing;
+            return generatedRoot;
+        }
+
+        var root = new GameObject("__GeneratedShapeShowcase");
+        generatedRoot = root.transform;
+        generatedRoot.SetParent(transform, false);
+        return generatedRoot;
     }
 
     private void FitCameraToSpawnedContent()
@@ -187,7 +249,11 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void SpawnShowcase()
     {
-        var runtimeProceduralConfig = ResolveRuntimeProceduralConfig();
+        var runtimeProceduralConfig = ResolveRuntimeProceduralConfig(out var selectedTheme, out var hasSelectedTheme);
+        var useThemeTints = runtimeProceduralConfig != null &&
+                            runtimeProceduralConfig.UseProceduralMaterials &&
+                            hasSelectedTheme &&
+                            selectedTheme.overrideCategoryTints;
 
         var maxColumns = 0;
         foreach (var category in Categories)
@@ -199,12 +265,13 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var originX = -((Mathf.Max(1, maxColumns) - 1) * horizontalSpacing * 0.5f);
         var originY = ((Mathf.Max(1, totalRows) - 1) * (verticalSpacing + categoryGap) * 0.5f);
 
+        var root = EnsureGeneratedRoot();
         var spawnedCount = 0;
         for (var row = 0; row < Categories.Length; row++)
         {
             var category = Categories[row];
             var y = originY - (row * (verticalSpacing + categoryGap));
-            SpawnHeader(category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f), category.Category);
+            SpawnHeader(root, category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f), category.Category, useThemeTints ? selectedTheme : default);
 
             var width = (category.ShapeIds.Length - 1) * horizontalSpacing;
             var startX = -width * 0.5f;
@@ -223,7 +290,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
                 }
 
                 var position = new Vector3(startX + (col * horizontalSpacing), y, 0f);
-                SpawnShape(id, category.Category, sprite, position, spawnedCount, runtimeProceduralConfig);
+                SpawnShape(root, id, category.Category, sprite, position, spawnedCount, runtimeProceduralConfig, useThemeTints ? selectedTheme : default);
                 spawnedCount++;
             }
         }
@@ -234,16 +301,16 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
     }
 
-    private void SpawnShape(string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig)
+    private void SpawnShape(Transform root, string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig, ShowcaseThemeEntry theme)
     {
         var go = new GameObject(shapeId);
-        go.transform.SetParent(transform, false);
+        go.transform.SetParent(root, false);
         go.transform.localPosition = localPosition;
         go.transform.localScale = Vector3.one * spriteScale;
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
-        sr.color = ResolveCategoryColor(category);
+        sr.color = ResolveCategoryColor(category, theme);
         sr.sharedMaterial = ResolveShowcaseDefaultSpriteMaterial();
         if (useMaterialPaletteInShowcase)
         {
@@ -282,14 +349,17 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             sequence);
     }
 
-    private ShapeShowcaseProceduralMaterialConfig ResolveRuntimeProceduralConfig()
+    private ShapeShowcaseProceduralMaterialConfig ResolveRuntimeProceduralConfig(out ShowcaseThemeEntry selectedTheme, out bool hasSelectedTheme)
     {
+        selectedTheme = default;
+        hasSelectedTheme = TryGetSelectedTheme(out selectedTheme);
+
         if (proceduralMaterials == null)
         {
             return null;
         }
 
-        if (!TryGetSelectedTheme(out var selectedTheme) || selectedTheme.materialPalette == null)
+        if (!hasSelectedTheme)
         {
             return proceduralMaterials;
         }
@@ -305,14 +375,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             return false;
         }
 
-        var clampedIndex = Mathf.Clamp(selectedThemeIndex, 0, themes.Count - 1);
-        theme = themes[clampedIndex];
-
-        if (string.IsNullOrWhiteSpace(theme.themeName))
+        if (selectedThemeIndex < 0 || selectedThemeIndex >= themes.Count)
         {
             return false;
         }
 
+        theme = themes[selectedThemeIndex];
         return true;
     }
 
@@ -354,10 +422,10 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         return applier;
     }
 
-    private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)
+    private void SpawnHeader(Transform root, string text, Vector3 localPosition, ShapePaletteCategory category, ShowcaseThemeEntry theme)
     {
         var header = new GameObject($"Header_{text}");
-        header.transform.SetParent(transform, false);
+        header.transform.SetParent(root, false);
         header.transform.localPosition = localPosition;
 
         var mesh = header.AddComponent<TextMesh>();
@@ -366,7 +434,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         mesh.alignment = TextAlignment.Left;
         mesh.characterSize = 0.08f;
         mesh.fontSize = headerFontSize;
-        mesh.color = Color.Lerp(headerColor, ResolveCategoryColor(category), 0.45f);
+        mesh.color = Color.Lerp(headerColor, ResolveCategoryColor(category, theme), 0.45f);
     }
 
     private void SpawnLabel(string id, Transform parent, float yOffset)
@@ -409,8 +477,13 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         return mat;
     }
 
-    private static Color ResolveCategoryColor(ShapePaletteCategory category)
+    private static Color ResolveCategoryColor(ShapePaletteCategory category, ShowcaseThemeEntry theme)
     {
+        if (theme.overrideCategoryTints)
+        {
+            return theme.ResolveThemeTint(category);
+        }
+
         return category switch
         {
             ShapePaletteCategory.Core => CoreColor,
@@ -429,6 +502,46 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         public ShapeMaterialPalette materialPalette;
         public bool overrideDefaultIntensity;
         [Min(0f)] public float defaultIntensity;
+        public bool overrideCategoryTints;
+        public Color coreTint;
+        public Color organicTint;
+        public Color agentsTint;
+        public Color markersTint;
+        public Color linesTint;
+
+        public Color ResolveThemeTint(ShapePaletteCategory category)
+        {
+            var fallback = category switch
+            {
+                ShapePaletteCategory.Core => CoreColor,
+                ShapePaletteCategory.Organic => OrganicColor,
+                ShapePaletteCategory.Agents => AgentsColor,
+                ShapePaletteCategory.Markers => MarkersColor,
+                ShapePaletteCategory.Lines => LinesColor,
+                _ => CoreColor
+            };
+
+            var tinted = category switch
+            {
+                ShapePaletteCategory.Core => coreTint,
+                ShapePaletteCategory.Organic => organicTint,
+                ShapePaletteCategory.Agents => agentsTint,
+                ShapePaletteCategory.Markers => markersTint,
+                ShapePaletteCategory.Lines => linesTint,
+                _ => fallback
+            };
+
+            if (tinted.a <= 0f)
+            {
+                return fallback;
+            }
+
+            return new Color(
+                Mathf.Clamp(tinted.r, 0f, 2f),
+                Mathf.Clamp(tinted.g, 0f, 2f),
+                Mathf.Clamp(tinted.b, 0f, 2f),
+                Mathf.Clamp01(tinted.a));
+        }
     }
 
     private readonly struct ShowcaseCategory
