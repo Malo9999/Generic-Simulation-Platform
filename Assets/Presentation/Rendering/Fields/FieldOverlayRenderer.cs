@@ -7,7 +7,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
     [SerializeField] private Material additiveOverlayMaterial;
 
     private SpriteRenderer spriteRenderer;
-    private Sprite sprite;
+    private Sprite runtimeSprite;
     private bool hasLoggedAdditiveFallback;
 
     public void Configure(FieldBufferController controller)
@@ -19,7 +19,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
     private void Awake()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
-        spriteRenderer.drawMode = SpriteDrawMode.Sliced;
+        EnforceSafeSpriteRendererState();
     }
 
     private void Start()
@@ -34,7 +34,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
             return;
         }
 
-        if (sprite == null || sprite.texture != fieldBuffer.FieldTexture)
+        if (runtimeSprite == null || runtimeSprite.texture != fieldBuffer.FieldTexture)
         {
             BindTexture();
         }
@@ -46,15 +46,16 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
         transform.position = new Vector3(bounds.center.x, bounds.center.y, 1.5f);
         transform.localScale = new Vector3(bounds.width, bounds.height, 1f);
 
-        spriteRenderer.color = Color.white;
+        EnforceSafeSpriteRendererState();
         ApplyBlendMode(settings.blendMode);
     }
 
     private void OnDestroy()
     {
-        if (sprite != null)
+        if (runtimeSprite != null)
         {
-            Destroy(sprite);
+            Destroy(runtimeSprite);
+            runtimeSprite = null;
         }
     }
 
@@ -65,15 +66,39 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
             return;
         }
 
-        if (sprite != null)
+        var texture = fieldBuffer.FieldTexture;
+        if (texture == null)
         {
-            Destroy(sprite);
+            return;
         }
 
-        var tex = fieldBuffer.FieldTexture;
-        sprite = Sprite.Create(tex, new Rect(0f, 0f, tex.width, tex.height), new Vector2(0.5f, 0.5f), tex.width, 0u, SpriteMeshType.FullRect);
-        spriteRenderer.sprite = sprite;
+        var boundSprite = spriteRenderer.sprite;
+        var hasStaleTexture = boundSprite == null || boundSprite.texture != texture;
+        if (!hasStaleTexture)
+        {
+            return;
+        }
+
+        if (runtimeSprite != null)
+        {
+            Destroy(runtimeSprite);
+            runtimeSprite = null;
+        }
+
+        runtimeSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), texture.width, 0u, SpriteMeshType.FullRect);
+        spriteRenderer.sprite = runtimeSprite;
         spriteRenderer.size = Vector2.one;
+    }
+
+    private void EnforceSafeSpriteRendererState()
+    {
+        if (spriteRenderer == null)
+        {
+            return;
+        }
+
+        spriteRenderer.drawMode = SpriteDrawMode.Simple;
+        spriteRenderer.color = Color.white;
     }
 
     private void ApplyBlendMode(FieldOverlayBlendMode blendMode)
