@@ -15,6 +15,8 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Color headerColor = new(0.95f, 0.98f, 1f, 1f);
     [SerializeField] private Color labelColor = new(0.82f, 0.95f, 1f, 1f);
     [SerializeField] private Color cameraBackground = Color.black;
+    [SerializeField] private bool useMaterialPaletteInShowcase = false;
+    [SerializeField] private Material showcaseDefaultSpriteMaterial;
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -56,6 +58,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     };
 
     private readonly HashSet<string> missingLogged = new();
+    private static Material runtimeShowcaseFallbackMaterial;
 
     // ShapeShowcase is a stable tint-only preview scene; advanced demos belong elsewhere.
     private static readonly Color CoreColor = new(70f / 255f, 242f / 255f, 1f, 1f);      // #46F2FF
@@ -172,7 +175,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var sprites = GetComponentsInChildren<SpriteRenderer>(true);
         for (var i = 0; i < sprites.Length; i++)
         {
-            sprites[i].sharedMaterial = null;
+            sprites[i].sharedMaterial = ResolveShowcaseDefaultSpriteMaterial();
         }
     }
 
@@ -233,7 +236,10 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         sr.color = ResolveCategoryColor(category);
-        sr.sharedMaterial = null;
+        if (!useMaterialPaletteInShowcase)
+        {
+            sr.sharedMaterial = ResolveShowcaseDefaultSpriteMaterial();
+        }
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
         if (profile.animType != ShapeAnimType.None)
@@ -273,6 +279,31 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         mesh.characterSize = 0.055f;
         mesh.fontSize = labelFontSize;
         mesh.color = labelColor;
+    }
+
+
+    private Material ResolveShowcaseDefaultSpriteMaterial()
+    {
+        if (showcaseDefaultSpriteMaterial != null && showcaseDefaultSpriteMaterial.shader != null && showcaseDefaultSpriteMaterial.shader.isSupported)
+        {
+            return showcaseDefaultSpriteMaterial;
+        }
+
+        runtimeShowcaseFallbackMaterial ??= CreateRuntimeSpriteFallbackMaterial();
+        return runtimeShowcaseFallbackMaterial;
+    }
+
+    private static Material CreateRuntimeSpriteFallbackMaterial()
+    {
+        var shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+        if (shader == null || !shader.isSupported)
+        {
+            return null;
+        }
+
+        var mat = new Material(shader);
+        mat.name = "Runtime_ShowcaseSpriteFallback";
+        return mat;
     }
 
     private static Color ResolveCategoryColor(ShapePaletteCategory category)
