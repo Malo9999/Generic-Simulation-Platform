@@ -3,12 +3,14 @@ using UnityEngine;
 public sealed class FieldBufferController : MonoBehaviour, IFieldDepositBuffer
 {
     [SerializeField] private FieldOverlaySettings settings = new();
+    [SerializeField] private bool debugForceKnownPattern;
 
     private float[] values;
     private float[] scratch;
     private Color32[] uploadPixels;
     private Texture2D fieldTexture;
     private Rect worldBounds;
+    private bool hasLoggedTextureDiagnostics;
 
     public FieldOverlaySettings Settings => settings;
     public Texture2D FieldTexture => fieldTexture;
@@ -233,17 +235,86 @@ public sealed class FieldBufferController : MonoBehaviour, IFieldDepositBuffer
         var low = settings.tintLow;
         var high = settings.tintHigh;
         var alphaMul = Mathf.Clamp01(settings.alphaMultiplier);
+        var width = settings.width;
+        var height = settings.height;
 
-        for (var i = 0; i < values.Length; i++)
+        if (debugForceKnownPattern)
         {
-            var value = Mathf.Clamp01(values[i] * settings.intensity);
-            var color = Color.Lerp(low, high, value);
-            color.a *= value * alphaMul;
-            uploadPixels[i] = color;
+            var halfWidth = width / 2;
+            var transparentBlack = new Color32(0, 0, 0, 0);
+            var cyan = new Color(0f, 1f, 1f, 0.35f);
+            var cyanPixel = (Color32)cyan;
+
+            for (var y = 0; y < height; y++)
+            {
+                var yOffset = y * width;
+                for (var x = 0; x < width; x++)
+                {
+                    uploadPixels[yOffset + x] = x < halfWidth ? transparentBlack : cyanPixel;
+                }
+            }
+        }
+        else
+        {
+            for (var i = 0; i < values.Length; i++)
+            {
+                var value = Mathf.Clamp01(values[i] * settings.intensity);
+                var color = Color.Lerp(low, high, value);
+                color.a *= value * alphaMul;
+                uploadPixels[i] = color;
+            }
         }
 
+        LogTextureDiagnosticsOnce();
         fieldTexture.SetPixels32(uploadPixels);
         fieldTexture.Apply(false, false);
+    }
+
+    private void LogTextureDiagnosticsOnce()
+    {
+        if (hasLoggedTextureDiagnostics || values == null || values.Length == 0 || uploadPixels == null || uploadPixels.Length == 0)
+        {
+            return;
+        }
+
+        var minValue = float.MaxValue;
+        var maxValue = float.MinValue;
+        for (var i = 0; i < values.Length; i++)
+        {
+            var value = values[i];
+            if (value < minValue) minValue = value;
+            if (value > maxValue) maxValue = value;
+        }
+
+        var centerX = Mathf.Clamp(settings.width / 2, 0, settings.width - 1);
+        var centerY = Mathf.Clamp(settings.height / 2, 0, settings.height - 1);
+        var centerIndex = (centerY * settings.width) + centerX;
+        var centerPixel = uploadPixels[centerIndex];
+
+        var foundNonZero = false;
+        var firstNonZeroPixel = default(Color32);
+        for (var i = 0; i < uploadPixels.Length; i++)
+        {
+            var pixel = uploadPixels[i];
+            if (pixel.r == 0 && pixel.g == 0 && pixel.b == 0 && pixel.a == 0)
+            {
+                continue;
+            }
+
+            firstNonZeroPixel = pixel;
+            foundNonZero = true;
+            break;
+        }
+
+        var firstNonZeroText = foundNonZero
+            ? $"RGBA({firstNonZeroPixel.r}, {firstNonZeroPixel.g}, {firstNonZeroPixel.b}, {firstNonZeroPixel.a})"
+            : "none";
+
+        Debug.Log(
+            $"[FieldBufferController] Texture diagnostics | tintLow={settings.tintLow} tintHigh={settings.tintHigh} alphaMultiplier={settings.alphaMultiplier:F3} valuesMin={minValue:F4} valuesMax={maxValue:F4} centerPixel=RGBA({centerPixel.r}, {centerPixel.g}, {centerPixel.b}, {centerPixel.a}) firstNonZeroPixel={firstNonZeroText} debugForceKnownPattern={debugForceKnownPattern}",
+            this);
+
+        hasLoggedTextureDiagnostics = true;
     }
 
     private void DepositCircle(int px, int py, float amount, float radiusPx)
