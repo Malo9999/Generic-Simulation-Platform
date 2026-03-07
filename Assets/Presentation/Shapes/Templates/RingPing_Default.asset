@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8f595d5eb2640f6824185e2a4da2a29, type: 3}
+  m_Name: RingPing_Default
+  m_EditorClassIdentifier: Assembly-CSharp::RingPingTemplate
+  shapeId: ring_ping
+  categoryFolder: Rings
+  textureSize: 128
+  ppu: 16
+  ringRadiusPx: 26
+  thicknessPx: 3
+  includeOuterGlow: 1
+  outerGlowWidthPx: 12
+  outerGlowAlpha: 0.15

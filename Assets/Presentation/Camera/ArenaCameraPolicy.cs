@@ -191,6 +191,26 @@ public class ArenaCameraPolicy : MonoBehaviour
         ApplyZoom("FitToBounds");
     }
 
+    public void FitToBounds(Camera cam, Bounds worldBounds)
+    {
+        if (cam == null)
+        {
+            return;
+        }
+
+        var height = worldBounds.size.y * 0.5f;
+        var width = worldBounds.size.x * 0.5f;
+
+        var sizeFromHeight = height;
+        var sizeFromWidth = width / Mathf.Max(0.01f, cam.aspect);
+
+        cam.orthographic = true;
+        cam.orthographicSize = Mathf.Max(sizeFromHeight, sizeFromWidth);
+
+        _lastOrthoWriter = "FitToBounds(Camera, Bounds)";
+        _lastOrthoWriteFrame = Time.frameCount;
+    }
+
     public void BindArenaBounds(Collider2D boundsCollider, bool fitToBounds)
     {
         if (boundsCollider != null)

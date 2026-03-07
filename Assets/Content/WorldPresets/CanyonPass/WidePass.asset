@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c07d1ede7184eec833e207ea1092c0b, type: 3}
+  m_Name: WidePass
+  m_EditorClassIdentifier: 
+  recipeId: CanyonPass
+  presetName: WidePass
+  useCurrentGrid: 1
+  gridDefaults:
+    width: 128
+    height: 128
+    cellSize: 1
+    originWorld: {x: 0, y: 0}
+  settingsJson: '{"canyonDepth":0.52,"wallSteepness":2.2,"passWidth":14.0,"passTwist":0.13,"chokeCount":1,"boulderDensity":0.035,"HeightNoise":{"id":"canyon_height","type":1,"octaves":4,"frequency":0.02,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2},"WetnessNoise":{"id":"canyon_wetness","type":1,"octaves":3,"frequency":0.017,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2},"WarpNoise":{"id":"canyon_warp","type":1,"octaves":3,"frequency":0.025,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2}}'
+  noiseJson: '{"descriptors":[]}'
+  settingsType: 
+  createdAtUtc: '2026-01-01T00:00:00.0000000Z'

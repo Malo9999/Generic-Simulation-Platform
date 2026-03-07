@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 public sealed class PredatorPreyDocuMapBuilder
@@ -30,21 +31,38 @@ public sealed class PredatorPreyDocuMapBuilder
         public readonly float ey;
     }
 
+    private readonly struct OxbowPlacement
+    {
+        public OxbowPlacement(Vector2 center, float radius)
+        {
+            this.center = center;
+            this.radius = radius;
+        }
+
+        public readonly Vector2 center;
+        public readonly float radius;
+    }
+
     private const string SortingLayerDefault = "Default";
     private const int TerrainBaseOrder = -200;
     private const int RegionOverlayOrder = -198;
     private const int FloodplainOrder = -190;
+    private const int PointBarsOrder = -184;
+    private const int CutBanksOrder = -183;
     private const int BankOrder = -181;
     private const int PermanentWaterOrder = -180;
     private const int SeasonalWaterOrder = -175;
     private const int KopjesOverlayOrder = -170;
     private const int DebugOverlayOrder = -10;
+    private static readonly Color32 RiverBankColor = new(73, 108, 61, 170);
 
     private Transform mapRoot;
     private SpriteRenderer terrainSR;
     private SpriteRenderer regionSR;
     private SpriteRenderer kopjesSR;
     private SpriteRenderer floodplainSR;
+    private SpriteRenderer pointBarsSR;
+    private SpriteRenderer cutBanksSR;
     private SpriteRenderer bankSR;
     private SpriteRenderer permanentWaterSR;
     private SpriteRenderer seasonalWaterSR;
@@ -54,6 +72,7 @@ public sealed class PredatorPreyDocuMapBuilder
     private int permanentWaterMaskWidth;
     private int permanentWaterMaskHeight;
     private readonly List<Vector2> mainRiverWaterNodes = new();
+    private readonly List<OxbowPlacement> oxbowPlacements = new();
 
     private readonly List<Vector2> waterNodes = new();
     private readonly List<Vector2> shadeNodes = new();
@@ -142,6 +161,8 @@ public sealed class PredatorPreyDocuMapBuilder
         regionSR = null;
         kopjesSR = null;
         floodplainSR = null;
+        pointBarsSR = null;
+        cutBanksSR = null;
         bankSR = null;
         permanentWaterSR = null;
         seasonalWaterSR = null;
@@ -151,6 +172,7 @@ public sealed class PredatorPreyDocuMapBuilder
         permanentWaterMaskWidth = 0;
         permanentWaterMaskHeight = 0;
         mainRiverWaterNodes.Clear();
+        oxbowPlacements.Clear();
 
         waterNodes.Clear();
         shadeNodes.Clear();
@@ -353,15 +375,19 @@ public sealed class PredatorPreyDocuMapBuilder
         var bankPx = new Color32[w * h];
         var permPx = new Color32[w * h];
         var seasonPx = new Color32[w * h];
+        var pointBarPx = new Color32[w * h];
+        var cutBankPx = new Color32[w * h];
 
-        mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx);
+        mainRiverRasterSamples = PaintMainRiverScanline(spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx, out var sampledMain);
         var mainWaterMask = new bool[permPx.Length];
         for (var i = 0; i < permPx.Length; i++)
         {
             mainWaterMask[i] = permPx[i].a > 0;
         }
 
-        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx, mainWaterMask);
+        grumetiRasterSamples = PaintGrumetiPolyline(spec.water.grumeti, spec.water.mainRiver, halfW, halfH, w, h, ppu, floodPx, bankPx, permPx, mainWaterMask, spec.mapId, out var sampledGrumeti);
+        BuildRiverGeomorphology(sampledMain, sampledGrumeti, spec.water.mainRiver, spec.water.grumeti, halfW, halfH, w, h, ppu, pointBarPx, cutBankPx);
+        BuildOxbowLakes(sampledMain, spec.water.mainRiver, halfW, halfH, w, h, ppu, permPx, bankPx, seasonPx, pointBarPx, spec.mapId);
 
         foreach (var pool in spec.water.pools)
         {
@@ -388,7 +414,37 @@ public sealed class PredatorPreyDocuMapBuilder
             PaintIrregularWetland(seasonPx, w, h, WorldToPixel(wp.x, wp.y, halfW, halfH, w, h), wetland.radius, ppu, wetland.id);
         }
 
+        var clearedOnWater = 0;
+        var clearedOnBank = 0;
+        var seasonNonZero = 0;
+        for (var i = 0; i < seasonPx.Length; i++)
+        {
+            if (seasonPx[i].a <= 0)
+            {
+                continue;
+            }
+
+            if (permPx[i].a > 0)
+            {
+                seasonPx[i].a = 0;
+                clearedOnWater++;
+                continue;
+            }
+
+            if (bankPx[i].a > 0)
+            {
+                seasonPx[i].a = 0;
+                clearedOnBank++;
+                continue;
+            }
+
+            seasonNonZero++;
+        }
+        Debug.Log($"[SerengetiSeasonMask] clearedOnWater={clearedOnWater} clearedOnBank={clearedOnBank} seasonNonZero={seasonNonZero}");
+
         floodplainSR = CreateSprite("FloodplainOverlayTexture", ToTex(w, h, floodPx), ppu, FloodplainOrder);
+        pointBarsSR = CreateSprite("PointBarsOverlay", ToTex(w, h, pointBarPx), ppu, PointBarsOrder);
+        cutBanksSR = CreateSprite("CutBanksOverlay", ToTex(w, h, cutBankPx), ppu, CutBanksOrder);
         bankSR = CreateSprite("BankOverlayTexture", ToTex(w, h, bankPx), ppu, BankOrder);
         permanentWaterSR = CreateSprite("PermanentWaterOverlay", ToTex(w, h, permPx), ppu, PermanentWaterOrder);
         seasonalWaterSR = CreateSprite("SeasonalWaterOverlay", ToTex(w, h, seasonPx), ppu, SeasonalWaterOrder);
@@ -404,7 +460,7 @@ public sealed class PredatorPreyDocuMapBuilder
         Debug.Log($"[SerengetiConformance] WaterTex={w}x{h}@{ppu:0.###}PPU");
     }
 
-    private int PaintMainRiverScanline(RiverSpec river, float halfW, float halfH, int texW, int texH, float ppu, Color32[] seasonalPx, Color32[] bankPx, Color32[] waterPx)
+    private int PaintMainRiverScanline(RiverSpec river, float halfW, float halfH, int texW, int texH, float ppu, Color32[] seasonalPx, Color32[] bankPx, Color32[] waterPx, out List<Vector2> sampledOut)
     {
         var worldPoints = new List<Vector2>();
         foreach (var p in river.centerline)
@@ -421,11 +477,12 @@ public sealed class PredatorPreyDocuMapBuilder
         var lookup = BuildSplineYLookup(sampled);
         if (sampled.Count < 2 || !lookup.Valid)
         {
+            sampledOut = sampled;
             return 0;
         }
 
         var floodCol = new Color32(108, 145, 92, 120);
-        var bankCol = new Color32(73, 108, 61, 170);
+        var bankCol = RiverBankColor;
         var waterCol = new Color32(35, 120, 220, 255);
 
         for (var py = 0; py < texH; py++)
@@ -460,10 +517,11 @@ public sealed class PredatorPreyDocuMapBuilder
             dest.Add(node);
         }
 
+        sampledOut = sampled;
         return sampled.Count;
     }
 
-    private int PaintGrumetiPolyline(RiverSpec river, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] seasonalPx, Color32[] bankPx, Color32[] waterPx, bool[] mainWaterMask)
+    private int PaintGrumetiPolyline(RiverSpec river, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] seasonalPx, Color32[] bankPx, Color32[] waterPx, bool[] mainWaterMask, string mapId, out List<Vector2> sampledOut)
     {
         var worldPoints = new List<Vector2>();
         foreach (var p in river.centerline)
@@ -479,17 +537,21 @@ public sealed class PredatorPreyDocuMapBuilder
         sampled = EnsureMinSampleCount(sampled, 400);
         if (sampled.Count < 2)
         {
+            sampledOut = sampled;
             return 0;
         }
+
+        sampled = ApplyMicroMeanderToPolyline(sampled, mapId, river.id, out var meanderAmp, out var meanderFreq);
 
         var mainWidthRef = (mainRiver.widthNorth + mainRiver.widthSouth) * 0.5f;
         var ratio = Mathf.Clamp(river.width / Mathf.Max(0.001f, mainWidthRef), 0.25f, 0.75f);
         var bankExtra = Mathf.Max(2f, mainRiver.bankExtra * (0.75f * ratio + 0.25f));
         var floodExtra = Mathf.Max(18f, mainRiver.floodplainExtra * (0.55f * ratio + 0.10f));
         var floodCol = new Color32(108, 145, 92, (byte)Mathf.Clamp(Mathf.RoundToInt(120f * 0.75f), 0, 255));
-        var bankCol = new Color32(73, 108, 61, (byte)Mathf.Clamp(Mathf.RoundToInt(170f * 0.85f), 0, 255));
+        var bankCol = RiverBankColor;
         var waterCol = new Color32(35, 120, 220, 255);
         Debug.Log($"[SerengetiGrumetiStyle] width={river.width:0.##} ratio={ratio:0.###} bankExtra={bankExtra:0.##} floodExtra={floodExtra:0.##} bankA={bankCol.a} floodA={floodCol.a}");
+        Debug.Log($"[SerengetiGrumetiDetail] microMeander amp={meanderAmp:0.##} freq={meanderFreq:0.##}");
 
         var reversalEps = 0.0001f;
         var xReversals = CountSignReversals(sampled, true, reversalEps);
@@ -654,7 +716,336 @@ StampDone:;
         Debug.Log($"[SerengetiConfluence] hit={(confluenceHit ? "true" : "false")} mode={mode} paintedSteps={paintedSteps}");
         Debug.Log($"[SerengetiWater] grumeti mode={mode} xRev={xReversals} yRev={yReversals} samples={sampled.Count}");
 
+        sampledOut = sampled;
         return sampled.Count;
+    }
+
+    private void BuildRiverGeomorphology(List<Vector2> sampledMain, List<Vector2> sampledGrumeti, RiverSpec mainRiver, RiverSpec grumetiRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] pointBarPx, Color32[] cutBankPx)
+    {
+        var bars = 0;
+        var cutBanks = 0;
+        var maxCurvMain = 0f;
+        var maxCurvGrumeti = 0f;
+        var threshMain = 0f;
+        var threshGrumeti = 0f;
+        var strideMain = 0;
+        var strideGrumeti = 0;
+        PaintGeomorphForPolyline(sampledMain, mainRiver.widthNorth, mainRiver.widthSouth, mainRiver.bankExtra, 4, 26f, 22f, 311, pointBarPx, cutBankPx, ref bars, ref cutBanks, ref maxCurvMain, out strideMain, out threshMain, halfW, halfH, texW, texH, ppu);
+        PaintGeomorphForPolyline(sampledGrumeti, grumetiRiver.width, grumetiRiver.width, Mathf.Max(2f, mainRiver.bankExtra * 0.55f), 5, 18f, 16f, 719, pointBarPx, cutBankPx, ref bars, ref cutBanks, ref maxCurvGrumeti, out strideGrumeti, out threshGrumeti, halfW, halfH, texW, texH, ppu);
+        Debug.Log($"[SerengetiGeomorph] mainSamples={sampledMain.Count} grumetiSamples={sampledGrumeti.Count} maxCurvMain={maxCurvMain:0.####} maxCurvGrumeti={maxCurvGrumeti:0.####} threshMain={threshMain:0.####} threshGrumeti={threshGrumeti:0.####} stride={strideMain}/{strideGrumeti} bars={bars} cutbanks={cutBanks}");
+    }
+
+    private void PaintGeomorphForPolyline(List<Vector2> sampled, float widthStart, float widthEnd, float bankExtra, int step, float pointBarMaxRadius, float cutBankMaxRadius, int seedSalt, Color32[] pointBarPx, Color32[] cutBankPx, ref int bars, ref int cutBanks, ref float maxCurvature, out int strideUsed, out float curvatureThresholdUsed, float halfW, float halfH, int texW, int texH, float ppu)
+    {
+        strideUsed = 0;
+        curvatureThresholdUsed = 0.0025f;
+        if (sampled == null || sampled.Count < 3)
+        {
+            return;
+        }
+
+        var stride = Mathf.Clamp(Mathf.RoundToInt(sampled.Count * 0.01f), 3, 10);
+        strideUsed = stride;
+        if (sampled.Count <= stride * 2)
+        {
+            return;
+        }
+
+        var maxCurvLocal = 0f;
+        for (var i = stride; i < sampled.Count - stride; i += Mathf.Max(3, step))
+        {
+            var prev = (sampled[i] - sampled[i - stride]).normalized;
+            var next = (sampled[i + stride] - sampled[i]).normalized;
+            if (prev.sqrMagnitude < 1e-5f || next.sqrMagnitude < 1e-5f)
+            {
+                continue;
+            }
+
+            var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
+            maxCurvLocal = Mathf.Max(maxCurvLocal, curvature);
+        }
+
+        var curvThresh = Mathf.Max(0.0025f, maxCurvLocal * 0.35f);
+        curvatureThresholdUsed = curvThresh;
+        maxCurvature = Mathf.Max(maxCurvature, maxCurvLocal);
+
+        for (var i = stride; i < sampled.Count - stride; i += Mathf.Max(3, step))
+        {
+            var prev = (sampled[i] - sampled[i - stride]).normalized;
+            var next = (sampled[i + stride] - sampled[i]).normalized;
+            if (prev.sqrMagnitude < 1e-5f || next.sqrMagnitude < 1e-5f)
+            {
+                continue;
+            }
+
+            var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
+            maxCurvature = Mathf.Max(maxCurvature, curvature);
+            if (curvature <= curvThresh)
+            {
+                continue;
+            }
+
+            var turnSign = Mathf.Sign(prev.x * next.y - prev.y * next.x);
+            if (Mathf.Abs(turnSign) < 0.01f)
+            {
+                continue;
+            }
+
+            var tangent = (prev + next).normalized;
+            if (tangent.sqrMagnitude < 1e-5f)
+            {
+                tangent = prev;
+            }
+
+            var normal = new Vector2(-tangent.y, tangent.x);
+            var insideSide = -turnSign * normal;
+            var outsideSide = turnSign * normal;
+            var progress = i / Mathf.Max(1f, sampled.Count - 1f);
+            var riverWidth = Mathf.Lerp(widthStart, widthEnd, progress);
+            var jitter = (Hash01(seedSalt, i, 991) - 0.5f) * 4f;
+            var insideOffset = riverWidth * 0.45f + bankExtra * 0.6f + jitter;
+            var outsideOffset = riverWidth * 0.50f + bankExtra * 0.7f - jitter;
+            var strength = Mathf.Clamp01(curvature * 3f);
+            var pointBarRadiusWorld = Mathf.Lerp(12f, pointBarMaxRadius, strength);
+            var cutBankRadiusWorld = Mathf.Lerp(10f, cutBankMaxRadius, strength);
+
+            var insideCenter = sampled[i] + insideSide * insideOffset;
+            var outsideCenter = sampled[i] + outsideSide * outsideOffset;
+            PaintDisc(pointBarPx, texW, texH, WorldToPixel(insideCenter.x, insideCenter.y, halfW, halfH, texW, texH), Mathf.Max(1, Mathf.RoundToInt(pointBarRadiusWorld * ppu * 0.5f)), new Color32(199, 170, 114, (byte)Mathf.RoundToInt(Mathf.Lerp(92f, 140f, strength))));
+            PaintDisc(cutBankPx, texW, texH, WorldToPixel(outsideCenter.x, outsideCenter.y, halfW, halfH, texW, texH), Mathf.Max(1, Mathf.RoundToInt(cutBankRadiusWorld * ppu * 0.5f)), new Color32(82, 93, 64, (byte)Mathf.RoundToInt(Mathf.Lerp(112f, 170f, strength))));
+            bars++;
+            cutBanks++;
+        }
+    }
+
+    private void BuildOxbowLakes(List<Vector2> sampledMain, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] permPx, Color32[] bankPx, Color32[] seasonPx, Color32[] pointBarPx, string mapId)
+    {
+        var peaks = new List<(int index, float curvature)>();
+        var maxCurv = 0f;
+        var peakThresh = 0.004f;
+        var bestCurv = 0f;
+        var bestIndex = -1;
+        var stride = Mathf.Clamp(Mathf.RoundToInt(sampledMain.Count * 0.01f), 3, 10);
+        if (sampledMain.Count <= stride * 2)
+        {
+            Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count=0 centers=()");
+            return;
+        }
+
+        for (var i = stride; i < sampledMain.Count - stride; i++)
+        {
+            var prev = (sampledMain[i] - sampledMain[i - stride]).normalized;
+            var next = (sampledMain[i + stride] - sampledMain[i]).normalized;
+            if (prev.sqrMagnitude < 1e-5f || next.sqrMagnitude < 1e-5f) continue;
+            var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
+            maxCurv = Mathf.Max(maxCurv, curvature);
+            if (curvature > bestCurv)
+            {
+                bestCurv = curvature;
+                bestIndex = i;
+            }
+        }
+
+        peakThresh = Mathf.Max(0.004f, maxCurv * 0.55f);
+
+        for (var i = stride; i < sampledMain.Count - stride; i++)
+        {
+            var prev = (sampledMain[i] - sampledMain[i - stride]).normalized;
+            var next = (sampledMain[i + stride] - sampledMain[i]).normalized;
+            if (prev.sqrMagnitude < 1e-5f || next.sqrMagnitude < 1e-5f) continue;
+            var curvature = 1f - Mathf.Clamp(Vector2.Dot(prev, next), -1f, 1f);
+            if (curvature >= peakThresh)
+            {
+                peaks.Add((i, curvature));
+            }
+        }
+
+        if (peaks.Count == 0 && bestCurv > 0f && bestIndex >= 0)
+        {
+            peaks.Add((bestIndex, bestCurv));
+        }
+
+        peaks.Sort((a, b) => b.curvature.CompareTo(a.curvature));
+        var selectedPlacements = new List<OxbowPlacement>(2);
+        foreach (var peak in peaks)
+        {
+            if (selectedPlacements.Count >= 2)
+            {
+                break;
+            }
+
+            TryPlaceOxbowPeak(peak, sampledMain, stride, mainRiver, halfW, halfH, texW, texH, ppu, permPx, bankPx, seasonPx, pointBarPx, selectedPlacements, enforceSpacing: true);
+        }
+
+        if (peaks.Count > 0 && selectedPlacements.Count == 0)
+        {
+            TryPlaceOxbowPeak(peaks[0], sampledMain, stride, mainRiver, halfW, halfH, texW, texH, ppu, permPx, bankPx, seasonPx, pointBarPx, selectedPlacements, enforceSpacing: false);
+        }
+
+        if (selectedPlacements.Count == 0)
+        {
+            Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count=0 centers=()");
+            return;
+        }
+
+        oxbowPlacements.Clear();
+        oxbowPlacements.AddRange(selectedPlacements);
+
+        var centersText = string.Empty;
+        for (var i = 0; i < selectedPlacements.Count; i++)
+        {
+            if (i > 0) centersText += ";";
+            var center = selectedPlacements[i].center;
+            var radius = selectedPlacements[i].radius;
+            centersText += $"oxbow{i}=(x={center.x.ToString("0.0", CultureInfo.InvariantCulture)} y={center.y.ToString("0.0", CultureInfo.InvariantCulture)} r={radius.ToString("0.0", CultureInfo.InvariantCulture)})";
+        }
+
+        Debug.Log($"[SerengetiOxbow] maxCurv={maxCurv:0.####} peakThresh={peakThresh:0.####} stride={stride} count={selectedPlacements.Count} centers=({centersText})");
+    }
+
+    private bool TryPlaceOxbowPeak((int index, float curvature) peak, List<Vector2> sampledMain, int stride, RiverSpec mainRiver, float halfW, float halfH, int texW, int texH, float ppu, Color32[] permPx, Color32[] bankPx, Color32[] seasonPx, Color32[] pointBarPx, List<OxbowPlacement> selectedPlacements, bool enforceSpacing)
+    {
+        var i = peak.index;
+        var prev = (sampledMain[i] - sampledMain[i - stride]).normalized;
+        var next = (sampledMain[i + stride] - sampledMain[i]).normalized;
+        var turnSign = Mathf.Sign(prev.x * next.y - prev.y * next.x);
+        if (Mathf.Abs(turnSign) < 0.01f) return false;
+        var tangent = (prev + next).normalized;
+        if (tangent.sqrMagnitude < 1e-5f) tangent = prev;
+        var normal = new Vector2(-tangent.y, tangent.x);
+        var insideSide = -turnSign * normal;
+        var strength = Mathf.Clamp01(peak.curvature * 3f);
+        var p = sampledMain[i];
+        var riverWidth = Mathf.Lerp(mainRiver.widthNorth, mainRiver.widthSouth, i / Mathf.Max(1f, sampledMain.Count - 1f));
+        var center = p + insideSide * (riverWidth * 0.9f + 18f);
+        if (center.x < -halfW || center.x > halfW || center.y < -halfH || center.y > halfH)
+        {
+            return false;
+        }
+
+        if (enforceSpacing)
+        {
+            for (var c = 0; c < selectedPlacements.Count; c++)
+            {
+                if (Vector2.Distance(center, selectedPlacements[c].center) < 120f)
+                {
+                    return false;
+                }
+            }
+
+            if (IsNearExistingWaterNode(center, sampledMain[i], 70f))
+            {
+                return false;
+            }
+        }
+
+        var poolRadiusWorld = Mathf.Lerp(18f, 30f, strength);
+        var rWorld = poolRadiusWorld + 8f;
+        if (WouldOverlapPermanentWaterHeavily(center, rWorld, halfW, halfH, texW, texH, ppu, permPx))
+        {
+            return false;
+        }
+
+        var poolPx = WorldToPixel(center.x, center.y, halfW, halfH, texW, texH);
+        PaintDisc(permPx, texW, texH, poolPx, Mathf.Max(1, Mathf.RoundToInt(poolRadiusWorld * ppu * 0.5f)), new Color32(41, 118, 204, 208));
+        PaintRing(bankPx, texW, texH, poolPx, Mathf.Max(2, Mathf.RoundToInt((poolRadiusWorld + 3.5f) * ppu * 0.5f)), Mathf.Max(1, Mathf.RoundToInt(1.8f * ppu)), new Color32(66, 103, 58, 95));
+
+        var ghostPts = Mathf.RoundToInt(Mathf.Lerp(8f, 14f, strength));
+        var ghostRadiusWorld = Mathf.Lerp(poolRadiusWorld + 8f, poolRadiusWorld + 16f, 0.5f + strength * 0.5f);
+        var ghostDiscRadiusWorld = Mathf.Lerp(4f, 7f, strength);
+        PaintOxbowGhostTrace(seasonPx, texW, texH, ppu, halfW, halfH, center, tangent, insideSide, ghostRadiusWorld, ghostPts, ghostDiscRadiusWorld,
+            new Color32(74, 132, 124, (byte)Mathf.RoundToInt(Mathf.Lerp(30f, 60f, strength))));
+
+        var cutoffBar = pointBarPx != null && Hash01(911, i, Mathf.RoundToInt(strength * 1000f)) > 0.32f;
+        if (cutoffBar)
+        {
+            var barLength = Mathf.Lerp(25f, 45f, strength);
+            var barThickness = Mathf.Lerp(8f, 14f, strength);
+            PaintCutoffBarBetweenPoints(pointBarPx, texW, texH, ppu, halfW, halfH, p, center, barLength, barThickness,
+                new Color32(199, 170, 114, (byte)Mathf.RoundToInt(Mathf.Lerp(80f, 130f, strength))));
+        }
+
+        waterNodes.Add(center);
+        selectedPlacements.Add(new OxbowPlacement(center, poolRadiusWorld));
+        Debug.Log($"[SerengetiOxbow] oxbow{selectedPlacements.Count - 1} x={center.x.ToString("0.0", CultureInfo.InvariantCulture)} y={center.y.ToString("0.0", CultureInfo.InvariantCulture)} strength={strength.ToString("0.000", CultureInfo.InvariantCulture)} poolR={poolRadiusWorld.ToString("0.0", CultureInfo.InvariantCulture)} ghostPts={ghostPts} cutoffBar={(cutoffBar ? "true" : "false")}");
+        return true;
+    }
+
+    private bool IsNearExistingWaterNode(Vector2 candidate, Vector2 localRiverPoint, float distance)
+    {
+        var minD2 = distance * distance;
+        for (var i = 0; i < waterNodes.Count; i++)
+        {
+            var node = waterNodes[i];
+            if (Vector2.Distance(node, localRiverPoint) < 40f)
+            {
+                continue;
+            }
+
+            if ((node - candidate).sqrMagnitude <= minD2)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool WouldOverlapPermanentWaterHeavily(Vector2 center, float radiusWorld, float halfW, float halfH, int texW, int texH, float ppu, Color32[] permPx)
+    {
+        var c = WorldToPixel(center.x, center.y, halfW, halfH, texW, texH);
+        var r = Mathf.Max(1, Mathf.RoundToInt(radiusWorld * ppu * 0.5f));
+        var total = 0;
+        var overlap = 0;
+        var r2 = r * r;
+        for (var y = c.py - r; y <= c.py + r; y++)
+        {
+            if (y < 0 || y >= texH) continue;
+            for (var x = c.px - r; x <= c.px + r; x++)
+            {
+                if (x < 0 || x >= texW) continue;
+                var dx = x - c.px;
+                var dy = y - c.py;
+                if (dx * dx + dy * dy > r2) continue;
+                total++;
+                if (permPx[x + y * texW].a > 10) overlap++;
+            }
+        }
+
+        if (total <= 0)
+        {
+            return true;
+        }
+
+        return overlap / (float)total > 0.45f;
+    }
+
+    private static List<Vector2> ApplyMicroMeanderToPolyline(List<Vector2> sampled, string mapId, string riverId, out float amp, out float freq)
+    {
+        var seed = Mathf.Abs(StableHash.Hash32($"{mapId}:{riverId}:micro_meander"));
+        amp = Mathf.Lerp(6f, 14f, Hash01(seed, 17, 131));
+        freq = Mathf.Lerp(6f, 10f, Hash01(seed, 29, 163));
+        var phase = Hash01(seed, 41, 197) * Mathf.PI * 2f;
+        var meandered = new List<Vector2>(sampled.Count);
+        for (var i = 0; i < sampled.Count; i++)
+        {
+            var prev = sampled[Mathf.Max(0, i - 1)];
+            var next = sampled[Mathf.Min(sampled.Count - 1, i + 1)];
+            var tangent = (next - prev).normalized;
+            if (tangent.sqrMagnitude < 1e-5f)
+            {
+                meandered.Add(sampled[i]);
+                continue;
+            }
+
+            var normal = new Vector2(-tangent.y, tangent.x);
+            var progress = i / Mathf.Max(1f, sampled.Count - 1f);
+            var taper = Mathf.Sin(progress * Mathf.PI);
+            var offset = Mathf.Sin(progress * freq * Mathf.PI * 2f + phase) * amp * taper;
+            meandered.Add(sampled[i] + normal * offset);
+        }
+
+        return meandered;
     }
 
     private static int CountSignReversals(IReadOnlyList<Vector2> points, bool axisX, float eps)
@@ -936,8 +1327,60 @@ StampDone:;
             CreateDebugLabel(debugRoot, node.position + new Vector2(node.radius + 1.4f, node.radius + 0.8f), "Kopjes", color);
         }
 
+        if (oxbowPlacements.Count > 0)
+        {
+            var oxbowRoot = new GameObject("OxbowMarkers").transform;
+            oxbowRoot.SetParent(debugRoot, false);
+            var color = new Color(1f, 0f, 1f, 0.9f);
+            for (var i = 0; i < oxbowPlacements.Count; i++)
+            {
+                var marker = oxbowPlacements[i];
+                CreateCircleOutline(oxbowRoot, marker.center, Mathf.Max(8f, marker.radius * 0.5f), color);
+                CreateDebugLabel(oxbowRoot, marker.center + new Vector2(3f, 3f), $"Oxbow (cutoff) {i + 1}", color);
+            }
+        }
+
         Debug.Log($"[SerengetiDebug] RegionOutlines drawn: {spec.regions.Count} (no global lines)");
         Debug.Log($"[SerengetiDebug] overlays=ON regions={spec.regions.Count} mainCross={crossingsMain.Count} grumetiCross={crossingsGrumeti.Count} pools={pools.Count} kopjes={kopjes.Count} wetlands={wetlands.Count}");
+    }
+
+    private static void PaintOxbowGhostTrace(Color32[] seasonalPx, int texW, int texH, float ppu,
+        float halfW, float halfH, Vector2 center, Vector2 tangent, Vector2 normal,
+        float arcRadiusWorld, int pointCount, float thicknessWorld, Color32 ghostCol)
+    {
+        var points = Mathf.Clamp(pointCount, 8, 14);
+        var radiusPx = Mathf.Max(1, Mathf.RoundToInt(thicknessWorld * 0.45f * ppu));
+        for (var i = 0; i < points; i++)
+        {
+            var t = points <= 1 ? 0.5f : i / (float)(points - 1);
+            var angleDeg = Mathf.Lerp(-95f, 95f, t);
+            var angle = angleDeg * Mathf.Deg2Rad;
+            var pos = center + tangent * (Mathf.Cos(angle) * arcRadiusWorld) + normal * (Mathf.Sin(angle) * (arcRadiusWorld * 0.82f));
+            PaintDisc(seasonalPx, texW, texH, WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH), radiusPx, ghostCol);
+        }
+    }
+
+    private static void PaintCutoffBarBetweenPoints(Color32[] pointBarPx, int texW, int texH, float ppu, float halfW, float halfH, Vector2 from, Vector2 to, float lengthWorld, float thicknessWorld, Color32 color)
+    {
+        var dir = (to - from);
+        if (dir.sqrMagnitude < 1e-4f)
+        {
+            return;
+        }
+
+        var tangent = dir.normalized;
+        var center = Vector2.Lerp(from, to, 0.5f);
+        var halfLen = lengthWorld * 0.5f;
+        var stepWorld = Mathf.Max(2f, thicknessWorld * 0.35f);
+        var radiusPx = Mathf.Max(1, Mathf.RoundToInt(thicknessWorld * 0.5f * ppu));
+        var stepCount = Mathf.Max(2, Mathf.CeilToInt(lengthWorld / stepWorld));
+        for (var s = 0; s <= stepCount; s++)
+        {
+            var t = s / (float)stepCount;
+            var along = Mathf.Lerp(-halfLen, halfLen, t);
+            var pos = center + tangent * along;
+            PaintDisc(pointBarPx, texW, texH, WorldToPixel(pos.x, pos.y, halfW, halfH, texW, texH), radiusPx, color);
+        }
     }
 
     private static void CreateRectOutline(Transform parent, float x0, float x1, float y0, float y1, Color color, float thickness)

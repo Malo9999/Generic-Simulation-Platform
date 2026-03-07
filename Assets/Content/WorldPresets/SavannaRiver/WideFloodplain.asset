@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c07d1ede7184eec833e207ea1092c0b, type: 3}
+  m_Name: WideFloodplain
+  m_EditorClassIdentifier: 
+  recipeId: SavannaRiver
+  presetName: WideFloodplain
+  useCurrentGrid: 1
+  gridDefaults:
+    width: 128
+    height: 128
+    cellSize: 1
+    originWorld: {x: 0, y: 0}
+  settingsJson: '{"riverWidth":6.0,"meanderAmp":0.22,"meanderFreq":1.5,"floodplainWidth":18.0,"bankWidth":6.0,"treeDensity":0.13,"rockDensity":0.02,"gradientDir":{"x":0.0,"y":1.0},"waterLevel":0.44,"carveStrength":0.33,"RiverWarpAmplitude":7.0,"RiverWarpFrequency":0.019,"HeightNoise":{"id":"savanna_height","type":1,"octaves":5,"frequency":0.018,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2},"WetnessNoise":{"id":"savanna_wetness","type":1,"octaves":5,"frequency":0.016,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2},"WarpNoise":{"id":"savanna_warp","type":1,"octaves":4,"frequency":0.028,"lacunarity":2.0,"gain":0.5,"amplitude":1.0,"offset":{"x":0.0,"y":0.0},"warpType":0,"warpAmplitude":0.0,"warpFrequency":0.03,"warpOctaves":2}}'
+  noiseJson: '{"descriptors":[]}'
+  settingsType: 
+  createdAtUtc: '2026-01-01T00:00:00.0000000Z'

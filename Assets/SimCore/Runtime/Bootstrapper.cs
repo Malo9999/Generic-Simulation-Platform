@@ -143,6 +143,11 @@ public class Bootstrapper : MonoBehaviour
         {
             gameObject.AddComponent<SimulationSelectorOverlay>();
         }
+
+        if (GetComponent<WorldDebugOverlay>() == null)
+        {
+            gameObject.AddComponent<WorldDebugOverlay>();
+        }
     }
 
     private void Update()

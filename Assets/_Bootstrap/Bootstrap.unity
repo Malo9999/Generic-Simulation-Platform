@@ -381,11 +381,13 @@ MonoBehaviour:
   useSoftMaxOrthoLimit: 1
   softMaxOrthoFitMultiplier: 1.5
   applyFantasySportPixelPerfectOverrides: 1
+  simulationCameraProfiles: []
+  fallbackAssetsPPU: 16
   snapRigToPixelGrid: 0
   fallbackPPU: 32
   logAutoWire: 0
   logZoomChanges: 0
-  debugCameraHud: 0
+  debugHud: 0
 --- !u!114 &293624139
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1201,6 +1203,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MinimapClickToPan
   mainCamera: {fileID: 293624133}
+  minimapCamera: {fileID: 1962087969}
+  clampToWorldBounds: 1
+  routeThroughArenaCameraPolicy: 1
+  debugLogClicks: 0
   worldBounds:
     serializedVersion: 2
     x: -32

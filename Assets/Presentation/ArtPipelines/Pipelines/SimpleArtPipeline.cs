@@ -14,6 +14,7 @@ public class SimpleArtPipeline : ArtPipelineBase
     private const string PlaceholderSpriteName = "PlaceholderSprite";
     private const string PlaceholderArrowName = "PlaceholderArrow";
     private const string PlaceholderOutlineName = "PlaceholderOutline";
+    private const string PlaceholderGlowName = "PlaceholderGlow";
     private const string IconRootName = "IconRoot";
     private const string MaskName = "Mask";
 
@@ -24,9 +25,18 @@ public class SimpleArtPipeline : ArtPipelineBase
     [SerializeField] private bool forceDebugPlaceholder = true;
     [SerializeField] private DebugPlaceholderMode defaultDebugMode = DebugPlaceholderMode.Replace;
     [SerializeField] private float placeholderScale = 0.5f;
+    [SerializeField] private bool useGlow = false;
+    [SerializeField] private bool enableAnimatedShapes = true;
+    [SerializeField] private bool enableMotionShaderLayer = true;
+    [SerializeField] private MotionShaderProfile motionShaderProfile;
+    [SerializeField] private bool autoAssignShapeAnimationById = true;
+    [SerializeField] private bool useShapeMaterialPalette = true;
+    [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
 
     private bool debugEnabled;
     private DebugPlaceholderMode debugMode;
+    private ShapeMaterialPalette runtimeMaterialPalette;
+    private MotionShaderProfile runtimeMotionProfile;
 
     public override ArtMode Mode => ArtMode.Simple;
     public override string DisplayName => "Simple";
@@ -65,9 +75,45 @@ public class SimpleArtPipeline : ArtPipelineBase
         var spriteObject = new GameObject(PlaceholderSpriteName);
         spriteObject.transform.SetParent(rendererObject.transform, false);
         var dotRenderer = spriteObject.AddComponent<SpriteRenderer>();
-        dotRenderer.sprite = DebugShapeSpriteFactory.GetCircleSprite();
+        var bodyShapeId = ResolveBodyShapeId(key);
+        dotRenderer.sprite = ShapeLibraryProvider.TryGetSprite(bodyShapeId, out var coreSprite)
+            ? coreSprite
+            : ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out var fallbackCore)
+                ? fallbackCore
+                : DebugShapeSpriteFactory.GetCircleSprite();
         dotRenderer.color = PlaceholderColorPalette.GetColor(key);
+        TryAssignShapeMaterial(dotRenderer, bodyShapeId);
         RenderOrder.Apply(dotRenderer, RenderOrder.EntityBody);
+
+        if (enableAnimatedShapes)
+        {
+            TryAttachBodyAnimation(dotRenderer, bodyShapeId, key.instanceId);
+        }
+
+        if (enableMotionShaderLayer)
+        {
+            TryAttachMotionShader(dotRenderer, bodyShapeId, key);
+        }
+
+        var glowShapeId = ResolveGlowShapeId(key);
+        if (useGlow && ShapeLibraryProvider.TryGetSprite(glowShapeId, out var glowSprite))
+        {
+            var glowObject = new GameObject(PlaceholderGlowName);
+            glowObject.transform.SetParent(rendererObject.transform, false);
+            var glowRenderer = glowObject.AddComponent<SpriteRenderer>();
+            glowRenderer.sprite = glowSprite;
+            glowRenderer.color = new Color(1f, 1f, 1f, 0.35f);
+            TryAssignShapeMaterial(glowRenderer, glowShapeId);
+            glowObject.transform.localScale = Vector3.one * 1.6f;
+            RenderOrder.Apply(glowRenderer, RenderOrder.EntityBody - 2);
+
+            if (enableAnimatedShapes
+                && (string.Equals(glowShapeId, ShapeId.DotGlow, StringComparison.Ordinal)
+                    || string.Equals(glowShapeId, ShapeId.PulseRing, StringComparison.Ordinal)))
+            {
+                AttachAnimation(glowRenderer, AnimatedShapeProfile.CreateForShapeId(glowShapeId), key.instanceId);
+            }
+        }
 
         var outlineObject = new GameObject(PlaceholderOutlineName);
         outlineObject.transform.SetParent(rendererObject.transform, false);
@@ -88,6 +134,153 @@ public class SimpleArtPipeline : ArtPipelineBase
         animator.Initialize(dotRenderer, outlineRenderer, arrowRenderer, placeholderScale);
 
         return rendererObject;
+    }
+
+
+    private ShapeMaterialPalette ResolveMaterialPalette()
+    {
+        if (shapeMaterialPalette != null)
+        {
+            return shapeMaterialPalette;
+        }
+
+        if (runtimeMaterialPalette == null)
+        {
+            runtimeMaterialPalette = ShapeMaterialPaletteLoader.Load();
+        }
+
+        return runtimeMaterialPalette;
+    }
+
+    private void TryAssignShapeMaterial(SpriteRenderer renderer, string shapeId)
+    {
+        if (!useShapeMaterialPalette || renderer == null || string.IsNullOrWhiteSpace(shapeId))
+        {
+            return;
+        }
+
+        var palette = ResolveMaterialPalette();
+        if (palette == null)
+        {
+            return;
+        }
+
+        var material = palette.GetMaterialForShape(shapeId);
+        if (material != null)
+        {
+            renderer.sharedMaterial = material;
+        }
+    }
+    private static string ResolveBodyShapeId(VisualKey key)
+    {
+        var normalizedKind = NormalizeSegment(key.kind, string.Empty);
+        var normalizedState = NormalizeSegment(key.state, string.Empty);
+
+        if (normalizedKind.IndexOf("amoeba", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("amoeba", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.OrganicAmoeba;
+        }
+
+        if (normalizedKind.IndexOf("metaball", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("metaball", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.OrganicMetaball;
+        }
+
+        if (normalizedKind.IndexOf("filament", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("filament", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.Filament;
+        }
+
+        if (normalizedKind.IndexOf("field", StringComparison.Ordinal) >= 0
+            || normalizedKind.IndexOf("blob", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("field", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("blob", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.FieldBlob;
+        }
+
+        return ShapeId.DotCore;
+    }
+
+    private MotionShaderProfile ResolveMotionProfile()
+    {
+        if (motionShaderProfile != null)
+        {
+            return motionShaderProfile;
+        }
+
+        if (runtimeMotionProfile == null)
+        {
+            runtimeMotionProfile = MotionShaderProfile.LoadRuntimeProfile();
+        }
+
+        return runtimeMotionProfile;
+    }
+
+    private void TryAttachMotionShader(SpriteRenderer renderer, string shapeId, VisualKey key)
+    {
+        if (renderer == null || !MotionShaderProfile.TryResolveFamily(shapeId, out _))
+        {
+            return;
+        }
+
+        var driver = renderer.GetComponent<MotionShaderDriver>();
+        if (driver == null)
+        {
+            driver = renderer.gameObject.AddComponent<MotionShaderDriver>();
+        }
+
+        driver.Configure(renderer, key, shapeId, ResolveMotionProfile());
+    }
+
+    private static string ResolveGlowShapeId(VisualKey key)
+    {
+        var normalizedKind = NormalizeSegment(key.kind, string.Empty);
+        var normalizedState = NormalizeSegment(key.state, string.Empty);
+        if (normalizedKind.IndexOf("pulse", StringComparison.Ordinal) >= 0
+            || normalizedKind.IndexOf("ring", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("pulse", StringComparison.Ordinal) >= 0
+            || normalizedState.IndexOf("ring", StringComparison.Ordinal) >= 0)
+        {
+            return ShapeId.PulseRing;
+        }
+
+        return ShapeId.DotGlow;
+    }
+
+    private void TryAttachBodyAnimation(SpriteRenderer renderer, string shapeId, int seed)
+    {
+        if (renderer == null || string.IsNullOrWhiteSpace(shapeId) || !autoAssignShapeAnimationById)
+        {
+            return;
+        }
+
+        var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
+        if (profile.animType == ShapeAnimType.None)
+        {
+            return;
+        }
+
+        AttachAnimation(renderer, profile, seed);
+    }
+
+    private static void AttachAnimation(SpriteRenderer renderer, AnimatedShapeProfile profile, int seed)
+    {
+        if (renderer == null || profile == null)
+        {
+            return;
+        }
+
+        var driver = renderer.GetComponent<AnimatedShapeDriver>();
+        if (driver == null)
+        {
+            driver = renderer.gameObject.AddComponent<AnimatedShapeDriver>();
+        }
+
+        driver.Configure(renderer, profile, seed);
     }
 
     public override void ApplyVisual(GameObject renderer, VisualKey key, Vector2 velocity, float deltaTime)
@@ -279,6 +472,12 @@ public class SimpleArtPipeline : ArtPipelineBase
         if (dotRenderer != null)
         {
             dotRenderer.enabled = dotVisible;
+        }
+
+        var glowRenderer = rendererRoot.transform.Find(PlaceholderGlowName)?.GetComponent<SpriteRenderer>();
+        if (glowRenderer != null)
+        {
+            glowRenderer.enabled = dotVisible;
         }
 
         var outlineRenderer = rendererRoot.transform.Find(PlaceholderOutlineName)?.GetComponent<SpriteRenderer>();
