@@ -75,10 +75,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     private ShapeMaterialPalette runtimeMaterialPalette;
     private TrailBufferController trailBufferController;
     private FieldBufferController fieldBufferController;
+    private bool loggedMaterialPaletteMode;
 
     private void Start()
     {
         ApplyTrailPreset();
+        LogShowcaseMaterialPaletteMode();
         ApplySceneBackground();
         if (enableTrailDemo)
         {
@@ -470,6 +472,18 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
 
         trailPreset.ApplyTo(trailSettings, slimeSteeringSettings);
+    }
+
+
+    private void LogShowcaseMaterialPaletteMode()
+    {
+        if (loggedMaterialPaletteMode)
+        {
+            return;
+        }
+
+        Debug.Log($"[ShapeShowcaseBootstrap] material palette in showcase: {(useMaterialPaletteInShowcase ? "enabled" : "disabled")}", this);
+        loggedMaterialPaletteMode = true;
     }
 
     private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)

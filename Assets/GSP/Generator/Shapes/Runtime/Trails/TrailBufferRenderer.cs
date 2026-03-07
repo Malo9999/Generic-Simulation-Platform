@@ -8,6 +8,8 @@ public sealed class TrailBufferRenderer : MonoBehaviour
 
     private SpriteRenderer spriteRenderer;
     private Sprite sprite;
+    private bool loggedMaterialState;
+    private bool loggedHiddenState;
 
     public void Configure(TrailBufferController controller)
     {
@@ -18,7 +20,9 @@ public sealed class TrailBufferRenderer : MonoBehaviour
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
         spriteRenderer.sortingOrder = sortingOrder;
-        spriteRenderer.drawMode = SpriteDrawMode.Sliced;
+        spriteRenderer.drawMode = SpriteDrawMode.Simple;
+        spriteRenderer.color = Color.white;
+        ApplySafeMaterialFallback();
     }
 
     private void Start()
@@ -30,6 +34,7 @@ public sealed class TrailBufferRenderer : MonoBehaviour
     {
         if (trailBuffer == null || trailBuffer.TrailTexture == null)
         {
+            SetHidden(true);
             return;
         }
 
@@ -38,12 +43,19 @@ public sealed class TrailBufferRenderer : MonoBehaviour
             BindTexture();
         }
 
+        ApplySafeMaterialFallback();
+
+        var hideRenderer = !trailBuffer.HasVisibleContent;
+        SetHidden(hideRenderer);
+        if (hideRenderer)
+        {
+            return;
+        }
+
         var bounds = trailBuffer.WorldBounds;
         transform.position = new Vector3(bounds.center.x, bounds.center.y, 1f);
         transform.localScale = new Vector3(bounds.width, bounds.height, 1f);
-
-        var tint = trailBuffer.Settings.tintColor;
-        spriteRenderer.color = new Color(1f, 1f, 1f, tint.a);
+        spriteRenderer.color = Color.white;
     }
 
     private void OnDestroy()
@@ -68,7 +80,43 @@ public sealed class TrailBufferRenderer : MonoBehaviour
 
         var tex = trailBuffer.TrailTexture;
         sprite = Sprite.Create(tex, new Rect(0f, 0f, tex.width, tex.height), new Vector2(0.5f, 0.5f), tex.width, 0u, SpriteMeshType.FullRect);
+        spriteRenderer.drawMode = SpriteDrawMode.Simple;
         spriteRenderer.sprite = sprite;
         spriteRenderer.size = Vector2.one;
+    }
+
+    private void ApplySafeMaterialFallback()
+    {
+        var assignedMaterial = spriteRenderer.sharedMaterial;
+        var useAssignedMaterial = assignedMaterial != null && assignedMaterial.shader != null && assignedMaterial.shader.isSupported;
+        if (!useAssignedMaterial)
+        {
+            spriteRenderer.sharedMaterial = null;
+        }
+
+        if (!loggedMaterialState)
+        {
+            var matName = assignedMaterial != null ? assignedMaterial.name : "<default>";
+            var shaderName = assignedMaterial != null && assignedMaterial.shader != null ? assignedMaterial.shader.name : "<none>";
+            var status = useAssignedMaterial ? "using-assigned" : "using-default";
+            Debug.Log($"[TrailBufferRenderer] material={matName} shader={shaderName} state={status}", this);
+            loggedMaterialState = true;
+        }
+    }
+
+    private void SetHidden(bool hidden)
+    {
+        if (spriteRenderer.enabled == !hidden)
+        {
+            return;
+        }
+
+        spriteRenderer.enabled = !hidden;
+
+        if (hidden && !loggedHiddenState)
+        {
+            Debug.Log("[TrailBufferRenderer] overlay hidden because trail buffer is empty", this);
+            loggedHiddenState = true;
+        }
     }
 }
