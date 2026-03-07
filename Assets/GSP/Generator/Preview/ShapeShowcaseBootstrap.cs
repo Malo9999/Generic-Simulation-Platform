@@ -85,50 +85,45 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void Update()
     {
-        if (!enableRuntimeThemeCycleWithT || !IsThemeCyclePressedThisFrame())
+        if (!IsThemeCyclePressedThisFrame())
         {
             return;
         }
 
-        if (themes == null || themes.Count <= 1)
+        TryCycleTheme();
+    }
+
+    private bool IsThemeCyclePressedThisFrame()
+    {
+        if (!enableRuntimeThemeCycleWithT)
         {
-            return;
+            return false;
         }
 
-        selectedThemeIndex = (selectedThemeIndex + 1) % themes.Count;
-        RebuildShowcase();
-    }
-
-    private static bool IsThemeCyclePressedThisFrame()
-    {
-        return IsKeyPressedThisFrame(
-            KeyCode.T
-#if ENABLE_INPUT_SYSTEM
-            , UnityEngine.InputSystem.Key.T
-#endif
-        );
-    }
-
-    private static bool IsKeyPressedThisFrame(
-        KeyCode legacyKey
-#if ENABLE_INPUT_SYSTEM
-        , UnityEngine.InputSystem.Key inputSystemKey
-#endif
-    )
-    {
 #if ENABLE_INPUT_SYSTEM
         var keyboard = UnityEngine.InputSystem.Keyboard.current;
-        if (keyboard != null && keyboard[inputSystemKey].wasPressedThisFrame)
+        if (keyboard != null && keyboard.tKey.wasPressedThisFrame)
         {
             return true;
         }
 #endif
 
 #if ENABLE_LEGACY_INPUT_MANAGER
-        return Input.GetKeyDown(legacyKey);
+        return Input.GetKeyDown(KeyCode.T);
 #else
         return false;
 #endif
+    }
+
+    private void TryCycleTheme()
+    {
+        if (themes == null || themes.Count == 0)
+        {
+            return;
+        }
+
+        selectedThemeIndex = (selectedThemeIndex + 1) % themes.Count;
+        RebuildShowcase();
     }
 
     private void RebuildShowcase()
