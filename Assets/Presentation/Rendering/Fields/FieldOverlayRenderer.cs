@@ -4,10 +4,10 @@ using UnityEngine;
 public sealed class FieldOverlayRenderer : MonoBehaviour
 {
     [SerializeField] private FieldBufferController fieldBuffer;
+    [SerializeField] private Material additiveOverlayMaterial;
 
     private SpriteRenderer spriteRenderer;
     private Sprite sprite;
-    private Material additiveMaterial;
 
     public void Configure(FieldBufferController controller)
     {
@@ -55,11 +55,6 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
         {
             Destroy(sprite);
         }
-
-        if (additiveMaterial != null)
-        {
-            Destroy(additiveMaterial);
-        }
     }
 
     private void BindTexture()
@@ -84,19 +79,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
     {
         if (blendMode == FieldOverlayBlendMode.Additive)
         {
-            if (additiveMaterial == null)
-            {
-                var shader = Shader.Find("Legacy Shaders/Particles/Additive") ?? Shader.Find("Particles/Additive");
-                if (shader != null)
-                {
-                    additiveMaterial = new Material(shader);
-                }
-            }
-
-            if (additiveMaterial != null)
-            {
-                spriteRenderer.sharedMaterial = additiveMaterial;
-            }
+            spriteRenderer.sharedMaterial = additiveOverlayMaterial != null ? additiveOverlayMaterial : null;
             return;
         }
 
