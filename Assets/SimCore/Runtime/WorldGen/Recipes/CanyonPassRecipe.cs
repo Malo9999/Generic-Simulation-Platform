@@ -102,6 +102,20 @@ public class CanyonPassRecipe : WorldRecipeBase<CanyonPassSettingsSO>
         map.zones["pass_floor"] = new ZoneDef { zoneId = 0, name = "pass_floor" };
         map.zones["wall"] = new ZoneDef { zoneId = 1, name = "wall" };
         map.zones["upland"] = new ZoneDef { zoneId = 2, name = "upland" };
+
+        var terrainFields = TerrainFieldBuilder.Build(
+            grid,
+            height,
+            passPoints,
+            new TerrainFieldBuildParams
+            {
+                valleyRadius = Mathf.Max(floorHalfBase * 1.8f, wallOuterBase * 0.92f),
+                floodplainRadius = Mathf.Max(floorHalfBase * 1.35f, wallOuterBase * 0.62f),
+                ridgeRadius = Mathf.Max(wallOuterBase * 2.5f, floorHalfBase * 4f),
+                rockSlopeWeight = 0.8f,
+                rockDrynessWeight = 0.2f
+            });
+        terrainFields.WriteTo(map);
         maskTimer.Stop();
 
         var scatterTimer = Stopwatch.StartNew();
