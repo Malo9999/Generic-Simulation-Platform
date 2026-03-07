@@ -85,7 +85,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void Update()
     {
-        if (!enableRuntimeThemeCycleWithT || !Input.GetKeyDown(KeyCode.T))
+        if (!enableRuntimeThemeCycleWithT || !IsThemeCyclePressedThisFrame())
         {
             return;
         }
@@ -97,6 +97,38 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
         selectedThemeIndex = (selectedThemeIndex + 1) % themes.Count;
         RebuildShowcase();
+    }
+
+    private static bool IsThemeCyclePressedThisFrame()
+    {
+        return IsKeyPressedThisFrame(
+            KeyCode.T
+#if ENABLE_INPUT_SYSTEM
+            , UnityEngine.InputSystem.Key.T
+#endif
+        );
+    }
+
+    private static bool IsKeyPressedThisFrame(
+        KeyCode legacyKey
+#if ENABLE_INPUT_SYSTEM
+        , UnityEngine.InputSystem.Key inputSystemKey
+#endif
+    )
+    {
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        if (keyboard != null && keyboard[inputSystemKey].wasPressedThisFrame)
+        {
+            return true;
+        }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        return Input.GetKeyDown(legacyKey);
+#else
+        return false;
+#endif
     }
 
     private void RebuildShowcase()
