@@ -6,9 +6,12 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
     [SerializeField] private FieldBufferController fieldBuffer;
     [SerializeField] private Material additiveOverlayMaterial;
 
+    private const float VisibilityEpsilon = 1e-4f;
+
     private SpriteRenderer spriteRenderer;
     private Sprite runtimeSprite;
     private bool hasLoggedAdditiveFallback;
+    private bool hasLoggedHiddenEmptyBuffer;
 
     public void Configure(FieldBufferController controller)
     {
@@ -31,6 +34,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
     {
         if (fieldBuffer == null || fieldBuffer.FieldTexture == null)
         {
+            spriteRenderer.enabled = false;
             return;
         }
 
@@ -47,6 +51,22 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
         transform.localScale = new Vector3(bounds.width, bounds.height, 1f);
 
         EnforceSafeSpriteRendererState();
+
+        var shouldShowOverlay = fieldBuffer.HasVisibleContent || fieldBuffer.CurrentMaxValue > VisibilityEpsilon;
+        spriteRenderer.enabled = shouldShowOverlay;
+
+        if (!shouldShowOverlay)
+        {
+            if (!hasLoggedHiddenEmptyBuffer)
+            {
+                Debug.Log("[FieldOverlayRenderer] overlay hidden because field buffer is empty", this);
+                hasLoggedHiddenEmptyBuffer = true;
+            }
+
+            return;
+        }
+
+        hasLoggedHiddenEmptyBuffer = false;
         ApplyBlendMode(settings.blendMode);
     }
 
@@ -98,6 +118,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
         }
 
         spriteRenderer.drawMode = SpriteDrawMode.Simple;
+        spriteRenderer.sharedMaterial = null;
         spriteRenderer.color = Color.white;
     }
 
