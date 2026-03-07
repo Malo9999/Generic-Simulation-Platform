@@ -5,6 +5,9 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
 {
     [SerializeField] private FieldBufferController fieldBuffer;
     [SerializeField] private Material additiveOverlayMaterial;
+    [SerializeField] private Material showcaseDefaultSpriteMaterial;
+
+    private static Material runtimeSpriteFallbackMaterial;
 
     private const float VisibilityEpsilon = 1e-4f;
 
@@ -12,6 +15,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
     private Sprite runtimeSprite;
     private bool hasLoggedAdditiveFallback;
     private bool hasLoggedHiddenEmptyBuffer;
+    private bool hasLoggedUnsupportedFallback;
 
     public void Configure(FieldBufferController controller)
     {
@@ -118,7 +122,7 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
         }
 
         spriteRenderer.drawMode = SpriteDrawMode.Simple;
-        spriteRenderer.sharedMaterial = null;
+        spriteRenderer.sharedMaterial = ResolveDefaultSpriteMaterial();
         spriteRenderer.color = Color.white;
     }
 
@@ -134,15 +138,47 @@ public sealed class FieldOverlayRenderer : MonoBehaviour
 
             if (!hasLoggedAdditiveFallback)
             {
-                Debug.Log("[FieldOverlayRenderer] additiveOverlayMaterial missing or unsupported; using default SpriteRenderer material");
+                Debug.Log("[FieldOverlayRenderer] additiveOverlayMaterial missing or unsupported; using explicit URP sprite fallback material");
                 hasLoggedAdditiveFallback = true;
             }
 
-            spriteRenderer.sharedMaterial = null;
+            spriteRenderer.sharedMaterial = ResolveDefaultSpriteMaterial();
             return;
         }
 
-        spriteRenderer.sharedMaterial = null;
+        spriteRenderer.sharedMaterial = ResolveDefaultSpriteMaterial();
+    }
+
+
+    private Material ResolveDefaultSpriteMaterial()
+    {
+        if (IsUsableMaterial(showcaseDefaultSpriteMaterial))
+        {
+            return showcaseDefaultSpriteMaterial;
+        }
+
+        runtimeSpriteFallbackMaterial ??= CreateRuntimeSpriteFallbackMaterial();
+        var resolved = runtimeSpriteFallbackMaterial;
+        if (resolved == null && !hasLoggedUnsupportedFallback)
+        {
+            Debug.LogWarning("[FieldOverlayRenderer] URP sprite fallback shader unavailable; using SpriteRenderer default material", this);
+            hasLoggedUnsupportedFallback = true;
+        }
+
+        return resolved;
+    }
+
+    private static Material CreateRuntimeSpriteFallbackMaterial()
+    {
+        var shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+        if (shader == null || !shader.isSupported)
+        {
+            return null;
+        }
+
+        var mat = new Material(shader);
+        mat.name = "Runtime_ShowcaseSpriteFallback";
+        return mat;
     }
 
     private static bool IsUsableMaterial(Material mat)

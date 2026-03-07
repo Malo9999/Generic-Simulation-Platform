@@ -6,10 +6,14 @@ public sealed class TrailBufferRenderer : MonoBehaviour
     [SerializeField] private TrailBufferController trailBuffer;
     [SerializeField] private int sortingOrder = -10;
     [SerializeField] private Material runtimeTrailMaterial;
+    [SerializeField] private Material showcaseDefaultSpriteMaterial;
+
+    private static Material runtimeSpriteFallbackMaterial;
 
     private SpriteRenderer spriteRenderer;
     private Sprite sprite;
     private bool loggedMaterialFallbackState;
+    private bool loggedUnsupportedFallbackState;
     private bool loggedShownState;
     private bool loggedHiddenState;
 
@@ -104,12 +108,50 @@ public sealed class TrailBufferRenderer : MonoBehaviour
             return;
         }
 
-        spriteRenderer.sharedMaterial = null;
+        var defaultSpriteMaterial = ResolveDefaultSpriteMaterial();
+        spriteRenderer.sharedMaterial = defaultSpriteMaterial;
+
+        if (defaultSpriteMaterial == null)
+        {
+            if (!loggedUnsupportedFallbackState)
+            {
+                Debug.LogWarning("[TrailBuffer] URP sprite fallback shader unavailable; using SpriteRenderer default material", this);
+                loggedUnsupportedFallbackState = true;
+            }
+
+            return;
+        }
+
         if (!loggedMaterialFallbackState)
         {
-            Debug.Log("[TrailBuffer] using default material fallback", this);
+            Debug.Log("[TrailBuffer] using explicit URP sprite fallback material", this);
             loggedMaterialFallbackState = true;
         }
+    }
+
+
+    private Material ResolveDefaultSpriteMaterial()
+    {
+        if (showcaseDefaultSpriteMaterial != null && showcaseDefaultSpriteMaterial.shader != null && showcaseDefaultSpriteMaterial.shader.isSupported)
+        {
+            return showcaseDefaultSpriteMaterial;
+        }
+
+        runtimeSpriteFallbackMaterial ??= CreateRuntimeSpriteFallbackMaterial();
+        return runtimeSpriteFallbackMaterial;
+    }
+
+    private static Material CreateRuntimeSpriteFallbackMaterial()
+    {
+        var shader = Shader.Find("Universal Render Pipeline/2D/Sprite-Unlit-Default");
+        if (shader == null || !shader.isSupported)
+        {
+            return null;
+        }
+
+        var mat = new Material(shader);
+        mat.name = "Runtime_ShowcaseSpriteFallback";
+        return mat;
     }
 
     private void SetHidden(bool hidden)
