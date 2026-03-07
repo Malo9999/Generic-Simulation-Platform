@@ -17,6 +17,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Color cameraBackground = Color.black;
     [SerializeField] private bool useMaterialPaletteInShowcase = false;
     [SerializeField] private Material showcaseDefaultSpriteMaterial;
+    [SerializeField] private ShapeShowcaseProceduralMaterialConfig proceduralMaterials = new();
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -236,19 +237,64 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         sr.color = ResolveCategoryColor(category);
-        if (!useMaterialPaletteInShowcase)
+        sr.sharedMaterial = ResolveShowcaseDefaultSpriteMaterial();
+        if (useMaterialPaletteInShowcase)
         {
-            sr.sharedMaterial = ResolveShowcaseDefaultSpriteMaterial();
+            TryAssignPaletteMaterial(sr, category, shapeId);
         }
+
+        var applier = EnsureProceduralMaterialApplier(go);
+        var applyStatus = applier.TryApply(sr, shapeId, category, proceduralMaterials, sequence * 97);
+        var proceduralApplied = applyStatus == ProceduralMaterialApplyStatus.Applied;
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
         if (profile.animType != ShapeAnimType.None)
         {
             var driver = go.AddComponent<AnimatedShapeDriver>();
             driver.Configure(sr, profile, sequence * 97);
+            driver.SetProceduralMaterialApplier(applier, proceduralApplied);
         }
 
         SpawnLabel(shapeId, go.transform, labelOffset);
+    }
+
+
+    private void TryAssignPaletteMaterial(SpriteRenderer renderer, ShapePaletteCategory category, string shapeId)
+    {
+        if (renderer == null)
+        {
+            return;
+        }
+
+        var palette = ShapeMaterialPaletteLoader.Load();
+        if (palette == null)
+        {
+            return;
+        }
+
+        var material = palette.GetMaterial(category);
+        if (material == null)
+        {
+            if (missingLogged.Add($"mat:{shapeId}"))
+            {
+                Debug.LogWarning($"Shape showcase missing palette material for shape id: {shapeId}");
+            }
+
+            return;
+        }
+
+        renderer.sharedMaterial = material;
+    }
+
+    private static SpriteProceduralMaterialApplier EnsureProceduralMaterialApplier(GameObject go)
+    {
+        var applier = go.GetComponent<SpriteProceduralMaterialApplier>();
+        if (applier == null)
+        {
+            applier = go.AddComponent<SpriteProceduralMaterialApplier>();
+        }
+
+        return applier;
     }
 
     private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)
