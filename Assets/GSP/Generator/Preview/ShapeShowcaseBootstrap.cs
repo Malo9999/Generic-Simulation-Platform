@@ -15,21 +15,6 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Color headerColor = new(0.95f, 0.98f, 1f, 1f);
     [SerializeField] private Color labelColor = new(0.82f, 0.95f, 1f, 1f);
     [SerializeField] private Color cameraBackground = Color.black;
-    [SerializeField] private ShapeCategoryPalette shapeCategoryPalette;
-    [SerializeField] private ShapeMaterialPalette shapeMaterialPalette;
-    [SerializeField] private bool useMaterialPaletteInShowcase = false;
-
-    [Header("Trails")]
-    [SerializeField] private bool enableTrailDemo = true;
-
-    [Header("Field Overlay")]
-    [SerializeField] private bool enableFieldOverlayDemo = true;
-    [SerializeField] private FieldOverlayDemoMode overlayMode = FieldOverlayDemoMode.Pheromone;
-    [SerializeField] private bool forceSafeFieldOverlayDefaults = true;
-    [SerializeField] private bool enableSlimeMoldMiniDemo = true;
-    [SerializeField] private TrailShowcasePreset trailPreset;
-    [SerializeField] private TrailVisualSettings trailSettings = new();
-    [SerializeField] private SlimeMoldSteeringSettings slimeSteeringSettings = new();
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -71,41 +56,19 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     };
 
     private readonly HashSet<string> missingLogged = new();
-    private ShapeMaterialPalette runtimeMaterialPalette;
-    private TrailBufferController trailBufferController;
-    private FieldBufferController fieldBufferController;
-    private bool loggedMaterialPaletteMode;
-    private bool loggedCategoryPaletteMode;
 
-    private static readonly Color CoreFallbackColor = new(70f / 255f, 242f / 255f, 1f, 1f);
-    private static readonly Color OrganicFallbackColor = new(47f / 255f, 175f / 255f, 142f / 255f, 1f);
-    private static readonly Color AgentsFallbackColor = new(143f / 255f, 227f / 255f, 179f / 255f, 1f);
-    private static readonly Color MarkersFallbackColor = new(127f / 255f, 184f / 255f, 216f / 255f, 1f);
-    private static readonly Color LinesFallbackColor = new(62f / 255f, 214f / 255f, 224f / 255f, 1f);
+    // ShapeShowcase is a stable tint-only preview scene; advanced demos belong elsewhere.
+    private static readonly Color CoreColor = new(70f / 255f, 242f / 255f, 1f, 1f);      // #46F2FF
+    private static readonly Color OrganicColor = new(47f / 255f, 175f / 255f, 142f / 255f, 1f); // #2FAF8E
+    private static readonly Color AgentsColor = new(143f / 255f, 227f / 255f, 179f / 255f, 1f); // #8FE3B3
+    private static readonly Color MarkersColor = new(127f / 255f, 184f / 255f, 216f / 255f, 1f); // #7FB8D8
+    private static readonly Color LinesColor = new(62f / 255f, 214f / 255f, 224f / 255f, 1f);   // #3ED6E0
 
     private void Start()
     {
-        ApplyTrailPreset();
-        LogShowcaseMaterialPaletteMode();
         ApplySceneBackground();
         ClearStaleShowcaseSpriteMaterials();
-        if (enableTrailDemo)
-        {
-            SetupTrailSystem();
-        }
-
-        if (enableFieldOverlayDemo && overlayMode != FieldOverlayDemoMode.Off)
-        {
-            SetupFieldOverlaySystem();
-        }
-
         SpawnShowcase();
-
-        if (enableTrailDemo && enableSlimeMoldMiniDemo)
-        {
-            SpawnSlimeMoldMiniDemo();
-        }
-
         FitCameraToSpawnedContent();
     }
 
@@ -192,82 +155,6 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         return hasBounds;
     }
 
-    private void SetupTrailSystem()
-    {
-        var trailRoot = new GameObject("TrailBuffer");
-        trailRoot.transform.SetParent(transform, false);
-
-        trailBufferController = trailRoot.AddComponent<TrailBufferController>();
-        trailSettings.ApplyTo(trailBufferController.Settings);
-        EnsureSafeTrailTint(trailBufferController.Settings);
-
-        var renderer = trailRoot.AddComponent<TrailBufferRenderer>();
-        renderer.Configure(trailBufferController);
-    }
-
-
-    private void SetupFieldOverlaySystem()
-    {
-        DestroyStaleFieldOverlayObjects();
-
-        var fieldRoot = new GameObject("FieldOverlay");
-        fieldRoot.transform.SetParent(transform, false);
-
-        fieldBufferController = fieldRoot.AddComponent<FieldBufferController>();
-
-        if (overlayMode == FieldOverlayDemoMode.Pheromone)
-        {
-            PheromoneOverlayProfile.Apply(fieldBufferController.Settings);
-        }
-        else
-        {
-            ApplyHeatmapProfile(fieldBufferController.Settings);
-        }
-
-        if (forceSafeFieldOverlayDefaults && overlayMode == FieldOverlayDemoMode.Heatmap)
-        {
-            fieldBufferController.Settings.tintLow = FieldOverlayPalette.DefaultLow;
-            fieldBufferController.Settings.tintHigh = FieldOverlayPalette.HeatOrange;
-            fieldBufferController.Settings.blendMode = FieldOverlayBlendMode.Alpha;
-            fieldBufferController.Settings.alphaMultiplier = 0.45f;
-            fieldBufferController.Settings.intensity = 1f;
-        }
-
-        var settings = fieldBufferController.Settings;
-        Debug.Log($"[ShapeShowcaseField] mode={overlayMode} blend={settings.blendMode} tintLow={settings.tintLow} tintHigh={settings.tintHigh} alpha={settings.alphaMultiplier} intensity={settings.intensity}");
-
-        var renderer = fieldRoot.AddComponent<FieldOverlayRenderer>();
-        renderer.Configure(fieldBufferController);
-    }
-
-
-    private void DestroyStaleFieldOverlayObjects()
-    {
-        for (var i = transform.childCount - 1; i >= 0; i--)
-        {
-            var child = transform.GetChild(i);
-            if (!child.name.StartsWith("FieldOverlay"))
-            {
-                continue;
-            }
-
-            Destroy(child.gameObject);
-        }
-    }
-
-    private static void ApplyHeatmapProfile(FieldOverlaySettings settings)
-    {
-        settings.width = 256;
-        settings.height = 144;
-        settings.decayPerSecond = 0.80f;
-        settings.diffuseStrength = 0.05f;
-        settings.intensity = 1f;
-        settings.alphaMultiplier = 0.40f;
-        settings.blendMode = FieldOverlayBlendMode.Alpha;
-        settings.tintLow = FieldOverlayPalette.DefaultLow;
-        settings.tintHigh = FieldOverlayPalette.HeatOrange;
-    }
-
     private void ApplySceneBackground()
     {
         var cameraRef = Camera.main;
@@ -278,6 +165,15 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
         cameraRef.backgroundColor = cameraBackground;
         cameraRef.clearFlags = CameraClearFlags.SolidColor;
+    }
+
+    private void ClearStaleShowcaseSpriteMaterials()
+    {
+        var sprites = GetComponentsInChildren<SpriteRenderer>(true);
+        for (var i = 0; i < sprites.Length; i++)
+        {
+            sprites[i].sharedMaterial = null;
+        }
     }
 
     private void SpawnShowcase()
@@ -337,23 +233,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
         sr.color = ResolveCategoryColor(category);
-
-        if (useMaterialPaletteInShowcase)
-        {
-            var palette = ResolveMaterialPalette();
-            if (palette != null)
-            {
-                var mat = palette.GetMaterialForShape(shapeId);
-                if (mat != null)
-                {
-                    sr.sharedMaterial = mat;
-                }
-            }
-        }
-        else
-        {
-            sr.sharedMaterial = null;
-        }
+        sr.sharedMaterial = null;
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
         if (profile.animType != ShapeAnimType.None)
@@ -362,164 +242,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             driver.Configure(sr, profile, sequence * 97);
         }
 
-        ConfigureTrailDemo(go, shapeId, category, sequence);
         SpawnLabel(shapeId, go.transform, labelOffset);
-    }
-
-    private void ConfigureTrailDemo(GameObject go, string shapeId, ShapePaletteCategory category, int sequence)
-    {
-        if (!enableTrailDemo || (trailBufferController == null && fieldBufferController == null))
-        {
-            return;
-        }
-
-        var motion = go.AddComponent<ShowcaseTrailMotion>();
-        motion.Configure(sequence + 17, category == ShapePaletteCategory.Organic ? 0.9f : 1f);
-
-        if (category == ShapePaletteCategory.Markers || category == ShapePaletteCategory.Agents)
-        {
-            return;
-        }
-
-        var emitter = go.AddComponent<TrailEmitter>();
-        var strength = 1f;
-        var radiusScale = 1f;
-
-        if (category == ShapePaletteCategory.Organic)
-        {
-            strength = 0.65f;
-            radiusScale = 1.25f;
-        }
-        else if (shapeId == ShapeId.Filament)
-        {
-            strength = 1.1f;
-            radiusScale = 0.85f;
-        }
-
-        if (fieldBufferController != null)
-        {
-            emitter.Configure(fieldBufferController, strength, radiusScale);
-        }
-        else
-        {
-            emitter.Configure(trailBufferController, strength, radiusScale);
-        }
-    }
-
-
-    private static void EnsureSafeTrailTint(TrailBufferSettings settings)
-    {
-        var tint = settings.tintColor;
-        var hasNoRgb = tint.r <= 0.001f && tint.g <= 0.001f && tint.b <= 0.001f;
-        var isDebugMagenta = tint.r >= 0.95f && tint.g <= 0.1f && tint.b >= 0.95f;
-        if (!hasNoRgb && !isDebugMagenta)
-        {
-            return;
-        }
-
-        settings.tintColor = new Color(62f / 255f, 214f / 255f, 224f / 255f, 0.35f);
-    }
-
-    private void SpawnSlimeMoldMiniDemo()
-    {
-        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out var dotSprite))
-        {
-            return;
-        }
-
-        var parent = new GameObject("SlimeMoldMiniDemo");
-        parent.transform.SetParent(transform, false);
-
-        var activeBuffer = ResolveActiveFieldBuffer();
-        if (activeBuffer == null)
-        {
-            return;
-        }
-
-        var center = activeBuffer.WorldBounds.center;
-        var radius = Mathf.Min(activeBuffer.WorldBounds.width, activeBuffer.WorldBounds.height) * 0.25f;
-
-        for (var i = 0; i < 10; i++)
-        {
-            var angle = (Mathf.PI * 2f * i) / 10f;
-            var pos = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-
-            var agentGo = new GameObject($"slime_agent_{i:00}");
-            agentGo.transform.SetParent(parent.transform, false);
-            agentGo.transform.position = new Vector3(pos.x, pos.y, 0f);
-            agentGo.transform.localScale = Vector3.one * 0.8f;
-
-            var sr = agentGo.AddComponent<SpriteRenderer>();
-            sr.sprite = dotSprite;
-            sr.color = new Color(0.6f, 1f, 0.85f, 0.85f);
-
-            var emitter = agentGo.AddComponent<TrailEmitter>();
-            if (fieldBufferController != null)
-            {
-                emitter.Configure(fieldBufferController, trailSettings.depositStrength, 0.8f);
-            }
-            else
-            {
-                emitter.Configure(trailBufferController, trailSettings.depositStrength, 0.8f);
-            }
-
-            var agent = agentGo.AddComponent<SlimeMoldDemoAgent>();
-            if (fieldBufferController != null)
-            {
-                agent.Configure(fieldBufferController, slimeSteeringSettings, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
-            }
-            else
-            {
-                agent.Configure(trailBufferController, slimeSteeringSettings, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
-            }
-        }
-    }
-
-
-    private IFieldDepositBuffer ResolveActiveFieldBuffer()
-    {
-        if (fieldBufferController != null)
-        {
-            return fieldBufferController;
-        }
-
-        return trailBufferController;
-    }
-
-    private void ApplyTrailPreset()
-    {
-        if (trailPreset == null)
-        {
-            return;
-        }
-
-        trailPreset.ApplyTo(trailSettings, slimeSteeringSettings);
-    }
-
-
-    private void LogShowcaseMaterialPaletteMode()
-    {
-        if (loggedMaterialPaletteMode)
-        {
-            return;
-        }
-
-        Debug.Log($"[ShapeShowcase] material palette in showcase {(useMaterialPaletteInShowcase ? "enabled" : "disabled")}", this);
-        loggedMaterialPaletteMode = true;
-    }
-
-    private void ClearStaleShowcaseSpriteMaterials()
-    {
-        if (useMaterialPaletteInShowcase)
-        {
-            return;
-        }
-
-        var sprites = GetComponentsInChildren<SpriteRenderer>(true);
-        for (var i = 0; i < sprites.Length; i++)
-        {
-            sprites[i].sharedMaterial = null;
-        }
     }
 
     private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)
@@ -552,81 +275,17 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         mesh.color = labelColor;
     }
 
-    private Color GetTint(string shapeId)
+    private static Color ResolveCategoryColor(ShapePaletteCategory category)
     {
-        return ResolveCategoryColor(ShapeMaterialPalette.ShapeIdToCategory(shapeId));
-    }
-
-    private Color ResolveCategoryColor(ShapePaletteCategory category)
-    {
-        var palette = ResolveAssignedCategoryPalette();
-        if (palette != null)
-        {
-            return palette.GetColor(category);
-        }
-
         return category switch
         {
-            ShapePaletteCategory.Core => CoreFallbackColor,
-            ShapePaletteCategory.Organic => OrganicFallbackColor,
-            ShapePaletteCategory.Agents => AgentsFallbackColor,
-            ShapePaletteCategory.Markers => MarkersFallbackColor,
-            ShapePaletteCategory.Lines => LinesFallbackColor,
-            _ => CoreFallbackColor
+            ShapePaletteCategory.Core => CoreColor,
+            ShapePaletteCategory.Organic => OrganicColor,
+            ShapePaletteCategory.Agents => AgentsColor,
+            ShapePaletteCategory.Markers => MarkersColor,
+            ShapePaletteCategory.Lines => LinesColor,
+            _ => CoreColor
         };
-    }
-
-    private ShapeCategoryPalette ResolveAssignedCategoryPalette()
-    {
-        if (shapeCategoryPalette != null)
-        {
-            LogCategoryPaletteMode(usingAssignedPalette: true);
-            return shapeCategoryPalette;
-        }
-
-        shapeCategoryPalette = Resources.Load<ShapeCategoryPalette>("ShapeCategoryPalette");
-        if (shapeCategoryPalette != null)
-        {
-            LogCategoryPaletteMode(usingAssignedPalette: true);
-            return shapeCategoryPalette;
-        }
-
-        LogCategoryPaletteMode(usingAssignedPalette: false);
-        return null;
-    }
-
-    private void LogCategoryPaletteMode(bool usingAssignedPalette)
-    {
-        if (loggedCategoryPaletteMode)
-        {
-            return;
-        }
-
-        if (usingAssignedPalette)
-        {
-            Debug.Log("[ShapeShowcase] using assigned category palette", this);
-        }
-        else
-        {
-            Debug.Log("[ShapeShowcase] category palette missing; using hardcoded safe fallback colors", this);
-        }
-
-        loggedCategoryPaletteMode = true;
-    }
-
-    private ShapeMaterialPalette ResolveMaterialPalette()
-    {
-        if (shapeMaterialPalette != null)
-        {
-            return shapeMaterialPalette;
-        }
-
-        if (runtimeMaterialPalette == null)
-        {
-            runtimeMaterialPalette = ShapeMaterialPaletteLoader.Load();
-        }
-
-        return runtimeMaterialPalette;
     }
 
     private readonly struct ShowcaseCategory
