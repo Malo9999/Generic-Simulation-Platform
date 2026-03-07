@@ -222,18 +222,7 @@ public class SimpleArtPipeline : ArtPipelineBase
 
     private void TryAttachMotionShader(SpriteRenderer renderer, string shapeId, VisualKey key)
     {
-        if (renderer == null || !MotionShaderProfile.TryResolveFamily(shapeId, out _))
-        {
-            return;
-        }
-
-        var driver = renderer.GetComponent<MotionShaderDriver>();
-        if (driver == null)
-        {
-            driver = renderer.gameObject.AddComponent<MotionShaderDriver>();
-        }
-
-        driver.Configure(renderer, key, shapeId, ResolveMotionProfile());
+        MotionShaderAutoWiring.TryAttachAndConfigure(renderer, key, shapeId, ResolveMotionProfile());
     }
 
     private static string ResolveGlowShapeId(VisualKey key)

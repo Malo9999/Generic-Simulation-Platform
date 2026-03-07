@@ -255,9 +255,25 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             driver.SetProceduralMaterialApplier(applier, proceduralApplied);
         }
 
+        var visualKey = BuildShowcaseVisualKey(shapeId, sequence);
+        MotionShaderAutoWiring.TryAttachAndConfigure(sr, visualKey, shapeId, MotionShaderProfile.LoadRuntimeProfile());
+
         SpawnLabel(shapeId, go.transform, labelOffset);
     }
 
+
+    private static VisualKey BuildShowcaseVisualKey(string shapeId, int sequence)
+    {
+        return VisualKeyBuilder.Create(
+            "ShapeShowcase",
+            shapeId,
+            sequence,
+            shapeId,
+            "showcase",
+            FacingMode.Auto,
+            -1,
+            sequence);
+    }
 
     private void TryAssignPaletteMaterial(SpriteRenderer renderer, ShapePaletteCategory category, string shapeId)
     {
