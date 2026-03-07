@@ -11,10 +11,14 @@ public sealed class FieldBufferController : MonoBehaviour, IFieldDepositBuffer
     private Texture2D fieldTexture;
     private Rect worldBounds;
     private bool hasLoggedTextureDiagnostics;
+    private bool hasVisibleContent;
+    private float currentMaxValue;
 
     public FieldOverlaySettings Settings => settings;
     public Texture2D FieldTexture => fieldTexture;
     public Rect WorldBounds => worldBounds;
+    public bool HasVisibleContent => hasVisibleContent;
+    public float CurrentMaxValue => currentMaxValue;
 
     private void Awake()
     {
@@ -253,16 +257,34 @@ public sealed class FieldBufferController : MonoBehaviour, IFieldDepositBuffer
                     uploadPixels[yOffset + x] = x < halfWidth ? transparentBlack : cyanPixel;
                 }
             }
+
+            currentMaxValue = 1f;
+            hasVisibleContent = true;
         }
         else
         {
+            var maxValue = 0f;
+            var foundVisiblePixel = false;
             for (var i = 0; i < values.Length; i++)
             {
                 var value = Mathf.Clamp01(values[i] * settings.intensity);
+                if (value > maxValue)
+                {
+                    maxValue = value;
+                }
+
                 var color = Color.Lerp(low, high, value);
                 color.a *= value * alphaMul;
                 uploadPixels[i] = color;
+
+                if (!foundVisiblePixel && uploadPixels[i].a > 0)
+                {
+                    foundVisiblePixel = true;
+                }
             }
+
+            currentMaxValue = maxValue;
+            hasVisibleContent = foundVisiblePixel && maxValue > 1e-4f;
         }
 
         LogTextureDiagnosticsOnce();
