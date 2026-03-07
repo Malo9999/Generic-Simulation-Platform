@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 35dfdb1f4a73410395776cf7030ec4b9, type: 3}
+  m_Name: DrasticThemeShapeMaterialPalette
+  m_EditorClassIdentifier: 
+  coreMaterial: {fileID: 2100000, guid: 7b9c35d1e63f4194a479a8c5df22d07d, type: 2}
+  organicMaterial: {fileID: 2100000, guid: c0edf393600f4a45b99f75368a80384a, type: 2}
+  agentsMaterial: {fileID: 2100000, guid: 619006fd95b14f46bc07a8b84a034933, type: 2}
+  markersMaterial: {fileID: 2100000, guid: 97ca95d3ba524db2bf79c2f3f54a8601, type: 2}
+  linesMaterial: {fileID: 2100000, guid: 7b84a0d4504e45c69f1695cd9919b85e, type: 2}
