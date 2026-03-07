@@ -2,7 +2,7 @@ using UnityEngine;
 
 public static class TrailSteeringUtility
 {
-    public static float ComputeSteeringBias(TrailBufferController buffer, Vector2 position, Vector2 forward, SlimeMoldSteeringSettings settings)
+    public static float ComputeSteeringBias(IFieldDepositBuffer buffer, Vector2 position, Vector2 forward, SlimeMoldSteeringSettings settings)
     {
         if (buffer == null || settings == null)
         {
@@ -13,9 +13,9 @@ public static class TrailSteeringUtility
         var leftDir = Rotate(direction, settings.sensorAngleDeg);
         var rightDir = Rotate(direction, -settings.sensorAngleDeg);
 
-        var ahead = buffer.SampleApproxValue(position + (direction * settings.sensorDistance));
-        var left = buffer.SampleApproxValue(position + (leftDir * settings.sensorDistance));
-        var right = buffer.SampleApproxValue(position + (rightDir * settings.sensorDistance));
+        var ahead = buffer.Sample(position + (direction * settings.sensorDistance));
+        var left = buffer.Sample(position + (leftDir * settings.sensorDistance));
+        var right = buffer.Sample(position + (rightDir * settings.sensorDistance));
 
         if (ahead >= left && ahead >= right)
         {

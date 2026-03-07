@@ -20,6 +20,10 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     [Header("Trails")]
     [SerializeField] private bool enableTrailDemo = true;
+
+    [Header("Field Overlay")]
+    [SerializeField] private bool enableFieldOverlayDemo = true;
+    [SerializeField] private FieldOverlayDemoMode overlayMode = FieldOverlayDemoMode.Pheromone;
     [SerializeField] private bool enableSlimeMoldMiniDemo = true;
     [SerializeField] private TrailShowcasePreset trailPreset;
     [SerializeField] private TrailVisualSettings trailSettings = new();
@@ -68,6 +72,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     private ShapeCategoryPalette runtimeFallbackPalette;
     private ShapeMaterialPalette runtimeMaterialPalette;
     private TrailBufferController trailBufferController;
+    private FieldBufferController fieldBufferController;
 
     private void Start()
     {
@@ -76,6 +81,11 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         if (enableTrailDemo)
         {
             SetupTrailSystem();
+        }
+
+        if (enableFieldOverlayDemo && overlayMode != FieldOverlayDemoMode.Off)
+        {
+            SetupFieldOverlaySystem();
         }
 
         SpawnShowcase();
@@ -183,6 +193,40 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         renderer.Configure(trailBufferController);
     }
 
+
+    private void SetupFieldOverlaySystem()
+    {
+        var fieldRoot = new GameObject("FieldOverlay");
+        fieldRoot.transform.SetParent(transform, false);
+
+        fieldBufferController = fieldRoot.AddComponent<FieldBufferController>();
+
+        if (overlayMode == FieldOverlayDemoMode.Pheromone)
+        {
+            PheromoneOverlayProfile.Apply(fieldBufferController.Settings);
+        }
+        else
+        {
+            ApplyHeatmapProfile(fieldBufferController.Settings);
+        }
+
+        var renderer = fieldRoot.AddComponent<FieldOverlayRenderer>();
+        renderer.Configure(fieldBufferController);
+    }
+
+    private static void ApplyHeatmapProfile(FieldOverlaySettings settings)
+    {
+        settings.width = 256;
+        settings.height = 144;
+        settings.decayPerSecond = 0.80f;
+        settings.diffuseStrength = 0.05f;
+        settings.intensity = 1f;
+        settings.alphaMultiplier = 0.45f;
+        settings.blendMode = FieldOverlayBlendMode.Additive;
+        settings.tintLow = FieldOverlayPalette.DefaultLow;
+        settings.tintHigh = FieldOverlayPalette.HeatOrange;
+    }
+
     private void ApplySceneBackground()
     {
         var cameraRef = Camera.main;
@@ -276,7 +320,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void ConfigureTrailDemo(GameObject go, string shapeId, ShapePaletteCategory category, int sequence)
     {
-        if (!enableTrailDemo || trailBufferController == null)
+        if (!enableTrailDemo || (trailBufferController == null && fieldBufferController == null))
         {
             return;
         }
@@ -304,7 +348,14 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             radiusScale = 0.85f;
         }
 
-        emitter.Configure(trailBufferController, strength, radiusScale);
+        if (fieldBufferController != null)
+        {
+            emitter.Configure(fieldBufferController, strength, radiusScale);
+        }
+        else
+        {
+            emitter.Configure(trailBufferController, strength, radiusScale);
+        }
     }
 
     private void SpawnSlimeMoldMiniDemo()
@@ -317,8 +368,14 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var parent = new GameObject("SlimeMoldMiniDemo");
         parent.transform.SetParent(transform, false);
 
-        var center = trailBufferController.WorldBounds.center;
-        var radius = Mathf.Min(trailBufferController.WorldBounds.width, trailBufferController.WorldBounds.height) * 0.25f;
+        var activeBuffer = ResolveActiveFieldBuffer();
+        if (activeBuffer == null)
+        {
+            return;
+        }
+
+        var center = activeBuffer.WorldBounds.center;
+        var radius = Mathf.Min(activeBuffer.WorldBounds.width, activeBuffer.WorldBounds.height) * 0.25f;
 
         for (var i = 0; i < 10; i++)
         {
@@ -335,11 +392,36 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             sr.color = new Color(0.6f, 1f, 0.85f, 0.85f);
 
             var emitter = agentGo.AddComponent<TrailEmitter>();
-            emitter.Configure(trailBufferController, trailSettings.depositStrength, 0.8f);
+            if (fieldBufferController != null)
+            {
+                emitter.Configure(fieldBufferController, trailSettings.depositStrength, 0.8f);
+            }
+            else
+            {
+                emitter.Configure(trailBufferController, trailSettings.depositStrength, 0.8f);
+            }
 
             var agent = agentGo.AddComponent<SlimeMoldDemoAgent>();
-            agent.Configure(trailBufferController, slimeSteeringSettings, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
+            if (fieldBufferController != null)
+            {
+                agent.Configure(fieldBufferController, slimeSteeringSettings, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
+            }
+            else
+            {
+                agent.Configure(trailBufferController, slimeSteeringSettings, new Vector2(Mathf.Cos(angle + 1.2f), Mathf.Sin(angle + 1.2f)));
+            }
         }
+    }
+
+
+    private IFieldDepositBuffer ResolveActiveFieldBuffer()
+    {
+        if (fieldBufferController != null)
+        {
+            return fieldBufferController;
+        }
+
+        return trailBufferController;
     }
 
     private void ApplyTrailPreset()

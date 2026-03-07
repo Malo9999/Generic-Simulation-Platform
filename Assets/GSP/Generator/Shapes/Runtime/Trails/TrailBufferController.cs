@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public sealed class TrailBufferController : MonoBehaviour
+public sealed class TrailBufferController : MonoBehaviour, IFieldDepositBuffer
 {
     [SerializeField] private TrailBufferSettings settings = new();
     [SerializeField, Min(8)] private int maxQueuedDeposits = 4096;
@@ -52,6 +52,11 @@ public sealed class TrailBufferController : MonoBehaviour
         }
     }
 
+    public void AddDeposit(Vector2 worldPos, float amount, float radius)
+    {
+        QueueDeposit(worldPos, amount, radius);
+    }
+
     public void QueueDeposit(Vector2 worldPos, float strength, float radiusScale = 1f)
     {
         if (!enabled || strength <= 0f)
@@ -72,7 +77,7 @@ public sealed class TrailBufferController : MonoBehaviour
         depositQueue.Add(new DepositRequest(px, py, Mathf.Max(0f, strength), Mathf.Max(0.1f, radiusScale)));
     }
 
-    public float SampleApproxValue(Vector2 worldPos)
+    public float Sample(Vector2 worldPos)
     {
         if (trailTexture == null || !TryWorldToUv(worldPos, out var uv))
         {
@@ -105,10 +110,10 @@ public sealed class TrailBufferController : MonoBehaviour
         var dx = worldBounds.width / Mathf.Max(1f, settings.textureWidth);
         var dy = worldBounds.height / Mathf.Max(1f, settings.textureHeight);
 
-        var right = SampleApproxValue(worldPos + new Vector2(dx, 0f));
-        var left = SampleApproxValue(worldPos + new Vector2(-dx, 0f));
-        var up = SampleApproxValue(worldPos + new Vector2(0f, dy));
-        var down = SampleApproxValue(worldPos + new Vector2(0f, -dy));
+        var right = Sample(worldPos + new Vector2(dx, 0f));
+        var left = Sample(worldPos + new Vector2(-dx, 0f));
+        var up = Sample(worldPos + new Vector2(0f, dy));
+        var down = Sample(worldPos + new Vector2(0f, -dy));
 
         return new Vector2(right - left, up - down);
     }
