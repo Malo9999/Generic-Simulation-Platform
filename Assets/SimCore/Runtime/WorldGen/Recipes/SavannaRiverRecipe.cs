@@ -13,6 +13,7 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
     private const int SlowMaxControlPoints = 64;
     private const int MaxPreviewScatter = 256;
     private const int MaxTributaries = 3;
+    private const int MaxQualityModeTributaries = 1;
     private const int TributaryStartSearchAttempts = 24;
     private const int TributaryTraceMaxSteps = 160;
     private const int TributaryParallelAbortSteps = 14;
@@ -84,8 +85,9 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         var tribFloodScale = Mathf.Lerp(0.58f, 0.8f, Mathf.Clamp01(settings.TributaryWidthFactor));
         var widthPhase = Mathf.Abs(Mathf.Sin(seed * 0.173f)) * Mathf.PI * 2f;
         var terraceCount = Mathf.Max(1, settings.TerraceCount);
-        var terraceStrength = Mathf.Clamp01(settings.TerraceStrength);
-        var bankRoughStrength = Mathf.Clamp01(settings.BankRoughnessStrength);
+        var richnessEnabled = settings.qualityMode != QualityMode.FastPreview;
+        var terraceStrength = richnessEnabled ? Mathf.Clamp01(settings.TerraceStrength) * 0.75f : 0f;
+        var bankRoughStrength = richnessEnabled ? Mathf.Clamp01(settings.BankRoughnessStrength) * 0.75f : 0f;
 
         for (var y = 0; y < grid.height; y++)
         for (var x = 0; x < grid.width; x++)
@@ -249,9 +251,15 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         };
 
         data.main = BuildRiverCenterline(settings, grid, mapRect, flowDir, seed, meanderNoise, warpNoise, out data.mainControlStations, log);
-        TryApplyCutoff(settings, seed, data.main, out data.oxbow, out data.cutoffRemovedIndices, out data.cutoffApplied);
+        var richnessEnabled = settings.qualityMode != QualityMode.FastPreview;
+        if (richnessEnabled)
+            TryApplyCutoff(settings, seed, data.main, out data.oxbow, out data.cutoffRemovedIndices, out data.cutoffApplied);
+        else
+            TryApplyCutoff(settings, seed, null, out data.oxbow, out data.cutoffRemovedIndices, out data.cutoffApplied);
 
-        var requestedTributaries = Mathf.Clamp(settings.TributaryCount, 0, MaxTributaries);
+        var requestedTributaries = richnessEnabled
+            ? Mathf.Clamp(settings.TributaryCount, 0, Mathf.Min(MaxTributaries, MaxQualityModeTributaries))
+            : 0;
         var progressDir = DominantCardinal(flowDir);
         var lateralDir = new Vector2(-progressDir.y, progressDir.x);
 
@@ -393,8 +401,41 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         if (DistanceToPolylineWithT(mainRiver, last, out _) >= riverJoinDistance)
             return null;
 
+        if (!IsTributaryValid(settings, mainRiver, points))
+            return null;
+
         controlStations = points.Count;
         return Chaikin(points, 1);
+    }
+
+    private static bool IsTributaryValid(SavannaRiverSettingsSO settings, List<Vector2> mainRiver, List<Vector2> tributary)
+    {
+        if (mainRiver == null || tributary == null || mainRiver.Count < 2 || tributary.Count < 3)
+            return false;
+
+        if (Mathf.Clamp(settings.TributaryWidthFactor, 0.2f, 0.9f) >= 1f - Epsilon)
+            return false;
+
+        var mainLength = PolylineLength(mainRiver);
+        var tribLength = PolylineLength(tributary);
+        if (mainLength <= Epsilon || tribLength <= Epsilon)
+            return false;
+
+        if (tribLength >= mainLength * 0.82f)
+            return false;
+
+        var joinPoint = tributary[tributary.Count - 1];
+        DistanceToPolylineWithT(mainRiver, joinPoint, out var joinT);
+        var mainJoin = SamplePolyline(mainRiver, joinT, out var mainTangent);
+        var tribTangent = (tributary[tributary.Count - 1] - tributary[tributary.Count - 2]).normalized;
+        if (tribTangent.sqrMagnitude < Epsilon || mainTangent.sqrMagnitude < Epsilon)
+            return false;
+
+        var joinAngle = Vector2.Angle(tribTangent, mainTangent);
+        if (joinAngle < 22f || joinAngle > 158f)
+            return false;
+
+        return Vector2.Distance(joinPoint, mainJoin) <= Mathf.Max(0.5f, settings.riverWidth * 0.65f);
     }
 
     private static bool TryFindTributaryStart(SavannaRiverSettingsSO settings, WorldGridSpec grid, Rect mapRect, List<Vector2> mainRiver, Vector2 joinPoint, Vector2 sideDir, Vector2 flowDir, int seed, out Vector2 start)
@@ -518,6 +559,7 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         if (rand > settings.CutoffChance) return;
 
         var step = 3;
+        var mainLength = PolylineLength(points);
         var minIndexGap = Mathf.Max(10, points.Count / 8);
         var maxCloseDist = Vector2.Distance(points[0], points[points.Count - 1]) * 0.16f;
         var bestScore = float.MinValue;
@@ -530,8 +572,22 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             {
                 var d = Vector2.Distance(points[i], points[j]);
                 if (d > maxCloseDist) continue;
+                var alongLength = PolylineLength(points, i, j);
+                if (alongLength <= Epsilon) continue;
+
+                var bendScore = Mathf.Min(LocalBendStrength(points, i), LocalBendStrength(points, j));
+                if (bendScore < 0.18f) continue;
+
+                var shortcutRatio = d / alongLength;
+                if (shortcutRatio > 0.72f) continue;
+
+                var localRatio = alongLength / Mathf.Max(Epsilon, mainLength);
+                if (localRatio < 0.08f || localRatio > 0.34f) continue;
+
+                if (WouldCutoffSelfIntersect(points, i, j)) continue;
+
                 var alongGap = (j - i) / (float)points.Count;
-                var score = alongGap - d / Mathf.Max(Epsilon, maxCloseDist);
+                var score = alongGap - d / Mathf.Max(Epsilon, maxCloseDist) + bendScore * 0.45f + (1f - shortcutRatio) * 0.35f;
                 if (score > bestScore)
                 {
                     bestScore = score;
@@ -541,7 +597,7 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
             }
         }
 
-        if (bestI < 0 || bestJ <= bestI + 2) return;
+        if (bestI < 0 || bestJ <= bestI + 2 || bestScore < 0.2f) return;
 
         oxbow = new List<Vector2>();
         for (var k = bestI; k <= bestJ; k++)
@@ -557,6 +613,63 @@ public class SavannaRiverRecipe : WorldRecipeBase<SavannaRiverSettingsSO>
         points.Clear();
         points.AddRange(rebuilt);
         cutoffApplied = 1;
+    }
+
+    private static float PolylineLength(List<Vector2> points, int startIndex = 0, int endIndex = -1)
+    {
+        if (points == null || points.Count < 2)
+            return 0f;
+
+        var start = Mathf.Clamp(startIndex, 0, points.Count - 2);
+        var end = endIndex < 0 ? points.Count - 1 : Mathf.Clamp(endIndex, start + 1, points.Count - 1);
+        var length = 0f;
+        for (var i = start + 1; i <= end; i++)
+            length += Vector2.Distance(points[i - 1], points[i]);
+        return length;
+    }
+
+    private static float LocalBendStrength(List<Vector2> points, int index)
+    {
+        if (points == null || index <= 0 || index >= points.Count - 1)
+            return 0f;
+
+        var a = (points[index] - points[index - 1]).normalized;
+        var b = (points[index + 1] - points[index]).normalized;
+        if (a.sqrMagnitude < Epsilon || b.sqrMagnitude < Epsilon)
+            return 0f;
+
+        return Mathf.Clamp01(Vector2.Angle(a, b) / 180f);
+    }
+
+    private static bool WouldCutoffSelfIntersect(List<Vector2> points, int i, int j)
+    {
+        var a = points[i];
+        var b = points[j];
+        for (var k = 1; k < points.Count; k++)
+        {
+            if (k >= i - 1 && k <= j + 1)
+                continue;
+
+            if (SegmentsIntersect(a, b, points[k - 1], points[k]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool SegmentsIntersect(Vector2 a1, Vector2 a2, Vector2 b1, Vector2 b2)
+    {
+        var r = a2 - a1;
+        var s = b2 - b1;
+        var denom = r.x * s.y - r.y * s.x;
+        if (Mathf.Abs(denom) <= Epsilon)
+            return false;
+
+        var uNumer = (b1.x - a1.x) * r.y - (b1.y - a1.y) * r.x;
+        var tNumer = (b1.x - a1.x) * s.y - (b1.y - a1.y) * s.x;
+        var t = tNumer / denom;
+        var u = uNumer / denom;
+        return t > Epsilon && t < 1f - Epsilon && u > Epsilon && u < 1f - Epsilon;
     }
 
     private static Vector2 SamplePolyline(List<Vector2> points, float t, out Vector2 tangent)

@@ -23,9 +23,12 @@ public class SavannaRiverSettingsSO : WorldRecipeSettingsSO
     public float WidthVariationStrength = 0.2f;
     public float CurvatureNoiseStrength = 0.3f;
     public float heightNoiseStrength = 1f;
-    [Range(0, 3)] public int TributaryCount = 2;
+    [Header("Quality Richness (NormalPreview/Bake only)")]
+    [Tooltip("FastPreview always stays single-river baseline. Tributaries are only considered in NormalPreview/Bake.")]
+    [Range(0, 1)] public int TributaryCount = 1;
     public float TributaryWidthFactor = 0.52f;
     public float TributaryMeanderFactor = 0.62f;
+    [Tooltip("FastPreview ignores cutoff/oxbow generation. NormalPreview/Bake can apply at most one valid cutoff.")]
     [Range(0f, 1f)] public float CutoffChance = 0.18f;
     public float OxbowWidthFactor = 0.45f;
     [Range(0f, 1f)] public float TerraceStrength = 0.28f;
