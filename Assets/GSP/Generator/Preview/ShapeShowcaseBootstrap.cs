@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -18,6 +19,10 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private bool useMaterialPaletteInShowcase = false;
     [SerializeField] private Material showcaseDefaultSpriteMaterial;
     [SerializeField] private ShapeShowcaseProceduralMaterialConfig proceduralMaterials = new();
+
+    [Header("Theme Verification")]
+    [SerializeField] private List<ShowcaseThemeEntry> themes = new();
+    [SerializeField, Min(0)] private int selectedThemeIndex;
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -182,6 +187,8 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void SpawnShowcase()
     {
+        var runtimeProceduralConfig = ResolveRuntimeProceduralConfig();
+
         var maxColumns = 0;
         foreach (var category in Categories)
         {
@@ -216,7 +223,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
                 }
 
                 var position = new Vector3(startX + (col * horizontalSpacing), y, 0f);
-                SpawnShape(id, category.Category, sprite, position, spawnedCount);
+                SpawnShape(id, category.Category, sprite, position, spawnedCount, runtimeProceduralConfig);
                 spawnedCount++;
             }
         }
@@ -227,7 +234,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
     }
 
-    private void SpawnShape(string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence)
+    private void SpawnShape(string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig)
     {
         var go = new GameObject(shapeId);
         go.transform.SetParent(transform, false);
@@ -244,7 +251,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
 
         var applier = EnsureProceduralMaterialApplier(go);
-        var applyStatus = applier.TryApply(sr, shapeId, category, proceduralMaterials, sequence * 97);
+        var applyStatus = applier.TryApply(sr, shapeId, category, runtimeProceduralConfig, sequence * 97);
         var proceduralApplied = applyStatus == ProceduralMaterialApplyStatus.Applied;
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
@@ -273,6 +280,40 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             FacingMode.Auto,
             -1,
             sequence);
+    }
+
+    private ShapeShowcaseProceduralMaterialConfig ResolveRuntimeProceduralConfig()
+    {
+        if (proceduralMaterials == null)
+        {
+            return null;
+        }
+
+        if (!TryGetSelectedTheme(out var selectedTheme) || selectedTheme.materialPalette == null)
+        {
+            return proceduralMaterials;
+        }
+
+        return proceduralMaterials.CreateRuntimeCopy(selectedTheme.materialPalette, selectedTheme.overrideDefaultIntensity, selectedTheme.defaultIntensity);
+    }
+
+    private bool TryGetSelectedTheme(out ShowcaseThemeEntry theme)
+    {
+        theme = default;
+        if (themes == null || themes.Count == 0)
+        {
+            return false;
+        }
+
+        var clampedIndex = Mathf.Clamp(selectedThemeIndex, 0, themes.Count - 1);
+        theme = themes[clampedIndex];
+
+        if (string.IsNullOrWhiteSpace(theme.themeName))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private void TryAssignPaletteMaterial(SpriteRenderer renderer, ShapePaletteCategory category, string shapeId)
@@ -379,6 +420,15 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             ShapePaletteCategory.Lines => LinesColor,
             _ => CoreColor
         };
+    }
+
+    [Serializable]
+    private struct ShowcaseThemeEntry
+    {
+        public string themeName;
+        public ShapeMaterialPalette materialPalette;
+        public bool overrideDefaultIntensity;
+        [Min(0f)] public float defaultIntensity;
     }
 
     private readonly struct ShowcaseCategory
