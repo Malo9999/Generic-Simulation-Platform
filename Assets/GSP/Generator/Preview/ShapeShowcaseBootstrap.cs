@@ -82,6 +82,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         ApplyTrailPreset();
         LogShowcaseMaterialPaletteMode();
         ApplySceneBackground();
+        ClearStaleShowcaseSpriteMaterials();
         if (enableTrailDemo)
         {
             SetupTrailSystem();
@@ -328,7 +329,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
-        sr.color = GetTint(shapeId);
+        sr.color = ResolvePalette().GetColor(category);
 
         if (useMaterialPaletteInShowcase)
         {
@@ -482,8 +483,22 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             return;
         }
 
-        Debug.Log($"[ShapeShowcaseBootstrap] material palette in showcase: {(useMaterialPaletteInShowcase ? "enabled" : "disabled")}", this);
+        Debug.Log($"[ShapeShowcase] material palette in showcase {(useMaterialPaletteInShowcase ? "enabled" : "disabled")}", this);
         loggedMaterialPaletteMode = true;
+    }
+
+    private void ClearStaleShowcaseSpriteMaterials()
+    {
+        if (useMaterialPaletteInShowcase)
+        {
+            return;
+        }
+
+        var sprites = GetComponentsInChildren<SpriteRenderer>(true);
+        for (var i = 0; i < sprites.Length; i++)
+        {
+            sprites[i].sharedMaterial = null;
+        }
     }
 
     private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)

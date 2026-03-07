@@ -5,10 +5,12 @@ public sealed class TrailBufferRenderer : MonoBehaviour
 {
     [SerializeField] private TrailBufferController trailBuffer;
     [SerializeField] private int sortingOrder = -10;
+    [SerializeField] private Material runtimeTrailMaterial;
 
     private SpriteRenderer spriteRenderer;
     private Sprite sprite;
-    private bool loggedMaterialState;
+    private bool loggedMaterialFallbackState;
+    private bool loggedShownState;
     private bool loggedHiddenState;
 
     public void Configure(TrailBufferController controller)
@@ -19,10 +21,9 @@ public sealed class TrailBufferRenderer : MonoBehaviour
     private void Awake()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
-        spriteRenderer.sortingOrder = sortingOrder;
-        spriteRenderer.drawMode = SpriteDrawMode.Simple;
-        spriteRenderer.color = Color.white;
-        ApplySafeMaterialFallback();
+        ResetRendererState();
+        spriteRenderer.sprite = null;
+        spriteRenderer.enabled = false;
     }
 
     private void Start()
@@ -43,7 +44,7 @@ public sealed class TrailBufferRenderer : MonoBehaviour
             BindTexture();
         }
 
-        ApplySafeMaterialFallback();
+        ResetRendererState();
 
         var hideRenderer = !trailBuffer.HasVisibleContent;
         SetHidden(hideRenderer);
@@ -56,6 +57,11 @@ public sealed class TrailBufferRenderer : MonoBehaviour
         transform.position = new Vector3(bounds.center.x, bounds.center.y, 1f);
         transform.localScale = new Vector3(bounds.width, bounds.height, 1f);
         spriteRenderer.color = Color.white;
+        if (!loggedShownState)
+        {
+            Debug.Log("[TrailBuffer] showing runtime texture", this);
+            loggedShownState = true;
+        }
     }
 
     private void OnDestroy()
@@ -85,22 +91,24 @@ public sealed class TrailBufferRenderer : MonoBehaviour
         spriteRenderer.size = Vector2.one;
     }
 
-    private void ApplySafeMaterialFallback()
+    private void ResetRendererState()
     {
-        var assignedMaterial = spriteRenderer.sharedMaterial;
-        var useAssignedMaterial = assignedMaterial != null && assignedMaterial.shader != null && assignedMaterial.shader.isSupported;
-        if (!useAssignedMaterial)
+        spriteRenderer.sortingOrder = sortingOrder;
+        spriteRenderer.drawMode = SpriteDrawMode.Simple;
+        spriteRenderer.color = Color.white;
+
+        var useRuntimeMaterial = runtimeTrailMaterial != null && runtimeTrailMaterial.shader != null && runtimeTrailMaterial.shader.isSupported;
+        if (useRuntimeMaterial)
         {
-            spriteRenderer.sharedMaterial = null;
+            spriteRenderer.sharedMaterial = runtimeTrailMaterial;
+            return;
         }
 
-        if (!loggedMaterialState)
+        spriteRenderer.sharedMaterial = null;
+        if (!loggedMaterialFallbackState)
         {
-            var matName = assignedMaterial != null ? assignedMaterial.name : "<default>";
-            var shaderName = assignedMaterial != null && assignedMaterial.shader != null ? assignedMaterial.shader.name : "<none>";
-            var status = useAssignedMaterial ? "using-assigned" : "using-default";
-            Debug.Log($"[TrailBufferRenderer] material={matName} shader={shaderName} state={status}", this);
-            loggedMaterialState = true;
+            Debug.Log("[TrailBuffer] using default material fallback", this);
+            loggedMaterialFallbackState = true;
         }
     }
 
@@ -115,7 +123,7 @@ public sealed class TrailBufferRenderer : MonoBehaviour
 
         if (hidden && !loggedHiddenState)
         {
-            Debug.Log("[TrailBufferRenderer] overlay hidden because trail buffer is empty", this);
+            Debug.Log("[TrailBuffer] hidden because empty", this);
             loggedHiddenState = true;
         }
     }
