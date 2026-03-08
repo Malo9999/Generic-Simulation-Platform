@@ -6,6 +6,7 @@ public class ShapeLabWindow : EditorWindow
 {
     private ShapeTemplateBase selectedTemplate;
     private ShapeTemplatePack selectedPack;
+    private ShapePackPreset selectedPreset = ShapePackPreset.DefaultNeon;
     private Texture2D previewTexture;
     private Color previewTint = Color.white;
 
@@ -38,6 +39,7 @@ public class ShapeLabWindow : EditorWindow
             AssetDatabase.Refresh();
         }
 
+        selectedPreset = (ShapePackPreset)EditorGUILayout.EnumPopup("Pack Preset", selectedPreset);
         selectedPack = (ShapeTemplatePack)EditorGUILayout.ObjectField("Template Pack", selectedPack, typeof(ShapeTemplatePack), false);
         if (GUILayout.Button($"Bake Batch ({(selectedPack != null ? selectedPack.templates.Count : 0)})") && selectedPack != null)
         {
@@ -45,9 +47,9 @@ public class ShapeLabWindow : EditorWindow
             AssetDatabase.Refresh();
         }
 
-        if (GUILayout.Button("Generate Default Neon Pack"))
+        if (GUILayout.Button("Generate Selected Pack"))
         {
-            selectedPack = ShapeBaker.EnsureDefaultNeonPackAndBake();
+            selectedPack = ShapeBaker.GeneratePack(selectedPreset);
             AssetDatabase.Refresh();
         }
 
