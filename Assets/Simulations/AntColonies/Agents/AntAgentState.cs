@@ -26,6 +26,7 @@ public class AntAgentState
 
     public bool carrying;
     public int carriedAmount;
+    public float foodConsumptionBuffer;
 
     public AntBehaviorState state;
     public int fightTicksRemaining;

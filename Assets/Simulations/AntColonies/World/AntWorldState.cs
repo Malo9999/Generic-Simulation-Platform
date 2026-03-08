@@ -23,7 +23,11 @@ public class AntWorldState
     {
         public int id;
         public Vector2 position;
-        public int remaining;
+        public float capacity;
+        public float currentCapacity;
+        public float consumeRadius;
+        public float consumeRate;
+        public float baseStrength;
         public int respawnAtTick;
     }
 

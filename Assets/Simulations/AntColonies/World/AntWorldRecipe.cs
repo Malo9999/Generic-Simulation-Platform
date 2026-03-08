@@ -42,6 +42,10 @@ public class AntWorldRecipe
     public float foodSenseRadius = 2.2f;
     public float pickupRadius = 1.1f;
     public float depositRadius = 1.4f;
+    public float foodConsumeRadius = 1.1f;
+    public float foodConsumeRate = 1f;
+    public float foodBaseStrength = 1f;
+    public float depletedFoodStrengthFactor = 0.001f;
 
     public float enemyNestAggroRadius = 1.6f;
     public float antCollisionRadius = 0.35f;
@@ -97,6 +101,10 @@ public class AntWorldRecipe
         foodSenseRadius = Mathf.Max(0.1f, foodSenseRadius);
         pickupRadius = Mathf.Max(0.05f, pickupRadius);
         depositRadius = Mathf.Max(0.05f, depositRadius);
+        foodConsumeRadius = Mathf.Max(0.05f, foodConsumeRadius);
+        foodConsumeRate = Mathf.Max(0f, foodConsumeRate);
+        foodBaseStrength = Mathf.Max(0f, foodBaseStrength);
+        depletedFoodStrengthFactor = Mathf.Clamp(depletedFoodStrengthFactor, 0f, 0.1f);
 
         enemyNestAggroRadius = Mathf.Max(0.1f, enemyNestAggroRadius);
         antCollisionRadius = Mathf.Max(0.05f, antCollisionRadius);
