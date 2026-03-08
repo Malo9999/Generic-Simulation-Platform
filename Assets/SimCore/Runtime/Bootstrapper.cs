@@ -552,7 +552,7 @@ public class Bootstrapper : MonoBehaviour
     {
         var arenaBoundsObject = GameObject.Find("ArenaBounds");
         var arenaBoundsCollider = arenaBoundsObject != null ? arenaBoundsObject.GetComponent<Collider2D>() : null;
-        var arenaCameraPolicy = UnityEngine.Object.FindAnyObjectByType<ArenaCameraPolicy>();
+        var arenaCameraPolicy = MainCameraRuntimeSetup.EnsureArenaCameraRig();
 
         if (arenaCameraPolicy != null)
         {
