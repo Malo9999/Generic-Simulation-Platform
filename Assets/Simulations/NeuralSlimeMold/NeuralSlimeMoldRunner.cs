@@ -6,6 +6,8 @@ public sealed class NeuralSlimeMoldRunner
     private const float MinFoodStrengthFloor = 0.0001f;
     private const float EmptyNodeDepositMultiplier = 0.3f;
     private const float OccupiedFoodLogIntervalSeconds = 4f;
+    private const float FoodSeekRangeMultiplier = 8f;
+    private const float MinFoodSeekRange = 2f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -119,13 +121,17 @@ public sealed class NeuralSlimeMoldRunner
             var edge = right - left;
             var centerBias = center - ((left + right) * 0.5f);
             var randomTurn = ((rng.NextFloat01() * 2f) - 1f) * explorationTurnNoise;
-            var foodTurn = ComputeFoodTurn(agent.position, agent.heading, foodStrength);
 
-            var steer = (weighted * 0.2f)
-                        + edge
-                        + (centerBias * agent.controller.densityWeight)
-                        + randomTurn
-                        + foodTurn;
+            var trailSteer = (weighted * 0.2f)
+                             + edge
+                             + (centerBias * agent.controller.densityWeight)
+                             + randomTurn;
+
+            var steer = trailSteer;
+            if (TryGetFoodSteer(agent.position, agent.heading, foodStrength, out var foodTurn, out var foodLock))
+            {
+                steer = Mathf.Lerp(trailSteer, foodTurn, foodLock);
+            }
 
             var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
             agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
@@ -205,15 +211,20 @@ public sealed class NeuralSlimeMoldRunner
         return false;
     }
 
-    private float ComputeFoodTurn(Vector2 position, float heading, float foodStrength)
+    private bool TryGetFoodSteer(Vector2 position, float heading, float foodStrength, out float foodTurn, out float foodLock)
     {
+        foodTurn = 0f;
+        foodLock = 0f;
+
         if (foodNodes == null || foodNodes.Length == 0 || foodStrength <= 0f)
         {
-            return 0f;
+            return false;
         }
 
-        var weightedDirection = Vector2.zero;
-        var totalInfluence = 0f;
+        var bestIndex = -1;
+        var bestInfluence = 0f;
+        var bestDistance01 = 1f;
+        var bestFill = 0f;
 
         for (var i = 0; i < foodNodes.Length; i++)
         {
@@ -237,27 +248,38 @@ public sealed class NeuralSlimeMoldRunner
                 continue;
             }
 
-            var influenceRange = Mathf.Max(node.consumeRadius * 3f, 1f);
-            var distance01 = Mathf.Clamp01(distance / influenceRange);
-            var influence = (1f - distance01) * effectiveStrength;
+            var seekRange = Mathf.Max(node.consumeRadius * FoodSeekRangeMultiplier, MinFoodSeekRange);
+            var distance01 = Mathf.Clamp01(distance / seekRange);
+            var proximity = 1f - distance01;
+            var influence = proximity * effectiveStrength;
             if (influence <= 0f)
             {
                 continue;
             }
 
-            weightedDirection += (toNode / distance) * influence;
-            totalInfluence += influence;
+            if (influence > bestInfluence)
+            {
+                bestInfluence = influence;
+                bestDistance01 = distance01;
+                bestFill = fill;
+                bestIndex = i;
+            }
         }
 
-        if (totalInfluence <= 0f)
+        if (bestIndex < 0)
         {
-            return 0f;
+            return false;
         }
 
-        var targetDir = (weightedDirection / totalInfluence).normalized;
+        var targetNode = foodNodes[bestIndex];
+        var toTarget = (targetNode.position - position).normalized;
         var forward = Direction(heading);
-        var cross = (forward.x * targetDir.y) - (forward.y * targetDir.x);
-        return cross * foodStrength;
+        var cross = (forward.x * toTarget.y) - (forward.y * toTarget.x);
+        foodTurn = cross * foodStrength;
+
+        var proximityLock = 1f - bestDistance01;
+        foodLock = Mathf.Clamp01((proximityLock * 0.7f) + (bestFill * 0.3f));
+        return foodLock > 0f;
     }
 
     private void LogOccupiedFoodLevels()
