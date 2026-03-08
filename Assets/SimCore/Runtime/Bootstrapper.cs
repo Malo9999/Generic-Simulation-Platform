@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEditor;
 #endif
 
+[GspBootstrap(GspBootstrapKind.Platform, "Central platform bootstrapper")]
 public class Bootstrapper : MonoBehaviour
 {
     [Serializable]
