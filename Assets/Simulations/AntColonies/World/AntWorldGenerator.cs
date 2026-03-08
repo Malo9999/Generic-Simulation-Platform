@@ -119,7 +119,11 @@ public static class AntWorldGenerator
                 {
                     id = i,
                     position = p,
-                    remaining = recipe.foodAmount,
+                    capacity = recipe.foodAmount,
+                    currentCapacity = recipe.foodAmount,
+                    consumeRadius = recipe.foodConsumeRadius,
+                    consumeRate = recipe.foodConsumeRate,
+                    baseStrength = recipe.foodBaseStrength,
                     respawnAtTick = -1
                 });
                 break;
