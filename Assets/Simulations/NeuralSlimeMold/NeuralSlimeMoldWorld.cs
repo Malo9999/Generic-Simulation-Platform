@@ -14,7 +14,8 @@ public enum NeuralFoodDebugPreset
 {
     Off = 0,
     Center3 = 1,
-    Corners4 = 2
+    Corners4 = 2,
+    FoodDominanceTest = 3
 }
 
 public enum NeuralObstacleShape
