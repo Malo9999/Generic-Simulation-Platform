@@ -39,6 +39,7 @@ public sealed class NeuralSlimeMoldRunner
     private float wallMargin;
     private float foodRadius;
     private float minFoodSpacing;
+    private bool debugFoodLifecycleLogging;
 
     public NeuralFieldGrid Field { get; private set; }
     public NeuralSlimeMoldAgent[] Agents => agents;
@@ -65,10 +66,14 @@ public sealed class NeuralSlimeMoldRunner
         bool enableFoodNodes,
         int foodNodeCount,
         float foodRadius,
+        float defaultFoodCapacity,
+        float defaultFoodDepletionRate,
+        float defaultFoodRegrowRate,
         bool spawnFoodFromSeed,
         Vector2[] manualFoodNodes,
         NeuralFoodNodeConfig[] manualFoodConfigs,
-        NeuralObstacle[] worldObstacles)
+        NeuralObstacle[] worldObstacles,
+        bool debugFoodLifecycleLogging)
     {
         Seed = seed;
         this.mapSize = new Vector2(Mathf.Max(8f, mapSize.x), Mathf.Max(8f, mapSize.y));
@@ -77,6 +82,7 @@ public sealed class NeuralSlimeMoldRunner
         this.wallMargin = Mathf.Max(0f, wallMargin);
         this.foodRadius = Mathf.Max(0.25f, foodRadius);
         minFoodSpacing = this.foodRadius * 0.5f;
+        this.debugFoodLifecycleLogging = debugFoodLifecycleLogging;
 
         obstacles = worldObstacles ?? Array.Empty<NeuralObstacle>();
         ValidateObstaclesInBounds();
@@ -84,7 +90,7 @@ public sealed class NeuralSlimeMoldRunner
         Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, this.boundaryMode == BoundaryMode.Wrap);
         agents = new NeuralSlimeMoldAgent[Mathf.Max(1, agentCount)];
 
-        BuildFoodNodes(enableFoodNodes, Mathf.Max(0, foodNodeCount), spawnFoodFromSeed, manualFoodNodes, manualFoodConfigs);
+        BuildFoodNodes(enableFoodNodes, Mathf.Max(0, foodNodeCount), Mathf.Max(0f, defaultFoodCapacity), Mathf.Max(0f, defaultFoodDepletionRate), Mathf.Max(0f, defaultFoodRegrowRate), spawnFoodFromSeed, manualFoodNodes, manualFoodConfigs);
 
         for (var i = 0; i < agents.Length; i++)
         {
@@ -107,9 +113,9 @@ public sealed class NeuralSlimeMoldRunner
         }
     }
 
-    public void ResetWithSeed(int seed, int agentCount, Vector2Int trailResolution, Vector2 mapSize, float speed, float turnRate, float sensorAngle, float sensorDistance, float depositAmount, BoundaryMode boundaryMode, float wallMargin, bool enableFoodNodes, int foodNodeCount, float foodRadius, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs, NeuralObstacle[] worldObstacles)
+    public void ResetWithSeed(int seed, int agentCount, Vector2Int trailResolution, Vector2 mapSize, float speed, float turnRate, float sensorAngle, float sensorDistance, float depositAmount, BoundaryMode boundaryMode, float wallMargin, bool enableFoodNodes, int foodNodeCount, float foodRadius, float defaultFoodCapacity, float defaultFoodDepletionRate, float defaultFoodRegrowRate, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs, NeuralObstacle[] worldObstacles, bool debugFoodLifecycleLogging)
     {
-        Initialize(seed, agentCount, mapSize, trailResolution, speed, turnRate, sensorAngle, sensorDistance, depositAmount, boundaryMode, wallMargin, enableFoodNodes, foodNodeCount, foodRadius, spawnFoodFromSeed, manualFoodNodes, manualFoodConfigs, worldObstacles);
+        Initialize(seed, agentCount, mapSize, trailResolution, speed, turnRate, sensorAngle, sensorDistance, depositAmount, boundaryMode, wallMargin, enableFoodNodes, foodNodeCount, foodRadius, defaultFoodCapacity, defaultFoodDepletionRate, defaultFoodRegrowRate, spawnFoodFromSeed, manualFoodNodes, manualFoodConfigs, worldObstacles, debugFoodLifecycleLogging);
     }
 
     public void Tick(
@@ -123,9 +129,11 @@ public sealed class NeuralSlimeMoldRunner
         float foodAttractionWeight,
         float foodSenseRadius,
         float foodTurnBias,
+        float depletedFoodStrengthMultiplier,
         float turnNoise,
         float localLoopSuppression,
-        float depositNearFoodMultiplier)
+        float depositNearFoodMultiplier,
+        float pathPersistenceBias)
     {
         if (agents == null || Field == null)
         {
@@ -161,7 +169,7 @@ public sealed class NeuralSlimeMoldRunner
             var noise = (rng.NextFloat01() * 2f) - 1f;
             var boundaryTurn = ComputeBoundaryTurn(agent.position, agent.heading);
             var foodTurn = indirectFoodBias
-                ? ComputeFoodTurn(agent.position, agent.heading, liveFoodStrength, foodAttractionWeight, foodSenseRadius, foodTurnBias)
+                ? ComputeFoodTurn(agent.position, agent.heading, liveFoodStrength, foodAttractionWeight, foodSenseRadius, foodTurnBias, depletedFoodStrengthMultiplier)
                 : 0f;
             var obstacleTurn = ComputeObstacleTurn(agent.position, agent.heading, agent.sensorDistance);
             var loopSuppressionTurn = ComputeLoopSuppressionTurn(left, center, right, localLoopSuppression);
@@ -188,7 +196,16 @@ public sealed class NeuralSlimeMoldRunner
 
             AccumulateFoodVisits(agent.position);
 
-            var depositBoost = 1f + ((Mathf.Max(1f, depositNearFoodMultiplier) - 1f) * ComputeFoodProximity(agent.position, foodSenseRadius));
+            var foodProximity = ComputeFoodProximity(agent.position, foodSenseRadius, depletedFoodStrengthMultiplier);
+            var depositBoost = 1f + ((Mathf.Max(1f, depositNearFoodMultiplier) - 1f) * foodProximity);
+            var persistence = Mathf.Clamp01(pathPersistenceBias);
+            if (persistence > 0f)
+            {
+                var bridgeSignal = ComputeInterNodeBridgeSignal(agent.position, foodSenseRadius, depletedFoodStrengthMultiplier);
+                depositBoost *= 1f + (bridgeSignal * persistence * 0.9f);
+                depositBoost = Mathf.Lerp(depositBoost, 1f, persistence * 0.35f * foodProximity);
+            }
+
             var deposit = agent.depositAmount * (0.8f + Mathf.Clamp01(density) * 0.7f) * depositBoost;
             Field.Deposit(agent.position, deposit);
 
@@ -204,6 +221,8 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
+            var wasActive = node.active;
+            var previousCapacity = node.capacity;
             if (node.maxCapacity <= 0f)
             {
                 node.capacity = 0f;
@@ -229,6 +248,18 @@ public sealed class NeuralSlimeMoldRunner
                 if (node.capacity > node.maxCapacity * 0.05f)
                 {
                     node.active = true;
+                }
+            }
+
+            if (debugFoodLifecycleLogging)
+            {
+                if (wasActive && !node.active)
+                {
+                    Debug.Log($"[NeuralSlimeMold] food[{i}] depleted at pos={node.position} cap={previousCapacity:F2}->{node.capacity:F2}");
+                }
+                else if (!wasActive && node.active)
+                {
+                    Debug.Log($"[NeuralSlimeMold] food[{i}] reactivated at pos={node.position} cap={previousCapacity:F2}->{node.capacity:F2}");
                 }
             }
 
@@ -390,7 +421,7 @@ public sealed class NeuralSlimeMoldRunner
         };
     }
 
-    private float ComputeFoodTurn(Vector2 position, float heading, float liveFoodStrength, float foodAttractionWeight, float foodSenseRadius, float foodTurnBias)
+    private float ComputeFoodTurn(Vector2 position, float heading, float liveFoodStrength, float foodAttractionWeight, float foodSenseRadius, float foodTurnBias, float depletedFoodStrengthMultiplier)
     {
         if (foodNodes == null || foodNodes.Length == 0 || liveFoodStrength <= 0f || foodAttractionWeight <= 0f)
         {
@@ -403,7 +434,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = node.EffectiveStrength;
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -441,7 +472,7 @@ public sealed class NeuralSlimeMoldRunner
         return cross * Mathf.Max(0f, liveFoodStrength) * foodAttractionWeight * turnAmplifier;
     }
 
-    private float ComputeFoodProximity(Vector2 position, float foodSenseRadius)
+    private float ComputeFoodProximity(Vector2 position, float foodSenseRadius, float depletedFoodStrengthMultiplier)
     {
         if (foodNodes == null || foodNodes.Length == 0)
         {
@@ -452,7 +483,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = node.EffectiveStrength;
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -465,6 +496,58 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         return proximity;
+    }
+
+    private float ComputeInterNodeBridgeSignal(Vector2 position, float foodSenseRadius, float depletedFoodStrengthMultiplier)
+    {
+        if (foodNodes == null || foodNodes.Length < 2)
+        {
+            return 0f;
+        }
+
+        var strongest = 0f;
+        var secondStrongest = 0f;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier);
+            if (effectiveStrength <= 0f)
+            {
+                continue;
+            }
+
+            var range = Mathf.Max(node.radius, foodSenseRadius);
+            var distance = Vector2.Distance(position, node.position);
+            var pull = Mathf.Clamp01(1f - (distance / Mathf.Max(0.001f, range))) * effectiveStrength;
+
+            if (pull > strongest)
+            {
+                secondStrongest = strongest;
+                strongest = pull;
+            }
+            else if (pull > secondStrongest)
+            {
+                secondStrongest = pull;
+            }
+        }
+
+        return Mathf.Clamp01(strongest * secondStrongest);
+    }
+
+    private static float ComputeEffectiveStrength(NeuralFoodNodeState node, float depletedFoodStrengthMultiplier)
+    {
+        if (node.maxCapacity <= 0f || node.strength <= 0f)
+        {
+            return 0f;
+        }
+
+        if (node.active)
+        {
+            return node.strength * node.Capacity01;
+        }
+
+        return node.strength * Mathf.Clamp01(depletedFoodStrengthMultiplier);
     }
 
     private float ComputeLoopSuppressionTurn(float left, float center, float right, float localLoopSuppression)
@@ -485,7 +568,7 @@ public sealed class NeuralSlimeMoldRunner
         return preferredSide * ringSignal * Mathf.Clamp01(localLoopSuppression) * 0.75f;
     }
 
-    private void BuildFoodNodes(bool enableFoodNodes, int foodNodeCount, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs)
+    private void BuildFoodNodes(bool enableFoodNodes, int foodNodeCount, float defaultFoodCapacity, float defaultFoodDepletionRate, float defaultFoodRegrowRate, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs)
     {
         var rejectedCount = 0;
         if (!enableFoodNodes)
@@ -523,7 +606,7 @@ public sealed class NeuralSlimeMoldRunner
             for (var i = 0; i < manualFoodNodes.Length; i++)
             {
                 var position = ClampNodeInsideBounds(manualFoodNodes[i]);
-                foodNodes[i] = BuildFoodState(position, foodRadius, 1f, 100f, 1f, 0f, true);
+                foodNodes[i] = BuildFoodState(position, foodRadius, 1f, defaultFoodCapacity, defaultFoodDepletionRate, defaultFoodRegrowRate, true);
             }
 
             nodeVisitCounts = new int[foodNodes.Length];
@@ -546,7 +629,7 @@ public sealed class NeuralSlimeMoldRunner
                 position = ClampNodeInsideBounds(Vector2.zero + placementRng.InsideUnitCircle() * (mapSize * 0.1f));
             }
 
-            foodNodes[i] = BuildFoodState(position, foodRadius, 1f, 100f, 1f, 0f, true);
+            foodNodes[i] = BuildFoodState(position, foodRadius, 1f, defaultFoodCapacity, defaultFoodDepletionRate, defaultFoodRegrowRate, true);
         }
 
         nodeVisitCounts = new int[foodNodes.Length];
