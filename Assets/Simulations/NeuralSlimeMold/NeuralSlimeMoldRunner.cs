@@ -127,10 +127,30 @@ public sealed class NeuralSlimeMoldRunner
                              + (centerBias * agent.controller.densityWeight)
                              + randomTurn;
 
+            var activeFoodIndex = GetContainingFoodNodeIndex(agent.position, true);
+            var emptyFoodIndex = GetContainingFoodNodeIndex(agent.position, false);
+
             var steer = trailSteer;
-            if (TryGetFoodSteer(agent.position, agent.heading, foodStrength, out var foodTurn, out var foodLock))
+
+            if (activeFoodIndex >= 0)
             {
-                steer = Mathf.Lerp(trailSteer, foodTurn, foodLock);
+                // Feeding mode: food dominates, trail-following should not dominate here.
+                var node = foodNodes[activeFoodIndex];
+                var toFood = (node.position - agent.position).normalized;
+                var forward = Direction(agent.heading);
+                var cross = (forward.x * toFood.y) - (forward.y * toFood.x);
+
+                steer = (cross * foodStrength) + (randomTurn * 0.2f);
+            }
+            else if (TryGetFoodSteer(agent.position, agent.heading, foodStrength, out var foodTurn, out var foodLock))
+            {
+                steer = Mathf.Lerp(trailSteer * 0.25f, foodTurn, foodLock);
+            }
+            else if (emptyFoodIndex >= 0)
+            {
+                // Empty food should repel occupancy.
+                var awayTurn = ComputeAwayFromEmptyFoodTurn(agent.position, agent.heading);
+                steer = awayTurn + randomTurn;
             }
 
             var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
@@ -142,7 +162,23 @@ public sealed class NeuralSlimeMoldRunner
 
             MarkConsumingFoodNodes(agent.position);
 
-            var depositMultiplier = IsInsideEmptyFoodRadius(agent.position) ? EmptyNodeDepositMultiplier : 1f;
+            float depositMultiplier;
+
+            if (activeFoodIndex >= 0)
+            {
+                // Do not let feeding agents build a strong self-orbit ring.
+                depositMultiplier = 0.05f;
+            }
+            else if (emptyFoodIndex >= 0)
+            {
+                // Empty food should not keep a ring alive.
+                depositMultiplier = 0f;
+            }
+            else
+            {
+                depositMultiplier = 1f;
+            }
+
             Field.Deposit(agent.position, agent.depositAmount * depositMultiplier);
 
             agents[i] = agent;
@@ -209,6 +245,53 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         return false;
+    }
+
+    private int GetContainingFoodNodeIndex(Vector2 agentPosition, bool requireNonEmpty)
+    {
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+
+            if (requireNonEmpty && node.currentCapacity <= 0f)
+            {
+                continue;
+            }
+
+            var radius = Mathf.Max(0.01f, node.consumeRadius);
+            if ((agentPosition - node.position).sqrMagnitude <= radius * radius)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private float ComputeAwayFromEmptyFoodTurn(Vector2 position, float heading)
+    {
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            if (node.currentCapacity > 0f)
+            {
+                continue;
+            }
+
+            var radius = Mathf.Max(0.01f, node.consumeRadius);
+            var toNode = node.position - position;
+            if (toNode.sqrMagnitude > radius * radius)
+            {
+                continue;
+            }
+
+            var away = (position - node.position).normalized;
+            var forward = Direction(heading);
+            var cross = (forward.x * away.y) - (forward.y * away.x);
+            return cross;
+        }
+
+        return 0f;
     }
 
     private bool TryGetFoodSteer(Vector2 position, float heading, float foodStrength, out float foodTurn, out float foodLock)
