@@ -90,51 +90,6 @@ public static class ShapeBaker
             t.ConfigureBase(ShapeId.OrganicAmoeba, "Blobs", 96, 16);
             t.ApplyAmoebaDefaults();
         }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaWide_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaWide, "Blobs", 96, 16);
-            t.ApplyAmoebaWideDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaLobed_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaLobed, "Blobs", 96, 16);
-            t.ApplyAmoebaLobedDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaSprawl_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaSprawl, "Blobs", 96, 16);
-            t.ApplyAmoebaSprawlDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaCompact_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaCompact, "Blobs", 96, 16);
-            t.ApplyAmoebaCompactDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaCrawler_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaCrawler, "Blobs", 96, 16);
-            t.ApplyAmoebaCrawlerDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaStar_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaStar, "Blobs", 96, 16);
-            t.ApplyAmoebaStarDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaBranch_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaBranch, "Blobs", 96, 16);
-            t.ApplyAmoebaBranchDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaWideArms_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaWideArms, "Blobs", 96, 16);
-            t.ApplyAmoebaWideArmsDefaults();
-        }));
-        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaHunter_Default.asset", t =>
-        {
-            t.ConfigureBase(ShapeId.OrganicAmoebaHunter, "Blobs", 96, 16);
-            t.ApplyAmoebaHunterDefaults();
-        }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<StrokeTemplate>("StrokeScribble_Default.asset", null));
         changed |= EnsurePackTemplate(pack, CreateTemplate<TriangleAgentTemplate>("TriangleAgent_Default.asset", t =>
             t.ConfigureBase(ShapeId.TriangleAgent, "Agents", 64, 16)));
@@ -161,13 +116,13 @@ public static class ShapeBaker
             t.ConfigureBase(ShapeId.PulseRing, "Rings", 64, 16)));
 
         var templateCount = pack.templates.Count;
-        if (templateCount < 27)
+        if (templateCount < 17)
         {
-            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 27 templates, found {templateCount}.");
+            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 17 templates, found {templateCount}.");
         }
         else if (changed)
         {
-            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 27 templates.");
+            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 17 templates.");
         }
 
         if (changed)
