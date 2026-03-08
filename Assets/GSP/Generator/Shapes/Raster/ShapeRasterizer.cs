@@ -188,21 +188,25 @@ public static class ShapeRasterizer
         int rimWidthPx,
         float innerMul,
         float outerMul,
-        float coreRadiusPx = 17f,
-        int armCountMin = 3,
-        int armCountMax = 6,
-        float armLengthMinPx = 10f,
-        float armLengthMaxPx = 24f,
-        float armWidthMinPx = 2.5f,
-        float armWidthMaxPx = 7f,
-        float armTaper = 0.8f,
-        float armCurvature = 0.3f,
-        float branchChance = 0.2f,
-        float branchLengthMul = 0.45f,
-        float bodyIrregularity = 0.25f,
-        float edgeJitterPx = 0.6f,
-        int fillMarginPx = 1,
-        bool allowInteriorHoles = false)
+        int vfSeed = 4703,
+        float vfBodyRadiusPx = 16f,
+        int vfTipCountMin = 4,
+        int vfTipCountMax = 6,
+        int vfStepCountMin = 12,
+        int vfStepCountMax = 26,
+        float vfStepLengthPx = 1.5f,
+        float vfTurnStrength = 0.27f,
+        float vfOutwardBias = 0.85f,
+        float vfNoiseInfluence = 0.5f,
+        float vfBranchChance = 0.2f,
+        float vfBranchAngleDeg = 34f,
+        float vfBranchLengthMul = 0.52f,
+        float vfThicknessStartPx = 5.4f,
+        float vfThicknessEndPx = 1.6f,
+        float vfCoreThicknessBoost = 2f,
+        float vfEdgeJitterPx = 0.45f,
+        bool vfHoleFill = true,
+        bool vfKeepLargestComponent = true)
     {
         var pixels = NewPixels(size);
         var center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
@@ -213,9 +217,9 @@ public static class ShapeRasterizer
             return pixels;
         }
 
-        if (mode == OrganicBlobMode.AmoebaPseudopod)
+        if (mode == OrganicBlobMode.AmoebaVectorField)
         {
-            RasterizeAmoebaPseudopod(pixels, size, tint, center, seed, useRimGradient, rimWidthPx, innerMul, outerMul, coreRadiusPx, armCountMin, armCountMax, armLengthMinPx, armLengthMaxPx, armWidthMinPx, armWidthMaxPx, armTaper, armCurvature, branchChance, branchLengthMul, bodyIrregularity, edgeJitterPx, fillMarginPx, allowInteriorHoles);
+            RasterizeAmoebaVectorField(pixels, size, tint, center, seed, useRimGradient, rimWidthPx, innerMul, outerMul, vfSeed, vfBodyRadiusPx, vfTipCountMin, vfTipCountMax, vfStepCountMin, vfStepCountMax, vfStepLengthPx, vfTurnStrength, vfOutwardBias, vfNoiseInfluence, vfBranchChance, vfBranchAngleDeg, vfBranchLengthMul, vfThicknessStartPx, vfThicknessEndPx, vfCoreThicknessBoost, vfEdgeJitterPx, vfHoleFill, vfKeepLargestComponent);
             return pixels;
         }
 
@@ -305,68 +309,144 @@ public static class ShapeRasterizer
         }
     }
 
-    private static void RasterizeAmoebaPseudopod(Color32[] pixels, int size, Color tint, Vector2 center, int seed, bool useRimGradient, int rimWidthPx, float innerMul, float outerMul, float coreRadiusPx, int armCountMin, int armCountMax, float armLengthMinPx, float armLengthMaxPx, float armWidthMinPx, float armWidthMaxPx, float armTaper, float armCurvature, float branchChance, float branchLengthMul, float bodyIrregularity, float edgeJitterPx, int fillMarginPx, bool allowInteriorHoles)
+    private sealed class GrowthTip
     {
-        var mask = new bool[size * size];
-        var rng = new System.Random(seed);
-        var bodyCount = 1 + (rng.NextDouble() < (0.35 + (bodyIrregularity * 0.35)) ? 1 : 0);
+        public Vector2 position;
+        public Vector2 direction;
+        public int remainingSteps;
+        public int initialSteps;
+        public float thicknessStart;
+        public float thicknessEnd;
+        public bool canBranch = true;
+    }
 
-        for (var i = 0; i < bodyCount; i++)
+    private static void RasterizeAmoebaVectorField(Color32[] pixels, int size, Color tint, Vector2 center, int fallbackSeed, bool useRimGradient, int rimWidthPx, float innerMul, float outerMul, int vfSeed, float vfBodyRadiusPx, int vfTipCountMin, int vfTipCountMax, int vfStepCountMin, int vfStepCountMax, float vfStepLengthPx, float vfTurnStrength, float vfOutwardBias, float vfNoiseInfluence, float vfBranchChance, float vfBranchAngleDeg, float vfBranchLengthMul, float vfThicknessStartPx, float vfThicknessEndPx, float vfCoreThicknessBoost, float vfEdgeJitterPx, bool vfHoleFill, bool vfKeepLargestComponent)
+    {
+        var growthSeed = vfSeed != 0 ? vfSeed : fallbackSeed;
+        var rng = new System.Random(growthSeed);
+        var deposit = new float[size * size];
+
+        var bodyRadius = Mathf.Max(2f, vfBodyRadiusPx);
+        StampFloatCircle(deposit, size, center, bodyRadius + vfCoreThicknessBoost, 1f);
+        var auxBodies = 1 + (rng.NextDouble() < 0.55 ? 1 : 0);
+        for (var i = 0; i < auxBodies; i++)
         {
-            var jitter = bodyIrregularity * coreRadiusPx * 0.45f;
-            var bodyCenter = center + new Vector2(
-                Mathf.Lerp(-jitter, jitter, (float)rng.NextDouble()),
-                Mathf.Lerp(-jitter, jitter, (float)rng.NextDouble()));
-            var bodyRadius = coreRadiusPx * Mathf.Lerp(0.8f, 1.18f, (float)rng.NextDouble());
-            StampCircle(mask, size, bodyCenter, bodyRadius);
+            var a = (float)rng.NextDouble() * Mathf.PI * 2f;
+            var r = bodyRadius * Mathf.Lerp(0.1f, 0.35f, (float)rng.NextDouble());
+            var offset = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r;
+            StampFloatCircle(deposit, size, center + offset, bodyRadius * Mathf.Lerp(0.62f, 0.95f, (float)rng.NextDouble()) + (vfCoreThicknessBoost * 0.6f), 0.95f);
         }
 
-        var minArms = Mathf.Max(1, armCountMin);
-        var maxArms = Mathf.Max(minArms, armCountMax);
-        var armCount = rng.Next(minArms, maxArms + 1);
-        var dominantArm = rng.Next(0, armCount);
+        var tipCount = rng.Next(Mathf.Max(1, vfTipCountMin), Mathf.Max(vfTipCountMin, vfTipCountMax) + 1);
+        var tips = new System.Collections.Generic.List<GrowthTip>(tipCount * 3);
+        var dominantTip = rng.Next(0, tipCount);
         var baseAngle = (float)rng.NextDouble() * Mathf.PI * 2f;
 
-        for (var i = 0; i < armCount; i++)
+        for (var i = 0; i < tipCount; i++)
         {
-            var angleStep = (Mathf.PI * 2f) / armCount;
-            var angle = baseAngle + (i * angleStep) + Mathf.Lerp(-0.3f, 0.3f, (float)rng.NextDouble());
-            var armLength = Mathf.Lerp(armLengthMinPx, armLengthMaxPx, (float)rng.NextDouble());
-            if (i == dominantArm)
+            var spread = (Mathf.PI * 2f) / tipCount;
+            var tipAngle = baseAngle + (i * spread) + Mathf.Lerp(-0.35f, 0.35f, (float)rng.NextDouble());
+            var dir = new Vector2(Mathf.Cos(tipAngle), Mathf.Sin(tipAngle)).normalized;
+            var steps = rng.Next(Mathf.Max(3, vfStepCountMin), Mathf.Max(vfStepCountMin, vfStepCountMax) + 1);
+            if (i == dominantTip)
             {
-                armLength *= Mathf.Lerp(1.15f, 1.4f, (float)rng.NextDouble());
+                steps = Mathf.RoundToInt(steps * Mathf.Lerp(1.15f, 1.45f, (float)rng.NextDouble()));
             }
 
-            var armWidth = Mathf.Lerp(armWidthMinPx, armWidthMaxPx, (float)rng.NextDouble());
-            StampTaperedArm(mask, size, center, angle, armLength, armWidth, armTaper, armCurvature, rng);
-
-            if ((float)rng.NextDouble() <= branchChance)
+            tips.Add(new GrowthTip
             {
-                var branchLen = armLength * Mathf.Clamp(branchLengthMul * Mathf.Lerp(0.8f, 1.2f, (float)rng.NextDouble()), 0.2f, 0.95f);
-                var branchWidth = Mathf.Max(1f, armWidth * Mathf.Lerp(0.5f, 0.75f, (float)rng.NextDouble()));
-                var branchOffset = armLength * Mathf.Lerp(0.35f, 0.68f, (float)rng.NextDouble());
-                var branchOrigin = center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * branchOffset;
-                var branchDir = angle + Mathf.Lerp(0.45f, 1.05f, (float)rng.NextDouble()) * (rng.Next(0, 2) == 0 ? -1f : 1f);
-                StampTaperedArm(mask, size, branchOrigin, branchDir, branchLen, branchWidth, armTaper, armCurvature * 0.8f, rng);
+                position = center + (dir * bodyRadius * Mathf.Lerp(0.35f, 0.75f, (float)rng.NextDouble())),
+                direction = dir,
+                remainingSteps = steps,
+                initialSteps = steps,
+                thicknessStart = vfThicknessStartPx * Mathf.Lerp(0.88f, 1.12f, (float)rng.NextDouble()),
+                thicknessEnd = vfThicknessEndPx * Mathf.Lerp(0.88f, 1.12f, (float)rng.NextDouble())
+            });
+        }
+
+        var maxTipInstances = 64;
+        var branchAngleRad = vfBranchAngleDeg * Mathf.Deg2Rad;
+        for (var i = 0; i < tips.Count; i++)
+        {
+            var tip = tips[i];
+            while (tip.remainingSteps > 0)
+            {
+                var progress = 1f - (tip.remainingSteps / Mathf.Max(1f, tip.initialSteps));
+                var outward = (tip.position - center).normalized;
+                if (outward.sqrMagnitude < 0.01f)
+                {
+                    outward = tip.direction;
+                }
+
+                var noiseAngle = SampleFieldAngle(tip.position, growthSeed);
+                var noiseDir = new Vector2(Mathf.Cos(noiseAngle), Mathf.Sin(noiseAngle));
+                var heading = (tip.direction * (1.05f - vfTurnStrength)) + (outward * vfOutwardBias) + (noiseDir * vfNoiseInfluence);
+                if (heading.sqrMagnitude < 0.001f)
+                {
+                    heading = tip.direction;
+                }
+
+                tip.direction = heading.normalized;
+                tip.position += tip.direction * vfStepLengthPx;
+
+                tip.position.x = Mathf.Clamp(tip.position.x, 1f, size - 2f);
+                tip.position.y = Mathf.Clamp(tip.position.y, 1f, size - 2f);
+
+                var thickness = Mathf.Lerp(tip.thicknessStart, tip.thicknessEnd, progress);
+                thickness = Mathf.Max(0.8f, thickness);
+                StampFloatCircle(deposit, size, tip.position, thickness, 1f);
+
+                if (tip.canBranch && tips.Count < maxTipInstances && tip.remainingSteps > 6 && progress > 0.2f && (float)rng.NextDouble() < vfBranchChance)
+                {
+                    var sign = rng.Next(0, 2) == 0 ? -1f : 1f;
+                    var angle = branchAngleRad * Mathf.Lerp(0.65f, 1.25f, (float)rng.NextDouble()) * sign;
+                    var branchDir = Rotate(tip.direction, angle).normalized;
+                    var branchSteps = Mathf.Max(4, Mathf.RoundToInt(tip.remainingSteps * vfBranchLengthMul * Mathf.Lerp(0.85f, 1.2f, (float)rng.NextDouble())));
+                    tips.Add(new GrowthTip
+                    {
+                        position = tip.position,
+                        direction = branchDir,
+                        remainingSteps = branchSteps,
+                        initialSteps = branchSteps,
+                        thicknessStart = Mathf.Max(1f, thickness * Mathf.Lerp(0.7f, 0.9f, (float)rng.NextDouble())),
+                        thicknessEnd = Mathf.Max(0.8f, tip.thicknessEnd * Mathf.Lerp(0.7f, 0.95f, (float)rng.NextDouble())),
+                        canBranch = false
+                    });
+
+                    tip.canBranch = false;
+                }
+
+                tip.remainingSteps--;
             }
         }
 
-        if (!allowInteriorHoles)
+        var mask = new bool[deposit.Length];
+        for (var idx = 0; idx < deposit.Length; idx++)
+        {
+            mask[idx] = deposit[idx] > 0.05f;
+        }
+
+        if (vfHoleFill)
         {
             FillInteriorHoles(mask, size);
         }
 
-        if (fillMarginPx > 0)
+        if (vfKeepLargestComponent)
         {
-            DilateMask(mask, size, fillMarginPx);
+            KeepLargestComponent(mask, size);
         }
 
-        if (edgeJitterPx > 0.01f)
+        if (vfEdgeJitterPx > 0.01f)
         {
-            ApplyEdgeJitter(mask, size, seed, edgeJitterPx);
-            if (!allowInteriorHoles)
+            ApplyEdgeJitter(mask, size, growthSeed, vfEdgeJitterPx);
+            if (vfHoleFill)
             {
                 FillInteriorHoles(mask, size);
+            }
+
+            if (vfKeepLargestComponent)
+            {
+                KeepLargestComponent(mask, size);
             }
         }
 
@@ -385,24 +465,22 @@ public static class ShapeRasterizer
         }
     }
 
-    private static void StampTaperedArm(bool[] mask, int size, Vector2 start, float angle, float lengthPx, float widthPx, float taper, float curvature, System.Random rng)
+    private static float SampleFieldAngle(Vector2 point, int seed)
     {
-        var step = Mathf.Max(1f, widthPx * 0.45f);
-        var steps = Mathf.Max(3, Mathf.CeilToInt(lengthPx / step));
-        var normal = new Vector2(-Mathf.Sin(angle), Mathf.Cos(angle));
-
-        for (var i = 0; i <= steps; i++)
-        {
-            var t = i / (float)steps;
-            var forward = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-            var curve = Mathf.Sin(t * Mathf.PI) * curvature * lengthPx * Mathf.Lerp(0.2f, 0.85f, (float)rng.NextDouble());
-            var point = start + (forward * (t * lengthPx)) + (normal * curve);
-            var radius = Mathf.Lerp(widthPx, Mathf.Max(0.8f, widthPx * (1f - taper)), t);
-            StampCircle(mask, size, point, radius);
-        }
+        var nx = (point.x * 0.075f) + (seed * 0.0131f);
+        var ny = (point.y * 0.075f) + (seed * 0.0173f);
+        var n = Fbm01(nx, ny, seed + 137, 3, 2f, 0.5f);
+        return n * Mathf.PI * 2f;
     }
 
-    private static void StampCircle(bool[] mask, int size, Vector2 center, float radius)
+    private static Vector2 Rotate(Vector2 v, float angle)
+    {
+        var s = Mathf.Sin(angle);
+        var c = Mathf.Cos(angle);
+        return new Vector2((v.x * c) - (v.y * s), (v.x * s) + (v.y * c));
+    }
+
+    private static void StampFloatCircle(float[] mask, int size, Vector2 center, float radius, float add)
     {
         var minX = Mathf.Clamp(Mathf.FloorToInt(center.x - radius), 0, size - 1);
         var maxX = Mathf.Clamp(Mathf.CeilToInt(center.x + radius), 0, size - 1);
@@ -415,10 +493,12 @@ public static class ShapeRasterizer
         {
             var dx = x - center.x;
             var dy = y - center.y;
-            if ((dx * dx) + (dy * dy) <= r2)
+            if ((dx * dx) + (dy * dy) > r2)
             {
-                mask[(y * size) + x] = true;
+                continue;
             }
+
+            mask[(y * size) + x] += add;
         }
     }
 
@@ -459,6 +539,73 @@ public static class ShapeRasterizer
         }
     }
 
+    private static void KeepLargestComponent(bool[] mask, int size)
+    {
+        var visited = new bool[mask.Length];
+        var queue = new System.Collections.Generic.Queue<int>();
+        var largestStart = -1;
+        var largestCount = 0;
+
+        for (var idx = 0; idx < mask.Length; idx++)
+        {
+            if (!mask[idx] || visited[idx])
+            {
+                continue;
+            }
+
+            visited[idx] = true;
+            queue.Clear();
+            queue.Enqueue(idx);
+            var count = 0;
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                count++;
+                var x = current % size;
+                var y = current / size;
+
+                TryVisitFilled(mask, visited, queue, size, x - 1, y);
+                TryVisitFilled(mask, visited, queue, size, x + 1, y);
+                TryVisitFilled(mask, visited, queue, size, x, y - 1);
+                TryVisitFilled(mask, visited, queue, size, x, y + 1);
+            }
+
+            if (count > largestCount)
+            {
+                largestCount = count;
+                largestStart = idx;
+            }
+        }
+
+        if (largestStart < 0)
+        {
+            return;
+        }
+
+        var keep = new bool[mask.Length];
+        queue.Clear();
+        queue.Enqueue(largestStart);
+        keep[largestStart] = true;
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            var x = current % size;
+            var y = current / size;
+
+            TryKeep(mask, keep, queue, size, x - 1, y);
+            TryKeep(mask, keep, queue, size, x + 1, y);
+            TryKeep(mask, keep, queue, size, x, y - 1);
+            TryKeep(mask, keep, queue, size, x, y + 1);
+        }
+
+        for (var i = 0; i < mask.Length; i++)
+        {
+            mask[i] = keep[i];
+        }
+    }
+
     private static void EnqueueOutside(bool[] mask, bool[] visited, System.Collections.Generic.Queue<int> queue, int size, int x, int y)
     {
         var idx = (y * size) + x;
@@ -488,27 +635,38 @@ public static class ShapeRasterizer
         queue.Enqueue(idx);
     }
 
-    private static void DilateMask(bool[] mask, int size, int passes)
+    private static void TryVisitFilled(bool[] mask, bool[] visited, System.Collections.Generic.Queue<int> queue, int size, int x, int y)
     {
-        var temp = new bool[mask.Length];
-        for (var pass = 0; pass < passes; pass++)
+        if (x < 0 || y < 0 || x >= size || y >= size)
         {
-            System.Array.Copy(mask, temp, mask.Length);
-            for (var y = 1; y < size - 1; y++)
-            for (var x = 1; x < size - 1; x++)
-            {
-                var idx = (y * size) + x;
-                if (temp[idx])
-                {
-                    continue;
-                }
-
-                if (temp[idx - 1] || temp[idx + 1] || temp[idx - size] || temp[idx + size])
-                {
-                    mask[idx] = true;
-                }
-            }
+            return;
         }
+
+        var idx = (y * size) + x;
+        if (!mask[idx] || visited[idx])
+        {
+            return;
+        }
+
+        visited[idx] = true;
+        queue.Enqueue(idx);
+    }
+
+    private static void TryKeep(bool[] mask, bool[] keep, System.Collections.Generic.Queue<int> queue, int size, int x, int y)
+    {
+        if (x < 0 || y < 0 || x >= size || y >= size)
+        {
+            return;
+        }
+
+        var idx = (y * size) + x;
+        if (!mask[idx] || keep[idx])
+        {
+            return;
+        }
+
+        keep[idx] = true;
+        queue.Enqueue(idx);
     }
 
     private static void ApplyEdgeJitter(bool[] mask, int size, int seed, float edgeJitterPx)

@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 {
@@ -49,7 +50,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f), Tooltip("Requires Start / Reset Simulation to apply.")] private float wallMargin = 6f;
 
     [Header("World Layout")]
-    [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private NeuralSlimeWorldPreset worldPreset = NeuralSlimeWorldPreset.CorridorCross;
+    [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private NeuralSlimeWorldPreset worldPreset = NeuralSlimeWorldPreset.OpenField;
     [SerializeField, Tooltip("When Custom, uses Manual Food Nodes/Obstacles arrays.")] private bool useCustomWorldOverrides = false;
 
     [Header("Food Nodes")]
@@ -78,6 +79,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Obstacles")]
     [SerializeField, Tooltip("Can be toggled during play.")] private bool enableObstacles = true;
     [SerializeField, Tooltip("Custom obstacle overrides used when world preset is Custom.")] private NeuralObstacle[] manualObstacles = null;
+    [SerializeField, Min(1f), Tooltip("Base thickness used by generated corridor blockers.")] private float obstacleThickness = 6f;
+    [SerializeField, Min(2f), Tooltip("Gap size left inside generated corridor barriers.")] private float corridorGapSize = 12f;
+    [SerializeField, Range(0.08f, 0.45f), Tooltip("Approximate blocker span relative to map size for generated presets.")] private float obstacleCoverage = 0.2f;
+    [SerializeField, Range(0.5f, 1.5f), Tooltip("Scales generated preset dimensions inward/outward from map center.")] private float presetScale = 1f;
+    [SerializeField, Range(2, 6), Tooltip("How many small blockers to use in CorridorMazeLite.")] private int smallBlockerCount = 3;
 
     [Header("Camera")]
     [SerializeField] private bool autoFrameCamera = true;
@@ -258,9 +264,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     {
         return new[]
         {
-            CreateFood(new Vector2(-24f, 0f), 10f, 1f, 120f, 0.9f, 0.08f),
-            CreateFood(new Vector2(24f, 0f), 10f, 1f, 120f, 0.9f, 0.08f),
-            CreateFood(new Vector2(0f, 20f), 8f, 0.8f, 75f, 0.6f, 0.05f)
+            CreateFood(new Vector2(-20f, 16f), 9f, 1f, 120f, 0.85f, 0.1f),
+            CreateFood(new Vector2(20f, 16f), 9f, 1f, 120f, 0.85f, 0.1f),
+            CreateFood(new Vector2(-20f, -16f), 9f, 1f, 120f, 0.85f, 0.1f),
+            CreateFood(new Vector2(20f, -16f), 9f, 1f, 120f, 0.85f, 0.1f)
         };
     }
 
@@ -268,37 +275,74 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     {
         return new[]
         {
-            CreateFood(new Vector2(-25f, -20f), 7f, 1f, 120f, 0.82f, 0.1f),
-            CreateFood(new Vector2(26f, -20f), 7f, 1f, 120f, 0.82f, 0.1f),
-            CreateFood(new Vector2(-26f, 20f), 7f, 1f, 120f, 0.82f, 0.1f),
-            CreateFood(new Vector2(25f, 20f), 7f, 1f, 120f, 0.82f, 0.1f),
-            CreateFood(new Vector2(0f, 0f), 6.5f, 1.15f, 135f, 0.9f, 0.16f)
+            CreateFood(new Vector2(-22f, -14f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(22f, -14f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(-22f, 14f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(22f, 14f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(0f, 0f), 6f, 1.1f, 130f, 0.86f, 0.14f)
         };
     }
 
     private NeuralObstacle[] BuildCorridorCrossObstacles()
     {
-        return new[]
-        {
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(0f, 12f), size = new Vector2(64f, 14f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(0f, -12f), size = new Vector2(64f, 14f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-12f, 0f), size = new Vector2(14f, 64f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(12f, 0f), size = new Vector2(14f, 64f), radius = 1f }
-        };
+        var blockers = new List<NeuralObstacle>(4);
+        var scale = Mathf.Clamp(presetScale, 0.5f, 1.5f);
+        var thickness = Mathf.Max(1f, obstacleThickness * scale);
+        var gap = Mathf.Max(thickness * 1.2f, corridorGapSize * scale);
+        var coverage = Mathf.Clamp(obstacleCoverage, 0.08f, 0.45f);
+        var horizontalSpan = Mathf.Max(thickness * 2f, mapSize.x * coverage * scale);
+        var verticalSpan = Mathf.Max(thickness * 2f, mapSize.y * coverage * scale);
+
+        var hOffset = (gap + horizontalSpan) * 0.5f;
+        blockers.Add(CreateRectObstacle(new Vector2(-hOffset, 0f), new Vector2(horizontalSpan, thickness)));
+        blockers.Add(CreateRectObstacle(new Vector2(hOffset, 0f), new Vector2(horizontalSpan, thickness)));
+
+        var vOffset = (gap + verticalSpan) * 0.5f;
+        blockers.Add(CreateRectObstacle(new Vector2(0f, -vOffset), new Vector2(thickness, verticalSpan)));
+        blockers.Add(CreateRectObstacle(new Vector2(0f, vOffset), new Vector2(thickness, verticalSpan)));
+
+        return blockers.ToArray();
     }
 
     private NeuralObstacle[] BuildCorridorMazeLiteObstacles()
     {
-        return new[]
+        var blockers = new List<NeuralObstacle>(6);
+        var scale = Mathf.Clamp(presetScale, 0.5f, 1.5f);
+        var thickness = Mathf.Max(1f, obstacleThickness * 0.9f * scale);
+        var gap = Mathf.Max(4f, corridorGapSize * scale);
+        var coverage = Mathf.Clamp(obstacleCoverage, 0.08f, 0.45f);
+        var reachX = mapSize.x * 0.5f * coverage * scale;
+        var reachY = mapSize.y * 0.5f * coverage * scale;
+
+        // Three primary chokepoints with large open regions around them.
+        blockers.Add(CreateRectObstacle(new Vector2(-gap * 0.55f, reachY), new Vector2(mapSize.x * 0.34f * scale, thickness)));
+        blockers.Add(CreateRectObstacle(new Vector2(gap * 0.55f, -reachY), new Vector2(mapSize.x * 0.34f * scale, thickness)));
+        blockers.Add(CreateRectObstacle(new Vector2(0f, 0f), new Vector2(thickness, mapSize.y * Mathf.Max(0.16f, coverage * 0.85f) * scale)));
+
+        var optionalSmallBlockers = new[]
         {
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-8f, 14f), size = new Vector2(34f, 8f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(12f, 6f), size = new Vector2(32f, 8f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-12f, -2f), size = new Vector2(32f, 8f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(10f, -10f), size = new Vector2(30f, 8f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-10f, -18f), size = new Vector2(30f, 8f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-28f, 0f), size = new Vector2(8f, 36f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(28f, 0f), size = new Vector2(8f, 36f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Circle, center = new Vector2(0f, 0f), radius = 4.5f, size = Vector2.zero }
+            CreateRectObstacle(new Vector2(-reachX, 0f), new Vector2(thickness, mapSize.y * 0.2f * scale)),
+            CreateRectObstacle(new Vector2(reachX, 0f), new Vector2(thickness, mapSize.y * 0.2f * scale)),
+            CreateRectObstacle(new Vector2(0f, reachY * 1.35f), new Vector2(mapSize.x * 0.18f * scale, thickness))
+        };
+
+        var count = Mathf.Clamp(smallBlockerCount, 2, 6);
+        for (var i = 0; i < optionalSmallBlockers.Length && blockers.Count < count; i++)
+        {
+            blockers.Add(optionalSmallBlockers[i]);
+        }
+
+        return blockers.ToArray();
+    }
+
+    private static NeuralObstacle CreateRectObstacle(Vector2 center, Vector2 size)
+    {
+        return new NeuralObstacle
+        {
+            shape = NeuralObstacleShape.Rectangle,
+            center = center,
+            size = size,
+            radius = 1f
         };
     }
 
