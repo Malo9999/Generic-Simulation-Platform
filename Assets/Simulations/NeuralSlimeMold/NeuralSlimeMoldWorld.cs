@@ -6,11 +6,8 @@ public enum NeuralSlimeWorldPreset
     CorridorCross = 1,
     CorridorMazeLite = 2,
     Custom = 3,
-    CorridorTest = 1,
-    IslandObstacles = 2,
     ClusteredFood = 4
 }
-
 
 public enum NeuralFoodDebugPreset
 {
