@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine.SceneManagement;
 using UnityEngine;
 
 public sealed class BootstrapRegistryWindow : EditorWindow
@@ -26,6 +28,41 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         public string Notes;
         public string Source;
         public MonoScript Script;
+        public Type Type;
+        public readonly List<UsageRecord> SceneUsages = new();
+        public readonly List<UsageRecord> PrefabUsages = new();
+
+        public string UsageStatus
+        {
+            get
+            {
+                var hasScene = SceneUsages.Count > 0;
+                var hasPrefab = PrefabUsages.Count > 0;
+                if (hasScene && hasPrefab)
+                {
+                    return "Used In Scene + Prefab";
+                }
+
+                if (hasScene)
+                {
+                    return "Used In Scene";
+                }
+
+                if (hasPrefab)
+                {
+                    return "Used In Prefab";
+                }
+
+                return "Script Only";
+            }
+        }
+    }
+
+    private sealed class UsageRecord
+    {
+        public string AssetPath;
+        public string GameObjectName;
+        public UnityEngine.Object Asset;
     }
 
     private static readonly GUIContent[] FilterTabs =
@@ -100,6 +137,15 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         EditorGUILayout.LabelField("Asset Path", entry.AssetPath);
         EditorGUILayout.LabelField("Notes", string.IsNullOrWhiteSpace(entry.Notes) ? "-" : entry.Notes);
         EditorGUILayout.LabelField("Heuristic Source", entry.Source);
+        EditorGUILayout.LabelField("Usage Status", entry.UsageStatus);
+
+        DrawUsageSection("Scene Usage", entry.SceneUsages);
+        DrawUsageSection("Prefab Usage", entry.PrefabUsages);
+
+        if (entry.SceneUsages.Count == 0 && entry.PrefabUsages.Count == 0)
+        {
+            EditorGUILayout.HelpBox("No scene/prefab references found", MessageType.None);
+        }
 
         EditorGUILayout.BeginHorizontal();
         if (GUILayout.Button("Ping", GUILayout.Width(75f)) && entry.Script != null)
@@ -114,6 +160,28 @@ public sealed class BootstrapRegistryWindow : EditorWindow
 
         EditorGUILayout.EndHorizontal();
         EditorGUILayout.EndVertical();
+    }
+
+    private static void DrawUsageSection(string heading, List<UsageRecord> usages)
+    {
+        EditorGUILayout.LabelField(heading, EditorStyles.miniBoldLabel);
+        if (usages.Count == 0)
+        {
+            EditorGUILayout.LabelField("-", "None");
+            return;
+        }
+
+        foreach (var usage in usages)
+        {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField($"{usage.AssetPath} :: {usage.GameObjectName}");
+            if (GUILayout.Button("Ping", GUILayout.Width(75f)) && usage.Asset != null)
+            {
+                EditorGUIUtility.PingObject(usage.Asset);
+            }
+
+            EditorGUILayout.EndHorizontal();
+        }
     }
 
     private void RefreshEntries()
@@ -150,7 +218,8 @@ public sealed class BootstrapRegistryWindow : EditorWindow
                 AssetPath = path,
                 Notes = attribute?.Notes ?? string.Empty,
                 Source = attribute != null ? "Attribute" : "Naming",
-                Script = script
+                Script = script,
+                Type = type
             };
 
             allEntries.Add(entry);
@@ -167,7 +236,95 @@ public sealed class BootstrapRegistryWindow : EditorWindow
             return string.Compare(left.ClassName, right.ClassName, StringComparison.Ordinal);
         });
 
+        ScanPrefabUsage();
+        ScanSceneUsage();
+
         Repaint();
+    }
+
+    private void ScanPrefabUsage()
+    {
+        var entriesByType = allEntries.ToDictionary(entry => entry.Type);
+        var prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets" });
+        foreach (var guid in prefabGuids)
+        {
+            var prefabPath = AssetDatabase.GUIDToAssetPath(guid);
+            var prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+            if (prefabRoot == null)
+            {
+                continue;
+            }
+
+            RegisterUsageForRoot(entriesByType, prefabRoot, prefabPath, isScene: false, prefabRoot);
+        }
+    }
+
+    private void ScanSceneUsage()
+    {
+        var entriesByType = allEntries.ToDictionary(entry => entry.Type);
+        var sceneGuids = AssetDatabase.FindAssets("t:Scene", new[] { "Assets" });
+        foreach (var guid in sceneGuids)
+        {
+            var scenePath = AssetDatabase.GUIDToAssetPath(guid);
+            var alreadyLoaded = SceneManager.GetSceneByPath(scenePath).isLoaded;
+            var scene = alreadyLoaded
+                ? SceneManager.GetSceneByPath(scenePath)
+                : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+
+            try
+            {
+                foreach (var root in scene.GetRootGameObjects())
+                {
+                    RegisterUsageForRoot(entriesByType, root, scenePath, isScene: true, AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
+                }
+            }
+            finally
+            {
+                if (!alreadyLoaded && scene.isLoaded)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
+            }
+        }
+    }
+
+    private static void RegisterUsageForRoot(
+        IReadOnlyDictionary<Type, BootstrapEntry> entriesByType,
+        GameObject root,
+        string assetPath,
+        bool isScene,
+        UnityEngine.Object asset)
+    {
+        var monoBehaviours = root.GetComponentsInChildren<MonoBehaviour>(true);
+        foreach (var monoBehaviour in monoBehaviours)
+        {
+            if (monoBehaviour == null)
+            {
+                continue;
+            }
+
+            var type = monoBehaviour.GetType();
+            if (!entriesByType.TryGetValue(type, out var entry))
+            {
+                continue;
+            }
+
+            var usage = new UsageRecord
+            {
+                AssetPath = assetPath,
+                GameObjectName = monoBehaviour.gameObject.name,
+                Asset = asset
+            };
+
+            if (isScene)
+            {
+                entry.SceneUsages.Add(usage);
+            }
+            else
+            {
+                entry.PrefabUsages.Add(usage);
+            }
+        }
     }
 
     private bool ShouldShow(BootstrapEntry entry)
