@@ -282,6 +282,7 @@ MonoBehaviour:
     height: 64
   clampToBounds: 1
   smoothTime: 0
+  fitArenaOnStart: 1
 --- !u!114 &100007
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -357,42 +358,32 @@ MonoBehaviour:
   proceduralMaterials:
     useProceduralMaterials: 1
     fallbackToBaselineOnFailure: 1
-    materialPalette: {fileID: 11400000, guid: d10bf8fbc9ca4a08bf8966d8852e63f9, type: 2}
-    defaultIntensity: 1
+    materialPalette: {fileID: 11400000, guid: fa955c488d454770acc4b781cc5bada5, type: 2}
+    defaultIntensity: 0.45
     perShapeOverrides: []
   themes:
-  - themeName: NeonTheme
+  - themeName: Neon
     materialPalette: {fileID: 11400000, guid: f0dd6e9a06e24f0ca784045af2c4645e, type: 2}
     overrideDefaultIntensity: 1
-    defaultIntensity: 1
+    defaultIntensity: 0.25
     overrideCategoryTints: 0
     coreTint: {r: 0, g: 0, b: 0, a: 0}
     organicTint: {r: 0, g: 0, b: 0, a: 0}
     agentsTint: {r: 0, g: 0, b: 0, a: 0}
     markersTint: {r: 0, g: 0, b: 0, a: 0}
     linesTint: {r: 0, g: 0, b: 0, a: 0}
-  - themeName: MinimalTheme
-    materialPalette: {fileID: 11400000, guid: fa955c488d454770acc4b781cc5bada5, type: 2}
-    overrideDefaultIntensity: 1
-    defaultIntensity: 0.35
-    overrideCategoryTints: 0
-    coreTint: {r: 0, g: 0, b: 0, a: 0}
-    organicTint: {r: 0, g: 0, b: 0, a: 0}
-    agentsTint: {r: 0, g: 0, b: 0, a: 0}
-    markersTint: {r: 0, g: 0, b: 0, a: 0}
-    linesTint: {r: 0, g: 0, b: 0, a: 0}
-  - themeName: DrasticTheme
+  - themeName: Drastic
     materialPalette: {fileID: 11400000, guid: 9052750097894709888db739078757bb, type: 2}
     overrideDefaultIntensity: 1
-    defaultIntensity: 0.75
+    defaultIntensity: 0.35
     overrideCategoryTints: 1
-    coreTint: {r: 1, g: 0.1, b: 0.75, a: 1}
-    organicTint: {r: 1, g: 0.56, b: 0.08, a: 1}
-    agentsTint: {r: 0.77, g: 1, b: 0.1, a: 1}
-    markersTint: {r: 1, g: 0.1, b: 0.1, a: 1}
-    linesTint: {r: 0.65, g: 0.28, b: 1, a: 1}
+    coreTint: {r: 1, g: 0, b: 1, a: 0}
+    organicTint: {r: 1, g: 0.53333336, b: 0, a: 0.8745098}
+    agentsTint: {r: 1, g: 1, b: 0, a: 0}
+    markersTint: {r: 1, g: 0, b: 0, a: 0}
+    linesTint: {r: 0, g: 1, b: 0, a: 0}
   selectedThemeIndex: 0
-  enableRuntimeThemeCycleWithT: 0
+  enableRuntimeThemeCycleWithT: 1
   headerFontSize: 58
   labelFontSize: 32
 --- !u!1 &38755031
