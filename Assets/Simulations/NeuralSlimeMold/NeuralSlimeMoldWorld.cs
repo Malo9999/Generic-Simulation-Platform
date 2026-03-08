@@ -18,7 +18,8 @@ public enum NeuralFoodDebugPreset
     Center3 = 1,
     Corners4 = 2,
     FoodDominanceTest = 3,
-    FoodInfluenceDebug = 4
+    FoodInfluenceDebug = 4,
+    FoodDecayMotionTest = 5
 }
 
 public enum NeuralObstacleShape
@@ -49,6 +50,7 @@ public struct NeuralFoodNodeState
     public float depletionRate;
     public float regrowRate;
     public bool active;
+    public float timeSinceDepleted;
 
     public float Capacity01 => maxCapacity <= 0f ? 0f : Mathf.Clamp01(capacity / maxCapacity);
     public float EffectiveStrength => active ? strength * Capacity01 : 0f;
