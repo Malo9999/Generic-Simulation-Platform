@@ -64,3 +64,33 @@ MonoBehaviour:
   - id: field_blob
     sprite: {fileID: 21300000, guid: 5762fc04f7375f24da0752ac22721cda, type: 3}
     template: {fileID: 11400000, guid: 1baa0c45e2294ff43977628fbdc51efa, type: 2}
+  - id: amoeba_blob
+    sprite: {fileID: 21300000, guid: b6ba3d20794bbe24b8c77c32a6c673cd, type: 3}
+    template: {fileID: 11400000, guid: 0d31978bf61436d4e9c96241ff4a72a8, type: 2}
+  - id: amoeba_lobed
+    sprite: {fileID: 21300000, guid: ee5c9ac80385f79469cbd16477cd67e6, type: 3}
+    template: {fileID: 11400000, guid: 6c481c2d3575ac245832e888f96fabaf, type: 2}
+  - id: amoeba_star
+    sprite: {fileID: 21300000, guid: deb6e93cbf5732b48a6e9f938e832e2a, type: 3}
+    template: {fileID: 11400000, guid: bb3bced767a0f2445b1ee716f632de03, type: 2}
+  - id: amoeba_crawler
+    sprite: {fileID: 21300000, guid: 9fc94f28efd8eed4585f84c1ed56f245, type: 3}
+    template: {fileID: 11400000, guid: 4ba57649e41472f4fbd03ce9cbe19b1e, type: 2}
+  - id: amoeba_wide
+    sprite: {fileID: 21300000, guid: 4353d1c8d89ad8142bad688b69b49c5a, type: 3}
+    template: {fileID: 11400000, guid: 9dde8cef5c6940d4990b90edce5ed2fe, type: 2}
+  - id: amoeba_branch
+    sprite: {fileID: 21300000, guid: ec771f3a2ac63d74faf14613dcdc00c3, type: 3}
+    template: {fileID: 11400000, guid: 129c93ad70620ec4aa234cd8fac397ee, type: 2}
+  - id: amoeba_hunter
+    sprite: {fileID: 21300000, guid: c611d53e3a24018428772e8717b6aeb4, type: 3}
+    template: {fileID: 11400000, guid: a875d1ec5b37cc4479d70f84575e60af, type: 2}
+  - id: amoeba_compact
+    sprite: {fileID: 21300000, guid: 731e59d0782a85447bfe6fc2fa16b866, type: 3}
+    template: {fileID: 11400000, guid: 4386a09af3ca0b14cad25f426ac42beb, type: 2}
+  - id: amoeba_split
+    sprite: {fileID: 21300000, guid: 15d5525e64ebdf44daaba705fc8d946d, type: 3}
+    template: {fileID: 11400000, guid: e739f5a5d1507e04f817a1382433c600, type: 2}
+  - id: amoeba_spread
+    sprite: {fileID: 21300000, guid: c1ba26e5ab50cb140ad6b2e17dadef13, type: 3}
+    template: {fileID: 11400000, guid: 3e8aa63bf677e1c469bbab7c15d69a10, type: 2}
