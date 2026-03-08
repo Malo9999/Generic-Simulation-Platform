@@ -19,10 +19,11 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private bool useFieldBlobSpriteForFieldOverlay = true;
 
     private readonly List<SpriteRenderer> agentRenderers = new();
-    private readonly List<SpriteRenderer> attractorRenderers = new();
+    private readonly List<SpriteRenderer> foodNodeRenderers = new();
     private Texture2D fieldTexture;
     private SpriteRenderer fieldRenderer;
     private int frameCounter;
+    private Vector2 worldSize;
 
     public void SetShapeToggles(bool glowAgents, bool fieldBlobOverlay)
     {
@@ -39,9 +40,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             return;
         }
 
-        BuildField(runner.Field.WorldSize, runner.Field.Width, runner.Field.Height);
+        worldSize = runner.Field.WorldSize;
+        BuildField(worldSize, runner.Field.Width, runner.Field.Height);
         BuildAgents(runner.AgentCount);
-        BuildAttractors(runner.Attractors);
+        BuildFoodNodes(runner.FoodNodes, runner.FoodRadius);
     }
 
     public void Render(NeuralSlimeMoldRunner runner)
@@ -61,14 +63,15 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             t.localRotation = Quaternion.Euler(0f, 0f, state.heading * Mathf.Rad2Deg);
         }
 
-        var attractors = runner.Attractors;
-        for (var i = 0; i < attractorRenderers.Count; i++)
+        var foodNodes = runner.FoodNodes;
+        for (var i = 0; i < foodNodeRenderers.Count; i++)
         {
-            var active = i < attractors.Length;
-            attractorRenderers[i].gameObject.SetActive(active);
+            var active = i < foodNodes.Length;
+            foodNodeRenderers[i].gameObject.SetActive(active);
             if (active)
             {
-                attractorRenderers[i].transform.localPosition = new Vector3(attractors[i].x, attractors[i].y, -0.3f);
+                var clamped = ClampNodeMarker(foodNodes[i]);
+                foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.3f);
             }
         }
 
@@ -136,25 +139,42 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
     }
 
-    private void BuildAttractors(Vector2[] attractors)
+    private void BuildFoodNodes(Vector2[] foodNodes, float foodRadius)
     {
-        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.RingPing, out var ringSprite))
+        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlowSmall, out var markerSprite))
+        {
+            ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out markerSprite);
+        }
+
+        if (markerSprite == null)
         {
             return;
         }
 
-        for (var i = 0; i < attractors.Length; i++)
+        var markerScale = Mathf.Clamp(foodRadius * 0.1f, 0.18f, 0.55f);
+
+        for (var i = 0; i < foodNodes.Length; i++)
         {
-            var go = new GameObject($"Attractor_{i:00}");
+            var go = new GameObject($"FoodNode_{i:00}");
             go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * 0.85f;
+            go.transform.localScale = Vector3.one * markerScale;
 
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sortingOrder = 2;
-            sr.sprite = ringSprite;
-            sr.color = new Color(0.95f, 0.85f, 0.35f, 0.8f);
-            attractorRenderers.Add(sr);
+            sr.sprite = markerSprite;
+            sr.color = new Color(0.95f, 0.85f, 0.35f, 0.65f);
+            foodNodeRenderers.Add(sr);
         }
+    }
+
+    private Vector2 ClampNodeMarker(Vector2 position)
+    {
+        var halfX = (worldSize.x * 0.5f) - 0.6f;
+        var halfY = (worldSize.y * 0.5f) - 0.6f;
+
+        position.x = Mathf.Clamp(position.x, -halfX, halfX);
+        position.y = Mathf.Clamp(position.y, -halfY, halfY);
+        return position;
     }
 
     private void UpdateFieldTexture(NeuralFieldGrid field)
@@ -190,7 +210,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     private void ClearChildren()
     {
         agentRenderers.Clear();
-        attractorRenderers.Clear();
+        foodNodeRenderers.Clear();
 
         for (var i = transform.childCount - 1; i >= 0; i--)
         {
@@ -221,5 +241,6 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
         fieldRenderer = null;
         frameCounter = 0;
+        worldSize = Vector2.one;
     }
 }
