@@ -44,6 +44,18 @@ public sealed class NeuralFieldGrid
         field[(y * width) + x] += amount;
     }
 
+    public void ScrubAt(Vector2 worldPosition, float amount)
+    {
+        if (amount <= 0f)
+        {
+            return;
+        }
+
+        WorldToGrid(worldPosition, out var x, out var y);
+        var idx = (y * width) + x;
+        field[idx] = Mathf.Max(0f, field[idx] * (1f - Mathf.Clamp01(amount)));
+    }
+
     public float SampleBilinear(Vector2 worldPosition)
     {
         var uv = WorldToUv(worldPosition);

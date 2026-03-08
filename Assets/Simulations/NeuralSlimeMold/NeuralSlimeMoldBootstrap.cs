@@ -26,7 +26,15 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f), Tooltip("Scales heading jitter; >0 helps escape repetitive loops.")] private float turnNoise = 0.35f;
     [SerializeField, Range(0f, 1f), Tooltip("Damps local circular self-reinforcement when side sensors dominate.")] private float localLoopSuppression = 0.58f;
     [SerializeField, Min(1f), Tooltip("Deposit multiplier when close to active food nodes.")] private float depositNearFoodMultiplier = 1.75f;
-    [SerializeField, Range(0f, 1f), Tooltip("Biases trail persistence toward inter-node bridges and lowers local ring reinforcement.")] private float pathPersistenceBias = 0.5f;
+    [SerializeField, Range(0f, 1f), Tooltip("Biases trail persistence toward inter-node bridges and lowers local ring reinforcement.")] private float pathPersistenceBias = 0.58f;
+
+    [Header("Activity Sustain")]
+    [SerializeField] private bool foodPulseEnabled = true;
+    [SerializeField, Min(0.5f)] private float foodPulsePeriod = 8f;
+    [SerializeField, Min(0f)] private float foodPulseStrength = 0.35f;
+    [SerializeField] private bool localTrailScrubEnabled = true;
+    [SerializeField, Min(0.01f)] private float localTrailScrubThreshold = 0.78f;
+    [SerializeField, Range(0f, 1f)] private float localTrailScrubAmount = 0.11f;
 
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
@@ -41,14 +49,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f), Tooltip("Requires Start / Reset Simulation to apply.")] private float wallMargin = 6f;
 
     [Header("World Layout")]
-    [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private NeuralSlimeWorldPreset worldPreset = NeuralSlimeWorldPreset.OpenField;
+    [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private NeuralSlimeWorldPreset worldPreset = NeuralSlimeWorldPreset.CorridorCross;
     [SerializeField, Tooltip("When Custom, uses Manual Food Nodes/Obstacles arrays.")] private bool useCustomWorldOverrides = false;
 
     [Header("Food Nodes")]
     [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private bool enableFoodNodes = true;
     [SerializeField, Tooltip("Can be toggled during play.")] private bool indirectFoodBias = true;
     [SerializeField, Min(1), Tooltip("Requires Start / Reset Simulation to apply when auto-generated nodes are used.")] private int foodNodeCount = 4;
-    [SerializeField, Min(0f), Tooltip("Can be adjusted live.")] private float foodStrength = 0.9f;
+    [SerializeField, Min(0f), Tooltip("Can be adjusted live.")] private float foodStrength = 1.05f;
     [SerializeField, Min(0.1f), Tooltip("Requires Start / Reset Simulation to apply.")] private float foodRadius = 14f;
     [SerializeField, Tooltip("When enabled, food node placement is deterministic from seed.")] private bool spawnFromSeed = true;
     [SerializeField, Tooltip("Can be toggled during play. Disabled keeps nodes consumable-only.")] private bool allowFoodRegrowth = true;
@@ -130,7 +138,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             effectiveTurnNoise,
             effectiveLoopSuppression,
             effectiveDepositNearFoodMultiplier,
-            pathPersistenceBias);
+            pathPersistenceBias,
+            foodPulseEnabled,
+            foodPulsePeriod,
+            foodPulseStrength,
+            localTrailScrubEnabled,
+            localTrailScrubThreshold,
+            localTrailScrubAmount);
         rendererComponent.Render(runner);
     }
 
@@ -170,6 +184,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         ApplyRendererOverrides();
         rendererComponent.Build(runner);
         LogFoodDebugSummary();
+        LogStartupSummary(enableObstacles ? resolvedObstacles.Length : 0);
 
         if (autoFrameCamera)
         {
@@ -206,20 +221,18 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
         switch (worldPreset)
         {
+            case NeuralSlimeWorldPreset.CorridorCross:
             case NeuralSlimeWorldPreset.CorridorTest:
-                resolvedFoodConfigs = BuildCorridorFood();
+                resolvedFoodConfigs = BuildCorridorCrossFood();
                 resolvedFoodNodes = null;
-                resolvedObstacles = BuildCorridorObstacles();
+                resolvedObstacles = BuildCorridorCrossObstacles();
                 break;
+            case NeuralSlimeWorldPreset.CorridorMazeLite:
             case NeuralSlimeWorldPreset.IslandObstacles:
-                resolvedFoodConfigs = BuildIslandFood();
-                resolvedFoodNodes = null;
-                resolvedObstacles = BuildIslandObstacles();
-                break;
             case NeuralSlimeWorldPreset.ClusteredFood:
-                resolvedFoodConfigs = BuildClusteredFood();
+                resolvedFoodConfigs = BuildCorridorMazeLiteFood();
                 resolvedFoodNodes = null;
-                resolvedObstacles = BuildClusterObstacles();
+                resolvedObstacles = BuildCorridorMazeLiteObstacles();
                 break;
             default:
                 resolvedFoodConfigs = BuildOpenFood();
@@ -240,7 +253,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         };
     }
 
-    private NeuralFoodNodeConfig[] BuildCorridorFood()
+    private NeuralFoodNodeConfig[] BuildCorridorCrossFood()
     {
         return new[]
         {
@@ -250,53 +263,41 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         };
     }
 
-    private NeuralFoodNodeConfig[] BuildIslandFood()
+    private NeuralFoodNodeConfig[] BuildCorridorMazeLiteFood()
     {
         return new[]
         {
-            CreateFood(new Vector2(-20f, 18f), 9f, 0.9f, 90f, 0.7f, 0.09f),
-            CreateFood(new Vector2(21f, 17f), 9f, 0.9f, 90f, 0.7f, 0.09f),
-            CreateFood(new Vector2(0f, -20f), 11f, 1f, 130f, 1f, 0.1f)
+            CreateFood(new Vector2(-25f, -20f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(26f, -20f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(-26f, 20f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(25f, 20f), 7f, 1f, 120f, 0.82f, 0.1f),
+            CreateFood(new Vector2(0f, 0f), 6.5f, 1.15f, 135f, 0.9f, 0.16f)
         };
     }
 
-    private NeuralFoodNodeConfig[] BuildClusteredFood()
+    private NeuralObstacle[] BuildCorridorCrossObstacles()
     {
         return new[]
         {
-            CreateFood(new Vector2(-10f, -8f), 8f, 1.1f, 100f, 1.2f, 0f),
-            CreateFood(new Vector2(-4f, -3f), 7f, 1f, 100f, 1.1f, 0f),
-            CreateFood(new Vector2(-12f, 4f), 7f, 1f, 95f, 1f, 0f),
-            CreateFood(new Vector2(16f, 16f), 10f, 0.7f, 80f, 0.55f, 0.25f)
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(0f, 12f), size = new Vector2(64f, 14f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(0f, -12f), size = new Vector2(64f, 14f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-12f, 0f), size = new Vector2(14f, 64f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(12f, 0f), size = new Vector2(14f, 64f), radius = 1f }
         };
     }
 
-    private NeuralObstacle[] BuildCorridorObstacles()
+    private NeuralObstacle[] BuildCorridorMazeLiteObstacles()
     {
         return new[]
         {
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(0f, 16f), size = new Vector2(42f, 10f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(0f, -16f), size = new Vector2(42f, 10f), radius = 1f },
-            new NeuralObstacle { shape = NeuralObstacleShape.Circle, center = new Vector2(0f, 0f), radius = 5.5f, size = Vector2.zero }
-        };
-    }
-
-    private NeuralObstacle[] BuildIslandObstacles()
-    {
-        return new[]
-        {
-            new NeuralObstacle { shape = NeuralObstacleShape.Circle, center = new Vector2(-4f, 4f), radius = 8f, size = Vector2.zero },
-            new NeuralObstacle { shape = NeuralObstacleShape.Circle, center = new Vector2(10f, 2f), radius = 6f, size = Vector2.zero },
-            new NeuralObstacle { shape = NeuralObstacleShape.Circle, center = new Vector2(2f, -10f), radius = 7f, size = Vector2.zero }
-        };
-    }
-
-    private NeuralObstacle[] BuildClusterObstacles()
-    {
-        return new[]
-        {
-            new NeuralObstacle { shape = NeuralObstacleShape.Circle, center = new Vector2(6f, -2f), radius = 4f, size = Vector2.zero },
-            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(14f, 10f), size = new Vector2(9f, 6f), radius = 1f }
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-8f, 14f), size = new Vector2(34f, 8f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(12f, 6f), size = new Vector2(32f, 8f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-12f, -2f), size = new Vector2(32f, 8f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(10f, -10f), size = new Vector2(30f, 8f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-10f, -18f), size = new Vector2(30f, 8f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(-28f, 0f), size = new Vector2(8f, 36f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Rectangle, center = new Vector2(28f, 0f), size = new Vector2(8f, 36f), radius = 1f },
+            new NeuralObstacle { shape = NeuralObstacleShape.Circle, center = new Vector2(0f, 0f), radius = 4.5f, size = Vector2.zero }
         };
     }
 
@@ -372,6 +373,19 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             var node = nodes[i];
             Debug.Log($"[NeuralSlimeMold] food[{i}] pos={node.position} radius={node.radius:F2} strength={node.strength:F2} active={node.active} cap={node.capacity:F2}/{node.maxCapacity:F2}");
         }
+    }
+
+
+    private void LogStartupSummary(int obstacleCount)
+    {
+        if (!debugFoodLogging)
+        {
+            return;
+        }
+
+        Debug.Log($"[NeuralSlimeMold] worldPreset={worldPreset} pulseEnabled={foodPulseEnabled} pulsePeriod={foodPulsePeriod:F2}s pulseStrength={foodPulseStrength:F2} localTrailScrubEnabled={localTrailScrubEnabled} scrubThreshold={localTrailScrubThreshold:F2} scrubAmount={localTrailScrubAmount:F2}");
+        Debug.Log($"[NeuralSlimeMold] obstacles enabled={enableObstacles} obstacleCount={obstacleCount} boundary={boundaryMode} wallMargin={wallMargin:F2}");
+        Debug.Log($"[NeuralSlimeMold] steering trailFollowWeight={trailFollowWeight:F2} foodAttractionWeight={foodAttractionWeight:F2} foodTurnBias={foodTurnBias:F2} turnNoise={turnNoise:F2} localLoopSuppression={localLoopSuppression:F2}");
     }
 
     private void OnDrawGizmosSelected()
