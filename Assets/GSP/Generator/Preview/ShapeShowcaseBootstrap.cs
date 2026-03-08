@@ -21,6 +21,10 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Material showcaseDefaultSpriteMaterial;
     [SerializeField] private ShapeShowcaseProceduralMaterialConfig proceduralMaterials = new();
 
+    [Header("Amoeba Preview Motion")]
+    [SerializeField] private bool animateAmoebaRow = true;
+    [SerializeField, Min(0f)] private float amoebaMotionIntensity = 1f;
+
     [Header("Theme Verification")]
     [SerializeField] private List<ShowcaseThemeEntry> themes = new();
     [SerializeField, Min(0)] private int selectedThemeIndex;
@@ -325,6 +329,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
             var resolvedRowSpacing = category.ResolveHorizontalSpacing(horizontalSpacing);
             var resolvedRowScale = category.ResolveSpriteScale(spriteScale);
+            var isAmoebaRow = string.Equals(category.Name, "AMOEBA", StringComparison.OrdinalIgnoreCase);
             var rowWidth = Mathf.Max(0, category.ShapeIds.Length - 1) * resolvedRowSpacing;
             var startX = -rowWidth * 0.5f;
 
@@ -342,7 +347,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
                 }
 
                 var position = new Vector3(startX + (col * resolvedRowSpacing), y, 0f);
-                SpawnShape(root, id, category.Category, sprite, position, resolvedRowScale, spawnedCount, runtimeProceduralConfig, hasSelectedTheme ? selectedTheme : default, hasSelectedTheme);
+                SpawnShape(root, id, category.Category, sprite, position, resolvedRowScale, spawnedCount, runtimeProceduralConfig, hasSelectedTheme ? selectedTheme : default, hasSelectedTheme, isAmoebaRow);
                 spawnedCount++;
             }
         }
@@ -353,7 +358,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
     }
 
-    private void SpawnShape(Transform root, string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, float resolvedScale, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig, ShowcaseThemeEntry theme, bool hasTheme)
+    private void SpawnShape(Transform root, string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, float resolvedScale, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig, ShowcaseThemeEntry theme, bool hasTheme, bool isAmoebaRow)
     {
         var go = new GameObject(shapeId);
         go.transform.SetParent(root, false);
@@ -379,6 +384,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             var driver = go.AddComponent<AnimatedShapeDriver>();
             driver.Configure(sr, profile, sequence * 97);
             driver.SetProceduralMaterialApplier(applier, proceduralApplied);
+        }
+
+        if (isAmoebaRow && animateAmoebaRow)
+        {
+            var amoebaMotion = go.AddComponent<AmoebaShowcaseMotion>();
+            amoebaMotion.Configure(shapeId, amoebaMotionIntensity, sequence * 97);
         }
 
         var visualKey = BuildShowcaseVisualKey(shapeId, sequence);
