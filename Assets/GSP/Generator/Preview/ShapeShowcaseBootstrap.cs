@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+[GspBootstrap(GspBootstrapKind.Preview, "Preview scene bootstrap for shape showcase")]
 public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 {
     [Header("Layout")]
