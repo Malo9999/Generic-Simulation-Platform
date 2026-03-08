@@ -79,3 +79,18 @@ MonoBehaviour:
   - id: organic_amoeba_compact
     sprite: {fileID: 21300000, guid: 4c4df5a9d63143f4ba616a7b017ff2d3, type: 3}
     template: {fileID: 11400000, guid: f09680361df89054083e491976ed5d00, type: 2}
+  - id: organic_amoeba_crawler
+    sprite: {fileID: 21300000, guid: 9e17dd1a7572adc438e01898d8155e48, type: 3}
+    template: {fileID: 11400000, guid: 9bfa627f4fc157c4a98bc51d33319a19, type: 2}
+  - id: organic_amoeba_star
+    sprite: {fileID: 21300000, guid: 401ae08bf0eb69b499e1f464b5c360b9, type: 3}
+    template: {fileID: 11400000, guid: d989fab8e90a020488e4fb42de5f37da, type: 2}
+  - id: organic_amoeba_branch
+    sprite: {fileID: 21300000, guid: 8531768719ee2b043a33de6936bbaa1c, type: 3}
+    template: {fileID: 11400000, guid: d78de4ea0b3db9a4183c7cb45c4aca62, type: 2}
+  - id: organic_amoeba_wide_arms
+    sprite: {fileID: 21300000, guid: 9f756c6e87adbed429b58b137c95dc60, type: 3}
+    template: {fileID: 11400000, guid: f8b4bcb6d4f9f714cb0ce7179965949b, type: 2}
+  - id: organic_amoeba_hunter
+    sprite: {fileID: 21300000, guid: c957f303ae7b8fe46b6965707cfe680b, type: 3}
+    template: {fileID: 11400000, guid: 9d40f845dff57ad4ab241c93fe8a9748, type: 2}
