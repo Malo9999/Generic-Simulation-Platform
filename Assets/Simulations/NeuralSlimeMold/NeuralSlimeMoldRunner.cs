@@ -448,8 +448,11 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             var influenceRange = Mathf.Max(0.001f, Mathf.Max(node.radius, foodSenseRadius));
-            var normalizedDistance = distance / influenceRange;
-            var influence = Mathf.Clamp01(1f - normalizedDistance) * effectiveStrength;
+            var normalizedDistance = Mathf.Clamp01(distance / influenceRange);
+            var distanceFalloff = (1f - normalizedDistance);
+            distanceFalloff = distanceFalloff * distanceFalloff;
+            var coreBoost = Mathf.SmoothStep(1.55f, 1f, normalizedDistance);
+            var influence = distanceFalloff * effectiveStrength * coreBoost;
             if (influence <= 0f)
             {
                 continue;
@@ -468,7 +471,9 @@ public sealed class NeuralSlimeMoldRunner
         var forward = Direction(heading);
         var cross = (forward.x * toTarget.y) - (forward.y * toTarget.x);
         var alignment = Vector2.Dot(forward, toTarget);
-        var turnAmplifier = 1f + Mathf.Clamp01(1f - ((alignment + 1f) * 0.5f)) * Mathf.Max(0f, foodTurnBias);
+        var misalignment = Mathf.Clamp01(1f - ((alignment + 1f) * 0.5f));
+        var turnAmplifier = 1f + (misalignment * Mathf.Max(0f, foodTurnBias));
+        turnAmplifier *= 1f + Mathf.Clamp01(totalInfluence) * 0.55f;
         return cross * Mathf.Max(0f, liveFoodStrength) * foodAttractionWeight * turnAmplifier;
     }
 
