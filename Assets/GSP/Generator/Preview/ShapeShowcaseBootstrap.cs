@@ -46,6 +46,19 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             ShapeId.NoiseBlob,
             ShapeId.FieldBlob
         }),
+        new("AMOEBA", ShapePaletteCategory.Organic, new[]
+        {
+            ShapeId.AmoebaBlob,
+            ShapeId.AmoebaLobed,
+            ShapeId.AmoebaStar,
+            ShapeId.AmoebaCrawler,
+            ShapeId.AmoebaWide,
+            ShapeId.AmoebaBranch,
+            ShapeId.AmoebaHunter,
+            ShapeId.AmoebaCompact,
+            ShapeId.AmoebaSplit,
+            ShapeId.AmoebaSpread
+        }),
         new("AGENTS", ShapePaletteCategory.Agents, new[]
         {
             ShapeId.TriangleAgent,
