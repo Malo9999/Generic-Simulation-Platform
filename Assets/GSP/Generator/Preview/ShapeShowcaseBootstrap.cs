@@ -42,6 +42,11 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         {
             ShapeId.OrganicMetaball,
             ShapeId.OrganicAmoeba,
+            ShapeId.OrganicAmoebaWide,
+            ShapeId.OrganicAmoebaLobed,
+            ShapeId.OrganicAmoebaSprawl,
+            ShapeId.OrganicAmoebaPseudopod,
+            ShapeId.OrganicAmoebaCompact,
             ShapeId.NoiseBlob,
             ShapeId.FieldBlob
         }),

@@ -90,6 +90,31 @@ public static class ShapeBaker
             t.ConfigureBase(ShapeId.OrganicAmoeba, "Blobs", 96, 16);
             t.ApplyAmoebaDefaults();
         }));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaWide_Default.asset", t =>
+        {
+            t.ConfigureBase(ShapeId.OrganicAmoebaWide, "Blobs", 96, 16);
+            t.ApplyAmoebaWideDefaults();
+        }));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaLobed_Default.asset", t =>
+        {
+            t.ConfigureBase(ShapeId.OrganicAmoebaLobed, "Blobs", 96, 16);
+            t.ApplyAmoebaLobedDefaults();
+        }));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaSprawl_Default.asset", t =>
+        {
+            t.ConfigureBase(ShapeId.OrganicAmoebaSprawl, "Blobs", 96, 16);
+            t.ApplyAmoebaSprawlDefaults();
+        }));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaPseudopod_Default.asset", t =>
+        {
+            t.ConfigureBase(ShapeId.OrganicAmoebaPseudopod, "Blobs", 96, 16);
+            t.ApplyAmoebaPseudopodDefaults();
+        }));
+        changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaCompact_Default.asset", t =>
+        {
+            t.ConfigureBase(ShapeId.OrganicAmoebaCompact, "Blobs", 96, 16);
+            t.ApplyAmoebaCompactDefaults();
+        }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<StrokeTemplate>("StrokeScribble_Default.asset", null));
         changed |= EnsurePackTemplate(pack, CreateTemplate<TriangleAgentTemplate>("TriangleAgent_Default.asset", t =>
             t.ConfigureBase(ShapeId.TriangleAgent, "Agents", 64, 16)));
@@ -116,13 +141,13 @@ public static class ShapeBaker
             t.ConfigureBase(ShapeId.PulseRing, "Rings", 64, 16)));
 
         var templateCount = pack.templates.Count;
-        if (templateCount < 17)
+        if (templateCount < 22)
         {
-            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 17 templates, found {templateCount}.");
+            Debug.LogWarning($"TemplatePack_DefaultNeon migration incomplete. Expected 22 templates, found {templateCount}.");
         }
         else if (changed)
         {
-            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 17 templates.");
+            Debug.Log("TemplatePack_DefaultNeon repaired/upgraded to 22 templates.");
         }
 
         if (changed)

@@ -90,4 +90,95 @@ public class OrganicBlobTemplate : ShapeTemplateBase
         innerMul = 1f;
         outerMul = 0.78f;
     }
+
+
+    public void ApplyAmoebaWideDefaults()
+    {
+        mode = OrganicBlobMode.AmoebaNoise;
+        seed = 1301;
+        baseRadiusPx = 20;
+        noiseAmplitudePx = 3.8f;
+        noiseFrequency = 2.15f;
+        noiseOctaves = 3;
+        noiseGain = 0.48f;
+        noiseLacunarity = 1.9f;
+        rimSoftnessPx = 0;
+        symmetryBreak = 0.3f;
+        useRimGradient = true;
+        rimWidthPx = 6;
+        innerMul = 1f;
+        outerMul = 0.78f;
+    }
+
+    public void ApplyAmoebaLobedDefaults()
+    {
+        mode = OrganicBlobMode.AmoebaNoise;
+        seed = 2237;
+        baseRadiusPx = 18;
+        noiseAmplitudePx = 6.6f;
+        noiseFrequency = 3.35f;
+        noiseOctaves = 3;
+        noiseGain = 0.54f;
+        noiseLacunarity = 2.05f;
+        rimSoftnessPx = 0;
+        symmetryBreak = 0.4f;
+        useRimGradient = true;
+        rimWidthPx = 6;
+        innerMul = 1f;
+        outerMul = 0.78f;
+    }
+
+    public void ApplyAmoebaSprawlDefaults()
+    {
+        mode = OrganicBlobMode.AmoebaNoise;
+        seed = 3541;
+        baseRadiusPx = 19;
+        noiseAmplitudePx = 8.2f;
+        noiseFrequency = 2.75f;
+        noiseOctaves = 4;
+        noiseGain = 0.58f;
+        noiseLacunarity = 2.1f;
+        rimSoftnessPx = 0;
+        symmetryBreak = 0.62f;
+        useRimGradient = true;
+        rimWidthPx = 6;
+        innerMul = 1f;
+        outerMul = 0.78f;
+    }
+
+    public void ApplyAmoebaPseudopodDefaults()
+    {
+        mode = OrganicBlobMode.AmoebaNoise;
+        seed = 4703;
+        baseRadiusPx = 17;
+        noiseAmplitudePx = 7.1f;
+        noiseFrequency = 2.05f;
+        noiseOctaves = 3;
+        noiseGain = 0.55f;
+        noiseLacunarity = 2f;
+        rimSoftnessPx = 0;
+        symmetryBreak = 0.66f;
+        useRimGradient = true;
+        rimWidthPx = 6;
+        innerMul = 1f;
+        outerMul = 0.78f;
+    }
+
+    public void ApplyAmoebaCompactDefaults()
+    {
+        mode = OrganicBlobMode.AmoebaNoise;
+        seed = 5813;
+        baseRadiusPx = 16;
+        noiseAmplitudePx = 2.9f;
+        noiseFrequency = 2.8f;
+        noiseOctaves = 2;
+        noiseGain = 0.45f;
+        noiseLacunarity = 1.85f;
+        rimSoftnessPx = 0;
+        symmetryBreak = 0.2f;
+        useRimGradient = true;
+        rimWidthPx = 6;
+        innerMul = 1f;
+        outerMul = 0.78f;
+    }
 }
