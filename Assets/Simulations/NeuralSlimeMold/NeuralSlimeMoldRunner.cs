@@ -132,6 +132,9 @@ public sealed class NeuralSlimeMoldRunner
         float foodSenseRadius,
         float foodTurnBias,
         float depletedFoodStrengthMultiplier,
+        float foodReactivationDelay,
+        float foodReactivationThreshold,
+        float migrationRestlessness,
         float turnNoise,
         float localLoopSuppression,
         float depositNearFoodMultiplier,
@@ -180,10 +183,11 @@ public sealed class NeuralSlimeMoldRunner
             var noise = (rng.NextFloat01() * 2f) - 1f;
             var boundaryTurn = ComputeBoundaryTurn(agent.position, agent.heading);
             var foodTurn = indirectFoodBias
-                ? ComputeFoodTurn(agent.position, agent.heading, liveFoodStrength, foodAttractionWeight, foodSenseRadius, foodTurnBias, depletedFoodStrengthMultiplier, pulseStrength)
+                ? ComputeFoodTurn(agent.position, agent.heading, liveFoodStrength, foodAttractionWeight, foodSenseRadius, foodTurnBias, depletedFoodStrengthMultiplier, pulseStrength, simulationTime)
                 : 0f;
             var obstacleTurn = ComputeObstacleTurn(agent.position, agent.heading, agent.sensorDistance);
             var loopSuppressionTurn = ComputeLoopSuppressionTurn(left, center, right, localLoopSuppression);
+            var restlessnessTurn = ComputeRestlessnessTurn(agent.position, agent.heading, migrationRestlessness);
 
             var steer = (weighted * 0.2f * Mathf.Max(0f, trailFollowWeight))
                         + (edge * Mathf.Max(0f, trailFollowWeight))
@@ -192,6 +196,7 @@ public sealed class NeuralSlimeMoldRunner
                         + foodTurn
                         + obstacleTurn
                         + loopSuppressionTurn
+                        + restlessnessTurn
                         + boundaryTurn;
 
             var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
@@ -224,7 +229,7 @@ public sealed class NeuralSlimeMoldRunner
             agents[i] = agent;
         }
 
-        UpdateFoodNodes(dt, allowFoodRegrowth);
+        UpdateFoodNodes(dt, allowFoodRegrowth, foodReactivationDelay, foodReactivationThreshold);
         Field.Step(diffusion, decay, dt);
     }
 
@@ -265,13 +270,15 @@ public sealed class NeuralSlimeMoldRunner
         Field.ScrubAt(position, scrubAmount);
     }
 
-    private void UpdateFoodNodes(float dt, bool allowFoodRegrowth)
+    private void UpdateFoodNodes(float dt, bool allowFoodRegrowth, float foodReactivationDelay, float foodReactivationThreshold)
     {
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
             var wasActive = node.active;
             var previousCapacity = node.capacity;
+            var depletedFor = node.timeSinceDepleted;
+            node.timeSinceDepleted = node.active ? 0f : node.timeSinceDepleted + Mathf.Max(0f, dt);
             if (node.maxCapacity <= 0f)
             {
                 node.capacity = 0f;
@@ -288,15 +295,19 @@ public sealed class NeuralSlimeMoldRunner
                 {
                     node.capacity = 0f;
                     node.active = false;
+                    node.timeSinceDepleted = 0f;
                 }
             }
 
             if (!node.active && allowFoodRegrowth && node.regrowRate > 0f)
             {
                 node.capacity = Mathf.Min(node.maxCapacity, node.capacity + (node.regrowRate * dt));
-                if (node.capacity > node.maxCapacity * 0.05f)
+                var reactivateThreshold = Mathf.Clamp01(foodReactivationThreshold) * node.maxCapacity;
+                var canReactivate = node.timeSinceDepleted >= Mathf.Max(0f, foodReactivationDelay);
+                if (canReactivate && node.capacity > reactivateThreshold)
                 {
                     node.active = true;
+                    node.timeSinceDepleted = 0f;
                 }
             }
 
@@ -308,7 +319,7 @@ public sealed class NeuralSlimeMoldRunner
                 }
                 else if (!wasActive && node.active)
                 {
-                    Debug.Log($"[NeuralSlimeMold] food[{i}] reactivated at pos={node.position} cap={previousCapacity:F2}->{node.capacity:F2}");
+                    Debug.Log($"[NeuralSlimeMold] food[{i}] reactivated at pos={node.position} cap={previousCapacity:F2}->{node.capacity:F2} depletedFor={depletedFor:F2}s");
                 }
             }
 
@@ -470,7 +481,7 @@ public sealed class NeuralSlimeMoldRunner
         };
     }
 
-    private float ComputeFoodTurn(Vector2 position, float heading, float liveFoodStrength, float foodAttractionWeight, float foodSenseRadius, float foodTurnBias, float depletedFoodStrengthMultiplier, float pulseStrength)
+    private float ComputeFoodTurn(Vector2 position, float heading, float liveFoodStrength, float foodAttractionWeight, float foodSenseRadius, float foodTurnBias, float depletedFoodStrengthMultiplier, float pulseStrength, float time)
     {
         if (foodNodes == null || foodNodes.Length == 0 || liveFoodStrength <= 0f || foodAttractionWeight <= 0f)
         {
@@ -483,7 +494,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length);
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -537,7 +548,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length);
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -565,7 +576,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length);
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -589,16 +600,16 @@ public sealed class NeuralSlimeMoldRunner
         return Mathf.Clamp01(strongest * secondStrongest);
     }
 
-    private static float ComputeEffectiveStrength(NeuralFoodNodeState node, float depletedFoodStrengthMultiplier, float pulseStrength, int nodeIndex, int nodeCount)
+    private static float ComputeEffectiveStrength(NeuralFoodNodeState node, float depletedFoodStrengthMultiplier, float pulseStrength, int nodeIndex, int nodeCount, float time)
     {
         if (node.maxCapacity <= 0f || node.strength <= 0f)
         {
             return 0f;
         }
 
-        var baseStrength = node.active
-            ? node.strength * node.Capacity01
-            : node.strength * Mathf.Clamp01(depletedFoodStrengthMultiplier);
+        var activeStrength = node.strength * (node.Capacity01 * node.Capacity01);
+        var depletedStrength = node.strength * Mathf.Clamp01(depletedFoodStrengthMultiplier);
+        var baseStrength = node.active ? activeStrength : depletedStrength;
 
         if (baseStrength <= 0f)
         {
@@ -607,8 +618,28 @@ public sealed class NeuralSlimeMoldRunner
 
         var safeNodeCount = Mathf.Max(1, nodeCount);
         var nodePhase = (nodeIndex / (float)safeNodeCount);
-        var stagger = 0.82f + (Mathf.Sin((nodePhase * Mathf.PI * 2f) + (pulseStrength * Mathf.PI)) * 0.18f);
+        var staggerPhase = (nodePhase * Mathf.PI * 2f) + (time * 0.37f);
+        var stagger = 0.82f + (Mathf.Sin(staggerPhase + (pulseStrength * Mathf.PI)) * 0.18f);
         return baseStrength * Mathf.Max(0.1f, pulseStrength) * Mathf.Max(0.35f, stagger);
+    }
+
+    private float ComputeRestlessnessTurn(Vector2 position, float heading, float migrationRestlessness)
+    {
+        if (migrationRestlessness <= 0f)
+        {
+            return 0f;
+        }
+
+        var fieldStrength = Mathf.Clamp01(Field.SampleBilinear(position));
+        var intensity = Mathf.Clamp01((fieldStrength - 0.55f) / 0.45f);
+        if (intensity <= 0f)
+        {
+            return 0f;
+        }
+
+        var phase = (position.x * 0.173f) + (position.y * 0.219f) + (simulationTime * 0.61f) + (heading * 0.37f);
+        var deterministicNoise = Mathf.Sin(phase) * 0.5f;
+        return deterministicNoise * Mathf.Max(0f, migrationRestlessness) * intensity;
     }
 
     private float ComputeLoopSuppressionTurn(float left, float center, float right, float localLoopSuppression)
@@ -778,7 +809,8 @@ public sealed class NeuralSlimeMoldRunner
             capacity = startActive ? capacity : 0f,
             depletionRate = depletionRate,
             regrowRate = regrowRate,
-            active = startActive && capacity > 0f
+            active = startActive && capacity > 0f,
+            timeSinceDepleted = 0f
         };
     }
 

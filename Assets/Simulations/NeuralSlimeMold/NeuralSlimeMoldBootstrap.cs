@@ -9,7 +9,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(1)] private int agentCount = 1800;
     [SerializeField] private Vector2 mapSize = new(64f, 64f);
     [SerializeField] private Vector2Int trailResolution = new(256, 256);
-    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.6f;
+    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.5f;
     [SerializeField, Range(0f, 1f)] private float trailDiffusion = 0.23f;
 
     [Header("Agent Motion")]
@@ -20,14 +20,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float depositAmount = 1.2f;
 
     [Header("Steering Tuning")]
-    [SerializeField, Min(0f), Tooltip("Scales trail sensing influence (left/center/right) in steering.")] private float trailFollowWeight = 0.78f;
-    [SerializeField, Min(0f), Tooltip("Overall multiplier for food-directed turning.")] private float foodAttractionWeight = 3.8f;
+    [SerializeField, Min(0f), Tooltip("Scales trail sensing influence (left/center/right) in steering.")] private float trailFollowWeight = 0.66f;
+    [SerializeField, Min(0f), Tooltip("Overall multiplier for food-directed turning.")] private float foodAttractionWeight = 4.45f;
     [SerializeField, Min(0.1f), Tooltip("Additional food sensing distance beyond node radius.")] private float foodSenseRadius = 22f;
     [SerializeField, Min(0f), Tooltip("Extra food turn boost when heading is misaligned from food direction.")] private float foodTurnBias = 0.95f;
-    [SerializeField, Min(0f), Tooltip("Scales heading jitter; >0 helps escape repetitive loops.")] private float turnNoise = 0.35f;
-    [SerializeField, Range(0f, 1f), Tooltip("Damps local circular self-reinforcement when side sensors dominate.")] private float localLoopSuppression = 0.58f;
+    [SerializeField, Min(0f), Tooltip("Scales heading jitter; >0 helps escape repetitive loops.")] private float turnNoise = 0.42f;
+    [SerializeField, Range(0f, 1f), Tooltip("Damps local circular self-reinforcement when side sensors dominate.")] private float localLoopSuppression = 0.64f;
     [SerializeField, Min(1f), Tooltip("Deposit multiplier when close to active food nodes.")] private float depositNearFoodMultiplier = 1.75f;
-    [SerializeField, Range(0f, 1f), Tooltip("Biases trail persistence toward inter-node bridges and lowers local ring reinforcement.")] private float pathPersistenceBias = 0.58f;
+    [SerializeField, Range(0f, 1f), Tooltip("Biases trail persistence toward inter-node bridges and lowers local ring reinforcement.")] private float pathPersistenceBias = 0.68f;
 
     [Header("Activity Sustain")]
     [SerializeField] private bool foodPulseEnabled = true;
@@ -61,10 +61,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0.1f), Tooltip("Requires Start / Reset Simulation to apply.")] private float foodRadius = 14f;
     [SerializeField, Tooltip("When enabled, food node placement is deterministic from seed.")] private bool spawnFromSeed = true;
     [SerializeField, Tooltip("Can be toggled during play. Disabled keeps nodes consumable-only.")] private bool allowFoodRegrowth = true;
-    [SerializeField, Min(0f), Tooltip("Default capacity for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float foodCapacity = 110f;
-    [SerializeField, Min(0f), Tooltip("Default depletion rate for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float depletionRate = 0.85f;
-    [SerializeField, Min(0f), Tooltip("Default regrow rate for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float regrowRate = 0.12f;
-    [SerializeField, Range(0f, 1f), Tooltip("Minimum residual attraction for weakened/depleted food to preserve migration corridors.")] private float depletedFoodStrengthMultiplier = 0.18f;
+    [SerializeField, Min(0f), Tooltip("Default capacity for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float foodCapacity = 78f;
+    [SerializeField, Min(0f), Tooltip("Default depletion rate for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float depletionRate = 1.45f;
+    [SerializeField, Min(0f), Tooltip("Default regrow rate for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float regrowRate = 0.06f;
+    [SerializeField, Range(0f, 1f), Tooltip("Minimum residual attraction for weakened/depleted food to preserve migration corridors.")] private float depletedFoodStrengthMultiplier = 0.07f;
+    [SerializeField, Min(0f), Tooltip("Seconds before depleted food can reactivate.")] private float foodReactivationDelay = 4.5f;
+    [SerializeField, Range(0f, 1f), Tooltip("Capacity fraction required to reactivate after delay.")] private float foodReactivationThreshold = 0.2f;
+    [SerializeField, Min(0f), Tooltip("Extra deterministic steering pressure to break stable local rings over time.")] private float migrationRestlessness = 0.2f;
     [SerializeField, Tooltip("Optional explicit node positions (legacy). Leave empty to auto-generate.")] private Vector2[] manualFoodNodes = null;
     [SerializeField, Tooltip("Optional explicit food configs (position/radius/strength/capacity/depletion/regrowth). Requires reset.")] private NeuralFoodNodeConfig[] manualFoodConfigs = null;
 
@@ -141,6 +144,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             effectiveFoodSenseRadius,
             effectiveFoodTurnBias,
             depletedFoodStrengthMultiplier,
+            foodReactivationDelay,
+            foodReactivationThreshold,
+            migrationRestlessness,
             effectiveTurnNoise,
             effectiveLoopSuppression,
             effectiveDepositNearFoodMultiplier,
@@ -391,6 +397,15 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
                     CreateFood(new Vector2(18f, -6f), 11f, 1.25f, 220f, 0.2f, 0f)
                 };
                 break;
+            case NeuralFoodDebugPreset.FoodDecayMotionTest:
+                resolvedFoodConfigs = new[]
+                {
+                    CreateFood(new Vector2(-20f, -12f), 10f, 1.15f, 56f, 1.9f, 0.045f),
+                    CreateFood(new Vector2(-4f, 14f), 10f, 1.2f, 62f, 1.75f, 0.05f),
+                    CreateFood(new Vector2(16f, 10f), 10f, 1.1f, 58f, 1.85f, 0.04f),
+                    CreateFood(new Vector2(18f, -14f), 10f, 1.2f, 60f, 1.8f, 0.05f)
+                };
+                break;
         }
     }
 
@@ -408,9 +423,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         var logFoodAttractionWeight = debugSteeringMode == "FoodInfluenceDebug" ? foodAttractionWeight * 2.1f : foodAttractionWeight;
         var logFoodSenseRadius = debugSteeringMode == "FoodInfluenceDebug" ? foodSenseRadius * 1.45f : foodSenseRadius;
         var logTurnNoise = debugSteeringMode == "FoodInfluenceDebug" ? turnNoise * 0.55f : turnNoise;
-        Debug.Log($"[NeuralSlimeMold] steering mode={debugSteeringMode} trailFollowWeight={logTrailFollowWeight:F2} foodAttractionWeight={logFoodAttractionWeight:F2} foodSenseRadius={logFoodSenseRadius:F2} foodTurnBias={foodTurnBias:F2} turnNoise={logTurnNoise:F2} localLoopSuppression={localLoopSuppression:F2} depositNearFoodMultiplier={depositNearFoodMultiplier:F2} pathPersistenceBias={pathPersistenceBias:F2}");
+        Debug.Log($"[NeuralSlimeMold] steering mode={debugSteeringMode} trailFollowWeight={logTrailFollowWeight:F2} foodAttractionWeight={logFoodAttractionWeight:F2} foodSenseRadius={logFoodSenseRadius:F2} foodTurnBias={foodTurnBias:F2} turnNoise={logTurnNoise:F2} localLoopSuppression={localLoopSuppression:F2} migrationRestlessness={migrationRestlessness:F2} depositNearFoodMultiplier={depositNearFoodMultiplier:F2} pathPersistenceBias={pathPersistenceBias:F2}");
         Debug.Log($"[NeuralSlimeMold] visual backgroundColor={backgroundColor} clearMode=CameraSolidColor");
-        Debug.Log($"[NeuralSlimeMold] lifecycle defaults capacity={foodCapacity:F2} depletionRate={depletionRate:F2} regrowRate={regrowRate:F2} allowRegrowth={allowFoodRegrowth} lifecycleLogs={debugFoodLogging}");
+        Debug.Log($"[NeuralSlimeMold] lifecycle defaults capacity={foodCapacity:F2} depletionRate={depletionRate:F2} regrowRate={regrowRate:F2} depletedMultiplier={depletedFoodStrengthMultiplier:F2} reactivateDelay={foodReactivationDelay:F2}s reactivateThreshold={foodReactivationThreshold:F2} allowRegrowth={allowFoodRegrowth} lifecycleLogs={debugFoodLogging}");
 
         var nodes = runner.FoodNodes;
         for (var i = 0; i < nodes.Length; i++)
@@ -430,7 +445,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
         Debug.Log($"[NeuralSlimeMold] worldPreset={worldPreset} pulseEnabled={foodPulseEnabled} pulsePeriod={foodPulsePeriod:F2}s pulseStrength={foodPulseStrength:F2} localTrailScrubEnabled={localTrailScrubEnabled} scrubThreshold={localTrailScrubThreshold:F2} scrubAmount={localTrailScrubAmount:F2}");
         Debug.Log($"[NeuralSlimeMold] obstacles enabled={enableObstacles} obstacleCount={obstacleCount} boundary={boundaryMode} wallMargin={wallMargin:F2}");
-        Debug.Log($"[NeuralSlimeMold] steering trailFollowWeight={trailFollowWeight:F2} foodAttractionWeight={foodAttractionWeight:F2} foodTurnBias={foodTurnBias:F2} turnNoise={turnNoise:F2} localLoopSuppression={localLoopSuppression:F2}");
+        Debug.Log($"[NeuralSlimeMold] steering trailFollowWeight={trailFollowWeight:F2} foodAttractionWeight={foodAttractionWeight:F2} foodTurnBias={foodTurnBias:F2} turnNoise={turnNoise:F2} localLoopSuppression={localLoopSuppression:F2} migrationRestlessness={migrationRestlessness:F2}");
     }
 
     private void OnDrawGizmosSelected()
