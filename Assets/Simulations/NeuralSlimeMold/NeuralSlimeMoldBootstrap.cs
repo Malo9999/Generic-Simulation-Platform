@@ -119,6 +119,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         var pos = cam.transform.position;
         cam.transform.position = new Vector3(0f, 0f, pos.z);
 
+        var arenaCameraPolicy = MainCameraRuntimeSetup.EnsureArenaCameraRig(cam);
+        if (arenaCameraPolicy != null)
+        {
+            arenaCameraPolicy.SetWorldSizeAndRefresh(mapSize);
+        }
+
         var followController = cam.GetComponent<CameraFollowController>();
         if (followController != null)
         {
