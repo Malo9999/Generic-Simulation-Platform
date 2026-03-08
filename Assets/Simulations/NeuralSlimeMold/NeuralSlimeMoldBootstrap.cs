@@ -222,13 +222,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         switch (worldPreset)
         {
             case NeuralSlimeWorldPreset.CorridorCross:
-            case NeuralSlimeWorldPreset.CorridorTest:
+                // CorridorTest is an enum alias of CorridorCross (both value 1),
+                // so it resolves here without needing a duplicate case label.
                 resolvedFoodConfigs = BuildCorridorCrossFood();
                 resolvedFoodNodes = null;
                 resolvedObstacles = BuildCorridorCrossObstacles();
                 break;
             case NeuralSlimeWorldPreset.CorridorMazeLite:
-            case NeuralSlimeWorldPreset.IslandObstacles:
+                // IslandObstacles is an enum alias of CorridorMazeLite (both value 2).
             case NeuralSlimeWorldPreset.ClusteredFood:
                 resolvedFoodConfigs = BuildCorridorMazeLiteFood();
                 resolvedFoodNodes = null;
