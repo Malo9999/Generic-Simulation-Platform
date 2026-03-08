@@ -4,7 +4,7 @@ public enum OrganicBlobMode
 {
     Metaball,
     AmoebaNoise,
-    AmoebaVectorField
+    AmoebaSolidGrowth
 }
 
 [CreateAssetMenu(menuName = "GSP/Generator/Templates/Organic Blob", fileName = "OrganicBlobTemplate")]
@@ -26,26 +26,26 @@ public class OrganicBlobTemplate : ShapeTemplateBase
     [SerializeField] private int rimSoftnessPx;
     [SerializeField] private float symmetryBreak = 0.35f;
 
-    [Header("Amoeba Vector Field")]
-    [SerializeField] private int vfSeed = 4703;
-    [SerializeField] private float vfBodyRadiusPx = 16f;
-    [SerializeField] private int vfTipCountMin = 4;
-    [SerializeField] private int vfTipCountMax = 6;
-    [SerializeField] private int vfStepCountMin = 12;
-    [SerializeField] private int vfStepCountMax = 26;
-    [SerializeField] private float vfStepLengthPx = 1.5f;
-    [SerializeField] private float vfTurnStrength = 0.27f;
-    [SerializeField] private float vfOutwardBias = 0.85f;
-    [SerializeField] private float vfNoiseInfluence = 0.5f;
-    [SerializeField] private float vfBranchChance = 0.2f;
-    [SerializeField] private float vfBranchAngleDeg = 34f;
-    [SerializeField] private float vfBranchLengthMul = 0.52f;
-    [SerializeField] private float vfThicknessStartPx = 5.4f;
-    [SerializeField] private float vfThicknessEndPx = 1.6f;
-    [SerializeField] private float vfCoreThicknessBoost = 2f;
-    [SerializeField] private float vfEdgeJitterPx = 0.45f;
-    [SerializeField] private bool vfHoleFill = true;
-    [SerializeField] private bool vfKeepLargestComponent = true;
+    [Header("Amoeba Solid Growth")]
+    [SerializeField] private int growthSeed = 4703;
+    [SerializeField] private float coreRadiusPx = 16f;
+    [SerializeField] private int tipCountMin = 4;
+    [SerializeField] private int tipCountMax = 6;
+    [SerializeField] private int stepCountMin = 12;
+    [SerializeField] private int stepCountMax = 26;
+    [SerializeField] private float stepLengthPx = 1.5f;
+    [SerializeField] private float headingPersistence = 0.78f;
+    [SerializeField] private float outwardBias = 0.85f;
+    [SerializeField] private float noiseTurnStrength = 0.5f;
+    [SerializeField] private float branchChance = 0.2f;
+    [SerializeField] private float branchStepFraction = 0.52f;
+    [SerializeField] private float thicknessStartPx = 5.4f;
+    [SerializeField] private float thicknessEndPx = 1.6f;
+    [SerializeField] private float coreBlendBoost = 2f;
+    [SerializeField] private float edgeJitterPx = 0.45f;
+    [SerializeField] private bool fillInteriorHoles = true;
+    [SerializeField] private bool keepLargestComponent = true;
+    [SerializeField] private bool discardSmallIslands = true;
 
     [Header("Rim Gradient")]
     [SerializeField] private bool useRimGradient = true;
@@ -80,25 +80,25 @@ public class OrganicBlobTemplate : ShapeTemplateBase
             Mathf.Max(1, rimWidthPx),
             Mathf.Max(0f, innerMul),
             Mathf.Max(0f, outerMul),
-            vfSeed,
-            Mathf.Max(2f, vfBodyRadiusPx),
-            Mathf.Max(1, vfTipCountMin),
-            Mathf.Max(1, vfTipCountMax),
-            Mathf.Max(3, vfStepCountMin),
-            Mathf.Max(3, vfStepCountMax),
-            Mathf.Max(0.5f, vfStepLengthPx),
-            Mathf.Clamp(vfTurnStrength, 0f, 1.2f),
-            Mathf.Clamp(vfOutwardBias, 0f, 2f),
-            Mathf.Clamp(vfNoiseInfluence, 0f, 1.5f),
-            Mathf.Clamp01(vfBranchChance),
-            Mathf.Clamp(vfBranchAngleDeg, 5f, 85f),
-            Mathf.Clamp(vfBranchLengthMul, 0.2f, 0.95f),
-            Mathf.Max(1f, vfThicknessStartPx),
-            Mathf.Max(0.8f, vfThicknessEndPx),
-            Mathf.Max(0f, vfCoreThicknessBoost),
-            Mathf.Max(0f, vfEdgeJitterPx),
-            vfHoleFill,
-            vfKeepLargestComponent);
+            growthSeed,
+            Mathf.Max(2f, coreRadiusPx),
+            Mathf.Max(1, tipCountMin),
+            Mathf.Max(1, tipCountMax),
+            Mathf.Max(3, stepCountMin),
+            Mathf.Max(3, stepCountMax),
+            Mathf.Max(0.5f, stepLengthPx),
+            Mathf.Clamp01(headingPersistence),
+            Mathf.Clamp(outwardBias, 0f, 2f),
+            Mathf.Clamp(noiseTurnStrength, 0f, 1.5f),
+            Mathf.Clamp01(branchChance),
+            Mathf.Clamp(branchStepFraction, 0.2f, 0.95f),
+            Mathf.Max(1f, thicknessStartPx),
+            Mathf.Max(0.8f, thicknessEndPx),
+            Mathf.Max(0f, coreBlendBoost),
+            Mathf.Max(0f, edgeJitterPx),
+            fillInteriorHoles,
+            keepLargestComponent,
+            discardSmallIslands);
     }
 
     public void ApplyMetaballDefaults()
@@ -222,140 +222,140 @@ public class OrganicBlobTemplate : ShapeTemplateBase
         outerMul = 0.78f;
     }
 
-    public void ApplyAmoebaVectorCrawlerDefaults()
+    public void ApplyAmoebaCrawlerDefaults()
     {
-        mode = OrganicBlobMode.AmoebaVectorField;
-        vfSeed = 6121;
-        vfBodyRadiusPx = 14.6f;
-        vfTipCountMin = 3;
-        vfTipCountMax = 4;
-        vfStepCountMin = 18;
-        vfStepCountMax = 30;
-        vfStepLengthPx = 1.45f;
-        vfTurnStrength = 0.2f;
-        vfOutwardBias = 1.2f;
-        vfNoiseInfluence = 0.3f;
-        vfBranchChance = 0.1f;
-        vfBranchAngleDeg = 26f;
-        vfBranchLengthMul = 0.44f;
-        vfThicknessStartPx = 5.4f;
-        vfThicknessEndPx = 1.4f;
-        vfCoreThicknessBoost = 1.7f;
-        vfEdgeJitterPx = 0.35f;
-        vfHoleFill = true;
-        vfKeepLargestComponent = true;
+        mode = OrganicBlobMode.AmoebaSolidGrowth;
+        growthSeed = 6121;
+        coreRadiusPx = 14.6f;
+        tipCountMin = 3;
+        tipCountMax = 4;
+        stepCountMin = 18;
+        stepCountMax = 30;
+        stepLengthPx = 1.45f;
+        headingPersistence = 0.84f;
+        outwardBias = 1.2f;
+        noiseTurnStrength = 0.3f;
+        branchChance = 0.1f;
+        branchStepFraction = 0.44f;
+        thicknessStartPx = 5.4f;
+        thicknessEndPx = 1.4f;
+        coreBlendBoost = 1.7f;
+        edgeJitterPx = 0.35f;
+        fillInteriorHoles = true;
+        keepLargestComponent = true;
+        discardSmallIslands = true;
         useRimGradient = true;
         rimWidthPx = 6;
         innerMul = 1f;
         outerMul = 0.78f;
     }
 
-    public void ApplyAmoebaVectorStarDefaults()
+    public void ApplyAmoebaStarDefaults()
     {
-        mode = OrganicBlobMode.AmoebaVectorField;
-        vfSeed = 6203;
-        vfBodyRadiusPx = 13.8f;
-        vfTipCountMin = 5;
-        vfTipCountMax = 7;
-        vfStepCountMin = 14;
-        vfStepCountMax = 24;
-        vfStepLengthPx = 1.35f;
-        vfTurnStrength = 0.22f;
-        vfOutwardBias = 0.95f;
-        vfNoiseInfluence = 0.38f;
-        vfBranchChance = 0.2f;
-        vfBranchAngleDeg = 34f;
-        vfBranchLengthMul = 0.5f;
-        vfThicknessStartPx = 5f;
-        vfThicknessEndPx = 1.55f;
-        vfCoreThicknessBoost = 1.8f;
-        vfEdgeJitterPx = 0.4f;
-        vfHoleFill = true;
-        vfKeepLargestComponent = true;
+        mode = OrganicBlobMode.AmoebaSolidGrowth;
+        growthSeed = 6203;
+        coreRadiusPx = 13.8f;
+        tipCountMin = 5;
+        tipCountMax = 7;
+        stepCountMin = 14;
+        stepCountMax = 24;
+        stepLengthPx = 1.35f;
+        headingPersistence = 0.8f;
+        outwardBias = 0.95f;
+        noiseTurnStrength = 0.38f;
+        branchChance = 0.2f;
+        branchStepFraction = 0.5f;
+        thicknessStartPx = 5f;
+        thicknessEndPx = 1.55f;
+        coreBlendBoost = 1.8f;
+        edgeJitterPx = 0.4f;
+        fillInteriorHoles = true;
+        keepLargestComponent = true;
+        discardSmallIslands = true;
         useRimGradient = true;
         rimWidthPx = 6;
         innerMul = 1f;
         outerMul = 0.78f;
     }
 
-    public void ApplyAmoebaVectorBranchDefaults()
+    public void ApplyAmoebaBranchDefaults()
     {
-        mode = OrganicBlobMode.AmoebaVectorField;
-        vfSeed = 6331;
-        vfBodyRadiusPx = 14.4f;
-        vfTipCountMin = 3;
-        vfTipCountMax = 5;
-        vfStepCountMin = 15;
-        vfStepCountMax = 25;
-        vfStepLengthPx = 1.35f;
-        vfTurnStrength = 0.3f;
-        vfOutwardBias = 0.9f;
-        vfNoiseInfluence = 0.54f;
-        vfBranchChance = 0.46f;
-        vfBranchAngleDeg = 38f;
-        vfBranchLengthMul = 0.56f;
-        vfThicknessStartPx = 5.2f;
-        vfThicknessEndPx = 1.3f;
-        vfCoreThicknessBoost = 1.9f;
-        vfEdgeJitterPx = 0.45f;
-        vfHoleFill = true;
-        vfKeepLargestComponent = true;
+        mode = OrganicBlobMode.AmoebaSolidGrowth;
+        growthSeed = 6331;
+        coreRadiusPx = 14.4f;
+        tipCountMin = 3;
+        tipCountMax = 5;
+        stepCountMin = 15;
+        stepCountMax = 25;
+        stepLengthPx = 1.35f;
+        headingPersistence = 0.74f;
+        outwardBias = 0.9f;
+        noiseTurnStrength = 0.54f;
+        branchChance = 0.46f;
+        branchStepFraction = 0.56f;
+        thicknessStartPx = 5.2f;
+        thicknessEndPx = 1.3f;
+        coreBlendBoost = 1.9f;
+        edgeJitterPx = 0.45f;
+        fillInteriorHoles = true;
+        keepLargestComponent = true;
+        discardSmallIslands = true;
         useRimGradient = true;
         rimWidthPx = 6;
         innerMul = 1f;
         outerMul = 0.78f;
     }
 
-    public void ApplyAmoebaVectorWideDefaults()
+    public void ApplyAmoebaWideArmsDefaults()
     {
-        mode = OrganicBlobMode.AmoebaVectorField;
-        vfSeed = 6419;
-        vfBodyRadiusPx = 17f;
-        vfTipCountMin = 4;
-        vfTipCountMax = 6;
-        vfStepCountMin = 11;
-        vfStepCountMax = 19;
-        vfStepLengthPx = 1.35f;
-        vfTurnStrength = 0.2f;
-        vfOutwardBias = 0.82f;
-        vfNoiseInfluence = 0.25f;
-        vfBranchChance = 0.15f;
-        vfBranchAngleDeg = 28f;
-        vfBranchLengthMul = 0.4f;
-        vfThicknessStartPx = 5.9f;
-        vfThicknessEndPx = 1.8f;
-        vfCoreThicknessBoost = 2.2f;
-        vfEdgeJitterPx = 0.35f;
-        vfHoleFill = true;
-        vfKeepLargestComponent = true;
+        mode = OrganicBlobMode.AmoebaSolidGrowth;
+        growthSeed = 6419;
+        coreRadiusPx = 17f;
+        tipCountMin = 4;
+        tipCountMax = 6;
+        stepCountMin = 11;
+        stepCountMax = 19;
+        stepLengthPx = 1.35f;
+        headingPersistence = 0.83f;
+        outwardBias = 0.82f;
+        noiseTurnStrength = 0.25f;
+        branchChance = 0.15f;
+        branchStepFraction = 0.4f;
+        thicknessStartPx = 5.9f;
+        thicknessEndPx = 1.8f;
+        coreBlendBoost = 2.2f;
+        edgeJitterPx = 0.35f;
+        fillInteriorHoles = true;
+        keepLargestComponent = true;
+        discardSmallIslands = true;
         useRimGradient = true;
         rimWidthPx = 6;
         innerMul = 1f;
         outerMul = 0.78f;
     }
 
-    public void ApplyAmoebaVectorHunterDefaults()
+    public void ApplyAmoebaHunterDefaults()
     {
-        mode = OrganicBlobMode.AmoebaVectorField;
-        vfSeed = 6581;
-        vfBodyRadiusPx = 13.2f;
-        vfTipCountMin = 3;
-        vfTipCountMax = 4;
-        vfStepCountMin = 20;
-        vfStepCountMax = 34;
-        vfStepLengthPx = 1.55f;
-        vfTurnStrength = 0.24f;
-        vfOutwardBias = 1.28f;
-        vfNoiseInfluence = 0.36f;
-        vfBranchChance = 0.12f;
-        vfBranchAngleDeg = 24f;
-        vfBranchLengthMul = 0.42f;
-        vfThicknessStartPx = 4.9f;
-        vfThicknessEndPx = 1.1f;
-        vfCoreThicknessBoost = 1.6f;
-        vfEdgeJitterPx = 0.32f;
-        vfHoleFill = true;
-        vfKeepLargestComponent = true;
+        mode = OrganicBlobMode.AmoebaSolidGrowth;
+        growthSeed = 6581;
+        coreRadiusPx = 13.2f;
+        tipCountMin = 3;
+        tipCountMax = 4;
+        stepCountMin = 20;
+        stepCountMax = 34;
+        stepLengthPx = 1.55f;
+        headingPersistence = 0.82f;
+        outwardBias = 1.28f;
+        noiseTurnStrength = 0.36f;
+        branchChance = 0.12f;
+        branchStepFraction = 0.42f;
+        thicknessStartPx = 4.9f;
+        thicknessEndPx = 1.1f;
+        coreBlendBoost = 1.6f;
+        edgeJitterPx = 0.32f;
+        fillInteriorHoles = true;
+        keepLargestComponent = true;
+        discardSmallIslands = true;
         useRimGradient = true;
         rimWidthPx = 6;
         innerMul = 1f;

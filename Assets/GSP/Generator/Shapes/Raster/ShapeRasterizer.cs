@@ -195,18 +195,18 @@ public static class ShapeRasterizer
         int vfStepCountMin = 12,
         int vfStepCountMax = 26,
         float vfStepLengthPx = 1.5f,
-        float vfTurnStrength = 0.27f,
-        float vfOutwardBias = 0.85f,
-        float vfNoiseInfluence = 0.5f,
-        float vfBranchChance = 0.2f,
-        float vfBranchAngleDeg = 34f,
-        float vfBranchLengthMul = 0.52f,
-        float vfThicknessStartPx = 5.4f,
-        float vfThicknessEndPx = 1.6f,
-        float vfCoreThicknessBoost = 2f,
-        float vfEdgeJitterPx = 0.45f,
-        bool vfHoleFill = true,
-        bool vfKeepLargestComponent = true)
+        float headingPersistence = 0.78f,
+        float outwardBias = 0.85f,
+        float noiseTurnStrength = 0.5f,
+        float branchChance = 0.2f,
+        float branchStepFraction = 0.52f,
+        float thicknessStartPx = 5.4f,
+        float thicknessEndPx = 1.6f,
+        float coreBlendBoost = 2f,
+        float edgeJitterPx = 0.45f,
+        bool fillInteriorHoles = true,
+        bool keepLargestComponent = true,
+        bool discardSmallIslands = true)
     {
         var pixels = NewPixels(size);
         var center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
@@ -217,9 +217,9 @@ public static class ShapeRasterizer
             return pixels;
         }
 
-        if (mode == OrganicBlobMode.AmoebaVectorField)
+        if (mode == OrganicBlobMode.AmoebaSolidGrowth)
         {
-            RasterizeAmoebaVectorField(pixels, size, tint, center, seed, useRimGradient, rimWidthPx, innerMul, outerMul, vfSeed, vfBodyRadiusPx, vfTipCountMin, vfTipCountMax, vfStepCountMin, vfStepCountMax, vfStepLengthPx, vfTurnStrength, vfOutwardBias, vfNoiseInfluence, vfBranchChance, vfBranchAngleDeg, vfBranchLengthMul, vfThicknessStartPx, vfThicknessEndPx, vfCoreThicknessBoost, vfEdgeJitterPx, vfHoleFill, vfKeepLargestComponent);
+            RasterizeAmoebaSolidGrowth(pixels, size, tint, center, seed, useRimGradient, rimWidthPx, innerMul, outerMul, vfSeed, vfBodyRadiusPx, vfTipCountMin, vfTipCountMax, vfStepCountMin, vfStepCountMax, vfStepLengthPx, headingPersistence, outwardBias, noiseTurnStrength, branchChance, branchStepFraction, thicknessStartPx, thicknessEndPx, coreBlendBoost, edgeJitterPx, fillInteriorHoles, keepLargestComponent, discardSmallIslands);
             return pixels;
         }
 
@@ -320,21 +320,21 @@ public static class ShapeRasterizer
         public bool canBranch = true;
     }
 
-    private static void RasterizeAmoebaVectorField(Color32[] pixels, int size, Color tint, Vector2 center, int fallbackSeed, bool useRimGradient, int rimWidthPx, float innerMul, float outerMul, int vfSeed, float vfBodyRadiusPx, int vfTipCountMin, int vfTipCountMax, int vfStepCountMin, int vfStepCountMax, float vfStepLengthPx, float vfTurnStrength, float vfOutwardBias, float vfNoiseInfluence, float vfBranchChance, float vfBranchAngleDeg, float vfBranchLengthMul, float vfThicknessStartPx, float vfThicknessEndPx, float vfCoreThicknessBoost, float vfEdgeJitterPx, bool vfHoleFill, bool vfKeepLargestComponent)
+    private static void RasterizeAmoebaSolidGrowth(Color32[] pixels, int size, Color tint, Vector2 center, int fallbackSeed, bool useRimGradient, int rimWidthPx, float innerMul, float outerMul, int vfSeed, float vfBodyRadiusPx, int vfTipCountMin, int vfTipCountMax, int vfStepCountMin, int vfStepCountMax, float vfStepLengthPx, float headingPersistence, float outwardBias, float noiseTurnStrength, float branchChance, float branchStepFraction, float thicknessStartPx, float thicknessEndPx, float coreBlendBoost, float edgeJitterPx, bool fillInteriorHoles, bool keepLargestComponent, bool discardSmallIslands)
     {
         var growthSeed = vfSeed != 0 ? vfSeed : fallbackSeed;
         var rng = new System.Random(growthSeed);
         var deposit = new float[size * size];
 
         var bodyRadius = Mathf.Max(2f, vfBodyRadiusPx);
-        StampFloatCircle(deposit, size, center, bodyRadius + vfCoreThicknessBoost, 1f);
+        StampFloatCircle(deposit, size, center, bodyRadius + coreBlendBoost, 1f);
         var auxBodies = 1 + (rng.NextDouble() < 0.55 ? 1 : 0);
         for (var i = 0; i < auxBodies; i++)
         {
             var a = (float)rng.NextDouble() * Mathf.PI * 2f;
             var r = bodyRadius * Mathf.Lerp(0.1f, 0.35f, (float)rng.NextDouble());
             var offset = new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * r;
-            StampFloatCircle(deposit, size, center + offset, bodyRadius * Mathf.Lerp(0.62f, 0.95f, (float)rng.NextDouble()) + (vfCoreThicknessBoost * 0.6f), 0.95f);
+            StampFloatCircle(deposit, size, center + offset, bodyRadius * Mathf.Lerp(0.62f, 0.95f, (float)rng.NextDouble()) + (coreBlendBoost * 0.6f), 0.95f);
         }
 
         var tipCount = rng.Next(Mathf.Max(1, vfTipCountMin), Mathf.Max(vfTipCountMin, vfTipCountMax) + 1);
@@ -359,13 +359,13 @@ public static class ShapeRasterizer
                 direction = dir,
                 remainingSteps = steps,
                 initialSteps = steps,
-                thicknessStart = vfThicknessStartPx * Mathf.Lerp(0.88f, 1.12f, (float)rng.NextDouble()),
-                thicknessEnd = vfThicknessEndPx * Mathf.Lerp(0.88f, 1.12f, (float)rng.NextDouble())
+                thicknessStart = thicknessStartPx * Mathf.Lerp(0.88f, 1.12f, (float)rng.NextDouble()),
+                thicknessEnd = thicknessEndPx * Mathf.Lerp(0.88f, 1.12f, (float)rng.NextDouble())
             });
         }
 
         var maxTipInstances = 64;
-        var branchAngleRad = vfBranchAngleDeg * Mathf.Deg2Rad;
+        var branchAngleRad = 30f * Mathf.Deg2Rad;
         for (var i = 0; i < tips.Count; i++)
         {
             var tip = tips[i];
@@ -380,7 +380,7 @@ public static class ShapeRasterizer
 
                 var noiseAngle = SampleFieldAngle(tip.position, growthSeed);
                 var noiseDir = new Vector2(Mathf.Cos(noiseAngle), Mathf.Sin(noiseAngle));
-                var heading = (tip.direction * (1.05f - vfTurnStrength)) + (outward * vfOutwardBias) + (noiseDir * vfNoiseInfluence);
+                var heading = (tip.direction * headingPersistence) + (outward * outwardBias) + (noiseDir * noiseTurnStrength);
                 if (heading.sqrMagnitude < 0.001f)
                 {
                     heading = tip.direction;
@@ -396,12 +396,12 @@ public static class ShapeRasterizer
                 thickness = Mathf.Max(0.8f, thickness);
                 StampFloatCircle(deposit, size, tip.position, thickness, 1f);
 
-                if (tip.canBranch && tips.Count < maxTipInstances && tip.remainingSteps > 6 && progress > 0.2f && (float)rng.NextDouble() < vfBranchChance)
+                if (tip.canBranch && tips.Count < maxTipInstances && tip.remainingSteps > 6 && progress > 0.2f && (float)rng.NextDouble() < branchChance)
                 {
                     var sign = rng.Next(0, 2) == 0 ? -1f : 1f;
                     var angle = branchAngleRad * Mathf.Lerp(0.65f, 1.25f, (float)rng.NextDouble()) * sign;
                     var branchDir = Rotate(tip.direction, angle).normalized;
-                    var branchSteps = Mathf.Max(4, Mathf.RoundToInt(tip.remainingSteps * vfBranchLengthMul * Mathf.Lerp(0.85f, 1.2f, (float)rng.NextDouble())));
+                    var branchSteps = Mathf.Max(4, Mathf.RoundToInt(tip.remainingSteps * branchStepFraction * Mathf.Lerp(0.85f, 1.2f, (float)rng.NextDouble())));
                     tips.Add(new GrowthTip
                     {
                         position = tip.position,
@@ -426,27 +426,37 @@ public static class ShapeRasterizer
             mask[idx] = deposit[idx] > 0.05f;
         }
 
-        if (vfHoleFill)
+        if (fillInteriorHoles)
         {
             FillInteriorHoles(mask, size);
         }
 
-        if (vfKeepLargestComponent)
+        if (keepLargestComponent)
         {
-            KeepLargestComponent(mask, size);
+            KeepLargestConnectedComponent(mask, size);
         }
 
-        if (vfEdgeJitterPx > 0.01f)
+        if (discardSmallIslands)
         {
-            ApplyEdgeJitter(mask, size, growthSeed, vfEdgeJitterPx);
-            if (vfHoleFill)
+            RemoveSmallIslands(mask, size, Mathf.Max(8, size / 48));
+        }
+
+        if (edgeJitterPx > 0.01f)
+        {
+            ApplyEdgeJitter(mask, size, growthSeed, edgeJitterPx);
+            if (fillInteriorHoles)
             {
                 FillInteriorHoles(mask, size);
             }
 
-            if (vfKeepLargestComponent)
+            if (keepLargestComponent)
             {
-                KeepLargestComponent(mask, size);
+                KeepLargestConnectedComponent(mask, size);
+            }
+
+            if (discardSmallIslands)
+            {
+                RemoveSmallIslands(mask, size, Mathf.Max(8, size / 48));
             }
         }
 
@@ -539,7 +549,7 @@ public static class ShapeRasterizer
         }
     }
 
-    private static void KeepLargestComponent(bool[] mask, int size)
+    private static void KeepLargestConnectedComponent(bool[] mask, int size)
     {
         var visited = new bool[mask.Length];
         var queue = new System.Collections.Generic.Queue<int>();
@@ -604,6 +614,76 @@ public static class ShapeRasterizer
         {
             mask[i] = keep[i];
         }
+    }
+
+
+    private static void RemoveSmallIslands(bool[] mask, int size, int minPixels)
+    {
+        if (minPixels <= 1)
+        {
+            return;
+        }
+
+        var visited = new bool[mask.Length];
+        var queue = new System.Collections.Generic.Queue<int>();
+        var component = new System.Collections.Generic.List<int>();
+
+        for (var idx = 0; idx < mask.Length; idx++)
+        {
+            if (!mask[idx] || visited[idx])
+            {
+                continue;
+            }
+
+            visited[idx] = true;
+            queue.Clear();
+            component.Clear();
+            queue.Enqueue(idx);
+
+            while (queue.Count > 0)
+            {
+                var current = queue.Dequeue();
+                component.Add(current);
+                var x = current % size;
+                var y = current / size;
+
+                TryVisitFilled(mask, visited, queue, size, x - 1, y);
+                TryVisitFilled(mask, visited, queue, size, x + 1, y);
+                TryVisitFilled(mask, visited, queue, size, x, y - 1);
+                TryVisitFilled(mask, visited, queue, size, x, y + 1);
+            }
+
+            if (component.Count >= minPixels)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < component.Count; i++)
+            {
+                mask[component[i]] = false;
+            }
+        }
+    }
+
+    private static System.Collections.Generic.List<int> ExtractOuterContour(bool[] mask, int size)
+    {
+        var contour = new System.Collections.Generic.List<int>();
+        for (var y = 1; y < size - 1; y++)
+        for (var x = 1; x < size - 1; x++)
+        {
+            var idx = (y * size) + x;
+            if (!mask[idx])
+            {
+                continue;
+            }
+
+            if (!mask[idx - 1] || !mask[idx + 1] || !mask[idx - size] || !mask[idx + size])
+            {
+                contour.Add(idx);
+            }
+        }
+
+        return contour;
     }
 
     private static void EnqueueOutside(bool[] mask, bool[] visited, System.Collections.Generic.Queue<int> queue, int size, int x, int y)
@@ -679,21 +759,12 @@ public static class ShapeRasterizer
 
         var source = new bool[mask.Length];
         System.Array.Copy(mask, source, mask.Length);
-        for (var y = 1; y < size - 1; y++)
-        for (var x = 1; x < size - 1; x++)
+        var contour = ExtractOuterContour(source, size);
+        for (var i = 0; i < contour.Count; i++)
         {
-            var idx = (y * size) + x;
-            if (!source[idx])
-            {
-                continue;
-            }
-
-            var isEdge = !source[idx - 1] || !source[idx + 1] || !source[idx - size] || !source[idx + size];
-            if (!isEdge)
-            {
-                continue;
-            }
-
+            var idx = contour[i];
+            var x = idx % size;
+            var y = idx / size;
             var n = RasterNoiseUtil.Hash01(seed, x + (y * 31), 179 + seed);
             if (n > 0.78f)
             {
