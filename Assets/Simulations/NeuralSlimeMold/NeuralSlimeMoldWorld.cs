@@ -6,7 +6,8 @@ public enum NeuralSlimeWorldPreset
     CorridorCross = 1,
     CorridorMazeLite = 2,
     Custom = 3,
-    ClusteredFood = 4
+    ClusteredFood = 4,
+    FoodDecayMigration = 5
 }
 
 public enum NeuralFoodDebugPreset
@@ -16,7 +17,7 @@ public enum NeuralFoodDebugPreset
     Corners4 = 2,
     FoodDominanceTest = 3,
     FoodInfluenceDebug = 4,
-    FoodDecayMotionTest = 5
+    FoodDecayMigration = 5
 }
 
 public enum NeuralObstacleShape

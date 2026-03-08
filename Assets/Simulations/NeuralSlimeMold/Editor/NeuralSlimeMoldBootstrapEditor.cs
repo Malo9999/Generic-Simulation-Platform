@@ -42,64 +42,20 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
 
     private void DrawExperimentalControls()
     {
-        Draw("speed");
-        Draw("trailFollowWeight");
-        Draw("foodAttractionWeight");
-        Draw("foodSenseRadius");
-        Draw("foodTurnBias");
-        Draw("turnNoise");
-        Draw("localLoopSuppression");
-        Draw("depositNearFoodMultiplier");
-        Draw("pathPersistenceBias");
-
-        Draw("foodPulseEnabled");
-        Draw("foodPulsePeriod");
-        Draw("foodPulseStrength");
-        Draw("localTrailScrubEnabled");
-        Draw("localTrailScrubThreshold");
-        Draw("localTrailScrubAmount");
-
-        Draw("foodInfluenceDebug");
-        Draw("showFoodMarkers");
-        Draw("showFoodGizmos");
-        Draw("debugFoodLogging");
-        Draw("debugFoodPreset");
-        Draw("strongFoodDebugMode");
-        Draw("strongFoodStrengthMultiplier");
-
-        Draw("boundaryMode");
-        Draw("wallMargin");
-        Draw("worldPreset");
-        Draw("useCustomWorldOverrides");
-        Draw("enableFoodNodes");
-        Draw("indirectFoodBias");
         Draw("foodNodeCount");
         Draw("foodRadius");
-        Draw("spawnFromSeed");
-        Draw("allowFoodRegrowth");
+        Draw("foodStrength");
         Draw("foodCapacity");
         Draw("depletionRate");
-        Draw("regrowRate");
         Draw("depletedFoodStrengthMultiplier");
-        Draw("foodReactivationDelay");
-        Draw("foodReactivationThreshold");
-        Draw("migrationRestlessness");
-        Draw("manualFoodNodes");
-        Draw("manualFoodConfigs");
+        Draw("allowFoodRegrowth");
+        Draw("regrowRate");
+        Draw("trailDecayPerSecond");
 
-        Draw("enableObstacles");
-        Draw("manualObstacles");
-        Draw("obstacleThickness");
-        Draw("corridorGapSize");
-        Draw("obstacleCoverage");
-        Draw("presetScale");
-        Draw("smallBlockerCount");
-
-        Draw("useGlowAgentShape");
-        Draw("useFieldBlobOverlay");
-        Draw("backgroundColor");
-        Draw("autoFrameCamera");
-        Draw("cameraPadding");
+        Draw("worldPreset");
+        Draw("seed");
+        Draw("showFoodMarkers");
+        Draw("showFoodGizmos");
     }
 
     private void Draw(string propertyName)
