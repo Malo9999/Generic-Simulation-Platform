@@ -32,6 +32,7 @@ public sealed class NeuralSlimeMoldRunner
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
     private NeuralObstacle[] obstacles = Array.Empty<NeuralObstacle>();
     private int[] nodeVisitCounts = Array.Empty<int>();
+    private float[] nodeUsage = Array.Empty<float>();
 
     private SeededRng rng;
     private Vector2 mapSize;
@@ -156,7 +157,13 @@ public sealed class NeuralSlimeMoldRunner
             nodeVisitCounts = new int[foodNodes.Length];
         }
 
+        if (nodeUsage.Length != foodNodes.Length)
+        {
+            nodeUsage = new float[foodNodes.Length];
+        }
+
         Array.Clear(nodeVisitCounts, 0, nodeVisitCounts.Length);
+        Array.Clear(nodeUsage, 0, nodeUsage.Length);
 
         simulationTime += Mathf.Max(0f, dt);
         var pulseStrength = ComputeFoodPulseStrength(foodPulseEnabled, foodPulsePeriod, foodPulseStrength);
@@ -290,8 +297,9 @@ public sealed class NeuralSlimeMoldRunner
             if (node.active)
             {
                 var localVisits = nodeVisitCounts[i];
-                var occupancyWeight = 1f + (Mathf.Clamp01(localVisits / 24f) * 1.8f);
-                var consumed = localVisits * node.depletionRate * dt * occupancyWeight;
+                var localUsage = nodeUsage[i];
+                var occupancyWeight = 1f + (Mathf.Clamp01(localVisits / 20f) * 2.2f);
+                var consumed = localUsage * node.depletionRate * dt * occupancyWeight;
                 node.capacity = Mathf.Max(0f, node.capacity - consumed);
                 if (node.capacity <= 0.0001f)
                 {
@@ -340,10 +348,23 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             var captureRadius = Mathf.Max(0.2f, node.radius);
-            if ((agentPosition - node.position).sqrMagnitude <= captureRadius * captureRadius)
+            var toNode = agentPosition - node.position;
+            var distance = toNode.magnitude;
+            if (distance <= captureRadius)
             {
                 nodeVisitCounts[i]++;
             }
+
+            var usageRadius = Mathf.Max(captureRadius, node.radius * 1.9f);
+            var usage01 = Mathf.Clamp01(1f - (distance / usageRadius));
+            if (usage01 <= 0f)
+            {
+                continue;
+            }
+
+            // Strongly weight core occupancy so crowded nodes burn down quickly.
+            var weightedUsage = usage01 * usage01;
+            nodeUsage[i] += weightedUsage;
         }
     }
 
@@ -610,7 +631,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         var capacity01 = Mathf.Clamp01(node.Capacity01);
-        var activeStrength = node.strength * (capacity01 * capacity01 * capacity01);
+        var activeStrength = node.strength * Mathf.Pow(capacity01, 4f);
         var depletedStrength = node.strength * Mathf.Clamp01(depletedFoodStrengthMultiplier);
         return node.active ? activeStrength : depletedStrength;
     }
@@ -659,6 +680,7 @@ public sealed class NeuralSlimeMoldRunner
         {
             foodNodes = Array.Empty<NeuralFoodNodeState>();
             nodeVisitCounts = Array.Empty<int>();
+            nodeUsage = Array.Empty<float>();
             LastFoodSpawnInfo = new FoodSpawnDebugInfo(false, foodNodeCount, 0, 0);
             return;
         }
@@ -680,6 +702,7 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             nodeVisitCounts = new int[foodNodes.Length];
+            nodeUsage = new float[foodNodes.Length];
             LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, manualFoodConfigs.Length, foodNodes.Length, rejectedCount);
             return;
         }
@@ -694,6 +717,7 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             nodeVisitCounts = new int[foodNodes.Length];
+            nodeUsage = new float[foodNodes.Length];
             LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, manualFoodNodes.Length, foodNodes.Length, rejectedCount);
             return;
         }
@@ -717,6 +741,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         nodeVisitCounts = new int[foodNodes.Length];
+        nodeUsage = new float[foodNodes.Length];
         LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, count, foodNodes.Length, rejectedCount);
     }
 
