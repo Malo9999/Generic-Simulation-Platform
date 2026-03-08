@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 39084811cea145688474638eca3d313d, type: 3}
+  m_Name: TemplatePack_Amoeba
+  m_EditorClassIdentifier: Assembly-CSharp-Editor::ShapeTemplatePack
+  tint: {r: 1, g: 1, b: 1, a: 1}
+  templates:
+  - {fileID: 11400000, guid: 0d31978bf61436d4e9c96241ff4a72a8, type: 2}
+  - {fileID: 11400000, guid: 6c481c2d3575ac245832e888f96fabaf, type: 2}
+  - {fileID: 11400000, guid: bb3bced767a0f2445b1ee716f632de03, type: 2}
+  - {fileID: 11400000, guid: 4ba57649e41472f4fbd03ce9cbe19b1e, type: 2}
+  - {fileID: 11400000, guid: 9dde8cef5c6940d4990b90edce5ed2fe, type: 2}
+  - {fileID: 11400000, guid: 129c93ad70620ec4aa234cd8fac397ee, type: 2}
+  - {fileID: 11400000, guid: a875d1ec5b37cc4479d70f84575e60af, type: 2}
+  - {fileID: 11400000, guid: 4386a09af3ca0b14cad25f426ac42beb, type: 2}
+  - {fileID: 11400000, guid: e739f5a5d1507e04f817a1382433c600, type: 2}
+  - {fileID: 11400000, guid: 3e8aa63bf677e1c469bbab7c15d69a10, type: 2}

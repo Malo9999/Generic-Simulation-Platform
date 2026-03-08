@@ -21,6 +21,10 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Material showcaseDefaultSpriteMaterial;
     [SerializeField] private ShapeShowcaseProceduralMaterialConfig proceduralMaterials = new();
 
+    [Header("Amoeba Preview Motion")]
+    [SerializeField] private bool animateAmoebaRow = true;
+    [SerializeField, Min(0f)] private float amoebaMotionIntensity = 1f;
+
     [Header("Theme Verification")]
     [SerializeField] private List<ShowcaseThemeEntry> themes = new();
     [SerializeField, Min(0)] private int selectedThemeIndex;
@@ -46,6 +50,19 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             ShapeId.NoiseBlob,
             ShapeId.FieldBlob
         }),
+        new("AMOEBA", ShapePaletteCategory.Organic, new[]
+        {
+            ShapeId.AmoebaBlob,
+            ShapeId.AmoebaLobed,
+            ShapeId.AmoebaStar,
+            ShapeId.AmoebaCrawler,
+            ShapeId.AmoebaWide,
+            ShapeId.AmoebaBranch,
+            ShapeId.AmoebaHunter,
+            ShapeId.AmoebaCompact,
+            ShapeId.AmoebaSplit,
+            ShapeId.AmoebaSpread
+        }, horizontalSpacingOverride: 5.8f, spriteScaleOverride: 0.38f),
         new("AGENTS", ShapePaletteCategory.Agents, new[]
         {
             ShapeId.TriangleAgent,
@@ -290,14 +307,16 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var runtimeProceduralConfig = ResolveRuntimeProceduralConfig(out var selectedTheme, out var hasSelectedTheme);
         var hasThemeTintOverride = hasSelectedTheme && selectedTheme.overrideCategoryTints;
 
-        var maxColumns = 0;
+        var maxRowWidth = 0f;
         foreach (var category in Categories)
         {
-            maxColumns = Mathf.Max(maxColumns, category.ShapeIds.Length);
+            var rowSpacing = category.ResolveHorizontalSpacing(horizontalSpacing);
+            var rowWidth = Mathf.Max(0, category.ShapeIds.Length - 1) * rowSpacing;
+            maxRowWidth = Mathf.Max(maxRowWidth, rowWidth);
         }
 
         var totalRows = Categories.Length;
-        var originX = -((Mathf.Max(1, maxColumns) - 1) * horizontalSpacing * 0.5f);
+        var originX = -(maxRowWidth * 0.5f);
         var originY = ((Mathf.Max(1, totalRows) - 1) * (verticalSpacing + categoryGap) * 0.5f);
 
         var root = EnsureGeneratedRoot();
@@ -308,8 +327,11 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             var y = originY - (row * (verticalSpacing + categoryGap));
             SpawnHeader(root, category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f), category.Category, hasThemeTintOverride ? selectedTheme : default, hasSelectedTheme);
 
-            var width = (category.ShapeIds.Length - 1) * horizontalSpacing;
-            var startX = -width * 0.5f;
+            var resolvedRowSpacing = category.ResolveHorizontalSpacing(horizontalSpacing);
+            var resolvedRowScale = category.ResolveSpriteScale(spriteScale);
+            var isAmoebaRow = string.Equals(category.Name, "AMOEBA", StringComparison.OrdinalIgnoreCase);
+            var rowWidth = Mathf.Max(0, category.ShapeIds.Length - 1) * resolvedRowSpacing;
+            var startX = -rowWidth * 0.5f;
 
             for (var col = 0; col < category.ShapeIds.Length; col++)
             {
@@ -324,8 +346,8 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
                     continue;
                 }
 
-                var position = new Vector3(startX + (col * horizontalSpacing), y, 0f);
-                SpawnShape(root, id, category.Category, sprite, position, spawnedCount, runtimeProceduralConfig, hasSelectedTheme ? selectedTheme : default, hasSelectedTheme);
+                var position = new Vector3(startX + (col * resolvedRowSpacing), y, 0f);
+                SpawnShape(root, id, category.Category, sprite, position, resolvedRowScale, spawnedCount, runtimeProceduralConfig, hasSelectedTheme ? selectedTheme : default, hasSelectedTheme, isAmoebaRow);
                 spawnedCount++;
             }
         }
@@ -336,12 +358,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
     }
 
-    private void SpawnShape(Transform root, string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig, ShowcaseThemeEntry theme, bool hasTheme)
+    private void SpawnShape(Transform root, string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, float resolvedScale, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig, ShowcaseThemeEntry theme, bool hasTheme, bool isAmoebaRow)
     {
         var go = new GameObject(shapeId);
         go.transform.SetParent(root, false);
         go.transform.localPosition = localPosition;
-        go.transform.localScale = Vector3.one * spriteScale;
+        go.transform.localScale = Vector3.one * resolvedScale;
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
@@ -362,6 +384,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             var driver = go.AddComponent<AnimatedShapeDriver>();
             driver.Configure(sr, profile, sequence * 97);
             driver.SetProceduralMaterialApplier(applier, proceduralApplied);
+        }
+
+        if (isAmoebaRow && animateAmoebaRow)
+        {
+            var amoebaMotion = go.AddComponent<AmoebaShowcaseMotion>();
+            amoebaMotion.Configure(shapeId, amoebaMotionIntensity, sequence * 97);
         }
 
         var visualKey = BuildShowcaseVisualKey(shapeId, sequence);
@@ -613,15 +641,29 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private readonly struct ShowcaseCategory
     {
-        public ShowcaseCategory(string name, ShapePaletteCategory category, string[] shapeIds)
+        public ShowcaseCategory(string name, ShapePaletteCategory category, string[] shapeIds, float horizontalSpacingOverride = 0f, float spriteScaleOverride = 0f)
         {
             Name = name;
             Category = category;
             ShapeIds = shapeIds;
+            HorizontalSpacingOverride = horizontalSpacingOverride;
+            SpriteScaleOverride = spriteScaleOverride;
         }
 
         public string Name { get; }
         public ShapePaletteCategory Category { get; }
         public string[] ShapeIds { get; }
+        public float HorizontalSpacingOverride { get; }
+        public float SpriteScaleOverride { get; }
+
+        public float ResolveHorizontalSpacing(float fallback)
+        {
+            return HorizontalSpacingOverride > 0f ? HorizontalSpacingOverride : fallback;
+        }
+
+        public float ResolveSpriteScale(float fallback)
+        {
+            return SpriteScaleOverride > 0f ? SpriteScaleOverride : fallback;
+        }
     }
 }
