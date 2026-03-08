@@ -134,11 +134,7 @@ public sealed class NeuralSlimeMoldRunner
             agent.position += Direction(agent.heading) * (agent.speed * speedMod * dt);
             ApplyReflectBoundary(ref agent.position, ref agent.heading);
 
-            var nearestConsumableFood = FindNearestConsumableFoodNode(agent.position);
-            if (nearestConsumableFood >= 0)
-            {
-                foodConsumerCounts[nearestConsumableFood]++;
-            }
+            MarkConsumingFoodNodes(agent.position);
 
             var depositMultiplier = IsInsideEmptyFoodRadius(agent.position) ? EmptyNodeDepositMultiplier : 1f;
             Field.Deposit(agent.position, agent.depositAmount * depositMultiplier);
@@ -170,11 +166,8 @@ public sealed class NeuralSlimeMoldRunner
         }
     }
 
-    private int FindNearestConsumableFoodNode(Vector2 agentPosition)
+    private void MarkConsumingFoodNodes(Vector2 agentPosition)
     {
-        var nearestIndex = -1;
-        var nearestDistanceSqr = float.MaxValue;
-
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
@@ -185,14 +178,11 @@ public sealed class NeuralSlimeMoldRunner
 
             var radius = Mathf.Max(0.01f, node.consumeRadius);
             var distanceSqr = (agentPosition - node.position).sqrMagnitude;
-            if (distanceSqr <= radius * radius && distanceSqr < nearestDistanceSqr)
+            if (distanceSqr <= radius * radius)
             {
-                nearestDistanceSqr = distanceSqr;
-                nearestIndex = i;
+                foodConsumerCounts[i]++;
             }
         }
-
-        return nearestIndex;
     }
 
     private bool IsInsideEmptyFoodRadius(Vector2 agentPosition)
