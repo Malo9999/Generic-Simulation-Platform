@@ -84,7 +84,6 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             if (ant.state == AntBehaviorState.Wander)
             {
                 UpdateWander(ant, tickIndex, dt);
-                TryPickupFood(ant);
             }
             else if (ant.state == AntBehaviorState.ReturnHome)
             {
@@ -125,6 +124,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             ClampAndApply(ant, i);
         }
 
+        ProcessFoodConsumption(dt);
         ResolveAntCollisionsForFight();
 
         foreach (var kv in pairDamage)
@@ -274,6 +274,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             ageTicks = 0,
             carrying = false,
             carriedAmount = 0,
+            foodConsumptionBuffer = 0f,
             state = AntBehaviorState.Wander,
             fightTicksRemaining = 0,
             fightTargetAntId = -1,
@@ -297,7 +298,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         for (var i = 0; i < worldState.foodPiles.Count; i++)
         {
             var food = worldState.foodPiles[i];
-            if (food.remaining > 0)
+            if (food.currentCapacity > 0f)
             {
                 continue;
             }
@@ -309,7 +310,11 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             else if (tickIndex >= food.respawnAtTick)
             {
                 food.position = PickRespawnFoodPosition(food.id, tickIndex);
-                food.remaining = recipe.foodAmount;
+                food.capacity = recipe.foodAmount;
+                food.currentCapacity = recipe.foodAmount;
+                food.consumeRadius = recipe.foodConsumeRadius;
+                food.consumeRate = recipe.foodConsumeRate;
+                food.baseStrength = recipe.foodBaseStrength;
                 food.respawnAtTick = -1;
             }
 
@@ -362,6 +367,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         }
 
         var dir = new Vector2(Mathf.Cos(ant.wanderHeading), Mathf.Sin(ant.wanderHeading));
+        dir += ComputeFoodAttraction(ant.position);
         dir += ComputeRepulsion(ant.position);
         if (dir.sqrMagnitude > 0.0001f)
         {
@@ -428,54 +434,122 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
         return push;
     }
 
-    private void TryPickupFood(AntAgentState ant)
+    private Vector2 ComputeFoodAttraction(Vector2 position)
     {
-        if (ant.carrying)
-        {
-            return;
-        }
-
-        var bestIndex = -1;
-        var bestDist = float.MaxValue;
+        var attract = Vector2.zero;
         for (var i = 0; i < worldState.foodPiles.Count; i++)
         {
             var food = worldState.foodPiles[i];
-            if (food.remaining <= 0)
+            var strength = GetEffectiveFoodStrength(food);
+            if (strength <= 0f)
             {
                 continue;
             }
 
-            var dist = Vector2.Distance(ant.position, food.position);
-            if (dist <= recipe.foodSenseRadius)
+            var toFood = food.position - position;
+            var dist = toFood.magnitude;
+            if (dist > recipe.foodSenseRadius || dist <= 0.001f)
             {
-                if (dist < bestDist || (Mathf.Abs(dist - bestDist) < 0.0001f && food.id < worldState.foodPiles[bestIndex].id))
-                {
-                    bestDist = dist;
-                    bestIndex = i;
-                }
+                continue;
             }
+
+            var dir = toFood / dist;
+            var distFactor = 1f - (dist / recipe.foodSenseRadius);
+            attract += dir * (strength * distFactor);
         }
 
-        if (bestIndex < 0)
+        return attract;
+    }
+
+    private void ProcessFoodConsumption(float dt)
+    {
+        if (worldState.foodPiles.Count == 0 || ants.Count == 0)
         {
             return;
         }
 
-        var selected = worldState.foodPiles[bestIndex];
-        if (bestDist <= recipe.pickupRadius && selected.remaining > 0)
+        var consumingAgentCounts = new int[worldState.foodPiles.Count];
+        var consumedByAgent = new float[ants.Count];
+
+        for (var antIndex = 0; antIndex < ants.Count; antIndex++)
         {
-            selected.remaining = Mathf.Max(0, selected.remaining - 1);
-            if (selected.remaining <= 0)
+            var ant = ants[antIndex];
+            if (!ant.isAlive || ant.carrying || ant.state != AntBehaviorState.Wander)
             {
-                selected.respawnAtTick = -1;
+                continue;
             }
 
-            worldState.foodPiles[bestIndex] = selected;
+            for (var foodIndex = 0; foodIndex < worldState.foodPiles.Count; foodIndex++)
+            {
+                var food = worldState.foodPiles[foodIndex];
+                if (food.currentCapacity <= 0f)
+                {
+                    continue;
+                }
 
-            ant.carrying = true;
-            ant.carriedAmount = 1;
-            ant.state = AntBehaviorState.ReturnHome;
+                if ((ant.position - food.position).sqrMagnitude > food.consumeRadius * food.consumeRadius)
+                {
+                    continue;
+                }
+
+                consumingAgentCounts[foodIndex]++;
+                consumedByAgent[antIndex] += food.consumeRate * dt;
+            }
         }
+
+        for (var foodIndex = 0; foodIndex < worldState.foodPiles.Count; foodIndex++)
+        {
+            var food = worldState.foodPiles[foodIndex];
+            if (food.currentCapacity <= 0f)
+            {
+                continue;
+            }
+
+            var depletion = food.consumeRate * consumingAgentCounts[foodIndex] * dt;
+            food.currentCapacity = Mathf.Max(0f, food.currentCapacity - depletion);
+            if (food.currentCapacity <= 0f)
+            {
+                food.currentCapacity = 0f;
+                food.respawnAtTick = -1;
+            }
+
+            worldState.foodPiles[foodIndex] = food;
+        }
+
+        for (var antIndex = 0; antIndex < ants.Count; antIndex++)
+        {
+            var ant = ants[antIndex];
+            if (!ant.isAlive || ant.carrying || ant.state != AntBehaviorState.Wander || consumedByAgent[antIndex] <= 0f)
+            {
+                continue;
+            }
+
+            ant.foodConsumptionBuffer += consumedByAgent[antIndex];
+            if (ant.foodConsumptionBuffer >= 1f)
+            {
+                ant.foodConsumptionBuffer -= 1f;
+                ant.carrying = true;
+                ant.carriedAmount = 1;
+                ant.state = AntBehaviorState.ReturnHome;
+            }
+        }
+    }
+
+    private float GetEffectiveFoodStrength(AntWorldState.FoodPileEntry food)
+    {
+        if (food.capacity <= 0f)
+        {
+            return 0f;
+        }
+
+        var normalizedCapacity = Mathf.Clamp01(food.currentCapacity / food.capacity);
+        var strength = food.baseStrength * normalizedCapacity;
+        if (food.currentCapacity <= 0f)
+        {
+            return Mathf.Max(0f, food.baseStrength * recipe.depletedFoodStrengthFactor);
+        }
+
+        return strength;
     }
 
     private void TryEnterNestFight(AntAgentState ant)
@@ -757,7 +831,7 @@ public class AntColoniesRunner : MonoBehaviour, ITickableSimulationRunner
             }
 
             var pile = worldState.foodPiles[i];
-            renderer.enabled = pile.remaining > 0;
+            renderer.enabled = pile.currentCapacity > 0f;
             renderer.transform.localPosition = new Vector3(pile.position.x, pile.position.y, 0f);
         }
     }
