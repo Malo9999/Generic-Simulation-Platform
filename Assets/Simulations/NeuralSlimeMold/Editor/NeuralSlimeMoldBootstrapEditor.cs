@@ -38,18 +38,19 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
         Draw("depositAmount");
         Draw("enableStaticFood");
         Draw("foodStrength");
+        Draw("foodCapacity");
+        Draw("consumeRadius");
+        Draw("consumeRate");
+        Draw("trailDecayPerSecond");
     }
 
     private void DrawExperimentalControls()
     {
         Draw("foodNodeCount");
-        Draw("foodRadius");
         Draw("foodStrength");
         Draw("foodCapacity");
-        Draw("depletionRate");
-        Draw("depletedFoodStrengthMultiplier");
-        Draw("allowFoodRegrowth");
-        Draw("regrowRate");
+        Draw("consumeRadius");
+        Draw("consumeRate");
         Draw("trailDecayPerSecond");
 
         Draw("worldPreset");

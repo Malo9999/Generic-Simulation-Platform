@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine.Serialization;
 
 public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 {
@@ -66,11 +67,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Tooltip("Can be toggled during play.")] private bool indirectFoodBias = true;
     [SerializeField, Min(1), Tooltip("Requires Start / Reset Simulation to apply when auto-generated nodes are used.")] private int foodNodeCount = 4;
     [SerializeField, Min(0f), Tooltip("Can be adjusted live.")] private float foodStrength = 1.2f;
-    [SerializeField, Min(0.1f), Tooltip("Requires Start / Reset Simulation to apply.")] private float foodRadius = 14f;
+    [FormerlySerializedAs("foodRadius")]
+    [SerializeField, Min(0.1f), Tooltip("Requires Start / Reset Simulation to apply.")] private float consumeRadius = 14f;
     [SerializeField, Tooltip("When enabled, food node placement is deterministic from seed.")] private bool spawnFromSeed = true;
     [SerializeField, Tooltip("Can be toggled during play. Disabled keeps nodes consumable-only.")] private bool allowFoodRegrowth = false;
     [SerializeField, Min(0f), Tooltip("Default capacity for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float foodCapacity = 62f;
-    [SerializeField, Min(0f), Tooltip("Default depletion rate for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float depletionRate = 1.9f;
+    [FormerlySerializedAs("depletionRate")]
+    [SerializeField, Min(0f), Tooltip("Default depletion rate for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float consumeRate = 1.9f;
     [SerializeField, Min(0f), Tooltip("Default regrow rate for generated/legacy food nodes. Requires Start / Reset Simulation to apply.")] private float regrowRate = 0.03f;
     [SerializeField, Range(0f, 1f), Tooltip("Minimum residual attraction for weakened/depleted food to preserve migration corridors.")] private float depletedFoodStrengthMultiplier = 0.03f;
     [SerializeField, Min(0f), Tooltip("Seconds before depleted food can reactivate.")] private float foodReactivationDelay = 12f;
@@ -162,7 +165,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             experimental && allowFoodRegrowth,
             experimental ? effectiveTrailFollowWeight : 1f,
             experimental ? effectiveFoodAttractionWeight : 1f,
-            experimental ? effectiveFoodSenseRadius : Mathf.Max(foodRadius, sensorDistance * 4f),
+            experimental ? effectiveFoodSenseRadius : Mathf.Max(consumeRadius, sensorDistance * 4f),
             experimental ? effectiveFoodTurnBias : 0f,
             experimental ? depletedFoodStrengthMultiplier : 0f,
             experimental && !usingSimpleFoodDecayPreset ? foodReactivationDelay : 0f,
@@ -205,9 +208,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             experimental ? wallMargin : Mathf.Max(4f, wallMargin),
             enableStaticFood && enableFoodNodes,
             foodNodeCount,
-            foodRadius,
+            consumeRadius,
             foodCapacity,
-            depletionRate,
+            consumeRate,
             regrowRate,
             spawnFromSeed,
             resolvedFoodNodes,
@@ -481,13 +484,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         var logTurnNoise = debugSteeringMode == "FoodInfluenceDebug" ? turnNoise * 0.55f : turnNoise;
         Debug.Log($"[NeuralSlimeMold] steering mode={debugSteeringMode} trailFollowWeight={logTrailFollowWeight:F2} foodAttractionWeight={logFoodAttractionWeight:F2} foodSenseRadius={logFoodSenseRadius:F2} foodTurnBias={foodTurnBias:F2} turnNoise={logTurnNoise:F2} localLoopSuppression={localLoopSuppression:F2} migrationRestlessness={migrationRestlessness:F2} depositNearFoodMultiplier={depositNearFoodMultiplier:F2} pathPersistenceBias={pathPersistenceBias:F2}");
         Debug.Log($"[NeuralSlimeMold] visual backgroundColor={backgroundColor} clearMode=CameraSolidColor");
-        Debug.Log($"[NeuralSlimeMold] lifecycle defaults capacity={foodCapacity:F2} depletionRate={depletionRate:F2} regrowRate={regrowRate:F2} depletedMultiplier={depletedFoodStrengthMultiplier:F2} reactivateDelay={foodReactivationDelay:F2}s reactivateThreshold={foodReactivationThreshold:F2} allowRegrowth={allowFoodRegrowth} lifecycleLogs={debugFoodLogging}");
+        Debug.Log($"[NeuralSlimeMold] lifecycle defaults capacity={foodCapacity:F2} consumeRate={consumeRate:F2} regrowRate={regrowRate:F2} depletedMultiplier={depletedFoodStrengthMultiplier:F2} reactivateDelay={foodReactivationDelay:F2}s reactivateThreshold={foodReactivationThreshold:F2} allowRegrowth={allowFoodRegrowth} lifecycleLogs={debugFoodLogging}");
 
         var nodes = runner.FoodNodes;
         for (var i = 0; i < nodes.Length; i++)
         {
             var node = nodes[i];
-            Debug.Log($"[NeuralSlimeMold] food[{i}] pos={node.position} radius={node.radius:F2} strength={node.strength:F2} active={node.active} cap={node.capacity:F2}/{node.maxCapacity:F2}");
+            Debug.Log($"[NeuralSlimeMold] food[{i}] pos={node.position} consumeRadius={node.consumeRadius:F2} baseStrength={node.baseStrength:F2} active={node.active} cap={node.currentCapacity:F2}/{node.capacity:F2}");
         }
     }
 
@@ -521,7 +524,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         for (var i = 0; i < nodes.Length; i++)
         {
             var node = nodes[i];
-            Gizmos.DrawWireSphere(new Vector3(node.position.x, node.position.y, 0f), Mathf.Max(0.2f, node.radius));
+            Gizmos.DrawWireSphere(new Vector3(node.position.x, node.position.y, 0f), Mathf.Max(0.2f, node.consumeRadius));
         }
     }
 
@@ -531,15 +534,15 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         return configs;
     }
 
-    private static NeuralFoodNodeConfig CreateFood(Vector2 position, float radius, float strength, float capacity, float depletionRate, float regrowRate)
+    private static NeuralFoodNodeConfig CreateFood(Vector2 position, float consumeRadius, float baseStrength, float capacity, float consumeRate, float regrowRate)
     {
         return new NeuralFoodNodeConfig
         {
             position = position,
-            radius = radius,
-            strength = strength,
+            consumeRadius = consumeRadius,
+            baseStrength = baseStrength,
             capacity = capacity,
-            depletionRate = depletionRate,
+            consumeRate = consumeRate,
             regrowRate = regrowRate,
             startActive = true
         };

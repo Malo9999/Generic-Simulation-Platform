@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public enum NeuralSlimeWorldPreset
 {
@@ -30,10 +31,14 @@ public enum NeuralObstacleShape
 public struct NeuralFoodNodeConfig
 {
     public Vector2 position;
-    [Min(0.1f)] public float radius;
-    [Min(0f)] public float strength;
+    [FormerlySerializedAs("radius")]
+    [Min(0.1f)] public float consumeRadius;
+    [FormerlySerializedAs("strength")]
+    [Min(0f)] public float baseStrength;
+    [FormerlySerializedAs("capacity")]
     [Min(0f)] public float capacity;
-    [Min(0f)] public float depletionRate;
+    [FormerlySerializedAs("depletionRate")]
+    [Min(0f)] public float consumeRate;
     [Min(0f)] public float regrowRate;
     public bool startActive;
 }
@@ -41,17 +46,16 @@ public struct NeuralFoodNodeConfig
 public struct NeuralFoodNodeState
 {
     public Vector2 position;
-    public float radius;
-    public float strength;
-    public float maxCapacity;
+    public float consumeRadius;
+    public float baseStrength;
     public float capacity;
-    public float depletionRate;
+    public float currentCapacity;
+    public float consumeRate;
     public float regrowRate;
     public bool active;
     public float timeSinceDepleted;
 
-    public float Capacity01 => maxCapacity <= 0f ? 0f : Mathf.Clamp01(capacity / maxCapacity);
-    public float EffectiveStrength => active ? strength * Capacity01 : 0f;
+    public float Capacity01 => capacity <= 0f ? 0f : Mathf.Clamp01(currentCapacity / capacity);
 }
 
 [System.Serializable]
