@@ -112,7 +112,20 @@ public sealed class NeuralSlimeMoldRunner
         Initialize(seed, agentCount, mapSize, trailResolution, speed, turnRate, sensorAngle, sensorDistance, depositAmount, boundaryMode, wallMargin, enableFoodNodes, foodNodeCount, foodRadius, spawnFoodFromSeed, manualFoodNodes, manualFoodConfigs, worldObstacles);
     }
 
-    public void Tick(float dt, float diffusion, float decay, bool indirectFoodBias, float liveFoodStrength, bool allowFoodRegrowth)
+    public void Tick(
+        float dt,
+        float diffusion,
+        float decay,
+        bool indirectFoodBias,
+        float liveFoodStrength,
+        bool allowFoodRegrowth,
+        float trailFollowWeight,
+        float foodAttractionWeight,
+        float foodSenseRadius,
+        float foodTurnBias,
+        float turnNoise,
+        float localLoopSuppression,
+        float depositNearFoodMultiplier)
     {
         if (agents == null || Field == null)
         {
@@ -147,15 +160,19 @@ public sealed class NeuralSlimeMoldRunner
             var centerBias = center - ((left + right) * 0.5f);
             var noise = (rng.NextFloat01() * 2f) - 1f;
             var boundaryTurn = ComputeBoundaryTurn(agent.position, agent.heading);
-            var foodTurn = indirectFoodBias ? ComputeFoodTurn(agent.position, agent.heading, liveFoodStrength) : 0f;
+            var foodTurn = indirectFoodBias
+                ? ComputeFoodTurn(agent.position, agent.heading, liveFoodStrength, foodAttractionWeight, foodSenseRadius, foodTurnBias)
+                : 0f;
             var obstacleTurn = ComputeObstacleTurn(agent.position, agent.heading, agent.sensorDistance);
+            var loopSuppressionTurn = ComputeLoopSuppressionTurn(left, center, right, localLoopSuppression);
 
-            var steer = weighted * 0.2f
-                        + edge
-                        + (centerBias * agent.controller.densityWeight)
-                        + (noise * agent.controller.noiseWeight)
+            var steer = (weighted * 0.2f * Mathf.Max(0f, trailFollowWeight))
+                        + (edge * Mathf.Max(0f, trailFollowWeight))
+                        + (centerBias * agent.controller.densityWeight * Mathf.Lerp(1f, 0.35f, Mathf.Clamp01(localLoopSuppression)))
+                        + (noise * agent.controller.noiseWeight * Mathf.Max(0f, turnNoise))
                         + foodTurn
                         + obstacleTurn
+                        + loopSuppressionTurn
                         + boundaryTurn;
 
             var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
@@ -171,7 +188,8 @@ public sealed class NeuralSlimeMoldRunner
 
             AccumulateFoodVisits(agent.position);
 
-            var deposit = agent.depositAmount * (0.8f + Mathf.Clamp01(density) * 0.7f);
+            var depositBoost = 1f + ((Mathf.Max(1f, depositNearFoodMultiplier) - 1f) * ComputeFoodProximity(agent.position, foodSenseRadius));
+            var deposit = agent.depositAmount * (0.8f + Mathf.Clamp01(density) * 0.7f) * depositBoost;
             Field.Deposit(agent.position, deposit);
 
             agents[i] = agent;
@@ -372,9 +390,9 @@ public sealed class NeuralSlimeMoldRunner
         };
     }
 
-    private float ComputeFoodTurn(Vector2 position, float heading, float liveFoodStrength)
+    private float ComputeFoodTurn(Vector2 position, float heading, float liveFoodStrength, float foodAttractionWeight, float foodSenseRadius, float foodTurnBias)
     {
-        if (foodNodes == null || foodNodes.Length == 0 || liveFoodStrength <= 0f)
+        if (foodNodes == null || foodNodes.Length == 0 || liveFoodStrength <= 0f || foodAttractionWeight <= 0f)
         {
             return 0f;
         }
@@ -398,7 +416,7 @@ public sealed class NeuralSlimeMoldRunner
                 continue;
             }
 
-            var influenceRange = Mathf.Max(0.001f, node.radius);
+            var influenceRange = Mathf.Max(0.001f, Mathf.Max(node.radius, foodSenseRadius));
             var normalizedDistance = distance / influenceRange;
             var influence = Mathf.Clamp01(1f - normalizedDistance) * effectiveStrength;
             if (influence <= 0f)
@@ -418,7 +436,53 @@ public sealed class NeuralSlimeMoldRunner
         var toTarget = (weightedDirection / totalInfluence).normalized;
         var forward = Direction(heading);
         var cross = (forward.x * toTarget.y) - (forward.y * toTarget.x);
-        return cross * Mathf.Max(0f, liveFoodStrength);
+        var alignment = Vector2.Dot(forward, toTarget);
+        var turnAmplifier = 1f + Mathf.Clamp01(1f - ((alignment + 1f) * 0.5f)) * Mathf.Max(0f, foodTurnBias);
+        return cross * Mathf.Max(0f, liveFoodStrength) * foodAttractionWeight * turnAmplifier;
+    }
+
+    private float ComputeFoodProximity(Vector2 position, float foodSenseRadius)
+    {
+        if (foodNodes == null || foodNodes.Length == 0)
+        {
+            return 0f;
+        }
+
+        var proximity = 0f;
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            var effectiveStrength = node.EffectiveStrength;
+            if (effectiveStrength <= 0f)
+            {
+                continue;
+            }
+
+            var range = Mathf.Max(node.radius, foodSenseRadius);
+            var distance = Vector2.Distance(position, node.position);
+            var nodeProximity = Mathf.Clamp01(1f - (distance / Mathf.Max(0.001f, range))) * Mathf.Clamp01(effectiveStrength);
+            proximity = Mathf.Max(proximity, nodeProximity);
+        }
+
+        return proximity;
+    }
+
+    private float ComputeLoopSuppressionTurn(float left, float center, float right, float localLoopSuppression)
+    {
+        if (localLoopSuppression <= 0f)
+        {
+            return 0f;
+        }
+
+        var sidePeak = Mathf.Max(left, right);
+        var ringSignal = Mathf.Clamp01(sidePeak - (center * 0.9f));
+        if (ringSignal <= 0f)
+        {
+            return 0f;
+        }
+
+        var preferredSide = right > left ? -1f : 1f;
+        return preferredSide * ringSignal * Mathf.Clamp01(localLoopSuppression) * 0.75f;
     }
 
     private void BuildFoodNodes(bool enableFoodNodes, int foodNodeCount, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs)
