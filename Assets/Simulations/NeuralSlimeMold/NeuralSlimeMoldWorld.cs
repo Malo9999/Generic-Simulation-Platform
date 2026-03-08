@@ -36,5 +36,5 @@ public struct NeuralFoodNodeState
     public float consumeRate;
 
     public float Capacity01 => capacity <= 0f ? 0f : Mathf.Clamp01(currentCapacity / capacity);
-    public float EffectiveStrength => baseStrength * (Capacity01 * Capacity01);
+    public float EffectiveStrength => baseStrength * Capacity01;
 }
