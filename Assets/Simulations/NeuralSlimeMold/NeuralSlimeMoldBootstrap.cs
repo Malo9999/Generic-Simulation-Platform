@@ -18,12 +18,22 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private float turnRateDegrees = 180f;
     [SerializeField, Min(0f)] private float depositAmount = 1.2f;
 
-    [Header("Palette / Attractors")]
+    [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobOverlay = true;
-    [SerializeField] private bool useAttractors = true;
-    [SerializeField] private bool indirectAttractorBias = true;
-    [SerializeField, Min(1)] private int attractorCount = 4;
+
+    [Header("Boundary")]
+    [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private NeuralSlimeMoldRunner.BoundaryMode boundaryMode = NeuralSlimeMoldRunner.BoundaryMode.SoftWall;
+    [SerializeField, Min(0f), Tooltip("Requires Start / Reset Simulation to apply.")] private float wallMargin = 6f;
+
+    [Header("Food Nodes")]
+    [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private bool enableFoodNodes = true;
+    [SerializeField, Tooltip("Can be toggled during play.")] private bool indirectFoodBias = true;
+    [SerializeField, Min(1), Tooltip("Requires Start / Reset Simulation to apply when auto-generated nodes are used.")] private int foodNodeCount = 4;
+    [SerializeField, Min(0f), Tooltip("Can be adjusted live.")] private float foodStrength = 0.9f;
+    [SerializeField, Min(0.1f), Tooltip("Requires Start / Reset Simulation to apply.")] private float foodRadius = 14f;
+    [SerializeField, Tooltip("When enabled, food node placement is deterministic from seed.")] private bool spawnFromSeed = true;
+    [SerializeField, Tooltip("Optional explicit node positions; leave empty to auto-generate.")] private Vector2[] manualFoodNodes = null;
 
     [Header("Camera")]
     [SerializeField] private bool autoFrameCamera = true;
@@ -60,7 +70,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             return;
         }
 
-        runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, indirectAttractorBias);
+        runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, indirectFoodBias, foodStrength);
         rendererComponent.Render(runner);
     }
 
@@ -81,8 +91,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             sensorAngleRadians,
             sensorDistance,
             depositAmount,
-            useAttractors,
-            attractorCount);
+            boundaryMode,
+            wallMargin,
+            enableFoodNodes,
+            foodNodeCount,
+            foodRadius,
+            spawnFromSeed,
+            manualFoodNodes);
 
         ApplyRendererOverrides();
         rendererComponent.Build(runner);

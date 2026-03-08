@@ -7,12 +7,14 @@ public sealed class NeuralFieldGrid
     private readonly float[] field;
     private readonly float[] scratch;
     private readonly Vector2 worldSize;
+    private readonly bool wrapEdges;
 
-    public NeuralFieldGrid(int width, int height, Vector2 worldSize)
+    public NeuralFieldGrid(int width, int height, Vector2 worldSize, bool wrapEdges)
     {
         this.width = Mathf.Max(4, width);
         this.height = Mathf.Max(4, height);
         this.worldSize = new Vector2(Mathf.Max(2f, worldSize.x), Mathf.Max(2f, worldSize.y));
+        this.wrapEdges = wrapEdges;
         field = new float[this.width * this.height];
         scratch = new float[field.Length];
     }
@@ -73,13 +75,13 @@ public sealed class NeuralFieldGrid
 
         for (var y = 0; y < height; y++)
         {
-            var yUp = y == 0 ? height - 1 : y - 1;
-            var yDown = y == height - 1 ? 0 : y + 1;
+            var yUp = y == 0 ? (wrapEdges ? height - 1 : 0) : y - 1;
+            var yDown = y == height - 1 ? (wrapEdges ? 0 : height - 1) : y + 1;
 
             for (var x = 0; x < width; x++)
             {
-                var xLeft = x == 0 ? width - 1 : x - 1;
-                var xRight = x == width - 1 ? 0 : x + 1;
+                var xLeft = x == 0 ? (wrapEdges ? width - 1 : 0) : x - 1;
+                var xRight = x == width - 1 ? (wrapEdges ? 0 : width - 1) : x + 1;
 
                 var idx = (y * width) + x;
                 var c = field[idx];
@@ -111,6 +113,11 @@ public sealed class NeuralFieldGrid
     {
         var u = Mathf.InverseLerp(-worldSize.x * 0.5f, worldSize.x * 0.5f, worldPosition.x);
         var v = Mathf.InverseLerp(-worldSize.y * 0.5f, worldSize.y * 0.5f, worldPosition.y);
-        return new Vector2(Mathf.Repeat(u, 1f), Mathf.Repeat(v, 1f));
+        if (wrapEdges)
+        {
+            return new Vector2(Mathf.Repeat(u, 1f), Mathf.Repeat(v, 1f));
+        }
+
+        return new Vector2(Mathf.Clamp01(u), Mathf.Clamp01(v));
     }
 }
