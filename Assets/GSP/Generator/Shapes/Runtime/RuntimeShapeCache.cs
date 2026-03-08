@@ -76,6 +76,26 @@ public static class RuntimeShapeCache
                 pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaNoise, 999, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f);
                 size = 96;
                 break;
+            case ShapeId.OrganicAmoebaCrawler:
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaPseudopod, 6121, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f, 15f, 3, 4, 16f, 28f, 2.4f, 5.4f, 0.86f, 0.34f, 0.15f, 0.42f, 0.3f, 0.55f, 1, false);
+                size = 96;
+                break;
+            case ShapeId.OrganicAmoebaStar:
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaPseudopod, 6203, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f, 14f, 5, 7, 11f, 20f, 2.2f, 5.8f, 0.78f, 0.26f, 0.22f, 0.45f, 0.2f, 0.5f, 1, false);
+                size = 96;
+                break;
+            case ShapeId.OrganicAmoebaBranch:
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaPseudopod, 6331, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f, 14.5f, 3, 5, 13f, 22f, 2.3f, 5.3f, 0.82f, 0.31f, 0.52f, 0.52f, 0.28f, 0.55f, 1, false);
+                size = 96;
+                break;
+            case ShapeId.OrganicAmoebaWideArms:
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaPseudopod, 6419, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f, 17f, 4, 6, 9f, 18f, 2.8f, 6.4f, 0.7f, 0.2f, 0.2f, 0.4f, 0.22f, 0.45f, 1, false);
+                size = 96;
+                break;
+            case ShapeId.OrganicAmoebaHunter:
+                pixels = ShapeRasterizer.RasterizeOrganic(96, tint, OrganicBlobMode.AmoebaPseudopod, 6581, 4, 18f, 8f, 18, 5f, 3f, 3, 2f, 0.5f, 0, 0.35f, true, 6, 1f, 0.78f, 13.5f, 3, 4, 15f, 30f, 2f, 4.8f, 0.9f, 0.38f, 0.12f, 0.4f, 0.34f, 0.5f, 1, false);
+                size = 96;
+                break;
             case ShapeId.StrokeScribble:
                 pixels = ShapeRasterizer.RasterizeStroke(96, tint, 90210, 14, 2f, 4.5f);
                 size = 96;
