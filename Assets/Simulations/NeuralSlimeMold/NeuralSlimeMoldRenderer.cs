@@ -107,7 +107,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var capacity = node.Capacity01;
             foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
             var markerScaleBoost = foodInfluenceDebugVisuals ? 1.4f : 1f;
-            var markerRadius = Mathf.Lerp(0.65f, 1.3f, Mathf.Clamp01(node.radius * 0.08f));
+            var markerRadius = Mathf.Lerp(0.65f, 1.3f, Mathf.Clamp01(node.consumeRadius * 0.08f));
             foodNodeRenderers[i].transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius;
             var markerColor = Color.Lerp(foodDepletedColor, foodActiveColor, capacity);
             markerColor.a = Mathf.Max(foodMarkerMinAlpha, markerColor.a);
