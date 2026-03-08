@@ -9,16 +9,21 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private Color agentColor = new(0.65f, 1f, 0.86f, 0.85f);
 
     [Header("Field Visuals")]
-    [SerializeField] private Color fieldLowColor = new(0.03f, 0.05f, 0.09f, 1f);
-    [SerializeField] private Color fieldHighColor = new(0.25f, 0.95f, 0.68f, 0.95f);
+    [SerializeField] private Color fieldLowColor = new(0.01f, 0.02f, 0.04f, 1f);
+    [SerializeField] private Color fieldHighColor = new(0.2f, 0.98f, 0.72f, 0.98f);
     [SerializeField] private float fieldExposure = 1.6f;
     [SerializeField] private int fieldTextureRefreshInterval = 1;
 
     [Header("World Marker Visuals")]
-    [SerializeField] private Color foodActiveColor = new(1f, 0.2f, 0.95f, 1f);
-    [SerializeField] private Color foodDepletedColor = new(0.75f, 0.28f, 0.62f, 0.95f);
+    [SerializeField] private Color foodActiveColor = new(1f, 0.87f, 0.2f, 1f);
+    [SerializeField] private Color foodDepletedColor = new(0.95f, 0.5f, 0.15f, 0.92f);
     [SerializeField] private Color obstacleColor = new(0.4f, 0.48f, 0.55f, 0.9f);
     [SerializeField] private bool showFoodMarkers = true;
+    [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
+    [SerializeField, Range(0f, 1f)] private float foodMarkerMinAlpha = 0.75f;
+
+    private bool foodInfluenceDebugVisuals;
+    private Color backgroundColor = new(0.01f, 0.02f, 0.04f, 1f);
 
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
@@ -42,6 +47,16 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     public void SetFoodDebugVisuals(bool markersVisible)
     {
         showFoodMarkers = markersVisible;
+    }
+
+    public void SetFoodInfluenceDebugVisuals(bool enabled)
+    {
+        foodInfluenceDebugVisuals = enabled;
+    }
+
+    public void SetBackgroundColor(Color color)
+    {
+        backgroundColor = color;
     }
 
     public void Build(NeuralSlimeMoldRunner runner)
@@ -90,9 +105,13 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var node = foodNodes[i];
             var clamped = ClampNodeMarker(node.position);
             var capacity = node.Capacity01;
-            foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.55f);
-            foodNodeRenderers[i].transform.localScale = Vector3.one * Mathf.Lerp(0.45f, 1.05f, Mathf.Clamp01(node.radius * 0.08f));
-            foodNodeRenderers[i].color = Color.Lerp(foodDepletedColor, foodActiveColor, capacity);
+            foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
+            var markerScaleBoost = foodInfluenceDebugVisuals ? 1.4f : 1f;
+            var markerRadius = Mathf.Lerp(0.65f, 1.3f, Mathf.Clamp01(node.radius * 0.08f));
+            foodNodeRenderers[i].transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius;
+            var markerColor = Color.Lerp(foodDepletedColor, foodActiveColor, capacity);
+            markerColor.a = Mathf.Max(foodMarkerMinAlpha, markerColor.a);
+            foodNodeRenderers[i].color = markerColor;
         }
 
         frameCounter++;
@@ -124,7 +143,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             fieldRenderer.drawMode = SpriteDrawMode.Tiled;
             fieldRenderer.size = worldSize;
             fieldRenderer.sprite = blobSprite;
-            fieldRenderer.color = new Color(0.2f, 0.34f, 0.28f, 0.2f);
+            fieldRenderer.color = new Color(Mathf.Lerp(backgroundColor.r, fieldHighColor.r, 0.22f), Mathf.Lerp(backgroundColor.g, fieldHighColor.g, 0.22f), Mathf.Lerp(backgroundColor.b, fieldHighColor.b, 0.22f), 0.24f);
 
             var fieldTextureGo = new GameObject("FieldDensityTexture");
             fieldTextureGo.transform.SetParent(transform, false);
@@ -214,10 +233,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         {
             var go = new GameObject($"FoodNode_{i:00}");
             go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * 0.3f;
+            go.transform.localScale = Vector3.one * foodMarkerScale;
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sortingOrder = 30;
+            sr.sortingOrder = 40;
             sr.sprite = markerSprite;
             sr.color = foodActiveColor;
             foodNodeRenderers.Add(sr);

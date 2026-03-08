@@ -19,18 +19,22 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float depositAmount = 1.2f;
 
     [Header("Steering Tuning")]
-    [SerializeField, Min(0f), Tooltip("Scales trail sensing influence (left/center/right) in steering.")] private float trailFollowWeight = 0.9f;
-    [SerializeField, Min(0f), Tooltip("Overall multiplier for food-directed turning.")] private float foodAttractionWeight = 2.2f;
-    [SerializeField, Min(0.1f), Tooltip("Additional food sensing distance beyond node radius.")] private float foodSenseRadius = 18f;
-    [SerializeField, Min(0f), Tooltip("Extra food turn boost when heading is misaligned from food direction.")] private float foodTurnBias = 0.55f;
-    [SerializeField, Min(0f), Tooltip("Scales heading jitter; >0 helps escape repetitive loops.")] private float turnNoise = 0.55f;
-    [SerializeField, Range(0f, 1f), Tooltip("Damps local circular self-reinforcement when side sensors dominate.")] private float localLoopSuppression = 0.45f;
-    [SerializeField, Min(1f), Tooltip("Deposit multiplier when close to active food nodes.")] private float depositNearFoodMultiplier = 1.35f;
+    [SerializeField, Min(0f), Tooltip("Scales trail sensing influence (left/center/right) in steering.")] private float trailFollowWeight = 0.78f;
+    [SerializeField, Min(0f), Tooltip("Overall multiplier for food-directed turning.")] private float foodAttractionWeight = 3.8f;
+    [SerializeField, Min(0.1f), Tooltip("Additional food sensing distance beyond node radius.")] private float foodSenseRadius = 22f;
+    [SerializeField, Min(0f), Tooltip("Extra food turn boost when heading is misaligned from food direction.")] private float foodTurnBias = 0.95f;
+    [SerializeField, Min(0f), Tooltip("Scales heading jitter; >0 helps escape repetitive loops.")] private float turnNoise = 0.35f;
+    [SerializeField, Range(0f, 1f), Tooltip("Damps local circular self-reinforcement when side sensors dominate.")] private float localLoopSuppression = 0.58f;
+    [SerializeField, Min(1f), Tooltip("Deposit multiplier when close to active food nodes.")] private float depositNearFoodMultiplier = 1.75f;
     [SerializeField, Range(0f, 1f), Tooltip("Biases trail persistence toward inter-node bridges and lowers local ring reinforcement.")] private float pathPersistenceBias = 0.5f;
 
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobOverlay = true;
+    [SerializeField] private Color backgroundColor = new(0.01f, 0.02f, 0.04f, 1f);
+
+    [Header("Food Influence Debug")]
+    [SerializeField, Tooltip("Applies an obvious food-biased steering regime and higher-contrast food markers for quick verification.")] private bool foodInfluenceDebug = false;
 
     [Header("Boundary")]
     [SerializeField, Tooltip("Requires Start / Reset Simulation to apply.")] private NeuralSlimeMoldRunner.BoundaryMode boundaryMode = NeuralSlimeMoldRunner.BoundaryMode.SoftWall;
@@ -103,6 +107,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         var liveFoodStrength = strongFoodDebugMode ? foodStrength * Mathf.Max(1f, strongFoodStrengthMultiplier) : foodStrength;
+        var effectiveTrailFollowWeight = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? trailFollowWeight * 0.5f : trailFollowWeight;
+        var effectiveFoodAttractionWeight = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? foodAttractionWeight * 2.1f : foodAttractionWeight;
+        var effectiveFoodSenseRadius = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? foodSenseRadius * 1.45f : foodSenseRadius;
+        var effectiveFoodTurnBias = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? foodTurnBias * 1.35f : foodTurnBias;
+        var effectiveTurnNoise = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? turnNoise * 0.55f : turnNoise;
+        var effectiveLoopSuppression = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? Mathf.Clamp01(localLoopSuppression + 0.22f) : localLoopSuppression;
+        var effectiveDepositNearFoodMultiplier = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? depositNearFoodMultiplier * 1.4f : depositNearFoodMultiplier;
+
         runner.Tick(
             Time.deltaTime,
             trailDiffusion * Mathf.Lerp(1f, 0.82f, Mathf.Clamp01(pathPersistenceBias)),
@@ -110,14 +122,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             indirectFoodBias,
             liveFoodStrength,
             allowFoodRegrowth,
-            trailFollowWeight,
-            foodAttractionWeight,
-            foodSenseRadius,
-            foodTurnBias,
+            effectiveTrailFollowWeight,
+            effectiveFoodAttractionWeight,
+            effectiveFoodSenseRadius,
+            effectiveFoodTurnBias,
             depletedFoodStrengthMultiplier,
-            turnNoise,
-            localLoopSuppression,
-            depositNearFoodMultiplier,
+            effectiveTurnNoise,
+            effectiveLoopSuppression,
+            effectiveDepositNearFoodMultiplier,
             pathPersistenceBias);
         rendererComponent.Render(runner);
     }
@@ -325,6 +337,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
                     CreateFood(new Vector2(0f, 14f), 10f, 1f, 130f, 0.45f, 0f)
                 };
                 break;
+            case NeuralFoodDebugPreset.FoodInfluenceDebug:
+                resolvedFoodConfigs = new[]
+                {
+                    CreateFood(new Vector2(-18f, -6f), 11f, 1.25f, 220f, 0.2f, 0f),
+                    CreateFood(new Vector2(0f, 12f), 12f, 1.35f, 240f, 0.25f, 0f),
+                    CreateFood(new Vector2(18f, -6f), 11f, 1.25f, 220f, 0.2f, 0f)
+                };
+                break;
         }
     }
 
@@ -337,7 +357,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
         var info = runner.LastFoodSpawnInfo;
         Debug.Log($"[NeuralSlimeMold] food enabled={info.Enabled} requested={info.RequestedCount} spawned={info.SpawnedCount} rejected={info.RejectedCount} preset={debugFoodPreset} strongMode={strongFoodDebugMode}");
-        Debug.Log($"[NeuralSlimeMold] steering trailFollowWeight={trailFollowWeight:F2} foodAttractionWeight={foodAttractionWeight:F2} foodSenseRadius={foodSenseRadius:F2} foodTurnBias={foodTurnBias:F2} depletedFoodStrengthMultiplier={depletedFoodStrengthMultiplier:F2} turnNoise={turnNoise:F2} localLoopSuppression={localLoopSuppression:F2} depositNearFoodMultiplier={depositNearFoodMultiplier:F2} pathPersistenceBias={pathPersistenceBias:F2}");
+        var debugSteeringMode = foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug ? "FoodInfluenceDebug" : "Default";
+        var logTrailFollowWeight = debugSteeringMode == "FoodInfluenceDebug" ? trailFollowWeight * 0.5f : trailFollowWeight;
+        var logFoodAttractionWeight = debugSteeringMode == "FoodInfluenceDebug" ? foodAttractionWeight * 2.1f : foodAttractionWeight;
+        var logFoodSenseRadius = debugSteeringMode == "FoodInfluenceDebug" ? foodSenseRadius * 1.45f : foodSenseRadius;
+        var logTurnNoise = debugSteeringMode == "FoodInfluenceDebug" ? turnNoise * 0.55f : turnNoise;
+        Debug.Log($"[NeuralSlimeMold] steering mode={debugSteeringMode} trailFollowWeight={logTrailFollowWeight:F2} foodAttractionWeight={logFoodAttractionWeight:F2} foodSenseRadius={logFoodSenseRadius:F2} foodTurnBias={foodTurnBias:F2} turnNoise={logTurnNoise:F2} localLoopSuppression={localLoopSuppression:F2} depositNearFoodMultiplier={depositNearFoodMultiplier:F2} pathPersistenceBias={pathPersistenceBias:F2}");
+        Debug.Log($"[NeuralSlimeMold] visual backgroundColor={backgroundColor} clearMode=CameraSolidColor");
         Debug.Log($"[NeuralSlimeMold] lifecycle defaults capacity={foodCapacity:F2} depletionRate={depletionRate:F2} regrowRate={regrowRate:F2} allowRegrowth={allowFoodRegrowth} lifecycleLogs={debugFoodLogging}");
 
         var nodes = runner.FoodNodes;
@@ -398,6 +424,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         cam.orthographic = true;
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = backgroundColor;
         var halfW = mapSize.x * 0.5f;
         var halfH = mapSize.y * 0.5f;
         var sizeFromHeight = halfH;
@@ -428,5 +456,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
         rendererComponent.SetShapeToggles(useGlowAgentShape, useFieldBlobOverlay);
         rendererComponent.SetFoodDebugVisuals(showFoodMarkers);
+        rendererComponent.SetFoodInfluenceDebugVisuals(foodInfluenceDebug || debugFoodPreset == NeuralFoodDebugPreset.FoodInfluenceDebug);
+        rendererComponent.SetBackgroundColor(backgroundColor);
+
+        var cam = Camera.main;
+        if (cam != null)
+        {
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = backgroundColor;
+        }
     }
 }
