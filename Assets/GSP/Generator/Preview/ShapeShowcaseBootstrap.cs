@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
+[GspBootstrap(GspBootstrapKind.Preview, "Preview scene bootstrap for shape showcase")]
 public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 {
     [Header("Layout")]
@@ -17,6 +19,12 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     [SerializeField] private Color cameraBackground = Color.black;
     [SerializeField] private bool useMaterialPaletteInShowcase = false;
     [SerializeField] private Material showcaseDefaultSpriteMaterial;
+    [SerializeField] private ShapeShowcaseProceduralMaterialConfig proceduralMaterials = new();
+
+    [Header("Theme Verification")]
+    [SerializeField] private List<ShowcaseThemeEntry> themes = new();
+    [SerializeField, Min(0)] private int selectedThemeIndex;
+    [SerializeField] private bool enableRuntimeThemeCycleWithT;
 
     [SerializeField] private int headerFontSize = 58;
     [SerializeField] private int labelFontSize = 32;
@@ -67,12 +75,110 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
     private static readonly Color MarkersColor = new(127f / 255f, 184f / 255f, 216f / 255f, 1f); // #7FB8D8
     private static readonly Color LinesColor = new(62f / 255f, 214f / 255f, 224f / 255f, 1f);   // #3ED6E0
 
+    private Transform generatedRoot;
+
+    private static readonly int[] TintColorPropertyIds =
+    {
+        Shader.PropertyToID("_Color"),
+        Shader.PropertyToID("_BaseColor"),
+        Shader.PropertyToID("_Tint"),
+        Shader.PropertyToID("_TintColor"),
+        Shader.PropertyToID("_FillColor"),
+        Shader.PropertyToID("_MainColor")
+    };
+
     private void Start()
     {
         ApplySceneBackground();
         ClearStaleShowcaseSpriteMaterials();
+        RebuildShowcase();
+    }
+
+    private void Update()
+    {
+        if (!IsThemeCyclePressedThisFrame())
+        {
+            return;
+        }
+
+        TryCycleTheme();
+    }
+
+    private bool IsThemeCyclePressedThisFrame()
+    {
+        if (!enableRuntimeThemeCycleWithT)
+        {
+            return false;
+        }
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        if (keyboard != null && keyboard.tKey.wasPressedThisFrame)
+        {
+            return true;
+        }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        return Input.GetKeyDown(KeyCode.T);
+#else
+        return false;
+#endif
+    }
+
+    private void TryCycleTheme()
+    {
+        if (themes == null || themes.Count == 0)
+        {
+            return;
+        }
+
+        selectedThemeIndex = (selectedThemeIndex + 1) % themes.Count;
+        RebuildShowcase();
+    }
+
+    private void RebuildShowcase()
+    {
+        ClearGeneratedShowcaseContent();
         SpawnShowcase();
         FitCameraToSpawnedContent();
+    }
+
+    private void ClearGeneratedShowcaseContent()
+    {
+        var root = EnsureGeneratedRoot();
+        for (var i = root.childCount - 1; i >= 0; i--)
+        {
+            var child = root.GetChild(i);
+            if (Application.isPlaying)
+            {
+                Destroy(child.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(child.gameObject);
+            }
+        }
+    }
+
+    private Transform EnsureGeneratedRoot()
+    {
+        if (generatedRoot != null)
+        {
+            return generatedRoot;
+        }
+
+        var existing = transform.Find("__GeneratedShapeShowcase");
+        if (existing != null)
+        {
+            generatedRoot = existing;
+            return generatedRoot;
+        }
+
+        var root = new GameObject("__GeneratedShapeShowcase");
+        generatedRoot = root.transform;
+        generatedRoot.SetParent(transform, false);
+        return generatedRoot;
     }
 
     private void FitCameraToSpawnedContent()
@@ -181,6 +287,9 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
 
     private void SpawnShowcase()
     {
+        var runtimeProceduralConfig = ResolveRuntimeProceduralConfig(out var selectedTheme, out var hasSelectedTheme);
+        var hasThemeTintOverride = hasSelectedTheme && selectedTheme.overrideCategoryTints;
+
         var maxColumns = 0;
         foreach (var category in Categories)
         {
@@ -191,12 +300,13 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         var originX = -((Mathf.Max(1, maxColumns) - 1) * horizontalSpacing * 0.5f);
         var originY = ((Mathf.Max(1, totalRows) - 1) * (verticalSpacing + categoryGap) * 0.5f);
 
+        var root = EnsureGeneratedRoot();
         var spawnedCount = 0;
         for (var row = 0; row < Categories.Length; row++)
         {
             var category = Categories[row];
             var y = originY - (row * (verticalSpacing + categoryGap));
-            SpawnHeader(category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f), category.Category);
+            SpawnHeader(root, category.Name, new Vector3(originX - (horizontalSpacing * 1.05f), y + headerOffset, 0f), category.Category, hasThemeTintOverride ? selectedTheme : default, hasSelectedTheme);
 
             var width = (category.ShapeIds.Length - 1) * horizontalSpacing;
             var startX = -width * 0.5f;
@@ -215,7 +325,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
                 }
 
                 var position = new Vector3(startX + (col * horizontalSpacing), y, 0f);
-                SpawnShape(id, category.Category, sprite, position, spawnedCount);
+                SpawnShape(root, id, category.Category, sprite, position, spawnedCount, runtimeProceduralConfig, hasSelectedTheme ? selectedTheme : default, hasSelectedTheme);
                 spawnedCount++;
             }
         }
@@ -226,35 +336,131 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         }
     }
 
-    private void SpawnShape(string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence)
+    private void SpawnShape(Transform root, string shapeId, ShapePaletteCategory category, Sprite sprite, Vector3 localPosition, int sequence, ShapeShowcaseProceduralMaterialConfig runtimeProceduralConfig, ShowcaseThemeEntry theme, bool hasTheme)
     {
         var go = new GameObject(shapeId);
-        go.transform.SetParent(transform, false);
+        go.transform.SetParent(root, false);
         go.transform.localPosition = localPosition;
         go.transform.localScale = Vector3.one * spriteScale;
 
         var sr = go.AddComponent<SpriteRenderer>();
         sr.sprite = sprite;
-        sr.color = ResolveCategoryColor(category);
-        if (!useMaterialPaletteInShowcase)
+        sr.color = ResolveCategoryColor(category, theme, hasTheme);
+        sr.sharedMaterial = ResolveShowcaseDefaultSpriteMaterial();
+        if (useMaterialPaletteInShowcase)
         {
-            sr.sharedMaterial = ResolveShowcaseDefaultSpriteMaterial();
+            TryAssignPaletteMaterial(sr, category, shapeId);
         }
+
+        var applier = EnsureProceduralMaterialApplier(go);
+        var applyStatus = applier.TryApply(sr, shapeId, category, runtimeProceduralConfig, sequence * 97);
+        var proceduralApplied = applyStatus == ProceduralMaterialApplyStatus.Applied;
 
         var profile = AnimatedShapeProfile.CreateForShapeId(shapeId);
         if (profile.animType != ShapeAnimType.None)
         {
             var driver = go.AddComponent<AnimatedShapeDriver>();
             driver.Configure(sr, profile, sequence * 97);
+            driver.SetProceduralMaterialApplier(applier, proceduralApplied);
         }
+
+        var visualKey = BuildShowcaseVisualKey(shapeId, sequence);
+        MotionShaderAutoWiring.TryAttachAndConfigure(sr, visualKey, shapeId, MotionShaderProfile.LoadRuntimeProfile());
 
         SpawnLabel(shapeId, go.transform, labelOffset);
     }
 
-    private void SpawnHeader(string text, Vector3 localPosition, ShapePaletteCategory category)
+
+    private static VisualKey BuildShowcaseVisualKey(string shapeId, int sequence)
+    {
+        return VisualKeyBuilder.Create(
+            "ShapeShowcase",
+            shapeId,
+            sequence,
+            shapeId,
+            "showcase",
+            FacingMode.Auto,
+            -1,
+            sequence);
+    }
+
+    private ShapeShowcaseProceduralMaterialConfig ResolveRuntimeProceduralConfig(out ShowcaseThemeEntry selectedTheme, out bool hasSelectedTheme)
+    {
+        selectedTheme = default;
+        hasSelectedTheme = TryGetSelectedTheme(out selectedTheme);
+
+        if (proceduralMaterials == null)
+        {
+            return null;
+        }
+
+        if (!hasSelectedTheme)
+        {
+            return proceduralMaterials;
+        }
+
+        return proceduralMaterials.CreateRuntimeCopy(selectedTheme.materialPalette, selectedTheme.overrideDefaultIntensity, selectedTheme.defaultIntensity);
+    }
+
+    private bool TryGetSelectedTheme(out ShowcaseThemeEntry theme)
+    {
+        theme = default;
+        if (themes == null || themes.Count == 0)
+        {
+            return false;
+        }
+
+        if (selectedThemeIndex < 0 || selectedThemeIndex >= themes.Count)
+        {
+            return false;
+        }
+
+        theme = themes[selectedThemeIndex];
+        return true;
+    }
+
+    private void TryAssignPaletteMaterial(SpriteRenderer renderer, ShapePaletteCategory category, string shapeId)
+    {
+        if (renderer == null)
+        {
+            return;
+        }
+
+        var palette = ShapeMaterialPaletteLoader.Load();
+        if (palette == null)
+        {
+            return;
+        }
+
+        var material = palette.GetMaterial(category);
+        if (material == null)
+        {
+            if (missingLogged.Add($"mat:{shapeId}"))
+            {
+                Debug.LogWarning($"Shape showcase missing palette material for shape id: {shapeId}");
+            }
+
+            return;
+        }
+
+        renderer.sharedMaterial = material;
+    }
+
+    private static SpriteProceduralMaterialApplier EnsureProceduralMaterialApplier(GameObject go)
+    {
+        var applier = go.GetComponent<SpriteProceduralMaterialApplier>();
+        if (applier == null)
+        {
+            applier = go.AddComponent<SpriteProceduralMaterialApplier>();
+        }
+
+        return applier;
+    }
+
+    private void SpawnHeader(Transform root, string text, Vector3 localPosition, ShapePaletteCategory category, ShowcaseThemeEntry theme, bool hasTheme)
     {
         var header = new GameObject($"Header_{text}");
-        header.transform.SetParent(transform, false);
+        header.transform.SetParent(root, false);
         header.transform.localPosition = localPosition;
 
         var mesh = header.AddComponent<TextMesh>();
@@ -263,7 +469,7 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         mesh.alignment = TextAlignment.Left;
         mesh.characterSize = 0.08f;
         mesh.fontSize = headerFontSize;
-        mesh.color = Color.Lerp(headerColor, ResolveCategoryColor(category), 0.45f);
+        mesh.color = Color.Lerp(headerColor, ResolveCategoryColor(category, theme, hasTheme), 0.45f);
     }
 
     private void SpawnLabel(string id, Transform parent, float yOffset)
@@ -306,8 +512,29 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
         return mat;
     }
 
-    private static Color ResolveCategoryColor(ShapePaletteCategory category)
+    private static Color ResolveCategoryColor(ShapePaletteCategory category, ShowcaseThemeEntry theme, bool hasTheme)
     {
+        var tint = ResolvePaletteColor(category, hasTheme ? theme.materialPalette : null);
+        if (hasTheme && theme.overrideCategoryTints)
+        {
+            tint = theme.ResolveThemeTint(category, tint);
+        }
+
+        return tint;
+    }
+
+    private static Color ResolvePaletteColor(ShapePaletteCategory category, ShapeMaterialPalette themePalette)
+    {
+        var palette = themePalette != null ? themePalette : ShapeMaterialPaletteLoader.Load();
+        if (palette != null)
+        {
+            var material = palette.GetMaterial(category);
+            if (TryResolveMaterialTint(material, out var materialTint))
+            {
+                return materialTint;
+            }
+        }
+
         return category switch
         {
             ShapePaletteCategory.Core => CoreColor,
@@ -317,6 +544,71 @@ public sealed class ShapeShowcaseBootstrap : MonoBehaviour
             ShapePaletteCategory.Lines => LinesColor,
             _ => CoreColor
         };
+    }
+
+    private static bool TryResolveMaterialTint(Material material, out Color tint)
+    {
+        if (material != null)
+        {
+            for (var i = 0; i < TintColorPropertyIds.Length; i++)
+            {
+                var propertyId = TintColorPropertyIds[i];
+                if (!material.HasProperty(propertyId))
+                {
+                    continue;
+                }
+
+                tint = SanitizeTint(material.GetColor(propertyId));
+                return true;
+            }
+        }
+
+        tint = default;
+        return false;
+    }
+
+    private static Color SanitizeTint(Color tint)
+    {
+        return new Color(
+            Mathf.Clamp(tint.r, 0f, 2f),
+            Mathf.Clamp(tint.g, 0f, 2f),
+            Mathf.Clamp(tint.b, 0f, 2f),
+            Mathf.Clamp01(tint.a));
+    }
+
+    [Serializable]
+    private struct ShowcaseThemeEntry
+    {
+        public string themeName;
+        public ShapeMaterialPalette materialPalette;
+        public bool overrideDefaultIntensity;
+        [Min(0f)] public float defaultIntensity;
+        public bool overrideCategoryTints;
+        public Color coreTint;
+        public Color organicTint;
+        public Color agentsTint;
+        public Color markersTint;
+        public Color linesTint;
+
+        public Color ResolveThemeTint(ShapePaletteCategory category, Color fallback)
+        {
+            var tinted = category switch
+            {
+                ShapePaletteCategory.Core => coreTint,
+                ShapePaletteCategory.Organic => organicTint,
+                ShapePaletteCategory.Agents => agentsTint,
+                ShapePaletteCategory.Markers => markersTint,
+                ShapePaletteCategory.Lines => linesTint,
+                _ => fallback
+            };
+
+            if (tinted.a <= 0f)
+            {
+                return fallback;
+            }
+
+            return SanitizeTint(tinted);
+        }
     }
 
     private readonly struct ShowcaseCategory

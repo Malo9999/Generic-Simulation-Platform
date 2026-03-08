@@ -16,6 +16,8 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
     private Vector3 baseLocalPosition;
     private float runtimePhase;
     private bool initialized;
+    private SpriteProceduralMaterialApplier proceduralMaterialApplier;
+    private bool proceduralMaterialUpdatesEnabled;
 
     public void Configure(SpriteRenderer renderer, AnimatedShapeProfile animationProfile, int seed)
     {
@@ -23,6 +25,12 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
         profile = animationProfile ?? new AnimatedShapeProfile();
         optionalSeed = seed;
         CacheBaseline();
+    }
+
+    public void SetProceduralMaterialApplier(SpriteProceduralMaterialApplier applier, bool enableUpdates)
+    {
+        proceduralMaterialApplier = applier;
+        proceduralMaterialUpdatesEnabled = enableUpdates && applier != null;
     }
 
     private void Awake()
@@ -85,6 +93,11 @@ public sealed class AnimatedShapeDriver : MonoBehaviour
         var animationTime = profile.useUnscaledTime ? Time.unscaledTime : Time.time;
         var autoPhase = profile.enableAutoPhase && Mathf.Approximately(profile.phaseOffset, 0f) ? runtimePhase : 0f;
         var t = (animationTime * profile.frequency) + profile.phaseOffset + autoPhase;
+
+        if (proceduralMaterialUpdatesEnabled && proceduralMaterialApplier != null)
+        {
+            proceduralMaterialApplier.ApplyAnimationFrame(t, profile.amplitude);
+        }
 
         switch (profile.animType)
         {
