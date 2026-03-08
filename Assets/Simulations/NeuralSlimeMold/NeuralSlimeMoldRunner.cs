@@ -289,7 +289,9 @@ public sealed class NeuralSlimeMoldRunner
 
             if (node.active)
             {
-                var consumed = nodeVisitCounts[i] * node.depletionRate * dt;
+                var localVisits = nodeVisitCounts[i];
+                var occupancyWeight = 1f + (Mathf.Clamp01(localVisits / 24f) * 1.8f);
+                var consumed = localVisits * node.depletionRate * dt * occupancyWeight;
                 node.capacity = Mathf.Max(0f, node.capacity - consumed);
                 if (node.capacity <= 0.0001f)
                 {
@@ -494,7 +496,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -548,7 +550,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -576,7 +578,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
+            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier);
             if (effectiveStrength <= 0f)
             {
                 continue;
@@ -600,27 +602,17 @@ public sealed class NeuralSlimeMoldRunner
         return Mathf.Clamp01(strongest * secondStrongest);
     }
 
-    private static float ComputeEffectiveStrength(NeuralFoodNodeState node, float depletedFoodStrengthMultiplier, float pulseStrength, int nodeIndex, int nodeCount, float time)
+    private static float ComputeEffectiveStrength(NeuralFoodNodeState node, float depletedFoodStrengthMultiplier)
     {
         if (node.maxCapacity <= 0f || node.strength <= 0f)
         {
             return 0f;
         }
 
-        var activeStrength = node.strength * (node.Capacity01 * node.Capacity01);
+        var capacity01 = Mathf.Clamp01(node.Capacity01);
+        var activeStrength = node.strength * (capacity01 * capacity01 * capacity01);
         var depletedStrength = node.strength * Mathf.Clamp01(depletedFoodStrengthMultiplier);
-        var baseStrength = node.active ? activeStrength : depletedStrength;
-
-        if (baseStrength <= 0f)
-        {
-            return 0f;
-        }
-
-        var safeNodeCount = Mathf.Max(1, nodeCount);
-        var nodePhase = (nodeIndex / (float)safeNodeCount);
-        var staggerPhase = (nodePhase * Mathf.PI * 2f) + (time * 0.37f);
-        var stagger = 0.82f + (Mathf.Sin(staggerPhase + (pulseStrength * Mathf.PI)) * 0.18f);
-        return baseStrength * Mathf.Max(0.1f, pulseStrength) * Mathf.Max(0.35f, stagger);
+        return node.active ? activeStrength : depletedStrength;
     }
 
     private float ComputeRestlessnessTurn(Vector2 position, float heading, float migrationRestlessness)
