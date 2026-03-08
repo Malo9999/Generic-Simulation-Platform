@@ -41,6 +41,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Tooltip("Optional explicit node positions (legacy). Leave empty to auto-generate.")] private Vector2[] manualFoodNodes = null;
     [SerializeField, Tooltip("Optional explicit food configs (position/radius/strength/capacity/depletion/regrowth). Requires reset.")] private NeuralFoodNodeConfig[] manualFoodConfigs = null;
 
+    [Header("Food Debug")]
+    [SerializeField] private bool showFoodMarkers = true;
+    [SerializeField] private bool showFoodGizmos = true;
+    [SerializeField] private bool debugFoodLogging = true;
+    [SerializeField] private NeuralFoodDebugPreset debugFoodPreset = NeuralFoodDebugPreset.Off;
+    [SerializeField] private bool strongFoodDebugMode = false;
+    [SerializeField, Min(1f)] private float strongFoodStrengthMultiplier = 6f;
+
     [Header("Obstacles")]
     [SerializeField, Tooltip("Can be toggled during play.")] private bool enableObstacles = true;
     [SerializeField, Tooltip("Custom obstacle overrides used when world preset is Custom.")] private NeuralObstacle[] manualObstacles = null;
@@ -80,7 +88,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             return;
         }
 
-        runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, indirectFoodBias, foodStrength, allowFoodRegrowth);
+        var liveFoodStrength = strongFoodDebugMode ? foodStrength * Mathf.Max(1f, strongFoodStrengthMultiplier) : foodStrength;
+        runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, indirectFoodBias, liveFoodStrength, allowFoodRegrowth);
         rendererComponent.Render(runner);
     }
 
@@ -115,6 +124,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
         ApplyRendererOverrides();
         rendererComponent.Build(runner);
+        LogFoodDebugSummary();
 
         if (autoFrameCamera)
         {
@@ -136,6 +146,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         resolvedFoodNodes = manualFoodNodes;
         resolvedFoodConfigs = manualFoodConfigs;
         resolvedObstacles = manualObstacles;
+
+        ApplyFoodDebugPreset(ref resolvedFoodNodes, ref resolvedFoodConfigs);
+
+        if (debugFoodPreset != NeuralFoodDebugPreset.Off)
+        {
+            return;
+        }
 
         if (useCustomWorldOverrides || worldPreset == NeuralSlimeWorldPreset.Custom)
         {
@@ -238,6 +255,83 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         };
     }
 
+    private void ApplyFoodDebugPreset(ref Vector2[] resolvedFoodNodes, ref NeuralFoodNodeConfig[] resolvedFoodConfigs)
+    {
+        if (debugFoodPreset == NeuralFoodDebugPreset.Off)
+        {
+            return;
+        }
+
+        resolvedFoodNodes = null;
+        switch (debugFoodPreset)
+        {
+            case NeuralFoodDebugPreset.Center3:
+                resolvedFoodConfigs = new[]
+                {
+                    CreateFood(new Vector2(-6f, 0f), 9f, 1f, 120f, 0.4f, 0f),
+                    CreateFood(new Vector2(0f, 0f), 9f, 1f, 120f, 0.4f, 0f),
+                    CreateFood(new Vector2(6f, 0f), 9f, 1f, 120f, 0.4f, 0f)
+                };
+                break;
+            case NeuralFoodDebugPreset.Corners4:
+                var half = mapSize * 0.5f;
+                var inset = new Vector2(Mathf.Max(6f, half.x * 0.45f), Mathf.Max(6f, half.y * 0.45f));
+                resolvedFoodConfigs = new[]
+                {
+                    CreateFood(new Vector2(-inset.x, -inset.y), 8f, 1f, 120f, 0.4f, 0f),
+                    CreateFood(new Vector2(-inset.x, inset.y), 8f, 1f, 120f, 0.4f, 0f),
+                    CreateFood(new Vector2(inset.x, -inset.y), 8f, 1f, 120f, 0.4f, 0f),
+                    CreateFood(new Vector2(inset.x, inset.y), 8f, 1f, 120f, 0.4f, 0f)
+                };
+                break;
+        }
+    }
+
+    private void LogFoodDebugSummary()
+    {
+        if (!debugFoodLogging || runner == null)
+        {
+            return;
+        }
+
+        var info = runner.LastFoodSpawnInfo;
+        Debug.Log($"[NeuralSlimeMold] food enabled={info.Enabled} requested={info.RequestedCount} spawned={info.SpawnedCount} rejected={info.RejectedCount} preset={debugFoodPreset} strongMode={strongFoodDebugMode}");
+
+        var nodes = runner.FoodNodes;
+        for (var i = 0; i < nodes.Length; i++)
+        {
+            var node = nodes[i];
+            Debug.Log($"[NeuralSlimeMold] food[{i}] pos={node.position} radius={node.radius:F2} strength={node.strength:F2} active={node.active} cap={node.capacity:F2}/{node.maxCapacity:F2}");
+        }
+    }
+
+    private void OnDrawGizmosSelected()
+    {
+        if (!showFoodGizmos)
+        {
+            return;
+        }
+
+        var nodes = ResolveGizmoFoodNodes();
+        if (nodes == null || nodes.Length == 0)
+        {
+            return;
+        }
+
+        Gizmos.color = new Color(1f, 0.25f, 0.9f, 0.95f);
+        for (var i = 0; i < nodes.Length; i++)
+        {
+            var node = nodes[i];
+            Gizmos.DrawWireSphere(new Vector3(node.position.x, node.position.y, 0f), Mathf.Max(0.2f, node.radius));
+        }
+    }
+
+    private NeuralFoodNodeConfig[] ResolveGizmoFoodNodes()
+    {
+        BuildWorldLayout(out _, out var configs, out _);
+        return configs;
+    }
+
     private static NeuralFoodNodeConfig CreateFood(Vector2 position, float radius, float strength, float capacity, float depletionRate, float regrowRate)
     {
         return new NeuralFoodNodeConfig
@@ -290,5 +384,6 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         rendererComponent.SetShapeToggles(useGlowAgentShape, useFieldBlobOverlay);
+        rendererComponent.SetFoodDebugVisuals(showFoodMarkers);
     }
 }

@@ -9,6 +9,14 @@ public enum NeuralSlimeWorldPreset
     Custom = 4
 }
 
+
+public enum NeuralFoodDebugPreset
+{
+    Off = 0,
+    Center3 = 1,
+    Corners4 = 2
+}
+
 public enum NeuralObstacleShape
 {
     Circle = 0,
