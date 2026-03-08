@@ -64,3 +64,18 @@ MonoBehaviour:
   - id: field_blob
     sprite: {fileID: 21300000, guid: 5762fc04f7375f24da0752ac22721cda, type: 3}
     template: {fileID: 11400000, guid: 1baa0c45e2294ff43977628fbdc51efa, type: 2}
+  - id: organic_amoeba_wide
+    sprite: {fileID: 21300000, guid: 5ca47acb401cfe94fb2e230bb8aeb082, type: 3}
+    template: {fileID: 11400000, guid: 96bb1187ff05081479bc17c2ecf4caf3, type: 2}
+  - id: organic_amoeba_lobed
+    sprite: {fileID: 21300000, guid: 22d69c2435aa40641b8bf1ebf5826e9e, type: 3}
+    template: {fileID: 11400000, guid: e40227ce122646b46b46da4df543384a, type: 2}
+  - id: organic_amoeba_sprawl
+    sprite: {fileID: 21300000, guid: 93ede60dd75975b459fc0670f5192036, type: 3}
+    template: {fileID: 11400000, guid: df67dd3d71b810348a8cde6a6d70a5e4, type: 2}
+  - id: organic_amoeba_pseudopod
+    sprite: {fileID: 21300000, guid: 6b2ef02f23f6a354e94b379cefbf27db, type: 3}
+    template: {fileID: 11400000, guid: b1e0c20774082c64693f76039244b8d2, type: 2}
+  - id: organic_amoeba_compact
+    sprite: {fileID: 21300000, guid: 4c4df5a9d63143f4ba616a7b017ff2d3, type: 3}
+    template: {fileID: 11400000, guid: f09680361df89054083e491976ed5d00, type: 2}
