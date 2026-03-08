@@ -118,27 +118,27 @@ public static class ShapeBaker
         changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaCrawler_Default.asset", t =>
         {
             t.ConfigureBase(ShapeId.OrganicAmoebaCrawler, "Blobs", 96, 16);
-            t.ApplyAmoebaPseudopodCrawlerDefaults();
+            t.ApplyAmoebaVectorCrawlerDefaults();
         }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaStar_Default.asset", t =>
         {
             t.ConfigureBase(ShapeId.OrganicAmoebaStar, "Blobs", 96, 16);
-            t.ApplyAmoebaPseudopodStarDefaults();
+            t.ApplyAmoebaVectorStarDefaults();
         }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaBranch_Default.asset", t =>
         {
             t.ConfigureBase(ShapeId.OrganicAmoebaBranch, "Blobs", 96, 16);
-            t.ApplyAmoebaPseudopodBranchDefaults();
+            t.ApplyAmoebaVectorBranchDefaults();
         }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaWideArms_Default.asset", t =>
         {
             t.ConfigureBase(ShapeId.OrganicAmoebaWideArms, "Blobs", 96, 16);
-            t.ApplyAmoebaPseudopodWideDefaults();
+            t.ApplyAmoebaVectorWideDefaults();
         }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<OrganicBlobTemplate>("OrganicAmoebaHunter_Default.asset", t =>
         {
             t.ConfigureBase(ShapeId.OrganicAmoebaHunter, "Blobs", 96, 16);
-            t.ApplyAmoebaPseudopodHunterDefaults();
+            t.ApplyAmoebaVectorHunterDefaults();
         }));
         changed |= EnsurePackTemplate(pack, CreateTemplate<StrokeTemplate>("StrokeScribble_Default.asset", null));
         changed |= EnsurePackTemplate(pack, CreateTemplate<TriangleAgentTemplate>("TriangleAgent_Default.asset", t =>
