@@ -3,10 +3,12 @@ using UnityEngine;
 public enum NeuralSlimeWorldPreset
 {
     OpenField = 0,
+    CorridorCross = 1,
+    CorridorMazeLite = 2,
+    Custom = 3,
     CorridorTest = 1,
     IslandObstacles = 2,
-    ClusteredFood = 3,
-    Custom = 4
+    ClusteredFood = 4
 }
 
 
