@@ -16,7 +16,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(1)] private int agentCount = 1800;
     [SerializeField] private Vector2 mapSize = new(64f, 64f);
     [SerializeField] private Vector2Int trailResolution = new(256, 256);
-    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.38f;
+    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.3f;
     [SerializeField, Range(0f, 1f)] private float trailDiffusion = 0.23f;
 
     [Header("Agent Motion")]
@@ -75,7 +75,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Range(0f, 1f), Tooltip("Minimum residual attraction for weakened/depleted food to preserve migration corridors.")] private float depletedFoodStrengthMultiplier = 0.03f;
     [SerializeField, Min(0f), Tooltip("Seconds before depleted food can reactivate.")] private float foodReactivationDelay = 12f;
     [SerializeField, Range(0f, 1f), Tooltip("Capacity fraction required to reactivate after delay.")] private float foodReactivationThreshold = 0.35f;
-    [SerializeField, Min(0f), Tooltip("Extra deterministic steering pressure to break stable local rings over time.")] private float migrationRestlessness = 0.2f;
+    [HideInInspector, SerializeField, Min(0f), Tooltip("Extra deterministic steering pressure to break stable local rings over time.")] private float migrationRestlessness = 0f;
     [SerializeField, Tooltip("Optional explicit node positions (legacy). Leave empty to auto-generate.")] private Vector2[] manualFoodNodes = null;
     [SerializeField, Tooltip("Optional explicit food configs (position/radius/strength/capacity/depletion/regrowth). Requires reset.")] private NeuralFoodNodeConfig[] manualFoodConfigs = null;
 
@@ -88,7 +88,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(1f)] private float strongFoodStrengthMultiplier = 6f;
 
     [Header("Obstacles (Experimental)")]
-    [SerializeField, Tooltip("Can be toggled during play.")] private bool enableObstacles = false;
+    [HideInInspector, SerializeField, Tooltip("Can be toggled during play.")] private bool enableObstacles = false;
     [SerializeField, Tooltip("Custom obstacle overrides used when world preset is Custom.")] private NeuralObstacle[] manualObstacles = null;
     [SerializeField, Min(1f), Tooltip("Base thickness used by generated corridor blockers.")] private float obstacleThickness = 6f;
     [SerializeField, Min(2f), Tooltip("Gap size left inside generated corridor barriers.")] private float corridorGapSize = 12f;
@@ -152,6 +152,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             ? trailDecayPerSecond * Mathf.Lerp(1f, 0.55f, Mathf.Clamp01(pathPersistenceBias))
             : trailDecayPerSecond;
 
+        var usingSimpleFoodDecayPreset = experimental && worldPreset == NeuralSlimeWorldPreset.FoodDecayMigration && !useCustomWorldOverrides;
         runner.Tick(
             Time.deltaTime,
             tickDiffusion,
@@ -164,17 +165,17 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             experimental ? effectiveFoodSenseRadius : Mathf.Max(foodRadius, sensorDistance * 4f),
             experimental ? effectiveFoodTurnBias : 0f,
             experimental ? depletedFoodStrengthMultiplier : 0f,
-            experimental ? foodReactivationDelay : 0f,
-            experimental ? foodReactivationThreshold : 0f,
-            experimental ? migrationRestlessness : 0f,
+            experimental && !usingSimpleFoodDecayPreset ? foodReactivationDelay : 0f,
+            experimental && !usingSimpleFoodDecayPreset ? foodReactivationThreshold : 0f,
+            experimental && !usingSimpleFoodDecayPreset ? migrationRestlessness : 0f,
             experimental ? effectiveTurnNoise : 0f,
             experimental ? effectiveLoopSuppression : 0f,
             experimental ? effectiveDepositNearFoodMultiplier : 1f,
             experimental ? pathPersistenceBias : 0f,
-            experimental && foodPulseEnabled,
+            experimental && !usingSimpleFoodDecayPreset && foodPulseEnabled,
             foodPulsePeriod,
             foodPulseStrength,
-            experimental && localTrailScrubEnabled,
+            experimental && !usingSimpleFoodDecayPreset && localTrailScrubEnabled,
             localTrailScrubThreshold,
             localTrailScrubAmount);
         rendererComponent.Render(runner);
@@ -314,10 +315,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     {
         return new[]
         {
-            CreateFood(new Vector2(-22f, -10f), 11f, 1.3f, 52f, 2.15f, 0.02f),
-            CreateFood(new Vector2(-2f, 15f), 10f, 1.05f, 70f, 1.35f, 0.02f),
-            CreateFood(new Vector2(19f, 11f), 11f, 1.2f, 84f, 1.1f, 0.02f),
-            CreateFood(new Vector2(18f, -15f), 10f, 1.15f, 76f, 1.2f, 0.02f)
+            CreateFood(new Vector2(-22f, -10f), 11f, 1.35f, 46f, 2.6f, 0.01f),
+            CreateFood(new Vector2(-2f, 15f), 10f, 1.05f, 74f, 1.1f, 0.01f),
+            CreateFood(new Vector2(19f, 11f), 11f, 1.2f, 88f, 1.0f, 0.01f),
+            CreateFood(new Vector2(18f, -15f), 10f, 1.15f, 80f, 1.05f, 0.01f)
         };
     }
 
