@@ -6,6 +6,11 @@ public static class ShapeId
     public const string RingPing = "ring_ping";
     public const string OrganicMetaball = "organic_metaball";
     public const string OrganicAmoeba = "organic_amoeba";
+    public const string OrganicAmoebaWide = "organic_amoeba_wide";
+    public const string OrganicAmoebaLobed = "organic_amoeba_lobed";
+    public const string OrganicAmoebaSprawl = "organic_amoeba_sprawl";
+    public const string OrganicAmoebaPseudopod = "organic_amoeba_pseudopod";
+    public const string OrganicAmoebaCompact = "organic_amoeba_compact";
     public const string StrokeScribble = "stroke_scribble";
     public const string TriangleAgent = "triangle_agent";
     public const string DiamondAgent = "diamond_agent";
