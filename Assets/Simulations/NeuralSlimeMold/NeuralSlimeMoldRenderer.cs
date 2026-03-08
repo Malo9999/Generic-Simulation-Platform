@@ -15,9 +15,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private int fieldTextureRefreshInterval = 1;
 
     [Header("World Marker Visuals")]
-    [SerializeField] private Color foodActiveColor = new(0.95f, 0.85f, 0.35f, 0.75f);
-    [SerializeField] private Color foodDepletedColor = new(0.55f, 0.35f, 0.15f, 0.4f);
+    [SerializeField] private Color foodActiveColor = new(1f, 0.2f, 0.95f, 1f);
+    [SerializeField] private Color foodDepletedColor = new(0.75f, 0.28f, 0.62f, 0.95f);
     [SerializeField] private Color obstacleColor = new(0.4f, 0.48f, 0.55f, 0.9f);
+    [SerializeField] private bool showFoodMarkers = true;
 
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
@@ -36,6 +37,11 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     {
         useGlowAgentShape = glowAgents;
         useFieldBlobSpriteForFieldOverlay = fieldBlobOverlay;
+    }
+
+    public void SetFoodDebugVisuals(bool markersVisible)
+    {
+        showFoodMarkers = markersVisible;
     }
 
     public void Build(NeuralSlimeMoldRunner runner)
@@ -74,7 +80,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         var foodNodes = runner.FoodNodes;
         for (var i = 0; i < foodNodeRenderers.Count; i++)
         {
-            var active = i < foodNodes.Length;
+            var active = showFoodMarkers && i < foodNodes.Length;
             foodNodeRenderers[i].gameObject.SetActive(active);
             if (!active)
             {
@@ -84,8 +90,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var node = foodNodes[i];
             var clamped = ClampNodeMarker(node.position);
             var capacity = node.Capacity01;
-            foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.3f);
-            foodNodeRenderers[i].transform.localScale = Vector3.one * Mathf.Lerp(0.18f, 0.5f, Mathf.Clamp01(node.radius * 0.08f));
+            foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.55f);
+            foodNodeRenderers[i].transform.localScale = Vector3.one * Mathf.Lerp(0.45f, 1.05f, Mathf.Clamp01(node.radius * 0.08f));
             foodNodeRenderers[i].color = Color.Lerp(foodDepletedColor, foodActiveColor, capacity);
         }
 
@@ -211,7 +217,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             go.transform.localScale = Vector3.one * 0.3f;
 
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sortingOrder = 2;
+            sr.sortingOrder = 30;
             sr.sprite = markerSprite;
             sr.color = foodActiveColor;
             foodNodeRenderers.Add(sr);

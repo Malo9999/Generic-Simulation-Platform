@@ -3,6 +3,22 @@ using UnityEngine;
 
 public sealed class NeuralSlimeMoldRunner
 {
+    public readonly struct FoodSpawnDebugInfo
+    {
+        public FoodSpawnDebugInfo(bool enabled, int requestedCount, int spawnedCount, int rejectedCount)
+        {
+            Enabled = enabled;
+            RequestedCount = requestedCount;
+            SpawnedCount = spawnedCount;
+            RejectedCount = rejectedCount;
+        }
+
+        public bool Enabled { get; }
+        public int RequestedCount { get; }
+        public int SpawnedCount { get; }
+        public int RejectedCount { get; }
+    }
+
     public enum BoundaryMode
     {
         Wrap = 0,
@@ -32,6 +48,7 @@ public sealed class NeuralSlimeMoldRunner
 
     public int Seed { get; private set; }
     public int AgentCount => agents?.Length ?? 0;
+    public FoodSpawnDebugInfo LastFoodSpawnInfo { get; private set; }
 
     public void Initialize(
         int seed,
@@ -406,10 +423,12 @@ public sealed class NeuralSlimeMoldRunner
 
     private void BuildFoodNodes(bool enableFoodNodes, int foodNodeCount, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs)
     {
+        var rejectedCount = 0;
         if (!enableFoodNodes)
         {
             foodNodes = Array.Empty<NeuralFoodNodeState>();
             nodeVisitCounts = Array.Empty<int>();
+            LastFoodSpawnInfo = new FoodSpawnDebugInfo(false, foodNodeCount, 0, 0);
             return;
         }
 
@@ -430,6 +449,7 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             nodeVisitCounts = new int[foodNodes.Length];
+            LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, manualFoodConfigs.Length, foodNodes.Length, rejectedCount);
             return;
         }
 
@@ -443,6 +463,7 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             nodeVisitCounts = new int[foodNodes.Length];
+            LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, manualFoodNodes.Length, foodNodes.Length, rejectedCount);
             return;
         }
 
@@ -457,6 +478,7 @@ public sealed class NeuralSlimeMoldRunner
             var placed = TrySampleFoodPosition(placementRng, out var position);
             if (!placed)
             {
+                rejectedCount++;
                 position = ClampNodeInsideBounds(Vector2.zero + placementRng.InsideUnitCircle() * (mapSize * 0.1f));
             }
 
@@ -464,6 +486,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         nodeVisitCounts = new int[foodNodes.Length];
+        LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, count, foodNodes.Length, rejectedCount);
     }
 
     private bool TrySampleFoodPosition(SeededRng placementRng, out Vector2 position)
