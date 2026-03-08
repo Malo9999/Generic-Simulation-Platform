@@ -14,16 +14,23 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private float fieldExposure = 1.6f;
     [SerializeField] private int fieldTextureRefreshInterval = 1;
 
+    [Header("World Marker Visuals")]
+    [SerializeField] private Color foodActiveColor = new(0.95f, 0.85f, 0.35f, 0.75f);
+    [SerializeField] private Color foodDepletedColor = new(0.55f, 0.35f, 0.15f, 0.4f);
+    [SerializeField] private Color obstacleColor = new(0.4f, 0.48f, 0.55f, 0.9f);
+
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobSpriteForFieldOverlay = true;
 
     private readonly List<SpriteRenderer> agentRenderers = new();
     private readonly List<SpriteRenderer> foodNodeRenderers = new();
+    private readonly List<SpriteRenderer> obstacleRenderers = new();
     private Texture2D fieldTexture;
     private SpriteRenderer fieldRenderer;
     private int frameCounter;
     private Vector2 worldSize;
+    private Sprite fallbackSquareSprite;
 
     public void SetShapeToggles(bool glowAgents, bool fieldBlobOverlay)
     {
@@ -42,8 +49,9 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
         worldSize = runner.Field.WorldSize;
         BuildField(worldSize, runner.Field.Width, runner.Field.Height);
+        BuildObstacles(runner.Obstacles);
         BuildAgents(runner.AgentCount);
-        BuildFoodNodes(runner.FoodNodes, runner.FoodRadius);
+        BuildFoodNodes(runner.FoodNodes);
     }
 
     public void Render(NeuralSlimeMoldRunner runner)
@@ -68,11 +76,17 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         {
             var active = i < foodNodes.Length;
             foodNodeRenderers[i].gameObject.SetActive(active);
-            if (active)
+            if (!active)
             {
-                var clamped = ClampNodeMarker(foodNodes[i]);
-                foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.3f);
+                continue;
             }
+
+            var node = foodNodes[i];
+            var clamped = ClampNodeMarker(node.position);
+            var capacity = node.Capacity01;
+            foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.3f);
+            foodNodeRenderers[i].transform.localScale = Vector3.one * Mathf.Lerp(0.18f, 0.5f, Mathf.Clamp01(node.radius * 0.08f));
+            foodNodeRenderers[i].color = Color.Lerp(foodDepletedColor, foodActiveColor, capacity);
         }
 
         frameCounter++;
@@ -116,6 +130,45 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
     }
 
+    private void BuildObstacles(NeuralObstacle[] obstacles)
+    {
+        if (obstacles == null || obstacles.Length == 0)
+        {
+            return;
+        }
+
+        ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out var dot);
+        var square = GetFallbackSquareSprite();
+
+        for (var i = 0; i < obstacles.Length; i++)
+        {
+            var obstacle = obstacles[i];
+            var go = new GameObject($"Obstacle_{i:00}");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(obstacle.center.x, obstacle.center.y, -0.25f);
+
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sortingOrder = 1;
+            sr.color = obstacleColor;
+
+            if (obstacle.shape == NeuralObstacleShape.Rectangle)
+            {
+                sr.sprite = square;
+                sr.drawMode = SpriteDrawMode.Sliced;
+                sr.size = new Vector2(Mathf.Max(0.5f, obstacle.size.x), Mathf.Max(0.5f, obstacle.size.y));
+                go.transform.localScale = Vector3.one;
+            }
+            else
+            {
+                sr.sprite = dot;
+                var diameter = Mathf.Max(0.2f, obstacle.radius * 2f);
+                go.transform.localScale = new Vector3(diameter, diameter, 1f);
+            }
+
+            obstacleRenderers.Add(sr);
+        }
+    }
+
     private void BuildAgents(int totalAgents)
     {
         var visibleCount = Mathf.Min(Mathf.Max(1, maxVisibleAgents), totalAgents);
@@ -139,7 +192,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
     }
 
-    private void BuildFoodNodes(Vector2[] foodNodes, float foodRadius)
+    private void BuildFoodNodes(NeuralFoodNodeState[] foodNodes)
     {
         if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlowSmall, out var markerSprite))
         {
@@ -151,18 +204,16 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             return;
         }
 
-        var markerScale = Mathf.Clamp(foodRadius * 0.1f, 0.18f, 0.55f);
-
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var go = new GameObject($"FoodNode_{i:00}");
             go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * markerScale;
+            go.transform.localScale = Vector3.one * 0.3f;
 
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sortingOrder = 2;
             sr.sprite = markerSprite;
-            sr.color = new Color(0.95f, 0.85f, 0.35f, 0.65f);
+            sr.color = foodActiveColor;
             foodNodeRenderers.Add(sr);
         }
     }
@@ -207,10 +258,25 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         fieldTexture.Apply(false, false);
     }
 
+    private Sprite GetFallbackSquareSprite()
+    {
+        if (fallbackSquareSprite != null)
+        {
+            return fallbackSquareSprite;
+        }
+
+        var tex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+        tex.SetPixel(0, 0, Color.white);
+        tex.Apply(false, false);
+        fallbackSquareSprite = Sprite.Create(tex, new Rect(0f, 0f, 1f, 1f), new Vector2(0.5f, 0.5f), 1f);
+        return fallbackSquareSprite;
+    }
+
     private void ClearChildren()
     {
         agentRenderers.Clear();
         foodNodeRenderers.Clear();
+        obstacleRenderers.Clear();
 
         for (var i = transform.childCount - 1; i >= 0; i--)
         {
@@ -237,6 +303,22 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             }
 
             fieldTexture = null;
+        }
+
+        if (fallbackSquareSprite != null)
+        {
+            if (Application.isPlaying)
+            {
+                Destroy(fallbackSquareSprite.texture);
+                Destroy(fallbackSquareSprite);
+            }
+            else
+            {
+                DestroyImmediate(fallbackSquareSprite.texture);
+                DestroyImmediate(fallbackSquareSprite);
+            }
+
+            fallbackSquareSprite = null;
         }
 
         fieldRenderer = null;
