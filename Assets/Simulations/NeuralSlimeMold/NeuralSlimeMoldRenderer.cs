@@ -15,12 +15,18 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private int fieldTextureRefreshInterval = 1;
 
     [Header("World Marker Visuals")]
-    [SerializeField] private Color foodActiveColor = new(1f, 0.87f, 0.2f, 1f);
-    [SerializeField] private Color foodDepletedColor = new(0.95f, 0.5f, 0.15f, 0.92f);
+    [SerializeField] private Color foodActiveColor = new(0.85f, 1f, 0.23f, 1f);
+    [SerializeField] private Color foodDepletedColor = new(0.66f, 0.35f, 0.16f, 0.92f);
     [SerializeField] private Color obstacleColor = new(0.4f, 0.48f, 0.55f, 0.9f);
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
     [SerializeField, Range(0f, 1f)] private float foodMarkerMinAlpha = 0.75f;
+
+    [Header("Food Marker State Styling")]
+    [SerializeField, Range(0.2f, 1.5f)] private float depletedScaleMultiplier = 0.72f;
+    [SerializeField, Range(0.1f, 1f)] private float depletedAlphaMultiplier = 0.55f;
+    [SerializeField, Range(0.2f, 2f)] private float activeScaleBoost = 1.08f;
+    [SerializeField, Range(0f, 0.5f)] private float depletedThreshold01 = 0.08f;
 
     private bool foodInfluenceDebugVisuals;
     private Color backgroundColor = new(0.01f, 0.02f, 0.04f, 1f);
@@ -32,6 +38,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     private readonly List<SpriteRenderer> agentRenderers = new();
     private readonly List<SpriteRenderer> foodNodeRenderers = new();
     private readonly List<SpriteRenderer> obstacleRenderers = new();
+
     private Texture2D fieldTexture;
     private SpriteRenderer fieldRenderer;
     private int frameCounter;
@@ -96,22 +103,39 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         for (var i = 0; i < foodNodeRenderers.Count; i++)
         {
             var active = showFoodMarkers && i < foodNodes.Length;
-            foodNodeRenderers[i].gameObject.SetActive(active);
+            var sr = foodNodeRenderers[i];
+            sr.gameObject.SetActive(active);
+
             if (!active)
             {
                 continue;
             }
 
             var node = foodNodes[i];
+            var capacity01 = Mathf.Clamp01(node.Capacity01);
+            var isDepleted = capacity01 <= depletedThreshold01;
+
             var clamped = ClampNodeMarker(node.position);
-            var capacity = node.Capacity01;
-            foodNodeRenderers[i].transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
-            var markerScaleBoost = foodInfluenceDebugVisuals ? 1.4f : 1f;
+            sr.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
+
+            var markerScaleBoost = foodInfluenceDebugVisuals ? 1.35f : 1f;
             var markerRadius = Mathf.Lerp(0.65f, 1.3f, Mathf.Clamp01(node.consumeRadius * 0.08f));
-            foodNodeRenderers[i].transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius;
-            var markerColor = Color.Lerp(foodDepletedColor, foodActiveColor, capacity);
-            markerColor.a = Mathf.Max(foodMarkerMinAlpha, markerColor.a);
-            foodNodeRenderers[i].color = markerColor;
+
+            var stateScale = isDepleted ? depletedScaleMultiplier : activeScaleBoost;
+            sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;
+
+            var markerColor = Color.Lerp(foodDepletedColor, foodActiveColor, capacity01);
+
+            if (isDepleted)
+            {
+                markerColor.a = Mathf.Max(0.15f, foodMarkerMinAlpha * depletedAlphaMultiplier);
+            }
+            else
+            {
+                markerColor.a = Mathf.Max(foodMarkerMinAlpha, markerColor.a);
+            }
+
+            sr.color = markerColor;
         }
 
         frameCounter++;
@@ -134,22 +158,42 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             wrapMode = TextureWrapMode.Clamp
         };
 
-        var sprite = Sprite.Create(fieldTexture, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), width / worldSize.x);
-        fieldRenderer.sprite = sprite;
+        var densitySprite = Sprite.Create(
+            fieldTexture,
+            new Rect(0, 0, width, height),
+            new Vector2(0.5f, 0.5f),
+            width / worldSize.x);
+
+        fieldRenderer.sprite = densitySprite;
         fieldRenderer.color = Color.white;
 
-        if (useFieldBlobSpriteForFieldOverlay && ShapeLibraryProvider.TryGetSprite(ShapeId.FieldBlob, out var blobSprite))
+        if (useFieldBlobSpriteForFieldOverlay)
         {
+            Sprite overlaySprite = null;
+
+            if (ShapeLibraryProvider.TryGetSprite(ShapeId.FieldBlob, out var blobSprite) && blobSprite != null)
+            {
+                overlaySprite = blobSprite;
+            }
+            else
+            {
+                overlaySprite = GetFallbackSquareSprite();
+            }
+
             fieldRenderer.drawMode = SpriteDrawMode.Tiled;
+            fieldRenderer.sprite = overlaySprite;
             fieldRenderer.size = worldSize;
-            fieldRenderer.sprite = blobSprite;
-            fieldRenderer.color = new Color(Mathf.Lerp(backgroundColor.r, fieldHighColor.r, 0.22f), Mathf.Lerp(backgroundColor.g, fieldHighColor.g, 0.22f), Mathf.Lerp(backgroundColor.b, fieldHighColor.b, 0.22f), 0.24f);
+            fieldRenderer.color = new Color(
+                Mathf.Lerp(backgroundColor.r, fieldHighColor.r, 0.22f),
+                Mathf.Lerp(backgroundColor.g, fieldHighColor.g, 0.22f),
+                Mathf.Lerp(backgroundColor.b, fieldHighColor.b, 0.22f),
+                0.24f);
 
             var fieldTextureGo = new GameObject("FieldDensityTexture");
             fieldTextureGo.transform.SetParent(transform, false);
             var densityRenderer = fieldTextureGo.AddComponent<SpriteRenderer>();
             densityRenderer.sortingOrder = -19;
-            densityRenderer.sprite = sprite;
+            densityRenderer.sprite = densitySprite;
             densityRenderer.color = Color.white;
             fieldRenderer = densityRenderer;
         }
@@ -197,6 +241,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     private void BuildAgents(int totalAgents)
     {
         var visibleCount = Mathf.Min(Mathf.Max(1, maxVisibleAgents), totalAgents);
+
         ShapeLibraryProvider.TryGetSprite(useGlowAgentShape ? ShapeId.DotGlowSmall : ShapeId.DotCore, out var agentSprite);
         if (agentSprite == null)
         {
@@ -226,7 +271,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
         if (markerSprite == null)
         {
-            return;
+            markerSprite = GetFallbackSquareSprite();
         }
 
         for (var i = 0; i < foodNodes.Length; i++)
@@ -306,7 +351,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         for (var i = transform.childCount - 1; i >= 0; i--)
         {
             var child = transform.GetChild(i);
-            if (Application.isPlaying)
+            if (UnityEngine.Application.isPlaying)
             {
                 Destroy(child.gameObject);
             }
@@ -318,7 +363,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
         if (fieldTexture != null)
         {
-            if (Application.isPlaying)
+            if (UnityEngine.Application.isPlaying)
             {
                 Destroy(fieldTexture);
             }
@@ -332,7 +377,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
         if (fallbackSquareSprite != null)
         {
-            if (Application.isPlaying)
+            if (UnityEngine.Application.isPlaying)
             {
                 Destroy(fallbackSquareSprite.texture);
                 Destroy(fallbackSquareSprite);

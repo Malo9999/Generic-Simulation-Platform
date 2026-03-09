@@ -1219,22 +1219,26 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   autoStart: 1
   seed: 12345
-  agentCount: 2200
+  agentCount: 600
   mapSize: {x: 64, y: 64}
   trailResolution: {x: 256, y: 256}
   trailDecayPerSecond: 0.6
   trailDiffusion: 0.23
   sensorAngleDegrees: 35
-  sensorDistance: 1.8
+  sensorDistance: 1.4
   speed: 6.7
   turnRateDegrees: 180
   depositAmount: 1.2
   explorationTurnNoise: 0.08
-  foodNodeCount: 4
+  foodNodeCount: 10
   foodStrength: 1.1
-  foodCapacity: 70
-  consumeRadius: 9
-  consumeRate: 1.5
+  foodCapacity: 1200
+  consumeRadius: 6
+  consumeRate: 0.25
+  allowFoodRegrowth: 1
+  foodReactivationDelay: 10
+  regrowRate: 0.08
+  foodReactivationThreshold: 0.25
   spawnFromSeed: 1
   manualFoodConfigs: []
   useGlowAgentShape: 1
