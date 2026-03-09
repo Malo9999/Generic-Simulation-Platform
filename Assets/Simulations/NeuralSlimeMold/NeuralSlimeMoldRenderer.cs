@@ -1,23 +1,33 @@
 using System.Collections.Generic;
 using UnityEngine;
+using static System.Net.Mime.MediaTypeNames;
 
 public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 {
     [Header("Agent Visuals")]
     [SerializeField] private float agentScale = 0.2f;
     [SerializeField] private int maxVisibleAgents = 1500;
-    [SerializeField] private Color agentColor = new(0.65f, 1f, 0.86f, 0.85f);
+    [SerializeField] private Color agentColor = new(0.62f, 0.98f, 0.78f, 0.85f);
 
     [Header("Field Visuals")]
-    [SerializeField] private Color fieldLowColor = new(0.003f, 0.007f, 0.015f, 1f);
-    [SerializeField] private Color fieldHighColor = new(0.10f, 0.72f, 0.54f, 0.90f);
-    [SerializeField] private float fieldExposure = 0.95f;
+    [SerializeField] private Color fieldLowColor = new(0.06f, 0.07f, 0.05f, 1f);
+    [SerializeField] private Color fieldHighColor = new(0.30f, 0.78f, 0.48f, 0.92f);
+    [SerializeField] private float fieldExposure = 1.05f;
     [SerializeField] private int fieldTextureRefreshInterval = 1;
 
+    [Header("Field Network Styling")]
+    [SerializeField, Range(0.1f, 4f)] private float veinContrast = 1.65f;
+    [SerializeField, Range(0f, 1f)] private float veinFloor = 0.05f;
+    [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.2f;
+    [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.15f;
+    [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.85f;
+    [SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.06f;
+
     [Header("World Marker Visuals")]
-    [SerializeField] private Color foodActiveColor = new(1f, 0.96f, 0.20f, 1f);
-    [SerializeField] private Color foodDepletedColor = new(0.55f, 0.22f, 0.06f, 0.95f);
-    [SerializeField] private Color obstacleColor = new(0.4f, 0.48f, 0.55f, 0.9f);
+    [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
+    [SerializeField] private Color foodDepletedColor = new(0.38f, 0.25f, 0.12f, 0.95f);
+    [SerializeField] private Color foodRegrowingColor = new(0.76f, 0.56f, 0.22f, 0.98f);
+    [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
     [SerializeField, Range(0f, 1f)] private float foodMarkerMinAlpha = 0.75f;
@@ -27,9 +37,13 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0.1f, 1f)] private float depletedAlphaMultiplier = 0.35f;
     [SerializeField, Range(0.2f, 2f)] private float activeScaleBoost = 1.15f;
     [SerializeField, Range(0f, 0.5f)] private float depletedThreshold01 = 0.12f;
+    [SerializeField, Range(0f, 0.5f)] private float lowFoodThreshold01 = 0.45f;
+    [SerializeField, Range(0f, 0.3f)] private float activePulseAmplitude = 0.08f;
+    [SerializeField, Range(0f, 0.3f)] private float regrowPulseAmplitude = 0.12f;
+    [SerializeField, Range(0.1f, 8f)] private float foodPulseSpeed = 2.2f;
 
     private bool foodInfluenceDebugVisuals;
-    private Color backgroundColor = new(0.01f, 0.02f, 0.04f, 1f);
+    private Color backgroundColor = new(0.10f, 0.09f, 0.07f, 1f);
 
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
@@ -99,7 +113,19 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             t.localRotation = Quaternion.Euler(0f, 0f, state.heading * Mathf.Rad2Deg);
         }
 
-        var foodNodes = runner.FoodNodes;
+        UpdateFoodNodes(runner.FoodNodes);
+
+        frameCounter++;
+        if (fieldTextureRefreshInterval <= 1 || frameCounter % fieldTextureRefreshInterval == 0)
+        {
+            UpdateFieldTexture(runner.Field);
+        }
+    }
+
+    private void UpdateFoodNodes(NeuralFoodNodeState[] foodNodes)
+    {
+        var time = UnityEngine.Application.isPlaying ? Time.time : 0f;
+
         for (var i = 0; i < foodNodeRenderers.Count; i++)
         {
             var active = showFoodMarkers && i < foodNodes.Length;
@@ -114,13 +140,17 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var node = foodNodes[i];
             var capacity01 = Mathf.Clamp01(node.Capacity01);
             var isDepleted = capacity01 <= depletedThreshold01;
-            var isLow = !isDepleted && capacity01 < 0.45f;
+            var isLow = !isDepleted && capacity01 < lowFoodThreshold01;
+            var isRegrowing = !isDepleted && capacity01 < 0.75f;
 
             var clamped = ClampNodeMarker(node.position);
             sr.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
 
             var markerScaleBoost = foodInfluenceDebugVisuals ? 1.35f : 1f;
             var markerRadius = Mathf.Lerp(0.9f, 1.6f, Mathf.Clamp01(node.consumeRadius * 0.08f));
+
+            var perNodePhase = i * 0.73f;
+            var pulse = Mathf.Sin((time * foodPulseSpeed) + perNodePhase) * 0.5f + 0.5f;
 
             Color markerColor;
             float stateScale;
@@ -134,26 +164,35 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             }
             else if (isLow)
             {
-                markerColor = Color.Lerp(foodDepletedColor, foodActiveColor, 0.35f);
-                stateScale = Mathf.Lerp(depletedScaleMultiplier, activeScaleBoost, 0.45f);
-                stateAlpha = Mathf.Max(0.45f, foodMarkerMinAlpha * 0.8f);
+                markerColor = Color.Lerp(foodDepletedColor, foodRegrowingColor, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
+                var regrowPulse = 1f + (pulse * regrowPulseAmplitude);
+                stateScale = Mathf.Lerp(depletedScaleMultiplier, activeScaleBoost, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01)) * regrowPulse;
+                stateAlpha = Mathf.Lerp(
+                    Mathf.Max(0.35f, foodMarkerMinAlpha * 0.55f),
+                    Mathf.Max(0.6f, foodMarkerMinAlpha * 0.9f),
+                    Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
+            }
+            else if (isRegrowing)
+            {
+                markerColor = Color.Lerp(foodRegrowingColor, foodActiveColor, Mathf.InverseLerp(lowFoodThreshold01, 1f, capacity01));
+                var pulseScale = 1f + (pulse * regrowPulseAmplitude * 0.75f);
+                stateScale = Mathf.Lerp(0.9f, activeScaleBoost, capacity01) * pulseScale;
+                stateAlpha = Mathf.Lerp(
+                    Mathf.Max(0.65f, foodMarkerMinAlpha * 0.9f),
+                    Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a),
+                    capacity01);
             }
             else
             {
                 markerColor = foodActiveColor;
-                stateScale = activeScaleBoost;
+                var ripePulse = 1f + (pulse * activePulseAmplitude);
+                stateScale = activeScaleBoost * ripePulse;
                 stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a);
             }
 
             sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;
             markerColor.a = stateAlpha;
             sr.color = markerColor;
-        }
-
-        frameCounter++;
-        if (fieldTextureRefreshInterval <= 1 || frameCounter % fieldTextureRefreshInterval == 0)
-        {
-            UpdateFieldTexture(runner.Field);
         }
     }
 
@@ -196,10 +235,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             fieldRenderer.sprite = overlaySprite;
             fieldRenderer.size = worldSize;
             fieldRenderer.color = new Color(
-                Mathf.Lerp(backgroundColor.r, fieldHighColor.r, 0.22f),
-                Mathf.Lerp(backgroundColor.g, fieldHighColor.g, 0.22f),
-                Mathf.Lerp(backgroundColor.b, fieldHighColor.b, 0.22f),
-                0.24f);
+                Mathf.Lerp(backgroundColor.r, fieldHighColor.r, 0.18f + fieldBackgroundLift),
+                Mathf.Lerp(backgroundColor.g, fieldHighColor.g, 0.18f + fieldBackgroundLift),
+                Mathf.Lerp(backgroundColor.b, fieldHighColor.b, 0.18f + fieldBackgroundLift),
+                0.22f);
 
             var fieldTextureGo = new GameObject("FieldDensityTexture");
             fieldTextureGo.transform.SetParent(transform, false);
@@ -312,6 +351,9 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             return;
         }
 
+        var width = field.Width;
+        var height = field.Height;
+
         var max = 0.001f;
         for (var i = 0; i < values.Length; i++)
         {
@@ -322,12 +364,49 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
 
         var pixels = fieldTexture.GetPixels32();
-        for (var i = 0; i < values.Length; i++)
+
+        for (var y = 0; y < height; y++)
         {
-            var normalized = Mathf.Clamp01((values[i] / max) * fieldExposure);
-            var color = Color.Lerp(fieldLowColor, fieldHighColor, normalized);
-            color.a = normalized;
-            pixels[i] = color;
+            var yOffset = y * width;
+
+            for (var x = 0; x < width; x++)
+            {
+                var index = yOffset + x;
+                var raw = values[index];
+
+                var normalized = Mathf.Clamp01((raw / max) * fieldExposure);
+
+                var center = normalized;
+                var left = x > 0 ? Mathf.Clamp01((values[index - 1] / max) * fieldExposure) : center;
+                var right = x < width - 1 ? Mathf.Clamp01((values[index + 1] / max) * fieldExposure) : center;
+                var down = y > 0 ? Mathf.Clamp01((values[index - width] / max) * fieldExposure) : center;
+                var up = y < height - 1 ? Mathf.Clamp01((values[index + width] / max) * fieldExposure) : center;
+
+                var neighborAverage = (left + right + up + down) * 0.25f;
+                var reinforced = Mathf.Lerp(center, Mathf.Max(center, neighborAverage), veinThicknessBoost * 0.5f);
+
+                var contrast = Mathf.Pow(Mathf.Max(0f, reinforced), veinContrast);
+                var thicknessValue = Mathf.Sqrt(Mathf.Max(0f, contrast));
+                var veinValue = Mathf.InverseLerp(veinFloor, 1f, thicknessValue);
+
+                var glow = Mathf.Log(1f + (reinforced * trafficGlowStrength)) / Mathf.Log(1f + trafficGlowStrength + 1f);
+                glow = Mathf.Clamp01(glow);
+
+                var visible = Mathf.Clamp01(Mathf.Max(veinValue, glow * 0.9f));
+
+                var alpha = Mathf.Pow(visible, Mathf.Lerp(1.8f, 0.65f, fieldAlphaSoftness));
+                alpha = Mathf.Clamp01(alpha);
+
+                var colorLerp = Mathf.Clamp01(Mathf.Lerp(visible, glow, 0.45f));
+                var color = Color.Lerp(fieldLowColor, fieldHighColor, colorLerp);
+
+                color.r = Mathf.Clamp01(color.r + glow * 0.03f);
+                color.g = Mathf.Clamp01(color.g + glow * 0.07f);
+                color.b = Mathf.Clamp01(color.b + glow * 0.02f);
+                color.a = alpha;
+
+                pixels[index] = color;
+            }
         }
 
         fieldTexture.SetPixels32(pixels);

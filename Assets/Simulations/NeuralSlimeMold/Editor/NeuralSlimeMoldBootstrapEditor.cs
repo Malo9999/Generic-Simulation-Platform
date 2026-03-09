@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using UnityEditor;
+using UnityEngine;
 
 [CustomEditor(typeof(NeuralSlimeMoldBootstrap))]
 public sealed class NeuralSlimeMoldBootstrapEditor : Editor
@@ -8,54 +9,105 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
     {
         serializedObject.Update();
 
-        EditorGUILayout.LabelField("Simulation", EditorStyles.boldLabel);
-        Draw("autoStart");
-        Draw("seed");
-        Draw("agentCount");
-        Draw("sensorDistance");
+        DrawSection("Simulation", new[]
+        {
+            "autoStart",
+            "seed",
+            "agentCount",
+            "mapSize",
+            "trailResolution",
+            "trailDecayPerSecond",
+            "trailDiffusion"
+        });
 
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("Agent Motion", EditorStyles.boldLabel);
-        Draw("sensorAngleDegrees");
-        Draw("depositAmount");
-        Draw("trailDecayPerSecond");
-        Draw("foodStrength");
-        Draw("foodCapacity");
-        Draw("consumeRadius");
-        Draw("consumeRate");
+        DrawSection("Agent Motion", new[]
+        {
+            "sensorAngleDegrees",
+            "sensorDistance",
+            "speed",
+            "turnRateDegrees",
+            "depositAmount",
+            "explorationTurnNoise"
+        });
 
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("Advanced", EditorStyles.boldLabel);
-        Draw("mapSize");
-        Draw("trailResolution");
-        Draw("trailDiffusion");
-        Draw("speed");
-        Draw("turnRateDegrees");
-        Draw("explorationTurnNoise");
+        DrawSection("Food", new[]
+        {
+            "foodNodeCount",
+            "foodStrength",
+            "foodCapacity",
+            "consumeRadius",
+            "consumeRate",
+            "allowFoodRegrowth",
+            "foodReactivationDelay",
+            "regrowRate",
+            "foodReactivationThreshold",
+            "spawnFromSeed",
+            "manualFoodConfigs"
+        });
 
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("Food", EditorStyles.boldLabel);
-        Draw("foodNodeCount");
-        Draw("allowFoodRegrowth");
-        Draw("foodReactivationDelay");
-        Draw("regrowRate");
-        Draw("foodReactivationThreshold");
-        Draw("spawnFromSeed");
-        Draw("manualFoodConfigs");
+        DrawSection("Rendering", new[]
+        {
+            "showFoodMarkers"
+        });
 
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("Rendering", EditorStyles.boldLabel);
-        Draw("showFoodMarkers");
+        DrawSection("Palette", new[]
+        {
+            "useGlowAgentShape",
+            "useFieldBlobOverlay",
+            "backgroundColor"
+        });
 
-        EditorGUILayout.Space(8f);
-        EditorGUILayout.LabelField("Palette", EditorStyles.boldLabel);
-        Draw("useGlowAgentShape");
-        Draw("useFieldBlobOverlay");
-        Draw("backgroundColor");
-        Draw("autoFrameCamera");
-        Draw("cameraPadding");
+        DrawSection("Camera Framing", new[]
+        {
+            "autoFrameCamera",
+            "adaptiveCameraFraming",
+            "cameraPadding",
+            "cameraFollowSmooth",
+            "cameraZoomSmooth",
+            "minimumCameraSize",
+            "cameraLookAheadToActivity",
+            "cameraDeadZoneRadius"
+        });
+
+        EditorGUILayout.Space(10f);
+        DrawRuntimeButtons();
 
         serializedObject.ApplyModifiedProperties();
+    }
+
+    private void DrawSection(string title, string[] propertyNames)
+    {
+        EditorGUILayout.Space(6f);
+        EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+
+        for (var i = 0; i < propertyNames.Length; i++)
+        {
+            Draw(propertyNames[i]);
+        }
+    }
+
+    private void DrawRuntimeButtons()
+    {
+        var bootstrap = target as NeuralSlimeMoldBootstrap;
+        if (bootstrap == null)
+        {
+            return;
+        }
+
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            if (GUILayout.Button("Start / Reset Simulation"))
+            {
+                bootstrap.StartSimulation();
+                EditorUtility.SetDirty(bootstrap);
+            }
+
+            if (GUILayout.Button("Reseed"))
+            {
+                bootstrap.Reseed();
+                EditorUtility.SetDirty(bootstrap);
+            }
+        }
     }
 
     private void Draw(string propertyName)

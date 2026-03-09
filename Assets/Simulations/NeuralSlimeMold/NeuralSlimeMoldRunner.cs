@@ -10,12 +10,26 @@ public sealed class NeuralSlimeMoldRunner
     private const float FoodSeekRangeMultiplier = 2.2f;
     private const float MinFoodSeekRange = 1.2f;
 
+    // Vein / traffic shaping.
+    private const float MinTrailForHighway = 0.02f;
+    private const float StrongTrailHighwayThreshold = 0.12f;
+    private const float MaxHighwayDepositBoost = 1.9f;
+    private const float WeakTrailDepositPenalty = 0.72f;
+
+    // Activity framing.
+    private const float ActivitySmoothing = 0.08f;
+    private const float MinActivityRadius = 4f;
+
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
     private int[] foodConsumerCounts = Array.Empty<int>();
     private bool[] foodDepletionLogged = Array.Empty<bool>();
     private bool[] foodIsDepleted = Array.Empty<bool>();
     private float[] foodRegrowDelayTimers = Array.Empty<float>();
+
+    // Per-agent memory to help stabilize highways and reduce noisy drift.
+    private float[] agentTrailConfidence = Array.Empty<float>();
+    private float[] agentFoodCommitment = Array.Empty<float>();
 
     private float simulationTime;
     private float nextOccupiedFoodLogTime;
@@ -36,6 +50,10 @@ public sealed class NeuralSlimeMoldRunner
 
     public int Seed { get; private set; }
     public int AgentCount => agents?.Length ?? 0;
+
+    // Future-ready camera framing hooks.
+    public Vector2 ActivityCenter { get; private set; }
+    public float ActivityRadius { get; private set; }
 
     public void ResetWithSeed(
         int seed,
@@ -70,6 +88,8 @@ public sealed class NeuralSlimeMoldRunner
 
         Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, false);
         agents = new NeuralSlimeMoldAgent[Mathf.Max(1, agentCount)];
+        agentTrailConfidence = new float[agents.Length];
+        agentFoodCommitment = new float[agents.Length];
 
         BuildFoodNodes(
             Mathf.Max(1, foodNodeCount),
@@ -82,6 +102,8 @@ public sealed class NeuralSlimeMoldRunner
 
         simulationTime = 0f;
         nextOccupiedFoodLogTime = OccupiedFoodLogIntervalSeconds;
+        ActivityCenter = Vector2.zero;
+        ActivityRadius = MinActivityRadius;
 
         for (var i = 0; i < agents.Length; i++)
         {
@@ -104,6 +126,9 @@ public sealed class NeuralSlimeMoldRunner
                 controller = CreateControllerProfile(i)
             };
 
+            agentTrailConfidence[i] = 0f;
+            agentFoodCommitment[i] = 0f;
+
             Field.Deposit(pos, depositAmount * 0.5f);
         }
 
@@ -125,6 +150,9 @@ public sealed class NeuralSlimeMoldRunner
         Array.Clear(foodConsumerCounts, 0, foodConsumerCounts.Length);
         simulationTime += Mathf.Max(0f, dt);
 
+        Vector2 activityAccumulator = Vector2.zero;
+        var maxDistanceFromCenter = 0f;
+
         for (var i = 0; i < agents.Length; i++)
         {
             var agent = agents[i];
@@ -133,9 +161,14 @@ public sealed class NeuralSlimeMoldRunner
             var centerDir = Direction(agent.heading);
             var rightDir = Direction(agent.heading + agent.sensorAngle);
 
-            var left = Field.SampleBilinear(agent.position + (leftDir * agent.sensorDistance));
-            var center = Field.SampleBilinear(agent.position + (centerDir * agent.sensorDistance));
-            var right = Field.SampleBilinear(agent.position + (rightDir * agent.sensorDistance));
+            var leftSamplePos = agent.position + (leftDir * agent.sensorDistance);
+            var centerSamplePos = agent.position + (centerDir * agent.sensorDistance);
+            var rightSamplePos = agent.position + (rightDir * agent.sensorDistance);
+
+            var left = Field.SampleBilinear(leftSamplePos);
+            var center = Field.SampleBilinear(centerSamplePos);
+            var right = Field.SampleBilinear(rightSamplePos);
+            var localTrail = Field.SampleBilinear(agent.position);
 
             var weighted = (left * agent.controller.leftWeight)
                          + (center * agent.controller.centerWeight)
@@ -143,12 +176,18 @@ public sealed class NeuralSlimeMoldRunner
 
             var edge = right - left;
             var centerBias = center - ((left + right) * 0.5f);
-            var randomTurn = ((rng.NextFloat01() * 2f) - 1f) * explorationTurnNoise;
 
-            var trailSteer = (weighted * 0.2f)
-                           + edge
-                           + (centerBias * agent.controller.densityWeight)
-                           + randomTurn;
+            var signedNoise = ((rng.NextFloat01() * 2f) - 1f);
+            var randomTurn = signedNoise * explorationTurnNoise * Mathf.Max(0.1f, agent.controller.noiseWeight * 6f);
+
+            var trailConfidence = ComputeTrailConfidence(localTrail, center, left, right);
+            agentTrailConfidence[i] = Mathf.Lerp(agentTrailConfidence[i], trailConfidence, 0.18f);
+
+            var trailSteer =
+                (weighted * 0.12f) +
+                edge +
+                (centerBias * (0.8f + agent.controller.densityWeight)) +
+                (randomTurn * Mathf.Lerp(1f, 0.25f, agentTrailConfidence[i]));
 
             var activeFoodIndex = GetContainingFoodNodeIndex(agent.position, true);
             var emptyFoodIndex = GetContainingEmptyFoodNodeIndex(agent.position);
@@ -166,24 +205,52 @@ public sealed class NeuralSlimeMoldRunner
                 var signedAngle = Mathf.Atan2(cross, dot);
                 var turn01 = Mathf.Clamp(signedAngle / Mathf.PI, -1f, 1f);
 
-                steer = (turn01 * foodStrength) + (randomTurn * 0.1f);
+                agentFoodCommitment[i] = Mathf.Lerp(agentFoodCommitment[i], 1f, 0.22f);
+                steer = (turn01 * foodStrength * 1.15f) + (randomTurn * 0.06f);
             }
             else if (TryGetFoodSteer(agent.position, agent.heading, foodStrength, out var foodTurn, out var foodLock))
             {
-                // Food matters, but trail still contributes a little.
-                steer = Mathf.Lerp(trailSteer * 0.25f, foodTurn, foodLock);
+                // Food matters, but trail still contributes a little when not yet committed.
+                agentFoodCommitment[i] = Mathf.Lerp(agentFoodCommitment[i], foodLock, 0.14f);
+                var foodBlend = Mathf.Clamp01((foodLock * 0.75f) + (agentFoodCommitment[i] * 0.25f));
+                steer = Mathf.Lerp(trailSteer * 0.22f, foodTurn, foodBlend);
             }
             else if (emptyFoodIndex >= 0)
             {
-                // Encourage leaving depleted food.
+                // Encourage leaving depleted food hard and quickly.
                 var awayTurn = ComputeAwayFromEmptyFoodTurn(agent.position, agent.heading);
-                steer = awayTurn + randomTurn;
+                agentFoodCommitment[i] = Mathf.Lerp(agentFoodCommitment[i], 0f, 0.25f);
+                steer = (awayTurn * 1.2f) + randomTurn;
+            }
+            else
+            {
+                // Drift back to trail-driven exploration.
+                agentFoodCommitment[i] = Mathf.Lerp(agentFoodCommitment[i], 0f, 0.08f);
+
+                // In strong veins, reduce jitter and stay on-route.
+                if (agentTrailConfidence[i] > 0.55f)
+                {
+                    steer = Mathf.Lerp(randomTurn * 0.1f, trailSteer, 0.92f);
+                }
             }
 
             var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
             agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
 
-            var speedMod = 1f + Mathf.Clamp(center * 0.15f, -0.2f, 0.35f);
+            var speedMod = 1f;
+
+            // Strong trails behave like highways.
+            if (localTrail >= StrongTrailHighwayThreshold)
+            {
+                speedMod *= 1.16f;
+            }
+            else if (localTrail >= MinTrailForHighway)
+            {
+                speedMod *= 1.06f;
+            }
+
+            // Slow down in high-density front regions so the structure consolidates.
+            speedMod *= 1f + Mathf.Clamp(center * 0.12f, -0.12f, 0.25f);
 
             if (activeFoodIndex >= 0)
             {
@@ -193,12 +260,12 @@ public sealed class NeuralSlimeMoldRunner
                 var dist01 = Mathf.Clamp01(dist / radius);
 
                 // Slow down near the center of active food so it reads like feeding instead of orbiting.
-                speedMod *= Mathf.Lerp(0.15f, 0.6f, dist01);
+                speedMod *= Mathf.Lerp(0.12f, 0.62f, dist01);
             }
             else if (emptyFoodIndex >= 0)
             {
                 // Leave depleted food faster.
-                speedMod *= 1.2f;
+                speedMod *= 1.25f;
             }
 
             agent.position += Direction(agent.heading) * (agent.speed * speedMod * dt);
@@ -210,30 +277,86 @@ public sealed class NeuralSlimeMoldRunner
 
             MarkConsumingFoodNodes(agent.position);
 
-            float depositMultiplier;
-            if (activeFoodIndex >= 0)
-            {
-                // Do not let feeding agents build a strong self-orbit ring.
-                depositMultiplier = 0.05f;
-            }
-            else if (emptyFoodIndex >= 0)
-            {
-                // Empty food should not keep a ring alive.
-                depositMultiplier = 0f;
-            }
-            else
-            {
-                depositMultiplier = 1f;
-            }
+            var movedLocalTrail = Field.SampleBilinear(agent.position);
+            var depositMultiplier = ComputeDepositMultiplier(
+                movedLocalTrail,
+                agentTrailConfidence[i],
+                activeFoodIndex >= 0,
+                emptyFoodIndex >= 0,
+                agentFoodCommitment[i]);
 
             Field.Deposit(agent.position, agent.depositAmount * depositMultiplier);
 
             agents[i] = agent;
+            activityAccumulator += agent.position;
         }
 
         ConsumeFood(dt);
         LogOccupiedFoodLevels();
         Field.Step(diffusion, decay, dt);
+
+        if (agents.Length > 0)
+        {
+            var rawCenter = activityAccumulator / agents.Length;
+            ActivityCenter = Vector2.Lerp(ActivityCenter, rawCenter, ActivitySmoothing);
+
+            for (var i = 0; i < agents.Length; i++)
+            {
+                var dist = Vector2.Distance(agents[i].position, ActivityCenter);
+                if (dist > maxDistanceFromCenter)
+                {
+                    maxDistanceFromCenter = dist;
+                }
+            }
+
+            ActivityRadius = Mathf.Max(MinActivityRadius, Mathf.Lerp(ActivityRadius, maxDistanceFromCenter, ActivitySmoothing));
+        }
+    }
+
+    private float ComputeDepositMultiplier(
+        float localTrail,
+        float trailConfidence,
+        bool onActiveFood,
+        bool onEmptyFood,
+        float foodCommitment)
+    {
+        if (onActiveFood)
+        {
+            // Do not let feeding agents build a strong self-orbit ring.
+            return 0.05f;
+        }
+
+        if (onEmptyFood)
+        {
+            // Empty food should not keep a ring alive.
+            return 0f;
+        }
+
+        // Weak open-space wandering leaves less fog.
+        var multiplier = localTrail < MinTrailForHighway ? WeakTrailDepositPenalty : 1f;
+
+        // Existing strong routes get reinforced into visible highways.
+        if (localTrail >= StrongTrailHighwayThreshold)
+        {
+            multiplier *= Mathf.Lerp(1.2f, MaxHighwayDepositBoost, trailConfidence);
+        }
+        else if (localTrail >= MinTrailForHighway)
+        {
+            multiplier *= Mathf.Lerp(1.0f, 1.35f, trailConfidence);
+        }
+
+        // When an agent is still strongly committed to food-seeking, keep a bit more path memory.
+        multiplier *= Mathf.Lerp(1f, 1.18f, foodCommitment);
+
+        return Mathf.Max(0f, multiplier);
+    }
+
+    private float ComputeTrailConfidence(float localTrail, float center, float left, float right)
+    {
+        var directionality = Mathf.Clamp01(center - ((left + right) * 0.5f) + 0.5f);
+        var density = Mathf.Clamp01(localTrail * 6f);
+        var centerStrength = Mathf.Clamp01(center * 5f);
+        return Mathf.Clamp01((density * 0.45f) + (centerStrength * 0.35f) + (directionality * 0.20f));
     }
 
     private void ConsumeFood(float dt)
@@ -397,7 +520,7 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             var fill = Mathf.Clamp01(node.currentCapacity / node.capacity);
-            var effectiveStrength = node.baseStrength * fill;
+            var effectiveStrength = node.baseStrength * Mathf.Lerp(0.35f, 1f, fill);
             if (effectiveStrength <= MinFoodStrengthFloor)
             {
                 continue;
@@ -411,6 +534,11 @@ public sealed class NeuralSlimeMoldRunner
             }
 
             var seekRange = Mathf.Max(node.consumeRadius * FoodSeekRangeMultiplier, MinFoodSeekRange);
+
+            // Slightly re-attract regrowing nodes once they are viable again, but not as much as ripe ones.
+            var regrowBias = Mathf.Lerp(0.8f, 1.15f, fill);
+            seekRange *= regrowBias;
+
             var distance01 = Mathf.Clamp01(distance / seekRange);
             var proximity = 1f - distance01;
             var influence = proximity * effectiveStrength;

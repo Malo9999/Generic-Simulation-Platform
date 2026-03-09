@@ -9,6 +9,13 @@ public sealed class NeuralFieldGrid
     private readonly Vector2 worldSize;
     private readonly bool wrapEdges;
 
+    // Internal shaping constants. Kept private so the rest of your code does not change.
+    private const float DiagonalWeight = 0.70710678f;
+    private const float WeakSignalPruneThreshold = 0.015f;
+    private const float WeakSignalExtraDecay = 0.22f;
+    private const float StrongSignalPreserveThreshold = 0.08f;
+    private const float StrongSignalPreserveBoost = 0.05f;
+
     public NeuralFieldGrid(int width, int height, Vector2 worldSize, bool wrapEdges)
     {
         this.width = Mathf.Max(4, width);
@@ -83,7 +90,7 @@ public sealed class NeuralFieldGrid
     public void Step(float diffusion, float decayPerSecond, float dt)
     {
         var kDiff = Mathf.Clamp01(diffusion);
-        var decayFactor = Mathf.Clamp01(1f - (Mathf.Max(0f, decayPerSecond) * dt));
+        var baseDecayFactor = Mathf.Clamp01(1f - (Mathf.Max(0f, decayPerSecond) * dt));
 
         for (var y = 0; y < height; y++)
         {
@@ -96,14 +103,40 @@ public sealed class NeuralFieldGrid
                 var xRight = x == width - 1 ? (wrapEdges ? 0 : width - 1) : x + 1;
 
                 var idx = (y * width) + x;
+
                 var c = field[idx];
+
                 var n = field[(yUp * width) + x];
                 var s = field[(yDown * width) + x];
                 var w = field[(y * width) + xLeft];
                 var e = field[(y * width) + xRight];
 
-                var neighborAvg = (n + s + e + w) * 0.25f;
-                var diffused = c + ((neighborAvg - c) * kDiff);
+                var nw = field[(yUp * width) + xLeft];
+                var ne = field[(yUp * width) + xRight];
+                var sw = field[(yDown * width) + xLeft];
+                var se = field[(yDown * width) + xRight];
+
+                // Weighted 8-neighbor average gives a rounder, less blocky spread.
+                var cardinalSum = n + s + e + w;
+                var diagonalSum = (nw + ne + sw + se) * DiagonalWeight;
+                var neighborAvg = (cardinalSum + diagonalSum) / (4f + (4f * DiagonalWeight));
+
+                // Diffusion toward neighborhood mean.
+                var diffused = Mathf.Lerp(c, neighborAvg, kDiff);
+
+                // Preserve stronger veins a little so they do not instantly wash out.
+                if (c >= StrongSignalPreserveThreshold)
+                {
+                    diffused = Mathf.Lerp(diffused, c, StrongSignalPreserveBoost);
+                }
+
+                // Weak background haze dies a bit faster than useful structure.
+                var decayFactor = baseDecayFactor;
+                if (diffused < WeakSignalPruneThreshold)
+                {
+                    decayFactor *= Mathf.Clamp01(1f - (WeakSignalExtraDecay * dt));
+                }
+
                 scratch[idx] = Mathf.Max(0f, diffused * decayFactor);
             }
         }
