@@ -36,7 +36,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobOverlay = true;
-    [SerializeField] private Color backgroundColor = new(0.01f, 0.02f, 0.04f, 1f);
+    [SerializeField] private Color backgroundColor = new(0.10f, 0.09f, 0.07f, 1f);
 
     [Header("Rendering")]
     [SerializeField] private bool showFoodMarkers = true;
