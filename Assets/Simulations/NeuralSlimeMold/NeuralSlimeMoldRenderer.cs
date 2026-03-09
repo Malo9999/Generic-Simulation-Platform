@@ -9,24 +9,24 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private Color agentColor = new(0.65f, 1f, 0.86f, 0.85f);
 
     [Header("Field Visuals")]
-    [SerializeField] private Color fieldLowColor = new(0.01f, 0.02f, 0.04f, 1f);
-    [SerializeField] private Color fieldHighColor = new(0.2f, 0.98f, 0.72f, 0.98f);
-    [SerializeField] private float fieldExposure = 1.6f;
+    [SerializeField] private Color fieldLowColor = new(0.003f, 0.007f, 0.015f, 1f);
+    [SerializeField] private Color fieldHighColor = new(0.10f, 0.72f, 0.54f, 0.90f);
+    [SerializeField] private float fieldExposure = 0.95f;
     [SerializeField] private int fieldTextureRefreshInterval = 1;
 
     [Header("World Marker Visuals")]
-    [SerializeField] private Color foodActiveColor = new(0.85f, 1f, 0.23f, 1f);
-    [SerializeField] private Color foodDepletedColor = new(0.66f, 0.35f, 0.16f, 0.92f);
+    [SerializeField] private Color foodActiveColor = new(1f, 0.96f, 0.20f, 1f);
+    [SerializeField] private Color foodDepletedColor = new(0.55f, 0.22f, 0.06f, 0.95f);
     [SerializeField] private Color obstacleColor = new(0.4f, 0.48f, 0.55f, 0.9f);
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
     [SerializeField, Range(0f, 1f)] private float foodMarkerMinAlpha = 0.75f;
 
     [Header("Food Marker State Styling")]
-    [SerializeField, Range(0.2f, 1.5f)] private float depletedScaleMultiplier = 0.72f;
-    [SerializeField, Range(0.1f, 1f)] private float depletedAlphaMultiplier = 0.55f;
-    [SerializeField, Range(0.2f, 2f)] private float activeScaleBoost = 1.08f;
-    [SerializeField, Range(0f, 0.5f)] private float depletedThreshold01 = 0.08f;
+    [SerializeField, Range(0.2f, 1.5f)] private float depletedScaleMultiplier = 0.5f;
+    [SerializeField, Range(0.1f, 1f)] private float depletedAlphaMultiplier = 0.35f;
+    [SerializeField, Range(0.2f, 2f)] private float activeScaleBoost = 1.15f;
+    [SerializeField, Range(0f, 0.5f)] private float depletedThreshold01 = 0.12f;
 
     private bool foodInfluenceDebugVisuals;
     private Color backgroundColor = new(0.01f, 0.02f, 0.04f, 1f);
@@ -114,27 +114,39 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var node = foodNodes[i];
             var capacity01 = Mathf.Clamp01(node.Capacity01);
             var isDepleted = capacity01 <= depletedThreshold01;
+            var isLow = !isDepleted && capacity01 < 0.45f;
 
             var clamped = ClampNodeMarker(node.position);
             sr.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
 
             var markerScaleBoost = foodInfluenceDebugVisuals ? 1.35f : 1f;
-            var markerRadius = Mathf.Lerp(0.65f, 1.3f, Mathf.Clamp01(node.consumeRadius * 0.08f));
+            var markerRadius = Mathf.Lerp(0.9f, 1.6f, Mathf.Clamp01(node.consumeRadius * 0.08f));
 
-            var stateScale = isDepleted ? depletedScaleMultiplier : activeScaleBoost;
-            sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;
-
-            var markerColor = Color.Lerp(foodDepletedColor, foodActiveColor, capacity01);
+            Color markerColor;
+            float stateScale;
+            float stateAlpha;
 
             if (isDepleted)
             {
-                markerColor.a = Mathf.Max(0.15f, foodMarkerMinAlpha * depletedAlphaMultiplier);
+                markerColor = foodDepletedColor;
+                stateScale = depletedScaleMultiplier;
+                stateAlpha = Mathf.Max(0.15f, foodMarkerMinAlpha * depletedAlphaMultiplier);
+            }
+            else if (isLow)
+            {
+                markerColor = Color.Lerp(foodDepletedColor, foodActiveColor, 0.35f);
+                stateScale = Mathf.Lerp(depletedScaleMultiplier, activeScaleBoost, 0.45f);
+                stateAlpha = Mathf.Max(0.45f, foodMarkerMinAlpha * 0.8f);
             }
             else
             {
-                markerColor.a = Mathf.Max(foodMarkerMinAlpha, markerColor.a);
+                markerColor = foodActiveColor;
+                stateScale = activeScaleBoost;
+                stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a);
             }
 
+            sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;
+            markerColor.a = stateAlpha;
             sr.color = markerColor;
         }
 
@@ -264,15 +276,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
     private void BuildFoodNodes(NeuralFoodNodeState[] foodNodes)
     {
-        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlowSmall, out var markerSprite))
-        {
-            ShapeLibraryProvider.TryGetSprite(ShapeId.DotCore, out markerSprite);
-        }
-
-        if (markerSprite == null)
-        {
-            markerSprite = GetFallbackSquareSprite();
-        }
+        var markerSprite = GetFallbackSquareSprite();
 
         for (var i = 0; i < foodNodes.Length; i++)
         {
@@ -283,7 +287,9 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sortingOrder = 40;
             sr.sprite = markerSprite;
+            sr.drawMode = SpriteDrawMode.Simple;
             sr.color = foodActiveColor;
+
             foodNodeRenderers.Add(sr);
         }
     }

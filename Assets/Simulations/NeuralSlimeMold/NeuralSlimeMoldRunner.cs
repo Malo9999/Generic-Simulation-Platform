@@ -7,8 +7,8 @@ public sealed class NeuralSlimeMoldRunner
     private const float OccupiedFoodLogIntervalSeconds = 4f;
 
     // Reduced from earlier aggressive values so food is not sensed from almost the whole map.
-    private const float FoodSeekRangeMultiplier = 3f;
-    private const float MinFoodSeekRange = 1.5f;
+    private const float FoodSeekRangeMultiplier = 2.2f;
+    private const float MinFoodSeekRange = 1.2f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -87,8 +87,8 @@ public sealed class NeuralSlimeMoldRunner
         {
             var radial = rng.InsideUnitCircle();
             var pos = new Vector2(
-                radial.x * this.mapSize.x * 0.35f,
-                radial.y * this.mapSize.y * 0.35f);
+                radial.x * this.mapSize.x * 0.48f,
+                radial.y * this.mapSize.y * 0.48f);
 
             var heading = rng.Range(0f, Mathf.PI * 2f);
 
