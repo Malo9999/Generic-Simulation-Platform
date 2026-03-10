@@ -103,6 +103,10 @@ public sealed class NeuralSlimeMoldRunner
     private float hubOrbitSuppression;
     private float staleCorridorDecayBoost;
     private float connectorSearchRadius;
+    private float connectorSteerWeight;
+    private float hubTangentialPenalty;
+    private float connectorCorridorWidth;
+    private float returnOrbitDepositPenalty;
     private float branchSpawnChance;
     private float branchSpawnTrailThreshold;
     private float branchPromotionThreshold;
@@ -168,6 +172,10 @@ public sealed class NeuralSlimeMoldRunner
         float hubOrbitSuppression,
         float staleCorridorDecayBoost,
         float connectorSearchRadius,
+        float connectorSteerWeight,
+        float hubTangentialPenalty,
+        float connectorCorridorWidth,
+        float returnOrbitDepositPenalty,
         float branchSpawnChance,
         float branchSpawnTrailThreshold,
         float branchPromotionThreshold,
@@ -205,6 +213,10 @@ public sealed class NeuralSlimeMoldRunner
         this.hubOrbitSuppression = Mathf.Max(0f, hubOrbitSuppression);
         this.staleCorridorDecayBoost = Mathf.Max(0f, staleCorridorDecayBoost);
         this.connectorSearchRadius = Mathf.Max(0.1f, connectorSearchRadius);
+        this.connectorSteerWeight = Mathf.Max(0f, connectorSteerWeight);
+        this.hubTangentialPenalty = Mathf.Max(0f, hubTangentialPenalty);
+        this.connectorCorridorWidth = Mathf.Max(0.25f, connectorCorridorWidth);
+        this.returnOrbitDepositPenalty = Mathf.Clamp01(returnOrbitDepositPenalty);
         this.branchSpawnChance = Mathf.Max(0f, branchSpawnChance);
         this.branchSpawnTrailThreshold = Mathf.Max(0f, branchSpawnTrailThreshold);
         this.branchPromotionThreshold = Mathf.Max(this.branchSpawnTrailThreshold, branchPromotionThreshold);
@@ -340,16 +352,22 @@ public sealed class NeuralSlimeMoldRunner
                 case AgentMode.ReturnToHub:
                     HandleReturnToHubMode(ref agent, lastFoodIndex, dt, explorationTurnNoise);
 
+                    var returnDepositMultiplier = 1f;
+                    if (useColonyHub && IsTangentialHubOrbit(agent.position, agent.heading))
+                    {
+                        returnDepositMultiplier = returnOrbitDepositPenalty;
+                    }
+
                     if (GetContainingFoodNodeIndex(agent.position, true) >= 0)
                     {
                         Field.ScrubAt(agent.position, ActiveFoodTrailScrub);
                     }
 
-                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost);
+                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier);
 
                     if (useColonyHub && IsInsideHub(agent.position))
                     {
-                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst);
+                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst * returnDepositMultiplier);
                         Field.ScrubDisc(agent.position, colonyHubRadius * 0.75f, HubRingScrubStrength);
 
                         mode = AgentMode.ExitHub;
@@ -459,6 +477,8 @@ public sealed class NeuralSlimeMoldRunner
         var centerNutrient = SampleNutrientField(centerSamplePos);
         var rightNutrient = SampleNutrientField(rightSamplePos);
 
+        ComputeConnectorSteer(agent.position, agent.heading, agent.sensorAngle, agent.sensorDistance, out var connectorEdge, out var connectorCenterBias, out var connectorStrength);
+
         var weightedTrail = (leftTrail * agent.controller.leftWeight)
                           + (centerTrail * agent.controller.centerWeight)
                           + (rightTrail * agent.controller.rightWeight);
@@ -482,14 +502,24 @@ public sealed class NeuralSlimeMoldRunner
         var nutrientCenterBias = centerNutrient - ((leftNutrient + rightNutrient) * 0.5f);
         var nutrientSteer = (nutrientEdge * 1.1f) + (nutrientCenterBias * 0.7f);
 
+        var connectorSteer = (connectorEdge * 1.15f) + (connectorCenterBias * 0.8f);
+        var topologySteer = trailSteer;
+        if (connectorStrength > 0.0001f)
+        {
+            var blend = Mathf.Clamp01(connectorStrength * 1.25f);
+            var connectorTargetSteer = (connectorSteer * connectorSteerWeight) + (trailSteer * 0.3f);
+            topologySteer = Mathf.Lerp(trailSteer * 0.55f, connectorTargetSteer, blend);
+        }
+
         var nutrientStrength = Mathf.Clamp01(Mathf.Max(leftNutrient, Mathf.Max(centerNutrient, rightNutrient)));
-        var steer = trailSteer;
+        var steer = topologySteer;
 
         if (nutrientStrength > 0.0001f)
         {
             agentFoodCommitment[agentIndex] = Mathf.Lerp(agentFoodCommitment[agentIndex], nutrientStrength, 0.18f);
             var nutrientBlend = Mathf.Clamp01((nutrientStrength * 0.75f) + (agentFoodCommitment[agentIndex] * 0.25f));
-            steer = Mathf.Lerp(trailSteer * 0.55f, nutrientSteer * Mathf.Max(0.5f, foodStrength), nutrientBlend);
+            var nutrientTarget = (nutrientSteer * Mathf.Max(0.5f, foodStrength)) + (connectorSteer * connectorSteerWeight * 0.35f);
+            steer = Mathf.Lerp(topologySteer, nutrientTarget, nutrientBlend);
         }
         else if (nearEmptyFood)
         {
@@ -503,13 +533,23 @@ public sealed class NeuralSlimeMoldRunner
 
             if (agentTrailConfidence[agentIndex] > 0.55f)
             {
-                steer = Mathf.Lerp(randomTurn * 0.1f, trailSteer, 0.92f);
+                steer = Mathf.Lerp(randomTurn * 0.1f, topologySteer, 0.92f);
             }
         }
 
         if (IsNearHub(agent.position))
         {
-            steer += ComputeSteerAwayFromPoint(agent.position, agent.heading, colonyHub) * 0.9f;
+            var outwardSteer = ComputeSteerAwayFromPoint(agent.position, agent.heading, colonyHub);
+            steer += outwardSteer * 0.9f;
+
+            if (IsTangentialHubOrbit(agent.position, agent.heading))
+            {
+                var radial = (agent.position - colonyHub).normalized;
+                var tangent = new Vector2(-radial.y, radial.x);
+                var tangentDot = Vector2.Dot(Direction(agent.heading), tangent);
+                steer += outwardSteer * hubTangentialPenalty;
+                steer -= tangentDot * hubTangentialPenalty * 0.65f;
+            }
         }
 
         steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
@@ -1207,7 +1247,7 @@ public sealed class NeuralSlimeMoldRunner
 
             if (useColonyHub)
             {
-                ReinforceConnectorMidpoint(colonyHub, node.position, desirability, dt);
+                ReinforceConnectorCorridor(colonyHub, node.position, desirability, dt);
             }
 
             for (var j = i + 1; j < foodNodes.Length; j++)
@@ -1224,22 +1264,254 @@ public sealed class NeuralSlimeMoldRunner
                 }
 
                 var pairDesirability = Mathf.Min(desirability, ComputeFoodNodeDesirability(j, searchRadius));
-                ReinforceConnectorMidpoint(node.position, other.position, pairDesirability, dt);
+                ReinforceConnectorCorridor(node.position, other.position, pairDesirability, dt);
             }
         }
     }
 
-    private void ReinforceConnectorMidpoint(Vector2 a, Vector2 b, float desirability, float dt)
+    private void ReinforceConnectorCorridor(Vector2 a, Vector2 b, float desirability, float dt)
     {
-        var midpoint = (a + b) * 0.5f;
-        var trailAtMid = Field.SampleBilinear(midpoint);
-        if (trailAtMid < ConnectorReinforceTrailThreshold)
+        var corridorWidth = Mathf.Max(0.25f, connectorCorridorWidth);
+        var segment = b - a;
+        var length = segment.magnitude;
+        if (length <= 0.0001f)
         {
             return;
         }
 
-        var reinforce = bridgeReinforcementWeight * desirability * Mathf.Lerp(0.55f, 1.25f, Mathf.Clamp01(trailAtMid * 4.5f)) * dt;
-        DepositDiscIfOpen(midpoint, 0.6f, reinforce);
+        var steps = Mathf.Max(2, Mathf.CeilToInt(length / Mathf.Max(0.7f, corridorWidth * 0.8f)));
+        var dir = segment / length;
+
+        for (var s = 0; s <= steps; s++)
+        {
+            var t = s / (float)steps;
+            var samplePos = Vector2.Lerp(a, b, t);
+            var trailAtSample = Field.SampleBilinear(samplePos);
+            if (trailAtSample < ConnectorReinforceTrailThreshold)
+            {
+                continue;
+            }
+
+            var progressBoost = 1f - Mathf.Abs((t * 2f) - 1f) * 0.35f;
+            var alignmentTrail = Mathf.Max(
+                Field.SampleBilinear(samplePos + (dir * 0.6f)),
+                Field.SampleBilinear(samplePos - (dir * 0.6f)));
+
+            var reinforce = bridgeReinforcementWeight
+                            * desirability
+                            * Mathf.Lerp(0.6f, 1.3f, Mathf.Clamp01((trailAtSample * 3.5f) + (alignmentTrail * 1.2f)))
+                            * progressBoost
+                            * dt;
+
+            DepositDiscIfOpen(samplePos, corridorWidth * 0.45f, reinforce);
+        }
+    }
+
+    private float SampleConnectorDemand(Vector2 position)
+    {
+        if (foodNodes == null || foodNodes.Length == 0)
+        {
+            return 0f;
+        }
+
+        var best = 0f;
+        var pairRange = Mathf.Max(0.1f, connectorSearchRadius) * 2f;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            var nodeWeight = ComputeConnectorNodeWeight(i, pairRange);
+            if (nodeWeight <= 0.0001f)
+            {
+                continue;
+            }
+
+            if (useColonyHub)
+            {
+                best = Mathf.Max(best, EvaluateConnectorDemand(position, colonyHub, node.position, nodeWeight));
+            }
+
+            for (var j = i + 1; j < foodNodes.Length; j++)
+            {
+                var otherWeight = ComputeConnectorNodeWeight(j, pairRange);
+                if (otherWeight <= 0.0001f)
+                {
+                    continue;
+                }
+
+                var other = foodNodes[j];
+                if ((other.position - node.position).sqrMagnitude > pairRange * pairRange)
+                {
+                    continue;
+                }
+
+                best = Mathf.Max(best, EvaluateConnectorDemand(position, node.position, other.position, Mathf.Min(nodeWeight, otherWeight)));
+            }
+        }
+
+        return Mathf.Clamp01(best);
+    }
+
+    private void ComputeConnectorSteer(Vector2 position, float heading, float sensorAngle, float sensorDistance, out float connectorEdge, out float connectorCenterBias, out float connectorStrength)
+    {
+        var leftPos = position + (Direction(heading - sensorAngle) * sensorDistance);
+        var centerPos = position + (Direction(heading) * sensorDistance);
+        var rightPos = position + (Direction(heading + sensorAngle) * sensorDistance);
+
+        var left = SampleConnectorDemand(leftPos);
+        var center = SampleConnectorDemand(centerPos);
+        var right = SampleConnectorDemand(rightPos);
+
+        connectorEdge = right - left;
+        connectorCenterBias = center - ((left + right) * 0.5f);
+        connectorStrength = Mathf.Max(left, Mathf.Max(center, right));
+    }
+
+    private bool IsTangentialHubOrbit(Vector2 position, float heading)
+    {
+        if (!IsNearHub(position))
+        {
+            return false;
+        }
+
+        var toAgent = position - colonyHub;
+        if (toAgent.sqrMagnitude <= 0.0001f)
+        {
+            return false;
+        }
+
+        var radial = toAgent.normalized;
+        var tangent = new Vector2(-radial.y, radial.x);
+        var forward = Direction(heading);
+
+        var radialDot = Mathf.Abs(Vector2.Dot(forward, radial));
+        var tangentialDot = Mathf.Abs(Vector2.Dot(forward, tangent));
+        if (tangentialDot <= radialDot * 1.08f)
+        {
+            return false;
+        }
+
+        return ComputeUsefulConnectorAlignment(position, forward) < 0.5f;
+    }
+
+    private float ComputeUsefulConnectorAlignment(Vector2 position, Vector2 forward)
+    {
+        var bestAlignment = 0f;
+        var pairRange = Mathf.Max(0.1f, connectorSearchRadius) * 2f;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var nodeWeight = ComputeConnectorNodeWeight(i, pairRange);
+            if (nodeWeight <= 0.0001f)
+            {
+                continue;
+            }
+
+            if (useColonyHub)
+            {
+                bestAlignment = Mathf.Max(bestAlignment, ComputeSegmentAlignment(position, forward, colonyHub, foodNodes[i].position));
+            }
+
+            for (var j = i + 1; j < foodNodes.Length; j++)
+            {
+                var otherWeight = ComputeConnectorNodeWeight(j, pairRange);
+                if (otherWeight <= 0.0001f)
+                {
+                    continue;
+                }
+
+                if ((foodNodes[j].position - foodNodes[i].position).sqrMagnitude > pairRange * pairRange)
+                {
+                    continue;
+                }
+
+                bestAlignment = Mathf.Max(bestAlignment, ComputeSegmentAlignment(position, forward, foodNodes[i].position, foodNodes[j].position));
+            }
+        }
+
+        return Mathf.Clamp01(bestAlignment);
+    }
+
+    private float ComputeSegmentAlignment(Vector2 position, Vector2 forward, Vector2 a, Vector2 b)
+    {
+        var segment = b - a;
+        var length = segment.magnitude;
+        if (length <= 0.0001f)
+        {
+            return 0f;
+        }
+
+        var closest = ClosestPointOnSegment(position, a, b);
+        var dist = Vector2.Distance(position, closest);
+        if (dist > connectorCorridorWidth * 2.2f)
+        {
+            return 0f;
+        }
+
+        var dir = segment / length;
+        return Mathf.Abs(Vector2.Dot(forward, dir));
+    }
+
+    private float ComputeConnectorNodeWeight(int index, float searchRadius)
+    {
+        if (index < 0 || index >= foodNodes.Length)
+        {
+            return 0f;
+        }
+
+        var node = foodNodes[index];
+        var active = IsFoodNodeActive(index);
+        if (active)
+        {
+            var fill = Mathf.Clamp01(node.currentCapacity / Mathf.Max(0.01f, node.capacity));
+            return Mathf.Lerp(0.45f, 1f, fill);
+        }
+
+        if (IsFoodNodeBridgeUseful(index, searchRadius))
+        {
+            return 0.22f;
+        }
+
+        return 0f;
+    }
+
+    private float EvaluateConnectorDemand(Vector2 position, Vector2 a, Vector2 b, float connectorWeight)
+    {
+        if (connectorWeight <= 0.0001f)
+        {
+            return 0f;
+        }
+
+        var closest = ClosestPointOnSegment(position, a, b);
+        var distToSegment = Vector2.Distance(position, closest);
+        var corridor = 1f - Mathf.Clamp01(distToSegment / Mathf.Max(0.25f, connectorCorridorWidth));
+        if (corridor <= 0f)
+        {
+            return 0f;
+        }
+
+        var direct = Vector2.Distance(a, b);
+        var via = Vector2.Distance(position, a) + Vector2.Distance(position, b);
+        var progress = Mathf.Clamp01(1f - Mathf.Max(0f, via - direct) / Mathf.Max(0.01f, direct * 1.2f));
+
+        var localTrail = Mathf.Clamp01(Field.SampleBilinear(position) * 3.2f);
+        var support = Mathf.Lerp(0.35f, 1f, localTrail);
+
+        var score = corridor * Mathf.Lerp(0.55f, 1f, progress) * support * connectorWeight;
+        return Mathf.Clamp01(score);
+    }
+
+    private static Vector2 ClosestPointOnSegment(Vector2 point, Vector2 a, Vector2 b)
+    {
+        var ab = b - a;
+        var lengthSqr = ab.sqrMagnitude;
+        if (lengthSqr <= 0.0001f)
+        {
+            return a;
+        }
+
+        var t = Mathf.Clamp01(Vector2.Dot(point - a, ab) / lengthSqr);
+        return a + (ab * t);
     }
 
     private void SuppressHubOrbiting(float dt, float searchRadius)

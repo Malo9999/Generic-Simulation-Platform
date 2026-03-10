@@ -56,9 +56,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private Vector2 colonyHub = Vector2.zero;
     [SerializeField, Min(0.25f)] private float colonyHubRadius = 4.5f;
     [SerializeField, Min(0f)] private float returnToHubWeight = 1.35f;
-    [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.82f;
-    [SerializeField, Min(0f)] private float returnDepositBoost = 2.8f;
-    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 6.0f;
+    [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.68f;
+    [SerializeField, Min(0f)] private float returnDepositBoost = 1.4f;
+    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 2.2f;
     [SerializeField, Min(0f)] private float hubInfluenceRadius = 9f;
 
     [Header("Loop Pruning")]
@@ -68,9 +68,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
     [Header("Network Maintenance")]
     [SerializeField, Min(0f)] private float bridgeReinforcementWeight = 0.3f;
-    [SerializeField, Min(0f)] private float hubOrbitSuppression = 0.5f;
+    [SerializeField, Min(0f)] private float hubOrbitSuppression = 1.2f;
     [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 0.5f;
     [SerializeField, Min(0.1f)] private float connectorSearchRadius = 6f;
+    [SerializeField, Min(0f)] private float connectorSteerWeight = 1.65f;
+    [SerializeField, Min(0f)] private float hubTangentialPenalty = 1.4f;
+    [SerializeField, Min(0.25f)] private float connectorCorridorWidth = 2.8f;
+    [SerializeField, Range(0f, 1f)] private float returnOrbitDepositPenalty = 0.18f;
 
     [Header("Branch Remodeling")]
     [SerializeField, Min(0f)] private float branchSpawnChance = 0.18f;
@@ -213,6 +217,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             hubOrbitSuppression,
             staleCorridorDecayBoost,
             connectorSearchRadius,
+            connectorSteerWeight,
+            hubTangentialPenalty,
+            connectorCorridorWidth,
+            returnOrbitDepositPenalty,
             branchSpawnChance,
             branchSpawnTrailThreshold,
             branchPromotionThreshold,
