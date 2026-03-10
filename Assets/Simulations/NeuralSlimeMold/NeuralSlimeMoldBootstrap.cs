@@ -75,6 +75,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
     [Header("Rendering")]
     [SerializeField] private bool showFoodMarkers = true;
+    [SerializeField] private bool emphasizePrimaryTubes = true;
+    [SerializeField] private bool showExplorationBranches = true;
+    [SerializeField] private bool showFoodStateMarkers = true;
+    [SerializeField] private bool showActivityFocus = false;
+    [SerializeField, Min(0.1f)] private float tubeExposure = 1.15f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.4f;
+    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.62f;
 
     [Header("Camera Framing")]
     [SerializeField] private bool autoFrameCamera = true;
@@ -219,6 +226,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
         rendererComponent.SetShapeToggles(useGlowAgentShape, useFieldBlobOverlay);
         rendererComponent.SetFoodDebugVisuals(showFoodMarkers);
+        rendererComponent.SetReadabilityToggles(
+            emphasizePrimaryTubes,
+            showExplorationBranches,
+            showFoodStateMarkers,
+            showActivityFocus);
+        rendererComponent.SetReadabilityTuning(tubeExposure, staleTrailFade, branchAlphaBias);
         rendererComponent.SetFoodInfluenceDebugVisuals(false);
         rendererComponent.SetBackgroundColor(backgroundColor);
     }
@@ -447,6 +460,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
                 corridorBands[i] = band;
             }
         }
+
+        tubeExposure = Mathf.Max(0.1f, tubeExposure);
+        staleTrailFade = Mathf.Clamp01(staleTrailFade);
+        branchAlphaBias = Mathf.Clamp01(branchAlphaBias);
 
         cameraPadding = Mathf.Max(0.1f, cameraPadding);
         cameraFollowSmooth = Mathf.Max(0.01f, cameraFollowSmooth);
