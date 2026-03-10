@@ -21,6 +21,13 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.3f;
     [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.88f;
     [SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
+    [SerializeField] private bool emphasizePrimaryTubes = true;
+    [SerializeField] private bool showExplorationBranches = true;
+    [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.15f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.4f;
+    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.62f;
+    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.62f;
+    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.24f;
 
     [Header("World Marker Visuals")]
     [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
@@ -28,6 +35,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private Color foodRegrowingColor = new(0.76f, 0.56f, 0.22f, 0.98f);
     [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
     [SerializeField] private bool showFoodMarkers = true;
+    [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
     [SerializeField, Range(0f, 1f)] private float foodMarkerMinAlpha = 0.75f;
 
@@ -37,6 +45,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0.2f, 2f)] private float activeScaleBoost = 1.15f;
     [SerializeField, Range(0f, 0.5f)] private float depletedThreshold01 = 0.12f;
     [SerializeField, Range(0f, 0.5f)] private float lowFoodThreshold01 = 0.45f;
+    [SerializeField, Range(0.5f, 1f)] private float recoveredFoodThreshold01 = 0.82f;
+    [SerializeField] private Color foodDryingColor = new(0.62f, 0.38f, 0.14f, 0.96f);
     [SerializeField, Range(0f, 0.3f)] private float activePulseAmplitude = 0.08f;
     [SerializeField, Range(0f, 0.3f)] private float regrowPulseAmplitude = 0.12f;
     [SerializeField, Range(0.1f, 8f)] private float foodPulseSpeed = 2.2f;
@@ -48,12 +58,18 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobSpriteForFieldOverlay = true;
 
+    [Header("Activity Focus")]
+    [SerializeField] private bool showActivityFocus;
+    [SerializeField] private Color activityFocusColor = new(0.52f, 0.94f, 0.9f, 0.55f);
+    [SerializeField, Range(0.2f, 2f)] private float activityFocusScale = 1f;
+
     private readonly List<SpriteRenderer> agentRenderers = new();
     private readonly List<SpriteRenderer> foodNodeRenderers = new();
     private readonly List<SpriteRenderer> obstacleRenderers = new();
 
     private Texture2D fieldTexture;
     private SpriteRenderer fieldRenderer;
+    private SpriteRenderer activityFocusRenderer;
     private int frameCounter;
     private Vector2 worldSize;
     private Sprite fallbackSquareSprite;
@@ -67,6 +83,21 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     public void SetFoodDebugVisuals(bool markersVisible)
     {
         showFoodMarkers = markersVisible;
+    }
+
+    public void SetReadabilityToggles(bool primaryTubes, bool explorationBranches, bool foodStateMarkers, bool activityFocus)
+    {
+        emphasizePrimaryTubes = primaryTubes;
+        showExplorationBranches = explorationBranches;
+        showFoodStateMarkers = foodStateMarkers;
+        showActivityFocus = activityFocus;
+    }
+
+    public void SetReadabilityTuning(float exposure, float staleFade, float alphaBias)
+    {
+        tubeExposure = Mathf.Max(0.1f, exposure);
+        staleTrailFade = Mathf.Clamp01(staleFade);
+        branchAlphaBias = Mathf.Clamp01(alphaBias);
     }
 
     public void SetFoodInfluenceDebugVisuals(bool enabled)
@@ -113,6 +144,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
 
         UpdateFoodNodes(runner.FoodNodes);
+        UpdateActivityFocus(runner.ActivityCenter, runner.ActivityRadius);
 
         frameCounter++;
         if (fieldTextureRefreshInterval <= 1 || frameCounter % fieldTextureRefreshInterval == 0)
@@ -121,13 +153,32 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
     }
 
+    private void UpdateActivityFocus(Vector2 center, float radius)
+    {
+        if (activityFocusRenderer == null)
+        {
+            return;
+        }
+
+        activityFocusRenderer.gameObject.SetActive(showActivityFocus);
+        if (!showActivityFocus)
+        {
+            return;
+        }
+
+        activityFocusRenderer.transform.localPosition = new Vector3(center.x, center.y, -0.7f);
+        var diameter = Mathf.Max(1f, radius * 2f * Mathf.Max(0.2f, activityFocusScale));
+        activityFocusRenderer.transform.localScale = new Vector3(diameter, diameter, 1f);
+        activityFocusRenderer.color = activityFocusColor;
+    }
+
     private void UpdateFoodNodes(NeuralFoodNodeState[] foodNodes)
     {
         var time = UnityEngine.Application.isPlaying ? Time.time : 0f;
 
         for (var i = 0; i < foodNodeRenderers.Count; i++)
         {
-            var active = showFoodMarkers && i < foodNodes.Length;
+            var active = showFoodMarkers && showFoodStateMarkers && i < foodNodes.Length;
             var sr = foodNodeRenderers[i];
             sr.gameObject.SetActive(active);
 
@@ -140,7 +191,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var capacity01 = Mathf.Clamp01(node.Capacity01);
             var isDepleted = capacity01 <= depletedThreshold01;
             var isLow = !isDepleted && capacity01 < lowFoodThreshold01;
-            var isRegrowing = !isDepleted && capacity01 < 0.75f;
+            var isDrying = !isDepleted && capacity01 < lowFoodThreshold01;
+            var isRegrowing = !isDepleted && !isDrying && capacity01 < recoveredFoodThreshold01;
 
             var clamped = ClampNodeMarker(node.position);
             sr.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
@@ -163,7 +215,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             }
             else if (isLow)
             {
-                markerColor = Color.Lerp(foodDepletedColor, foodRegrowingColor, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
+                markerColor = Color.Lerp(foodDepletedColor, foodDryingColor, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
                 var regrowPulse = 1f + (pulse * regrowPulseAmplitude);
                 stateScale = Mathf.Lerp(depletedScaleMultiplier, activeScaleBoost, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01)) * regrowPulse;
                 stateAlpha = Mathf.Lerp(
@@ -321,6 +373,17 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
             foodNodeRenderers.Add(sr);
         }
+
+        var focusGo = new GameObject("ActivityFocus");
+        focusGo.transform.SetParent(transform, false);
+        focusGo.transform.localScale = Vector3.one;
+
+        activityFocusRenderer = focusGo.AddComponent<SpriteRenderer>();
+        activityFocusRenderer.sortingOrder = 35;
+        activityFocusRenderer.sprite = markerSprite;
+        activityFocusRenderer.drawMode = SpriteDrawMode.Simple;
+        activityFocusRenderer.color = activityFocusColor;
+        activityFocusRenderer.gameObject.SetActive(showActivityFocus);
     }
 
     private Vector2 ClampNodeMarker(Vector2 position)
@@ -382,7 +445,21 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 glow = Mathf.Clamp01(glow);
 
                 var visible = Mathf.Clamp01(Mathf.Max(veinValue, glow * 0.9f));
+                var trunkMask = Mathf.SmoothStep(trunkThreshold01 - 0.18f, trunkThreshold01 + 0.1f, visible);
+                var branchMask = Mathf.SmoothStep(branchThreshold01, trunkThreshold01, visible) * (1f - trunkMask);
+                var staleMask = Mathf.Clamp01(1f - trunkMask - branchMask) * Mathf.Clamp01(visible / Mathf.Max(0.0001f, branchThreshold01));
+
+                var readabilityExposure = Mathf.Lerp(1f, tubeExposure, trunkMask);
+                var branchExposure = showExplorationBranches ? Mathf.Lerp(0.72f, 1f, branchMask) : 0f;
+                var staleExposure = showExplorationBranches ? Mathf.Lerp(0.08f, staleTrailFade, staleMask) : 0f;
+                var visualStrength = (trunkMask * readabilityExposure) + (branchMask * branchExposure) + (staleMask * staleExposure);
+                visualStrength = Mathf.Clamp01(visualStrength);
+
                 var alpha = Mathf.Pow(visible, Mathf.Lerp(1.9f, 0.60f, fieldAlphaSoftness));
+                alpha *= Mathf.Lerp(branchAlphaBias, 1f, trunkMask);
+                alpha *= Mathf.Lerp(staleTrailFade, 1f, trunkMask + (branchMask * 0.5f));
+                alpha *= showExplorationBranches ? 1f : (0.35f + (0.65f * trunkMask));
+                alpha = Mathf.Clamp01(alpha * visualStrength);
                 alpha = Mathf.Clamp01(alpha);
 
                 if (alpha <= 0.003f)
@@ -393,6 +470,11 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
                 var colorLerp = Mathf.Clamp01(Mathf.Lerp(visible, glow, 0.45f));
                 var color = Color.Lerp(fieldLowColor, fieldHighColor, colorLerp);
+
+                if (emphasizePrimaryTubes)
+                {
+                    color = Color.Lerp(color * 0.7f, color, 0.45f + (0.55f * trunkMask));
+                }
 
                 color.r = Mathf.Clamp01(color.r + glow * 0.03f);
                 color.g = Mathf.Clamp01(color.g + glow * 0.07f);

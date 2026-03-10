@@ -93,7 +93,14 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
 
         DrawSection("Rendering", new[]
         {
-            "showFoodMarkers"
+            "showFoodMarkers",
+            "emphasizePrimaryTubes",
+            "showExplorationBranches",
+            "showFoodStateMarkers",
+            "showActivityFocus",
+            "tubeExposure",
+            "staleTrailFade",
+            "branchAlphaBias"
         });
 
         DrawSection("Palette", new[]
