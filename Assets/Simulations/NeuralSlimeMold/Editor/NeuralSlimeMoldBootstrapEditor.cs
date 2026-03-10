@@ -82,6 +82,15 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "duplicateTubeSuppressionRadius"
         });
 
+        DrawSection("World Obstacles", new[]
+        {
+            "useWorldObstacles",
+            "worldObstacles",
+            "corridorBands",
+            "obstacleAvoidanceStrength",
+            "obstaclePadding"
+        });
+
         DrawSection("Rendering", new[]
         {
             "showFoodMarkers"

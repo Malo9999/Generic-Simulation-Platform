@@ -27,6 +27,7 @@ public sealed class NeuralSlimeMoldRunner
 
     private const float BoundaryAvoidanceMargin = 5f;
     private const float BoundaryAvoidanceStrength = 0.95f;
+    private const float ObstacleProbeDistance = 1.2f;
     private const float FoodCrowdingRadiusMultiplier = 1.15f;
     private const float FoodCrowdingPenaltyStrength = 0.65f;
     private const float ActiveFoodTrailScrub = 0.10f;
@@ -108,10 +109,17 @@ public sealed class NeuralSlimeMoldRunner
     private float trunkStabilityBoost;
     private float duplicateTubeSuppressionRadius;
 
+    private bool useWorldObstacles;
+    private float obstacleAvoidanceStrength;
+    private float obstaclePadding;
+    private NeuralObstacle[] obstacles = Array.Empty<NeuralObstacle>();
+    private NeuralCorridorBand[] corridorBands = Array.Empty<NeuralCorridorBand>();
+    private bool[] blockedFieldMask = Array.Empty<bool>();
+
     public NeuralFieldGrid Field { get; private set; }
     public NeuralSlimeMoldAgent[] Agents => agents;
     public NeuralFoodNodeState[] FoodNodes => foodNodes;
-    public NeuralObstacle[] Obstacles => Array.Empty<NeuralObstacle>();
+    public NeuralObstacle[] Obstacles => obstacles;
 
     public int Seed { get; private set; }
     public int AgentCount => agents?.Length ?? 0;
@@ -164,7 +172,12 @@ public sealed class NeuralSlimeMoldRunner
         float branchPromotionThreshold,
         float branchRetractionBoost,
         float trunkStabilityBoost,
-        float duplicateTubeSuppressionRadius)
+        float duplicateTubeSuppressionRadius,
+        bool useWorldObstacles,
+        NeuralObstacle[] obstacles,
+        NeuralCorridorBand[] corridorBands,
+        float obstacleAvoidanceStrength,
+        float obstaclePadding)
     {
         Seed = seed;
         this.mapSize = new Vector2(Mathf.Max(8f, mapSize.x), Mathf.Max(8f, mapSize.y));
@@ -177,6 +190,7 @@ public sealed class NeuralSlimeMoldRunner
 
         this.useColonyHub = useColonyHub;
         this.colonyHub = ClampNodeInsideBounds(colonyHub);
+        this.colonyHub = ResolveToOpenPosition(this.colonyHub, 1f);
         this.colonyHubRadius = Mathf.Max(0.25f, colonyHubRadius);
         this.returnToHubWeight = Mathf.Max(0f, returnToHubWeight);
         this.returnTrailBlend = Mathf.Clamp01(returnTrailBlend);
@@ -196,8 +210,14 @@ public sealed class NeuralSlimeMoldRunner
         this.branchRetractionBoost = Mathf.Max(0f, branchRetractionBoost);
         this.trunkStabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
         this.duplicateTubeSuppressionRadius = Mathf.Max(0f, duplicateTubeSuppressionRadius);
+        this.useWorldObstacles = useWorldObstacles;
+        this.obstacleAvoidanceStrength = Mathf.Max(0f, obstacleAvoidanceStrength);
+        this.obstaclePadding = Mathf.Max(0f, obstaclePadding);
+        this.obstacles = obstacles != null ? (NeuralObstacle[])obstacles.Clone() : Array.Empty<NeuralObstacle>();
+        this.corridorBands = corridorBands != null ? (NeuralCorridorBand[])corridorBands.Clone() : Array.Empty<NeuralCorridorBand>();
 
         Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, false);
+        BuildBlockedFieldMask();
 
         agents = new NeuralSlimeMoldAgent[Mathf.Max(1, agentCount)];
         agentTrailConfidence = new float[agents.Length];
@@ -226,6 +246,7 @@ public sealed class NeuralSlimeMoldRunner
             var pos = new Vector2(
                 radial.x * this.mapSize.x * 0.48f,
                 radial.y * this.mapSize.y * 0.48f);
+            pos = ResolveToOpenPosition(pos, 0.75f);
 
             var heading = rng.Range(0f, Mathf.PI * 2f);
 
@@ -322,11 +343,11 @@ public sealed class NeuralSlimeMoldRunner
                         Field.ScrubAt(agent.position, ActiveFoodTrailScrub);
                     }
 
-                    Field.DepositKernel(agent.position, agent.depositAmount * returnDepositBoost);
+                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost);
 
                     if (useColonyHub && IsInsideHub(agent.position))
                     {
-                        Field.DepositDisc(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst);
+                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst);
                         Field.ScrubDisc(agent.position, colonyHubRadius * 0.75f, HubRingScrubStrength);
 
                         mode = AgentMode.ExitHub;
@@ -367,7 +388,7 @@ public sealed class NeuralSlimeMoldRunner
                         emptyFoodIndex >= 0,
                         agentFoodCommitment[i]);
 
-                    Field.DepositKernel(agent.position, agent.depositAmount * depositMultiplier);
+                    DepositKernelIfOpen(agent.position, agent.depositAmount * depositMultiplier);
                     TryNucleateBranch(agent.position, agent.heading, agent.depositAmount, dt, activeFoodIndex >= 0);
 
                     ApplyNonUsefulLoopPrune(
@@ -485,6 +506,8 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
+        steer += ComputeObstacleAvoidanceTurn(agent.position, agent.heading) * obstacleAvoidanceStrength;
+        steer += ComputeCorridorSteer(agent.position, agent.heading);
 
         var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
         agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
@@ -512,7 +535,7 @@ public sealed class NeuralSlimeMoldRunner
             speedMod *= 1.08f;
         }
 
-        agent.position += Direction(agent.heading) * (agent.speed * speedMod * dt);
+        MoveWithObstacleCollision(ref agent, agent.speed * speedMod * dt);
     }
 
     private void HandleFeedMode(ref NeuralSlimeMoldAgent agent, int foodIndex, float dt)
@@ -547,7 +570,13 @@ public sealed class NeuralSlimeMoldRunner
             Mathf.Lerp(0.08f, 0.38f, arrival01) *
             Mathf.Lerp(1f, 1f - 0.22f, crowdPenalty);
 
-        agent.position = Vector2.MoveTowards(agent.position, node.position, feedMoveSpeed * Mathf.Max(0f, dt));
+        var feedStep = feedMoveSpeed * Mathf.Max(0f, dt);
+        if (feedStep > 0f)
+        {
+            var toTargetHeading = Mathf.Atan2(dirToFood.y, dirToFood.x);
+            agent.heading = Mathf.Repeat(toTargetHeading, Mathf.PI * 2f);
+            MoveWithObstacleCollision(ref agent, feedStep);
+        }
 
         if (dist <= radius * 0.18f)
         {
@@ -592,6 +621,8 @@ public sealed class NeuralSlimeMoldRunner
 
         var steer = Mathf.Lerp(hubSteer + awayFoodSteer, trailSteer + hubSteer, returnTrailBlend) + randomTurn;
         steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
+        steer += ComputeObstacleAvoidanceTurn(agent.position, agent.heading) * obstacleAvoidanceStrength;
+        steer += ComputeCorridorSteer(agent.position, agent.heading);
 
         var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
         agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
@@ -606,7 +637,7 @@ public sealed class NeuralSlimeMoldRunner
             speedMod *= 1.04f;
         }
 
-        agent.position += Direction(agent.heading) * (agent.speed * speedMod * dt);
+        MoveWithObstacleCollision(ref agent, agent.speed * speedMod * dt);
     }
 
     private void HandleExitHubMode(ref NeuralSlimeMoldAgent agent, float dt, float explorationTurnNoise)
@@ -617,11 +648,13 @@ public sealed class NeuralSlimeMoldRunner
 
         var steer = outwardSteer + randomTurn;
         steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
+        steer += ComputeObstacleAvoidanceTurn(agent.position, agent.heading) * obstacleAvoidanceStrength;
+        steer += ComputeCorridorSteer(agent.position, agent.heading);
 
         var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
         agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
 
-        agent.position += Direction(agent.heading) * (agent.speed * ExitHubSpeedMultiplier * dt);
+        MoveWithObstacleCollision(ref agent, agent.speed * ExitHubSpeedMultiplier * dt);
     }
 
     private float SampleNutrientField(Vector2 position)
@@ -968,8 +1001,10 @@ public sealed class NeuralSlimeMoldRunner
             for (var i = 0; i < manualFoodNodes.Length; i++)
             {
                 var cfg = manualFoodNodes[i];
+                var spawnPosition = ClampNodeInsideBounds(cfg.position);
+                spawnPosition = ResolveToOpenPosition(spawnPosition, Mathf.Max(0.5f, cfg.consumeRadius * 0.35f));
                 foodNodes[i] = BuildFoodState(
-                    ClampNodeInsideBounds(cfg.position),
+                    spawnPosition,
                     Mathf.Max(0f, cfg.baseStrength),
                     Mathf.Max(0f, cfg.capacity),
                     Mathf.Max(0f, cfg.consumeRadius),
@@ -990,10 +1025,7 @@ public sealed class NeuralSlimeMoldRunner
 
         for (var i = 0; i < foodNodeCount; i++)
         {
-            var pos = new Vector2(
-                placementRng.Range(-mapSize.x * 0.4f, mapSize.x * 0.4f),
-                placementRng.Range(-mapSize.y * 0.4f, mapSize.y * 0.4f));
-            pos = ClampNodeInsideBounds(pos);
+            var pos = SampleOpenFoodPosition(placementRng);
             foodNodes[i] = BuildFoodState(pos, foodStrength, foodCapacity, consumeRadius, consumeRate);
         }
 
@@ -1082,7 +1114,7 @@ public sealed class NeuralSlimeMoldRunner
                 if (desirability > 0f && bridgeReinforcementWeight > 0f)
                 {
                     var reinforce = bridgeReinforcementWeight * desirability * step;
-                    Field.DepositDisc(node.position, Mathf.Max(0.35f, node.consumeRadius * 0.45f), reinforce);
+                    DepositDiscIfOpen(node.position, Mathf.Max(0.35f, node.consumeRadius * 0.45f), reinforce);
                 }
             }
             else if (staleCorridorDecayBoost > 0f)
@@ -1139,7 +1171,7 @@ public sealed class NeuralSlimeMoldRunner
         var branchDepositScale = promoted ? PromotedBranchDepositScale : ExploratoryBranchDepositScale;
         var branchDeposit = depositAmount * branchDepositScale * Mathf.Lerp(0.65f, 1.12f, branchValue);
 
-        Field.DepositKernel(branchSamplePos, branchDeposit);
+        DepositKernelIfOpen(branchSamplePos, branchDeposit);
 
         if (!promoted && branchRetractionBoost > 0f && !nearFood)
         {
@@ -1150,7 +1182,7 @@ public sealed class NeuralSlimeMoldRunner
 
         if (promoted)
         {
-            Field.DepositDisc(branchSamplePos, 0.6f, branchDeposit * 0.4f);
+            DepositDiscIfOpen(branchSamplePos, 0.6f, branchDeposit * 0.4f);
         }
     }
 
@@ -1200,7 +1232,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         var reinforce = bridgeReinforcementWeight * desirability * Mathf.Lerp(0.55f, 1.25f, Mathf.Clamp01(trailAtMid * 4.5f)) * dt;
-        Field.DepositDisc(midpoint, 0.6f, reinforce);
+        DepositDiscIfOpen(midpoint, 0.6f, reinforce);
     }
 
     private void SuppressHubOrbiting(float dt, float searchRadius)
@@ -1451,6 +1483,250 @@ public sealed class NeuralSlimeMoldRunner
         var dot = Vector2.Dot(forward, away);
         var signedAngle = Mathf.Atan2(cross, dot);
         return Mathf.Clamp(signedAngle / Mathf.PI, -1f, 1f);
+    }
+
+    private float ComputeObstacleAvoidanceTurn(Vector2 position, float heading)
+    {
+        if (!useWorldObstacles || obstacleAvoidanceStrength <= 0f)
+        {
+            return 0f;
+        }
+
+        var probeDistance = Mathf.Max(0.35f, ObstacleProbeDistance + obstaclePadding);
+        var forward = Direction(heading);
+        var left = Direction(heading - (Mathf.PI * 0.35f));
+        var right = Direction(heading + (Mathf.PI * 0.35f));
+
+        var aheadBlocked = IsBlocked(position + (forward * probeDistance), 0f) ? 1f : 0f;
+        var leftBlocked = IsBlocked(position + (left * probeDistance), 0f) ? 1f : 0f;
+        var rightBlocked = IsBlocked(position + (right * probeDistance), 0f) ? 1f : 0f;
+        var immediateBlocked = IsBlocked(position, 0f) ? 1f : 0f;
+
+        var sideBias = rightBlocked - leftBlocked;
+        var frontalDirection = Mathf.Abs(sideBias) > 0.001f
+            ? Mathf.Sign(sideBias)
+            : Mathf.Sign(Mathf.Sin((position.x * 0.73f) + (position.y * 0.37f) + heading));
+        var frontalBias = aheadBlocked * frontalDirection * 0.9f;
+        var recoverySign = immediateBlocked > 0f ? ((rng.NextFloat01() < 0.5f) ? -1f : 1f) : 0f;
+        var recoveryTurn = immediateBlocked * recoverySign;
+
+        var turn = sideBias + frontalBias + recoveryTurn;
+        return Mathf.Clamp(turn, -1f, 1f);
+    }
+
+    private float ComputeCorridorSteer(Vector2 position, float heading)
+    {
+        if (!useWorldObstacles || corridorBands == null || corridorBands.Length == 0)
+        {
+            return 0f;
+        }
+
+        var bestWeight = 0f;
+        var bestCenter = Vector2.zero;
+
+        for (var i = 0; i < corridorBands.Length; i++)
+        {
+            var band = corridorBands[i];
+            var halfSize = new Vector2(Mathf.Max(0.1f, band.size.x * 0.5f), Mathf.Max(0.1f, band.size.y * 0.5f));
+            var local = Rotate(position - band.center, -band.angleDegrees * Mathf.Deg2Rad);
+
+            var dx = Mathf.Abs(local.x) / halfSize.x;
+            var dy = Mathf.Abs(local.y) / halfSize.y;
+            var inside = Mathf.Clamp01(1f - Mathf.Max(dx, dy));
+            if (inside <= 0f)
+            {
+                continue;
+            }
+
+            var weight = inside * Mathf.Max(0f, band.strength);
+            if (weight <= bestWeight)
+            {
+                continue;
+            }
+
+            bestWeight = weight;
+            bestCenter = band.center;
+        }
+
+        if (bestWeight <= 0f)
+        {
+            return 0f;
+        }
+
+        return ComputeSteerTowardPoint(position, heading, bestCenter) * Mathf.Clamp01(bestWeight);
+    }
+
+    private void MoveWithObstacleCollision(ref NeuralSlimeMoldAgent agent, float moveDistance)
+    {
+        if (moveDistance <= 0f)
+        {
+            return;
+        }
+
+        var candidate = agent.position + (Direction(agent.heading) * moveDistance);
+        if (!IsBlocked(candidate, 0f))
+        {
+            agent.position = candidate;
+            return;
+        }
+
+        var leftHeading = Mathf.Repeat(agent.heading - (Mathf.PI * 0.5f), Mathf.PI * 2f);
+        var leftCandidate = agent.position + (Direction(leftHeading) * moveDistance * 0.65f);
+        if (!IsBlocked(leftCandidate, 0f))
+        {
+            agent.heading = leftHeading;
+            agent.position = leftCandidate;
+            return;
+        }
+
+        var rightHeading = Mathf.Repeat(agent.heading + (Mathf.PI * 0.5f), Mathf.PI * 2f);
+        var rightCandidate = agent.position + (Direction(rightHeading) * moveDistance * 0.65f);
+        if (!IsBlocked(rightCandidate, 0f))
+        {
+            agent.heading = rightHeading;
+            agent.position = rightCandidate;
+            return;
+        }
+
+        agent.heading = Mathf.Repeat(agent.heading + Mathf.PI, Mathf.PI * 2f);
+    }
+
+    private bool IsBlocked(Vector2 position, float extraPadding)
+    {
+        if (!useWorldObstacles || obstacles == null || obstacles.Length == 0)
+        {
+            return false;
+        }
+
+        var padding = Mathf.Max(0f, obstaclePadding + extraPadding);
+        for (var i = 0; i < obstacles.Length; i++)
+        {
+            if (Contains(obstacles[i], position, padding))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool Contains(NeuralObstacle obstacle, Vector2 point, float padding)
+    {
+        if (obstacle.shape == NeuralObstacleShape.Circle)
+        {
+            var radius = Mathf.Max(0.1f, obstacle.radius) + padding;
+            return (point - obstacle.center).sqrMagnitude <= (radius * radius);
+        }
+
+        var halfSize = new Vector2(
+            Mathf.Max(0.1f, obstacle.size.x * 0.5f) + padding,
+            Mathf.Max(0.1f, obstacle.size.y * 0.5f) + padding);
+        var delta = point - obstacle.center;
+        return Mathf.Abs(delta.x) <= halfSize.x && Mathf.Abs(delta.y) <= halfSize.y;
+    }
+
+    private void BuildBlockedFieldMask()
+    {
+        if (Field == null)
+        {
+            return;
+        }
+
+        var maskLength = Field.Width * Field.Height;
+        if (!useWorldObstacles || obstacles == null || obstacles.Length == 0)
+        {
+            blockedFieldMask = Array.Empty<bool>();
+            Field.SetBlockedMask(null);
+            return;
+        }
+
+        blockedFieldMask = new bool[maskLength];
+        for (var y = 0; y < Field.Height; y++)
+        {
+            for (var x = 0; x < Field.Width; x++)
+            {
+                var idx = (y * Field.Width) + x;
+                var world = Field.GridToWorld(x, y);
+                blockedFieldMask[idx] = IsBlocked(world, 0f);
+            }
+        }
+
+        Field.SetBlockedMask(blockedFieldMask);
+    }
+
+    private void DepositKernelIfOpen(Vector2 position, float amount)
+    {
+        if (amount <= 0f || IsBlocked(position, 0f))
+        {
+            return;
+        }
+
+        Field.DepositKernel(position, amount);
+    }
+
+    private void DepositDiscIfOpen(Vector2 position, float radius, float amount)
+    {
+        if (amount <= 0f || radius <= 0f || IsBlocked(position, 0f))
+        {
+            return;
+        }
+
+        Field.DepositDisc(position, radius, amount);
+    }
+
+    private Vector2 SampleOpenFoodPosition(SeededRng placementRng)
+    {
+        var best = Vector2.zero;
+
+        for (var attempt = 0; attempt < 64; attempt++)
+        {
+            var pos = new Vector2(
+                placementRng.Range(-mapSize.x * 0.4f, mapSize.x * 0.4f),
+                placementRng.Range(-mapSize.y * 0.4f, mapSize.y * 0.4f));
+            pos = ClampNodeInsideBounds(pos);
+            best = pos;
+            if (!IsBlocked(pos, 0f))
+            {
+                return pos;
+            }
+        }
+
+        return ResolveToOpenPosition(best, 1.25f);
+    }
+
+    private Vector2 ResolveToOpenPosition(Vector2 position, float searchStep)
+    {
+        var clamped = ClampNodeInsideBounds(position);
+        if (!IsBlocked(clamped, 0f))
+        {
+            return clamped;
+        }
+
+        var step = Mathf.Max(0.2f, searchStep);
+        for (var ring = 1; ring <= 12; ring++)
+        {
+            var radius = ring * step;
+            const int samples = 16;
+            for (var i = 0; i < samples; i++)
+            {
+                var angle = (i / (float)samples) * Mathf.PI * 2f;
+                var candidate = clamped + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
+                candidate = ClampNodeInsideBounds(candidate);
+                if (!IsBlocked(candidate, 0f))
+                {
+                    return candidate;
+                }
+            }
+        }
+
+        return clamped;
+    }
+
+    private static Vector2 Rotate(Vector2 value, float radians)
+    {
+        var c = Mathf.Cos(radians);
+        var s = Mathf.Sin(radians);
+        return new Vector2((value.x * c) - (value.y * s), (value.x * s) + (value.y * c));
     }
 
     private Vector2 ClampNodeInsideBounds(Vector2 node)

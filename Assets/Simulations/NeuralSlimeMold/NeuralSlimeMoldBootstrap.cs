@@ -61,6 +61,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.25f;
     [SerializeField, Min(0f)] private float duplicateTubeSuppressionRadius = 1.35f;
 
+    [Header("World Obstacles")]
+    [SerializeField] private bool useWorldObstacles;
+    [SerializeField] private NeuralObstacle[] worldObstacles;
+    [SerializeField] private NeuralCorridorBand[] corridorBands;
+    [SerializeField, Min(0f)] private float obstacleAvoidanceStrength = 0.85f;
+    [SerializeField, Min(0f)] private float obstaclePadding = 0.45f;
+
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobOverlay = true;
@@ -169,7 +176,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             branchPromotionThreshold,
             branchRetractionBoost,
             trunkStabilityBoost,
-            duplicateTubeSuppressionRadius);
+            duplicateTubeSuppressionRadius,
+            useWorldObstacles,
+            worldObstacles,
+            corridorBands,
+            obstacleAvoidanceStrength,
+            obstaclePadding);
 
         ApplyRendererOverrides();
         ApplyCameraBackground();
@@ -321,6 +333,40 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             Gizmos.DrawSphere(new Vector3(colonyHub.x, colonyHub.y, 0f), 0.25f);
         }
 
+        if (useWorldObstacles && worldObstacles != null)
+        {
+            Gizmos.color = new Color(1f, 0.3f, 0.3f, 0.45f);
+            for (var i = 0; i < worldObstacles.Length; i++)
+            {
+                var obstacle = worldObstacles[i];
+                var center = new Vector3(obstacle.center.x, obstacle.center.y, 0f);
+                if (obstacle.shape == NeuralObstacleShape.Circle)
+                {
+                    Gizmos.DrawWireSphere(center, Mathf.Max(0.1f, obstacle.radius));
+                    continue;
+                }
+
+                var size = obstacle.size;
+                Gizmos.DrawWireCube(center, new Vector3(Mathf.Max(0.1f, size.x), Mathf.Max(0.1f, size.y), 0f));
+            }
+        }
+
+        if (useWorldObstacles && corridorBands != null)
+        {
+            Gizmos.color = new Color(0.25f, 0.75f, 1f, 0.22f);
+            for (var i = 0; i < corridorBands.Length; i++)
+            {
+                var band = corridorBands[i];
+                var center = new Vector3(band.center.x, band.center.y, 0f);
+                var size = new Vector3(Mathf.Max(0.2f, band.size.x), Mathf.Max(0.2f, band.size.y), 0f);
+                var rot = Quaternion.Euler(0f, 0f, band.angleDegrees);
+                var prev = Gizmos.matrix;
+                Gizmos.matrix = Matrix4x4.TRS(center, rot, Vector3.one);
+                Gizmos.DrawWireCube(Vector3.zero, size);
+                Gizmos.matrix = prev;
+            }
+        }
+
         if (UnityEngine.Application.isPlaying && runner != null)
         {
             Gizmos.color = new Color(0.4f, 1f, 0.9f, 0.35f);
@@ -375,6 +421,32 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         branchRetractionBoost = Mathf.Max(0f, branchRetractionBoost);
         trunkStabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
         duplicateTubeSuppressionRadius = Mathf.Max(0f, duplicateTubeSuppressionRadius);
+        obstacleAvoidanceStrength = Mathf.Max(0f, obstacleAvoidanceStrength);
+        obstaclePadding = Mathf.Max(0f, obstaclePadding);
+
+        if (worldObstacles != null)
+        {
+            for (var i = 0; i < worldObstacles.Length; i++)
+            {
+                var obstacle = worldObstacles[i];
+                obstacle.radius = Mathf.Max(0.1f, obstacle.radius);
+                obstacle.size.x = Mathf.Max(0.1f, obstacle.size.x);
+                obstacle.size.y = Mathf.Max(0.1f, obstacle.size.y);
+                worldObstacles[i] = obstacle;
+            }
+        }
+
+        if (corridorBands != null)
+        {
+            for (var i = 0; i < corridorBands.Length; i++)
+            {
+                var band = corridorBands[i];
+                band.size.x = Mathf.Max(0.1f, band.size.x);
+                band.size.y = Mathf.Max(0.1f, band.size.y);
+                band.strength = Mathf.Max(0f, band.strength);
+                corridorBands[i] = band;
+            }
+        }
 
         cameraPadding = Mathf.Max(0.1f, cameraPadding);
         cameraFollowSmooth = Mathf.Max(0.01f, cameraFollowSmooth);
