@@ -86,7 +86,11 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "bridgeReinforcementWeight",
             "hubOrbitSuppression",
             "staleCorridorDecayBoost",
-            "connectorSearchRadius"
+            "connectorSearchRadius",
+            "connectorSteerWeight",
+            "hubTangentialPenalty",
+            "connectorCorridorWidth",
+            "returnOrbitDepositPenalty"
         });
 
         DrawSection("Branch Remodeling", new[]
