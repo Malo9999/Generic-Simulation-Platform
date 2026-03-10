@@ -17,6 +17,15 @@ public struct NeuralObstacle
 }
 
 [System.Serializable]
+public struct NeuralCorridorBand
+{
+    public Vector2 center;
+    public Vector2 size;
+    [Range(-180f, 180f)] public float angleDegrees;
+    [Min(0f)] public float strength;
+}
+
+[System.Serializable]
 public struct NeuralFoodNodeConfig
 {
     public Vector2 position;

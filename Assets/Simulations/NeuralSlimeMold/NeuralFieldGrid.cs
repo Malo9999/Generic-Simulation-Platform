@@ -6,6 +6,7 @@ public sealed class NeuralFieldGrid
     private readonly int height;
     private readonly float[] field;
     private readonly float[] scratch;
+    private bool[] blockedMask;
     private readonly Vector2 worldSize;
     private readonly bool wrapEdges;
 
@@ -50,6 +51,11 @@ public sealed class NeuralFieldGrid
         }
 
         WorldToGrid(worldPosition, out var x, out var y);
+        if (IsBlockedCell(x, y))
+        {
+            return;
+        }
+
         field[(y * width) + x] += amount;
     }
 
@@ -106,7 +112,10 @@ public sealed class NeuralFieldGrid
                 }
 
                 var weight = 1f - d2;
-                field[(y * width) + x] += amount * weight;
+                if (!IsBlockedCell(x, y))
+                {
+                    field[(y * width) + x] += amount * weight;
+                }
             }
         }
     }
@@ -229,6 +238,12 @@ public sealed class NeuralFieldGrid
 
                 var c = field[idx];
 
+                if (IsBlockedIndex(idx))
+                {
+                    scratch[idx] = 0f;
+                    continue;
+                }
+
                 var n = field[(yUp * width) + x];
                 var s = field[(yDown * width) + x];
                 var w = field[(y * width) + xLeft];
@@ -238,6 +253,16 @@ public sealed class NeuralFieldGrid
                 var ne = field[(yUp * width) + xRight];
                 var sw = field[(yDown * width) + xLeft];
                 var se = field[(yDown * width) + xRight];
+
+                n = IsBlockedCell(x, yUp) ? c : n;
+                s = IsBlockedCell(x, yDown) ? c : s;
+                w = IsBlockedCell(xLeft, y) ? c : w;
+                e = IsBlockedCell(xRight, y) ? c : e;
+
+                nw = IsBlockedCell(xLeft, yUp) ? c : nw;
+                ne = IsBlockedCell(xRight, yUp) ? c : ne;
+                sw = IsBlockedCell(xLeft, yDown) ? c : sw;
+                se = IsBlockedCell(xRight, yDown) ? c : se;
 
                 var cardinalSum = n + s + e + w;
                 var diagonalSum = (nw + ne + sw + se) * DiagonalWeight;
@@ -289,6 +314,43 @@ public sealed class NeuralFieldGrid
         }
     }
 
+    public void SetBlockedMask(bool[] blockedMask)
+    {
+        if (blockedMask == null || blockedMask.Length != field.Length)
+        {
+            this.blockedMask = null;
+            return;
+        }
+
+        this.blockedMask = blockedMask;
+
+        for (var i = 0; i < field.Length; i++)
+        {
+            if (this.blockedMask[i])
+            {
+                field[i] = 0f;
+                scratch[i] = 0f;
+            }
+        }
+    }
+
+    public int WorldToIndex(Vector2 worldPosition)
+    {
+        WorldToGrid(worldPosition, out var x, out var y);
+        return (y * width) + x;
+    }
+
+    public Vector2 GridToWorld(int x, int y)
+    {
+        var clampedX = Mathf.Clamp(x, 0, width - 1);
+        var clampedY = Mathf.Clamp(y, 0, height - 1);
+        var u = width <= 1 ? 0f : clampedX / (float)(width - 1);
+        var v = height <= 1 ? 0f : clampedY / (float)(height - 1);
+        var worldX = Mathf.Lerp(-worldSize.x * 0.5f, worldSize.x * 0.5f, u);
+        var worldY = Mathf.Lerp(-worldSize.y * 0.5f, worldSize.y * 0.5f, v);
+        return new Vector2(worldX, worldY);
+    }
+
     private float SampleNearbyStrongest(int x, int y, int radiusX, int radiusY)
     {
         var maxTrail = 0f;
@@ -316,6 +378,23 @@ public sealed class NeuralFieldGrid
         x = Mathf.Clamp(x, 0, width - 1);
         y = Mathf.Clamp(y, 0, height - 1);
         field[(y * width) + x] += amount;
+    }
+
+    private bool IsBlockedCell(int x, int y)
+    {
+        if (blockedMask == null)
+        {
+            return false;
+        }
+
+        x = Mathf.Clamp(x, 0, width - 1);
+        y = Mathf.Clamp(y, 0, height - 1);
+        return blockedMask[(y * width) + x];
+    }
+
+    private bool IsBlockedIndex(int idx)
+    {
+        return blockedMask != null && idx >= 0 && idx < blockedMask.Length && blockedMask[idx];
     }
 
     private void WorldToGrid(Vector2 worldPosition, out int x, out int y)
