@@ -9,6 +9,15 @@ public sealed class NeuralFieldGrid
     private readonly Vector2 worldSize;
     private readonly bool wrapEdges;
 
+    private const float DiagonalWeight = 0.70710678f;
+    private const float WeakSignalPruneThreshold = 0.015f;
+    private const float WeakSignalExtraDecay = 0.22f;
+    private const float StrongSignalPreserveThreshold = 0.08f;
+    private const float StrongSignalPreserveBoost = 0.05f;
+
+    private const float BorderBleedFactor = 0.82f;
+    private const int BorderBleedThickness = 2;
+
     public NeuralFieldGrid(int width, int height, Vector2 worldSize, bool wrapEdges)
     {
         this.width = Mathf.Max(4, width);
@@ -44,6 +53,64 @@ public sealed class NeuralFieldGrid
         field[(y * width) + x] += amount;
     }
 
+    public void DepositKernel(Vector2 worldPosition, float amount)
+    {
+        if (amount <= 0f)
+        {
+            return;
+        }
+
+        WorldToGrid(worldPosition, out var x, out var y);
+
+        AddAt(x, y, amount * 1.0f);
+        AddAt(x - 1, y, amount * 0.45f);
+        AddAt(x + 1, y, amount * 0.45f);
+        AddAt(x, y - 1, amount * 0.45f);
+        AddAt(x, y + 1, amount * 0.45f);
+
+        AddAt(x - 1, y - 1, amount * 0.20f);
+        AddAt(x + 1, y - 1, amount * 0.20f);
+        AddAt(x - 1, y + 1, amount * 0.20f);
+        AddAt(x + 1, y + 1, amount * 0.20f);
+    }
+
+    public void DepositDisc(Vector2 worldPosition, float radiusWorld, float amount)
+    {
+        if (amount <= 0f || radiusWorld <= 0f)
+        {
+            return;
+        }
+
+        var uv = WorldToUv(worldPosition);
+        var gx = uv.x * (width - 1);
+        var gy = uv.y * (height - 1);
+
+        var radiusX = Mathf.Max(1, Mathf.CeilToInt((radiusWorld / worldSize.x) * width));
+        var radiusY = Mathf.Max(1, Mathf.CeilToInt((radiusWorld / worldSize.y) * height));
+
+        var minX = Mathf.Clamp(Mathf.FloorToInt(gx) - radiusX, 0, width - 1);
+        var maxX = Mathf.Clamp(Mathf.CeilToInt(gx) + radiusX, 0, width - 1);
+        var minY = Mathf.Clamp(Mathf.FloorToInt(gy) - radiusY, 0, height - 1);
+        var maxY = Mathf.Clamp(Mathf.CeilToInt(gy) + radiusY, 0, height - 1);
+
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = minX; x <= maxX; x++)
+            {
+                var dx = (x - gx) / Mathf.Max(1f, radiusX);
+                var dy = (y - gy) / Mathf.Max(1f, radiusY);
+                var d2 = (dx * dx) + (dy * dy);
+                if (d2 > 1f)
+                {
+                    continue;
+                }
+
+                var weight = 1f - d2;
+                field[(y * width) + x] += amount * weight;
+            }
+        }
+    }
+
     public void ScrubAt(Vector2 worldPosition, float amount)
     {
         if (amount <= 0f)
@@ -54,6 +121,46 @@ public sealed class NeuralFieldGrid
         WorldToGrid(worldPosition, out var x, out var y);
         var idx = (y * width) + x;
         field[idx] = Mathf.Max(0f, field[idx] * (1f - Mathf.Clamp01(amount)));
+    }
+
+    public void ScrubDisc(Vector2 worldPosition, float radiusWorld, float amount)
+    {
+        if (amount <= 0f || radiusWorld <= 0f)
+        {
+            return;
+        }
+
+        var uv = WorldToUv(worldPosition);
+        var gx = uv.x * (width - 1);
+        var gy = uv.y * (height - 1);
+
+        var radiusX = Mathf.Max(1, Mathf.CeilToInt((radiusWorld / worldSize.x) * width));
+        var radiusY = Mathf.Max(1, Mathf.CeilToInt((radiusWorld / worldSize.y) * height));
+
+        var minX = Mathf.Clamp(Mathf.FloorToInt(gx) - radiusX, 0, width - 1);
+        var maxX = Mathf.Clamp(Mathf.CeilToInt(gx) + radiusX, 0, width - 1);
+        var minY = Mathf.Clamp(Mathf.FloorToInt(gy) - radiusY, 0, height - 1);
+        var maxY = Mathf.Clamp(Mathf.CeilToInt(gy) + radiusY, 0, height - 1);
+
+        var scrub = Mathf.Clamp01(amount);
+
+        for (var y = minY; y <= maxY; y++)
+        {
+            for (var x = minX; x <= maxX; x++)
+            {
+                var dx = (x - gx) / Mathf.Max(1f, radiusX);
+                var dy = (y - gy) / Mathf.Max(1f, radiusY);
+                var d2 = (dx * dx) + (dy * dy);
+                if (d2 > 1f)
+                {
+                    continue;
+                }
+
+                var weight = 1f - d2;
+                var idx = (y * width) + x;
+                field[idx] = Mathf.Max(0f, field[idx] * (1f - (scrub * weight)));
+            }
+        }
     }
 
     public float SampleBilinear(Vector2 worldPosition)
@@ -80,10 +187,22 @@ public sealed class NeuralFieldGrid
         return Mathf.Lerp(a, b, ty);
     }
 
+    public float EstimateLocalCurvature(Vector2 worldPosition, float sampleRadiusWorld)
+    {
+        var c = SampleBilinear(worldPosition);
+        var l = SampleBilinear(worldPosition + new Vector2(-sampleRadiusWorld, 0f));
+        var r = SampleBilinear(worldPosition + new Vector2(sampleRadiusWorld, 0f));
+        var u = SampleBilinear(worldPosition + new Vector2(0f, sampleRadiusWorld));
+        var d = SampleBilinear(worldPosition + new Vector2(0f, -sampleRadiusWorld));
+
+        var laplacian = Mathf.Abs((l + r + u + d) - (4f * c));
+        return laplacian;
+    }
+
     public void Step(float diffusion, float decayPerSecond, float dt)
     {
         var kDiff = Mathf.Clamp01(diffusion);
-        var decayFactor = Mathf.Clamp01(1f - (Mathf.Max(0f, decayPerSecond) * dt));
+        var baseDecayFactor = Mathf.Clamp01(1f - (Mathf.Max(0f, decayPerSecond) * dt));
 
         for (var y = 0; y < height; y++)
         {
@@ -96,14 +215,42 @@ public sealed class NeuralFieldGrid
                 var xRight = x == width - 1 ? (wrapEdges ? 0 : width - 1) : x + 1;
 
                 var idx = (y * width) + x;
+
                 var c = field[idx];
+
                 var n = field[(yUp * width) + x];
                 var s = field[(yDown * width) + x];
                 var w = field[(y * width) + xLeft];
                 var e = field[(y * width) + xRight];
 
-                var neighborAvg = (n + s + e + w) * 0.25f;
-                var diffused = c + ((neighborAvg - c) * kDiff);
+                var nw = field[(yUp * width) + xLeft];
+                var ne = field[(yUp * width) + xRight];
+                var sw = field[(yDown * width) + xLeft];
+                var se = field[(yDown * width) + xRight];
+
+                var cardinalSum = n + s + e + w;
+                var diagonalSum = (nw + ne + sw + se) * DiagonalWeight;
+                var neighborAvg = (cardinalSum + diagonalSum) / (4f + (4f * DiagonalWeight));
+
+                var diffused = Mathf.Lerp(c, neighborAvg, kDiff);
+
+                if (c >= StrongSignalPreserveThreshold)
+                {
+                    diffused = Mathf.Lerp(diffused, c, StrongSignalPreserveBoost);
+                }
+
+                var decayFactor = baseDecayFactor;
+                if (diffused < WeakSignalPruneThreshold)
+                {
+                    decayFactor *= Mathf.Clamp01(1f - (WeakSignalExtraDecay * dt));
+                }
+
+                if (x < BorderBleedThickness || x > width - 1 - BorderBleedThickness ||
+                    y < BorderBleedThickness || y > height - 1 - BorderBleedThickness)
+                {
+                    diffused *= BorderBleedFactor;
+                }
+
                 scratch[idx] = Mathf.Max(0f, diffused * decayFactor);
             }
         }
@@ -112,6 +259,18 @@ public sealed class NeuralFieldGrid
         {
             field[i] = scratch[i];
         }
+    }
+
+    private void AddAt(int x, int y, float amount)
+    {
+        if (amount <= 0f)
+        {
+            return;
+        }
+
+        x = Mathf.Clamp(x, 0, width - 1);
+        y = Mathf.Clamp(y, 0, height - 1);
+        field[(y * width) + x] += amount;
     }
 
     private void WorldToGrid(Vector2 worldPosition, out int x, out int y)
@@ -125,6 +284,7 @@ public sealed class NeuralFieldGrid
     {
         var u = Mathf.InverseLerp(-worldSize.x * 0.5f, worldSize.x * 0.5f, worldPosition.x);
         var v = Mathf.InverseLerp(-worldSize.y * 0.5f, worldSize.y * 0.5f, worldPosition.y);
+
         if (wrapEdges)
         {
             return new Vector2(Mathf.Repeat(u, 1f), Mathf.Repeat(v, 1f));

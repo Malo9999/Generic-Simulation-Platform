@@ -1217,71 +1217,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: da5b5003706942818c97ba20b2ea96c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  simulationMode: 0
   autoStart: 1
   seed: 12345
-  agentCount: 3000
+  agentCount: 600
   mapSize: {x: 64, y: 64}
   trailResolution: {x: 256, y: 256}
-  trailDecayPerSecond: 0.8
+  trailDecayPerSecond: 0.6
   trailDiffusion: 0.23
   sensorAngleDegrees: 35
-  sensorDistance: 1.8
+  sensorDistance: 1.4
   speed: 6.7
   turnRateDegrees: 180
   depositAmount: 1.2
-  trailFollowWeight: 0.66
-  foodAttractionWeight: 4.45
-  foodSenseRadius: 22
-  foodTurnBias: 0.95
-  turnNoise: 0.42
-  localLoopSuppression: 0.64
-  depositNearFoodMultiplier: 1.75
-  pathPersistenceBias: 0.68
-  foodPulseEnabled: 1
-  foodPulsePeriod: 8
-  foodPulseStrength: 0.35
-  localTrailScrubEnabled: 1
-  localTrailScrubThreshold: 0.78
-  localTrailScrubAmount: 0.11
+  explorationTurnNoise: 0.08
+  foodNodeCount: 10
+  foodStrength: 1.1
+  foodCapacity: 1200
+  consumeRadius: 6
+  consumeRate: 0.25
+  allowFoodRegrowth: 1
+  foodReactivationDelay: 10
+  regrowRate: 0.08
+  foodReactivationThreshold: 0.25
+  spawnFromSeed: 1
+  manualFoodConfigs: []
   useGlowAgentShape: 1
   useFieldBlobOverlay: 1
   backgroundColor: {r: 0.01, g: 0.02, b: 0.04, a: 1}
-  foodInfluenceDebug: 0
-  boundaryMode: 2
-  wallMargin: 6
-  worldPreset: 0
-  useCustomWorldOverrides: 0
-  enableStaticFood: 0
-  enableFoodNodes: 1
-  indirectFoodBias: 1
-  foodNodeCount: 4
-  foodStrength: 1.05
-  foodRadius: 14
-  spawnFromSeed: 1
-  allowFoodRegrowth: 1
-  foodCapacity: 78
-  depletionRate: 1.45
-  regrowRate: 0.06
-  depletedFoodStrengthMultiplier: 0.07
-  foodReactivationDelay: 4.5
-  foodReactivationThreshold: 0.2
-  migrationRestlessness: 0.2
-  manualFoodNodes: []
-  manualFoodConfigs: []
   showFoodMarkers: 1
-  showFoodGizmos: 1
-  debugFoodLogging: 1
-  debugFoodPreset: 0
-  strongFoodDebugMode: 0
-  strongFoodStrengthMultiplier: 6
-  enableObstacles: 1
-  manualObstacles: []
-  obstacleThickness: 6
-  corridorGapSize: 12
-  obstacleCoverage: 0.2
-  presetScale: 1
-  smallBlockerCount: 3
   autoFrameCamera: 1
   cameraPadding: 1.1
 --- !u!1 &1246062244

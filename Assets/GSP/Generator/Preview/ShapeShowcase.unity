@@ -356,11 +356,13 @@ MonoBehaviour:
   useMaterialPaletteInShowcase: 0
   showcaseDefaultSpriteMaterial: {fileID: 0}
   proceduralMaterials:
-    useProceduralMaterials: 1
+    useProceduralMaterials: 0
     fallbackToBaselineOnFailure: 1
     materialPalette: {fileID: 11400000, guid: fa955c488d454770acc4b781cc5bada5, type: 2}
     defaultIntensity: 0.45
     perShapeOverrides: []
+  animateAmoebaRow: 1
+  amoebaMotionIntensity: 1
   themes:
   - themeName: Neon
     materialPalette: {fileID: 11400000, guid: f0dd6e9a06e24f0ca784045af2c4645e, type: 2}

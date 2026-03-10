@@ -9,97 +9,124 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
     {
         serializedObject.Update();
 
-        DrawCoreControls();
-
-        var mode = serializedObject.FindProperty("simulationMode");
-        if (mode.enumValueIndex == (int)NeuralSlimeMoldBootstrap.SimulationMode.Experimental)
+        DrawSection("Simulation", new[]
         {
-            EditorGUILayout.Space(8f);
-            EditorGUILayout.LabelField("Experimental Controls", EditorStyles.boldLabel);
-            DrawExperimentalControls();
-        }
+            "autoStart",
+            "seed",
+            "agentCount",
+            "mapSize",
+            "trailResolution",
+            "trailDecayPerSecond",
+            "trailDiffusion"
+        });
+
+        DrawSection("Agent Motion", new[]
+        {
+            "sensorAngleDegrees",
+            "sensorDistance",
+            "speed",
+            "turnRateDegrees",
+            "depositAmount",
+            "explorationTurnNoise"
+        });
+
+        DrawSection("Food", new[]
+        {
+            "foodNodeCount",
+            "foodStrength",
+            "foodCapacity",
+            "consumeRadius",
+            "consumeRate",
+            "allowFoodRegrowth",
+            "foodReactivationDelay",
+            "regrowRate",
+            "foodReactivationThreshold",
+            "spawnFromSeed",
+            "manualFoodConfigs"
+        });
+
+        DrawSection("Colony Hub", new[]
+        {
+            "useColonyHub",
+            "colonyHub",
+            "colonyHubRadius",
+            "returnToHubWeight",
+            "returnTrailBlend",
+            "returnDepositBoost",
+            "successfulReturnDepositBurst",
+            "hubInfluenceRadius"
+        });
+
+        DrawSection("Loop Pruning", new[]
+        {
+            "nonUsefulLoopPruneStrength",
+            "nonUsefulLoopTrailThreshold",
+            "nonUsefulLoopCurvatureThreshold"
+        });
+
+        DrawSection("Rendering", new[]
+        {
+            "showFoodMarkers"
+        });
+
+        DrawSection("Palette", new[]
+        {
+            "useGlowAgentShape",
+            "useFieldBlobOverlay",
+            "backgroundColor"
+        });
+
+        DrawSection("Camera Framing", new[]
+        {
+            "autoFrameCamera",
+            "adaptiveCameraFraming",
+            "cameraPadding",
+            "cameraFollowSmooth",
+            "cameraZoomSmooth",
+            "minimumCameraSize",
+            "cameraLookAheadToActivity",
+            "cameraDeadZoneRadius"
+        });
+
+        EditorGUILayout.Space(10f);
+        DrawRuntimeButtons();
 
         serializedObject.ApplyModifiedProperties();
     }
 
-    private void DrawCoreControls()
+    private void DrawSection(string title, string[] propertyNames)
     {
-        Draw("simulationMode");
-        Draw("autoStart");
-        Draw("seed");
-        Draw("agentCount");
-        Draw("mapSize");
-        Draw("trailResolution");
-        Draw("trailDiffusion");
-        Draw("trailDecayPerSecond");
-        Draw("sensorDistance");
-        Draw("sensorAngleDegrees");
-        Draw("turnRateDegrees");
-        Draw("depositAmount");
-        Draw("enableStaticFood");
-        Draw("foodStrength");
+        EditorGUILayout.Space(6f);
+        EditorGUILayout.LabelField(title, EditorStyles.boldLabel);
+
+        for (var i = 0; i < propertyNames.Length; i++)
+        {
+            Draw(propertyNames[i]);
+        }
     }
 
-    private void DrawExperimentalControls()
+    private void DrawRuntimeButtons()
     {
-        Draw("speed");
-        Draw("trailFollowWeight");
-        Draw("foodAttractionWeight");
-        Draw("foodSenseRadius");
-        Draw("foodTurnBias");
-        Draw("turnNoise");
-        Draw("localLoopSuppression");
-        Draw("depositNearFoodMultiplier");
-        Draw("pathPersistenceBias");
+        var bootstrap = target as NeuralSlimeMoldBootstrap;
+        if (bootstrap == null)
+        {
+            return;
+        }
 
-        Draw("foodPulseEnabled");
-        Draw("foodPulsePeriod");
-        Draw("foodPulseStrength");
-        Draw("localTrailScrubEnabled");
-        Draw("localTrailScrubThreshold");
-        Draw("localTrailScrubAmount");
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            if (GUILayout.Button("Start / Reset Simulation"))
+            {
+                bootstrap.StartSimulation();
+                EditorUtility.SetDirty(bootstrap);
+            }
 
-        Draw("foodInfluenceDebug");
-        Draw("showFoodMarkers");
-        Draw("showFoodGizmos");
-        Draw("debugFoodLogging");
-        Draw("debugFoodPreset");
-        Draw("strongFoodDebugMode");
-        Draw("strongFoodStrengthMultiplier");
-
-        Draw("boundaryMode");
-        Draw("wallMargin");
-        Draw("worldPreset");
-        Draw("useCustomWorldOverrides");
-        Draw("enableFoodNodes");
-        Draw("indirectFoodBias");
-        Draw("foodNodeCount");
-        Draw("foodRadius");
-        Draw("spawnFromSeed");
-        Draw("allowFoodRegrowth");
-        Draw("foodCapacity");
-        Draw("depletionRate");
-        Draw("regrowRate");
-        Draw("depletedFoodStrengthMultiplier");
-        Draw("foodReactivationDelay");
-        Draw("foodReactivationThreshold");
-        Draw("migrationRestlessness");
-        Draw("manualFoodNodes");
-        Draw("manualFoodConfigs");
-
-        Draw("enableObstacles");
-        Draw("manualObstacles");
-        Draw("obstacleThickness");
-        Draw("corridorGapSize");
-        Draw("obstacleCoverage");
-        Draw("presetScale");
-        Draw("smallBlockerCount");
-
-        Draw("useGlowAgentShape");
-        Draw("useFieldBlobOverlay");
-        Draw("backgroundColor");
-        Draw("autoFrameCamera");
-        Draw("cameraPadding");
+            if (GUILayout.Button("Reseed"))
+            {
+                bootstrap.Reseed();
+                EditorUtility.SetDirty(bootstrap);
+            }
+        }
     }
 
     private void Draw(string propertyName)

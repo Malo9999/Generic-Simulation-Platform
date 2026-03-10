@@ -3,100 +3,192 @@ using UnityEngine;
 
 public sealed class NeuralSlimeMoldRunner
 {
-    public readonly struct FoodSpawnDebugInfo
+    private enum AgentMode : byte
     {
-        public FoodSpawnDebugInfo(bool enabled, int requestedCount, int spawnedCount, int rejectedCount)
-        {
-            Enabled = enabled;
-            RequestedCount = requestedCount;
-            SpawnedCount = spawnedCount;
-            RejectedCount = rejectedCount;
-        }
-
-        public bool Enabled { get; }
-        public int RequestedCount { get; }
-        public int SpawnedCount { get; }
-        public int RejectedCount { get; }
+        SeekFood = 0,
+        Feed = 1,
+        ReturnToHub = 2,
+        ExitHub = 3
     }
 
-    public enum BoundaryMode
-    {
-        Wrap = 0,
-        Reflect = 1,
-        SoftWall = 2
-    }
+    private const float MinFoodStrengthFloor = 0.0001f;
+    private const float OccupiedFoodLogIntervalSeconds = 4f;
 
-    private const float AgentCollisionPadding = 0.12f;
+    private const float FoodSeekRangeMultiplier = 2.2f;
+    private const float MinFoodSeekRange = 1.2f;
+
+    private const float MinTrailForHighway = 0.02f;
+    private const float StrongTrailHighwayThreshold = 0.12f;
+    private const float MaxHighwayDepositBoost = 1.9f;
+    private const float WeakTrailDepositPenalty = 0.72f;
+
+    private const float ActivitySmoothing = 0.08f;
+    private const float MinActivityRadius = 4f;
+
+    private const float BoundaryAvoidanceMargin = 5f;
+    private const float BoundaryAvoidanceStrength = 0.95f;
+    private const float FoodCrowdingRadiusMultiplier = 1.15f;
+    private const float FoodCrowdingPenaltyStrength = 0.65f;
+    private const float ActiveFoodTrailScrub = 0.10f;
+    private const float EmptyFoodTrailScrub = 0.18f;
+
+    private const float FeedDurationMin = 0.35f;
+    private const float FeedDurationMax = 0.85f;
+    private const float ReturnDurationMin = 1.2f;
+    private const float ReturnDurationMax = 3.0f;
+    private const float FeedJitterStrength = 0.025f;
+
+    private const float ReturnFoodRepulsionStrength = 0.45f;
+    private const float ReturnNoiseMultiplier = 0.30f;
+
+    private const float LoopCurvatureSampleRadius = 1.2f;
+    private const float LoopPruneRadius = 1.0f;
+
+    // New: explicitly push agents out of the hub after delivery so the sim does not collapse into one final ring.
+    private const float ExitHubDurationMin = 0.65f;
+    private const float ExitHubDurationMax = 1.35f;
+    private const float ExitHubSteerStrength = 1.75f;
+    private const float ExitHubSpeedMultiplier = 1.18f;
+    private const float ExitHubNoiseMultiplier = 0.22f;
+    private const float HubRingScrubStrength = 0.22f;
+    private const float HubSeekDepositSuppression = 0.08f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
-    private NeuralObstacle[] obstacles = Array.Empty<NeuralObstacle>();
-    private int[] nodeVisitCounts = Array.Empty<int>();
+    private int[] foodConsumerCounts = Array.Empty<int>();
+    private bool[] foodDepletionLogged = Array.Empty<bool>();
+    private bool[] foodIsDepleted = Array.Empty<bool>();
+    private float[] foodRegrowDelayTimers = Array.Empty<float>();
+
+    private float[] agentTrailConfidence = Array.Empty<float>();
+    private float[] agentFoodCommitment = Array.Empty<float>();
+
+    private AgentMode[] agentModes = Array.Empty<AgentMode>();
+    private float[] agentModeTimers = Array.Empty<float>();
+    private int[] agentLastFoodIndex = Array.Empty<int>();
+
+    private float simulationTime;
+    private float nextOccupiedFoodLogTime;
 
     private SeededRng rng;
     private Vector2 mapSize;
-    private BoundaryMode boundaryMode;
-    private float wallMargin;
-    private float foodRadius;
-    private float minFoodSpacing;
-    private bool debugFoodLifecycleLogging;
-    private float simulationTime;
+
+    private bool allowFoodRegrowth;
+    private float foodRegrowDelaySeconds;
+    private float foodRegrowPerSecondFraction;
+    private float foodReactivationThreshold;
+
+    private bool useColonyHub;
+    private Vector2 colonyHub;
+    private float colonyHubRadius;
+    private float returnToHubWeight;
+    private float returnTrailBlend;
+    private float returnDepositBoost;
+    private float successfulReturnDepositBurst;
+    private float hubInfluenceRadius;
+    private float nonUsefulLoopPruneStrength;
+    private float nonUsefulLoopTrailThreshold;
+    private float nonUsefulLoopCurvatureThreshold;
 
     public NeuralFieldGrid Field { get; private set; }
     public NeuralSlimeMoldAgent[] Agents => agents;
     public NeuralFoodNodeState[] FoodNodes => foodNodes;
-    public NeuralObstacle[] Obstacles => obstacles;
-    public float FoodRadius => foodRadius;
+    public NeuralObstacle[] Obstacles => Array.Empty<NeuralObstacle>();
 
     public int Seed { get; private set; }
     public int AgentCount => agents?.Length ?? 0;
-    public FoodSpawnDebugInfo LastFoodSpawnInfo { get; private set; }
 
-    public void Initialize(
+    public Vector2 ActivityCenter { get; private set; }
+    public float ActivityRadius { get; private set; }
+
+    public bool UseColonyHub => useColonyHub;
+    public Vector2 ColonyHub => colonyHub;
+    public float ColonyHubRadius => colonyHubRadius;
+
+    public void ResetWithSeed(
         int seed,
         int agentCount,
-        Vector2 mapSize,
         Vector2Int trailResolution,
+        Vector2 mapSize,
         float speed,
         float turnRate,
         float sensorAngle,
         float sensorDistance,
         float depositAmount,
-        BoundaryMode boundaryMode,
-        float wallMargin,
-        bool enableFoodNodes,
         int foodNodeCount,
-        float foodRadius,
-        float defaultFoodCapacity,
-        float defaultFoodDepletionRate,
-        float defaultFoodRegrowRate,
+        float foodStrength,
+        float foodCapacity,
+        float consumeRadius,
+        float consumeRate,
+        bool allowFoodRegrowth,
+        float regrowDelaySeconds,
+        float regrowRate,
+        float reactivationThreshold,
         bool spawnFoodFromSeed,
-        Vector2[] manualFoodNodes,
-        NeuralFoodNodeConfig[] manualFoodConfigs,
-        NeuralObstacle[] worldObstacles,
-        bool debugFoodLifecycleLogging)
+        NeuralFoodNodeConfig[] manualFoodNodes,
+        bool useColonyHub,
+        Vector2 colonyHub,
+        float colonyHubRadius,
+        float returnToHubWeight,
+        float returnTrailBlend,
+        float returnDepositBoost,
+        float successfulReturnDepositBurst,
+        float hubInfluenceRadius,
+        float nonUsefulLoopPruneStrength,
+        float nonUsefulLoopTrailThreshold,
+        float nonUsefulLoopCurvatureThreshold)
     {
         Seed = seed;
         this.mapSize = new Vector2(Mathf.Max(8f, mapSize.x), Mathf.Max(8f, mapSize.y));
         rng = new SeededRng(seed);
-        this.boundaryMode = boundaryMode;
-        this.wallMargin = Mathf.Max(0f, wallMargin);
-        this.foodRadius = Mathf.Max(0.25f, foodRadius);
-        minFoodSpacing = this.foodRadius * 0.5f;
-        this.debugFoodLifecycleLogging = debugFoodLifecycleLogging;
-        simulationTime = 0f;
 
-        obstacles = worldObstacles ?? Array.Empty<NeuralObstacle>();
-        ValidateObstaclesInBounds();
+        this.allowFoodRegrowth = allowFoodRegrowth;
+        foodRegrowDelaySeconds = Mathf.Max(0f, regrowDelaySeconds);
+        foodRegrowPerSecondFraction = Mathf.Max(0f, regrowRate);
+        foodReactivationThreshold = Mathf.Clamp01(reactivationThreshold);
 
-        Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, this.boundaryMode == BoundaryMode.Wrap);
+        this.useColonyHub = useColonyHub;
+        this.colonyHub = ClampNodeInsideBounds(colonyHub);
+        this.colonyHubRadius = Mathf.Max(0.25f, colonyHubRadius);
+        this.returnToHubWeight = Mathf.Max(0f, returnToHubWeight);
+        this.returnTrailBlend = Mathf.Clamp01(returnTrailBlend);
+        this.returnDepositBoost = Mathf.Max(0f, returnDepositBoost);
+        this.successfulReturnDepositBurst = Mathf.Max(0f, successfulReturnDepositBurst);
+        this.hubInfluenceRadius = Mathf.Max(this.colonyHubRadius, hubInfluenceRadius);
+        this.nonUsefulLoopPruneStrength = Mathf.Max(0f, nonUsefulLoopPruneStrength);
+        this.nonUsefulLoopTrailThreshold = Mathf.Max(0f, nonUsefulLoopTrailThreshold);
+        this.nonUsefulLoopCurvatureThreshold = Mathf.Max(0f, nonUsefulLoopCurvatureThreshold);
+
+        Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, false);
+
         agents = new NeuralSlimeMoldAgent[Mathf.Max(1, agentCount)];
+        agentTrailConfidence = new float[agents.Length];
+        agentFoodCommitment = new float[agents.Length];
+        agentModes = new AgentMode[agents.Length];
+        agentModeTimers = new float[agents.Length];
+        agentLastFoodIndex = new int[agents.Length];
 
-        BuildFoodNodes(enableFoodNodes, Mathf.Max(0, foodNodeCount), Mathf.Max(0f, defaultFoodCapacity), Mathf.Max(0f, defaultFoodDepletionRate), Mathf.Max(0f, defaultFoodRegrowRate), spawnFoodFromSeed, manualFoodNodes, manualFoodConfigs);
+        BuildFoodNodes(
+            Mathf.Max(1, foodNodeCount),
+            Mathf.Max(0f, foodStrength),
+            Mathf.Max(0f, foodCapacity),
+            Mathf.Max(0f, consumeRadius),
+            Mathf.Max(0f, consumeRate),
+            spawnFoodFromSeed,
+            manualFoodNodes);
+
+        simulationTime = 0f;
+        nextOccupiedFoodLogTime = OccupiedFoodLogIntervalSeconds;
+        ActivityCenter = Vector2.zero;
+        ActivityRadius = MinActivityRadius;
 
         for (var i = 0; i < agents.Length; i++)
         {
-            var pos = FindSpawnPoint(i);
+            var radial = rng.InsideUnitCircle();
+            var pos = new Vector2(
+                radial.x * this.mapSize.x * 0.48f,
+                radial.y * this.mapSize.y * 0.48f);
+
             var heading = rng.Range(0f, Mathf.PI * 2f);
 
             agents[i] = new NeuralSlimeMoldAgent
@@ -111,215 +203,593 @@ public sealed class NeuralSlimeMoldRunner
                 controller = CreateControllerProfile(i)
             };
 
-            Field.Deposit(pos, depositAmount * 0.75f);
+            agentTrailConfidence[i] = 0f;
+            agentFoodCommitment[i] = 0f;
+            agentModes[i] = AgentMode.SeekFood;
+            agentModeTimers[i] = 0f;
+            agentLastFoodIndex[i] = -1;
         }
+
+        UnityEngine.Debug.Log($"[NeuralSlimeMold] Initialized {foodNodes.Length} food nodes.");
     }
 
-    public void ResetWithSeed(int seed, int agentCount, Vector2Int trailResolution, Vector2 mapSize, float speed, float turnRate, float sensorAngle, float sensorDistance, float depositAmount, BoundaryMode boundaryMode, float wallMargin, bool enableFoodNodes, int foodNodeCount, float foodRadius, float defaultFoodCapacity, float defaultFoodDepletionRate, float defaultFoodRegrowRate, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs, NeuralObstacle[] worldObstacles, bool debugFoodLifecycleLogging)
-    {
-        Initialize(seed, agentCount, mapSize, trailResolution, speed, turnRate, sensorAngle, sensorDistance, depositAmount, boundaryMode, wallMargin, enableFoodNodes, foodNodeCount, foodRadius, defaultFoodCapacity, defaultFoodDepletionRate, defaultFoodRegrowRate, spawnFoodFromSeed, manualFoodNodes, manualFoodConfigs, worldObstacles, debugFoodLifecycleLogging);
-    }
-
-    public void Tick(
-        float dt,
-        float diffusion,
-        float decay,
-        bool indirectFoodBias,
-        float liveFoodStrength,
-        bool allowFoodRegrowth,
-        float trailFollowWeight,
-        float foodAttractionWeight,
-        float foodSenseRadius,
-        float foodTurnBias,
-        float depletedFoodStrengthMultiplier,
-        float foodReactivationDelay,
-        float foodReactivationThreshold,
-        float migrationRestlessness,
-        float turnNoise,
-        float localLoopSuppression,
-        float depositNearFoodMultiplier,
-        float pathPersistenceBias,
-        bool foodPulseEnabled,
-        float foodPulsePeriod,
-        float foodPulseStrength,
-        bool localTrailScrubEnabled,
-        float localTrailScrubThreshold,
-        float localTrailScrubAmount)
+    public void Tick(float dt, float diffusion, float decay, float foodStrength, float explorationTurnNoise)
     {
         if (agents == null || Field == null)
         {
             return;
         }
 
-        if (nodeVisitCounts.Length != foodNodes.Length)
+        if (foodConsumerCounts == null || foodConsumerCounts.Length != foodNodes.Length)
         {
-            nodeVisitCounts = new int[foodNodes.Length];
+            foodConsumerCounts = new int[foodNodes.Length];
         }
 
-        Array.Clear(nodeVisitCounts, 0, nodeVisitCounts.Length);
-
+        Array.Clear(foodConsumerCounts, 0, foodConsumerCounts.Length);
         simulationTime += Mathf.Max(0f, dt);
-        var pulseStrength = ComputeFoodPulseStrength(foodPulseEnabled, foodPulsePeriod, foodPulseStrength);
+
+        Vector2 activityAccumulator = Vector2.zero;
+        var maxDistanceFromCenter = 0f;
 
         for (var i = 0; i < agents.Length; i++)
         {
             var agent = agents[i];
+            var mode = agentModes[i];
+            var modeTimer = Mathf.Max(0f, agentModeTimers[i] - Mathf.Max(0f, dt));
+            var lastFoodIndex = agentLastFoodIndex[i];
 
-            var leftDir = Direction(agent.heading - agent.sensorAngle);
-            var centerDir = Direction(agent.heading);
-            var rightDir = Direction(agent.heading + agent.sensorAngle);
+            var activeFoodIndex = GetContainingFoodNodeIndex(agent.position, true);
+            var emptyFoodIndex = GetContainingEmptyFoodNodeIndex(agent.position);
 
-            var left = SampleFieldWithObstacles(agent.position + (leftDir * agent.sensorDistance));
-            var center = SampleFieldWithObstacles(agent.position + (centerDir * agent.sensorDistance));
-            var right = SampleFieldWithObstacles(agent.position + (rightDir * agent.sensorDistance));
-            var density = (left + center + right) / 3f;
-
-            var weighted = (left * agent.controller.leftWeight)
-                         + (center * agent.controller.centerWeight)
-                         + (right * agent.controller.rightWeight);
-
-            var edge = right - left;
-            var centerBias = center - ((left + right) * 0.5f);
-            var noise = (rng.NextFloat01() * 2f) - 1f;
-            var boundaryTurn = ComputeBoundaryTurn(agent.position, agent.heading);
-            var foodTurn = indirectFoodBias
-                ? ComputeFoodTurn(agent.position, agent.heading, liveFoodStrength, foodAttractionWeight, foodSenseRadius, foodTurnBias, depletedFoodStrengthMultiplier, pulseStrength, simulationTime)
-                : 0f;
-            var obstacleTurn = ComputeObstacleTurn(agent.position, agent.heading, agent.sensorDistance);
-            var loopSuppressionTurn = ComputeLoopSuppressionTurn(left, center, right, localLoopSuppression);
-            var restlessnessTurn = ComputeRestlessnessTurn(agent.position, agent.heading, migrationRestlessness);
-
-            var steer = (weighted * 0.2f * Mathf.Max(0f, trailFollowWeight))
-                        + (edge * Mathf.Max(0f, trailFollowWeight))
-                        + (centerBias * agent.controller.densityWeight * Mathf.Lerp(1f, 0.35f, Mathf.Clamp01(localLoopSuppression)))
-                        + (noise * agent.controller.noiseWeight * Mathf.Max(0f, turnNoise))
-                        + foodTurn
-                        + obstacleTurn
-                        + loopSuppressionTurn
-                        + restlessnessTurn
-                        + boundaryTurn;
-
-            var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
-            agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
-
-            var speedMod = 1f + Mathf.Clamp(center * 0.15f, -0.2f, 0.4f);
-            var moveDelta = Direction(agent.heading) * (agent.speed * speedMod * dt);
-            var previousPosition = agent.position;
-            var candidatePosition = previousPosition + moveDelta;
-            ApplyBoundary(ref candidatePosition, ref agent.heading);
-            ResolveObstacleMove(previousPosition, ref candidatePosition, ref agent.heading);
-            agent.position = candidatePosition;
-
-            AccumulateFoodVisits(agent.position);
-
-            var foodProximity = ComputeFoodProximity(agent.position, foodSenseRadius, depletedFoodStrengthMultiplier, pulseStrength);
-            var depositBoost = 1f + ((Mathf.Max(1f, depositNearFoodMultiplier) - 1f) * foodProximity);
-            var persistence = Mathf.Clamp01(pathPersistenceBias);
-            if (persistence > 0f)
+            if (mode == AgentMode.Feed && (activeFoodIndex < 0 || modeTimer <= 0f))
             {
-                var bridgeSignal = ComputeInterNodeBridgeSignal(agent.position, foodSenseRadius, depletedFoodStrengthMultiplier, pulseStrength);
-                depositBoost *= 1f + (bridgeSignal * persistence * 0.9f);
-                depositBoost = Mathf.Lerp(depositBoost, 1f, persistence * 0.35f * foodProximity);
+                mode = useColonyHub ? AgentMode.ReturnToHub : AgentMode.SeekFood;
+                modeTimer = useColonyHub ? rng.Range(ReturnDurationMin, ReturnDurationMax) : 0f;
             }
 
-            var deposit = agent.depositAmount * (0.8f + Mathf.Clamp01(density) * 0.7f) * depositBoost;
-            Field.Deposit(agent.position, deposit);
-            ApplyLocalTrailScrub(agent.position, density, dt, localTrailScrubEnabled, localTrailScrubThreshold, localTrailScrubAmount);
+            if (mode == AgentMode.ReturnToHub && modeTimer <= 0f)
+            {
+                mode = AgentMode.SeekFood;
+                modeTimer = 0f;
+                lastFoodIndex = -1;
+            }
+
+            if (mode == AgentMode.ExitHub && (modeTimer <= 0f || !IsNearHub(agent.position)))
+            {
+                mode = AgentMode.SeekFood;
+                modeTimer = 0f;
+                lastFoodIndex = -1;
+            }
+
+            if (mode == AgentMode.SeekFood && activeFoodIndex >= 0)
+            {
+                mode = AgentMode.Feed;
+                modeTimer = rng.Range(FeedDurationMin, FeedDurationMax);
+                lastFoodIndex = activeFoodIndex;
+            }
+
+            switch (mode)
+            {
+                case AgentMode.Feed:
+                    HandleFeedMode(ref agent, activeFoodIndex >= 0 ? activeFoodIndex : lastFoodIndex, dt);
+                    MarkConsumingFoodNodes(agent.position);
+                    Field.ScrubAt(agent.position, ActiveFoodTrailScrub);
+                    break;
+
+                case AgentMode.ReturnToHub:
+                    HandleReturnToHubMode(ref agent, lastFoodIndex, dt, explorationTurnNoise);
+
+                    if (GetContainingFoodNodeIndex(agent.position, true) >= 0)
+                    {
+                        Field.ScrubAt(agent.position, ActiveFoodTrailScrub);
+                    }
+
+                    Field.DepositKernel(agent.position, agent.depositAmount * returnDepositBoost);
+
+                    if (useColonyHub && IsInsideHub(agent.position))
+                    {
+                        Field.DepositDisc(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst);
+                        Field.ScrubDisc(agent.position, colonyHubRadius * 0.75f, HubRingScrubStrength);
+
+                        mode = AgentMode.ExitHub;
+                        modeTimer = rng.Range(ExitHubDurationMin, ExitHubDurationMax);
+                        agent.heading = Mathf.Repeat(
+                            Mathf.Atan2(agent.position.y - colonyHub.y, agent.position.x - colonyHub.x),
+                            Mathf.PI * 2f);
+                    }
+
+                    break;
+
+                case AgentMode.ExitHub:
+                    HandleExitHubMode(ref agent, dt, explorationTurnNoise);
+                    Field.ScrubDisc(agent.position, colonyHubRadius * 0.65f, HubRingScrubStrength * Mathf.Max(0f, dt) * 6f);
+                    break;
+
+                default:
+                    HandleSeekMode(ref agent, i, dt, foodStrength, explorationTurnNoise, emptyFoodIndex >= 0);
+
+                    activeFoodIndex = GetContainingFoodNodeIndex(agent.position, true);
+                    emptyFoodIndex = GetContainingEmptyFoodNodeIndex(agent.position);
+
+                    if (activeFoodIndex >= 0)
+                    {
+                        Field.ScrubAt(agent.position, ActiveFoodTrailScrub);
+                    }
+                    else if (emptyFoodIndex >= 0)
+                    {
+                        Field.ScrubAt(agent.position, EmptyFoodTrailScrub);
+                    }
+
+                    var movedLocalTrail = Field.SampleBilinear(agent.position);
+                    var depositMultiplier = ComputeDepositMultiplier(
+                        agent.position,
+                        movedLocalTrail,
+                        agentTrailConfidence[i],
+                        activeFoodIndex >= 0,
+                        emptyFoodIndex >= 0,
+                        agentFoodCommitment[i]);
+
+                    Field.DepositKernel(agent.position, agent.depositAmount * depositMultiplier);
+
+                    ApplyNonUsefulLoopPrune(
+                        agent.position,
+                        activeFoodIndex >= 0,
+                        mode == AgentMode.ReturnToHub,
+                        dt);
+
+                    break;
+            }
+
+            ApplyReflectBoundary(ref agent.position, ref agent.heading);
 
             agents[i] = agent;
+            agentModes[i] = mode;
+            agentModeTimers[i] = modeTimer;
+            agentLastFoodIndex[i] = lastFoodIndex;
+
+            activityAccumulator += agent.position;
         }
 
-        UpdateFoodNodes(dt, allowFoodRegrowth, foodReactivationDelay, foodReactivationThreshold);
+        ConsumeFood(dt);
+        LogOccupiedFoodLevels();
         Field.Step(diffusion, decay, dt);
+
+        if (agents.Length > 0)
+        {
+            var rawCenter = activityAccumulator / agents.Length;
+            ActivityCenter = Vector2.Lerp(ActivityCenter, rawCenter, ActivitySmoothing);
+
+            for (var i = 0; i < agents.Length; i++)
+            {
+                var dist = Vector2.Distance(agents[i].position, ActivityCenter);
+                if (dist > maxDistanceFromCenter)
+                {
+                    maxDistanceFromCenter = dist;
+                }
+            }
+
+            ActivityRadius = Mathf.Max(MinActivityRadius, Mathf.Lerp(ActivityRadius, maxDistanceFromCenter, ActivitySmoothing));
+        }
     }
 
-
-    private float ComputeFoodPulseStrength(bool foodPulseEnabled, float foodPulsePeriod, float foodPulseStrength)
+    private void HandleSeekMode(ref NeuralSlimeMoldAgent agent, int agentIndex, float dt, float foodStrength, float explorationTurnNoise, bool nearEmptyFood)
     {
-        if (!foodPulseEnabled || foodPulseStrength <= 0f)
+        var leftDir = Direction(agent.heading - agent.sensorAngle);
+        var centerDir = Direction(agent.heading);
+        var rightDir = Direction(agent.heading + agent.sensorAngle);
+
+        var leftSamplePos = agent.position + (leftDir * agent.sensorDistance);
+        var centerSamplePos = agent.position + (centerDir * agent.sensorDistance);
+        var rightSamplePos = agent.position + (rightDir * agent.sensorDistance);
+
+        var leftTrail = Field.SampleBilinear(leftSamplePos);
+        var centerTrail = Field.SampleBilinear(centerSamplePos);
+        var rightTrail = Field.SampleBilinear(rightSamplePos);
+        var localTrail = Field.SampleBilinear(agent.position);
+
+        var leftNutrient = SampleNutrientField(leftSamplePos);
+        var centerNutrient = SampleNutrientField(centerSamplePos);
+        var rightNutrient = SampleNutrientField(rightSamplePos);
+
+        var weightedTrail = (leftTrail * agent.controller.leftWeight)
+                          + (centerTrail * agent.controller.centerWeight)
+                          + (rightTrail * agent.controller.rightWeight);
+
+        var trailEdge = rightTrail - leftTrail;
+        var trailCenterBias = centerTrail - ((leftTrail + rightTrail) * 0.5f);
+
+        var signedNoise = (rng.NextFloat01() * 2f) - 1f;
+        var randomTurn = signedNoise * explorationTurnNoise * Mathf.Max(0.1f, agent.controller.noiseWeight * 8f);
+
+        var trailConfidence = ComputeTrailConfidence(localTrail, centerTrail, leftTrail, rightTrail);
+        agentTrailConfidence[agentIndex] = Mathf.Lerp(agentTrailConfidence[agentIndex], trailConfidence, 0.18f);
+
+        var trailSteer =
+            (weightedTrail * 0.12f) +
+            trailEdge +
+            (trailCenterBias * (0.8f + agent.controller.densityWeight)) +
+            (randomTurn * Mathf.Lerp(1f, 0.25f, agentTrailConfidence[agentIndex]));
+
+        var nutrientEdge = rightNutrient - leftNutrient;
+        var nutrientCenterBias = centerNutrient - ((leftNutrient + rightNutrient) * 0.5f);
+        var nutrientSteer = (nutrientEdge * 1.1f) + (nutrientCenterBias * 0.7f);
+
+        var nutrientStrength = Mathf.Clamp01(Mathf.Max(leftNutrient, Mathf.Max(centerNutrient, rightNutrient)));
+        var steer = trailSteer;
+
+        if (nutrientStrength > 0.0001f)
         {
-            return 1f;
+            agentFoodCommitment[agentIndex] = Mathf.Lerp(agentFoodCommitment[agentIndex], nutrientStrength, 0.18f);
+            var nutrientBlend = Mathf.Clamp01((nutrientStrength * 0.75f) + (agentFoodCommitment[agentIndex] * 0.25f));
+            steer = Mathf.Lerp(trailSteer * 0.55f, nutrientSteer * Mathf.Max(0.5f, foodStrength), nutrientBlend);
+        }
+        else if (nearEmptyFood)
+        {
+            var awayTurn = ComputeAwayFromEmptyFoodTurn(agent.position, agent.heading);
+            agentFoodCommitment[agentIndex] = Mathf.Lerp(agentFoodCommitment[agentIndex], 0f, 0.25f);
+            steer = (awayTurn * 1.2f) + randomTurn;
+        }
+        else
+        {
+            agentFoodCommitment[agentIndex] = Mathf.Lerp(agentFoodCommitment[agentIndex], 0f, 0.08f);
+
+            if (agentTrailConfidence[agentIndex] > 0.55f)
+            {
+                steer = Mathf.Lerp(randomTurn * 0.1f, trailSteer, 0.92f);
+            }
         }
 
-        var period = Mathf.Max(0.5f, foodPulsePeriod);
-        var phase01 = Mathf.Repeat(simulationTime / period, 1f);
-        var wave = Mathf.Sin(phase01 * Mathf.PI * 2f);
-        return Mathf.Max(0.1f, 1f + (wave * Mathf.Max(0f, foodPulseStrength)));
+        if (IsNearHub(agent.position))
+        {
+            steer += ComputeSteerAwayFromPoint(agent.position, agent.heading, colonyHub) * 0.9f;
+        }
+
+        steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
+
+        var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
+        agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
+
+        var speedMod = 1f;
+
+        if (localTrail >= StrongTrailHighwayThreshold)
+        {
+            speedMod *= 1.16f;
+        }
+        else if (localTrail >= MinTrailForHighway)
+        {
+            speedMod *= 1.06f;
+        }
+
+        speedMod *= 1f + Mathf.Clamp(centerTrail * 0.12f, -0.12f, 0.25f);
+
+        if (nearEmptyFood)
+        {
+            speedMod *= 1.25f;
+        }
+
+        if (IsNearHub(agent.position))
+        {
+            speedMod *= 1.08f;
+        }
+
+        agent.position += Direction(agent.heading) * (agent.speed * speedMod * dt);
     }
 
-    private void ApplyLocalTrailScrub(Vector2 position, float density, float dt, bool localTrailScrubEnabled, float localTrailScrubThreshold, float localTrailScrubAmount)
+    private void HandleFeedMode(ref NeuralSlimeMoldAgent agent, int foodIndex, float dt)
     {
-        if (!localTrailScrubEnabled || localTrailScrubAmount <= 0f)
+        if (foodIndex < 0 || foodIndex >= foodNodes.Length)
         {
             return;
         }
 
-        var threshold = Mathf.Clamp01(localTrailScrubThreshold);
-        if (density <= threshold)
+        var node = foodNodes[foodIndex];
+        var toFood = node.position - agent.position;
+        var dist = toFood.magnitude;
+        var radius = Mathf.Max(0.01f, node.consumeRadius);
+
+        Vector2 dirToFood;
+        if (dist > 0.0001f)
         {
-            return;
+            dirToFood = toFood / dist;
+        }
+        else
+        {
+            dirToFood = Direction(agent.heading);
         }
 
-        var overshoot = Mathf.InverseLerp(threshold, 1f, Mathf.Clamp01(density));
-        var scrubAmount = Mathf.Clamp01(localTrailScrubAmount * overshoot * Mathf.Clamp(dt * 20f, 0.1f, 1.5f));
-        if (scrubAmount <= 0.0001f)
-        {
-            return;
-        }
+        agent.heading = Mathf.Repeat(Mathf.Atan2(dirToFood.y, dirToFood.x), Mathf.PI * 2f);
 
-        Field.ScrubAt(position, scrubAmount);
+        var arrival01 = Mathf.Clamp01(dist / radius);
+        var crowdPenalty = ComputeFoodCrowdingPenalty(foodIndex);
+
+        var feedMoveSpeed =
+            agent.speed *
+            Mathf.Lerp(0.08f, 0.38f, arrival01) *
+            Mathf.Lerp(1f, 1f - 0.22f, crowdPenalty);
+
+        agent.position = Vector2.MoveTowards(agent.position, node.position, feedMoveSpeed * Mathf.Max(0f, dt));
+
+        if (dist <= radius * 0.18f)
+        {
+            var tangent = new Vector2(-dirToFood.y, dirToFood.x);
+            var signed = (rng.NextFloat01() * 2f) - 1f;
+            agent.position += tangent * (signed * FeedJitterStrength);
+        }
     }
 
-    private void UpdateFoodNodes(float dt, bool allowFoodRegrowth, float foodReactivationDelay, float foodReactivationThreshold)
+    private void HandleReturnToHubMode(ref NeuralSlimeMoldAgent agent, int lastFoodIndex, float dt, float explorationTurnNoise)
+    {
+        var leftDir = Direction(agent.heading - agent.sensorAngle);
+        var centerDir = Direction(agent.heading);
+        var rightDir = Direction(agent.heading + agent.sensorAngle);
+
+        var leftSamplePos = agent.position + (leftDir * agent.sensorDistance);
+        var centerSamplePos = agent.position + (centerDir * agent.sensorDistance);
+        var rightSamplePos = agent.position + (rightDir * agent.sensorDistance);
+
+        var leftTrail = Field.SampleBilinear(leftSamplePos);
+        var centerTrail = Field.SampleBilinear(centerSamplePos);
+        var rightTrail = Field.SampleBilinear(rightSamplePos);
+
+        var trailEdge = rightTrail - leftTrail;
+        var trailCenterBias = centerTrail - ((leftTrail + rightTrail) * 0.5f);
+        var trailSteer = trailEdge + (trailCenterBias * 0.95f);
+
+        var hubSteer = 0f;
+        if (useColonyHub)
+        {
+            hubSteer = ComputeSteerTowardPoint(agent.position, agent.heading, colonyHub) * returnToHubWeight;
+        }
+
+        var awayFoodSteer = 0f;
+        if (lastFoodIndex >= 0 && lastFoodIndex < foodNodes.Length)
+        {
+            awayFoodSteer = ComputeSteerAwayFromPoint(agent.position, agent.heading, foodNodes[lastFoodIndex].position) * ReturnFoodRepulsionStrength;
+        }
+
+        var signedNoise = (rng.NextFloat01() * 2f) - 1f;
+        var randomTurn = signedNoise * explorationTurnNoise * ReturnNoiseMultiplier;
+
+        var steer = Mathf.Lerp(hubSteer + awayFoodSteer, trailSteer + hubSteer, returnTrailBlend) + randomTurn;
+        steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
+
+        var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
+        agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
+
+        var speedMod = 1.10f;
+        if (centerTrail >= StrongTrailHighwayThreshold)
+        {
+            speedMod *= 1.10f;
+        }
+        else if (centerTrail >= MinTrailForHighway)
+        {
+            speedMod *= 1.04f;
+        }
+
+        agent.position += Direction(agent.heading) * (agent.speed * speedMod * dt);
+    }
+
+    private void HandleExitHubMode(ref NeuralSlimeMoldAgent agent, float dt, float explorationTurnNoise)
+    {
+        var outwardSteer = ComputeSteerAwayFromPoint(agent.position, agent.heading, colonyHub) * ExitHubSteerStrength;
+        var signedNoise = (rng.NextFloat01() * 2f) - 1f;
+        var randomTurn = signedNoise * explorationTurnNoise * ExitHubNoiseMultiplier;
+
+        var steer = outwardSteer + randomTurn;
+        steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
+
+        var turnStep = Mathf.Clamp(steer, -1f, 1f) * agent.turnRate * dt;
+        agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
+
+        agent.position += Direction(agent.heading) * (agent.speed * ExitHubSpeedMultiplier * dt);
+    }
+
+    private float SampleNutrientField(Vector2 position)
+    {
+        if (foodNodes == null || foodNodes.Length == 0)
+        {
+            return 0f;
+        }
+
+        var total = 0f;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            if (foodIsDepleted[i] || node.currentCapacity <= 0f || node.capacity <= 0f)
+            {
+                continue;
+            }
+
+            var fill = Mathf.Clamp01(node.currentCapacity / node.capacity);
+            var effectiveStrength = node.baseStrength * Mathf.Lerp(0.35f, 1f, fill);
+            if (effectiveStrength <= MinFoodStrengthFloor)
+            {
+                continue;
+            }
+
+            var toNode = node.position - position;
+            var distance = toNode.magnitude;
+
+            var seekRange = Mathf.Max(node.consumeRadius * FoodSeekRangeMultiplier, MinFoodSeekRange);
+            if (distance >= seekRange)
+            {
+                continue;
+            }
+
+            var outer01 = 1f - Mathf.Clamp01(distance / seekRange);
+
+            var innerSuppression = Mathf.InverseLerp(node.consumeRadius * 0.55f, node.consumeRadius * 1.1f, distance);
+            innerSuppression = Mathf.Clamp01(innerSuppression);
+
+            var crowdPenalty = ComputeFoodCrowdingPenalty(i);
+            var crowdFactor = Mathf.Lerp(1f, 0.45f, crowdPenalty);
+
+            total += effectiveStrength * outer01 * innerSuppression * crowdFactor;
+        }
+
+        return Mathf.Clamp01(total);
+    }
+
+    private float ComputeDepositMultiplier(
+        Vector2 position,
+        float localTrail,
+        float trailConfidence,
+        bool onActiveFood,
+        bool onEmptyFood,
+        float foodCommitment)
+    {
+        if (onActiveFood)
+        {
+            return 0f;
+        }
+
+        if (onEmptyFood)
+        {
+            return 0f;
+        }
+
+        var multiplier = localTrail < MinTrailForHighway ? WeakTrailDepositPenalty : 1f;
+
+        if (localTrail >= StrongTrailHighwayThreshold)
+        {
+            multiplier *= Mathf.Lerp(1.2f, MaxHighwayDepositBoost, trailConfidence);
+        }
+        else if (localTrail >= MinTrailForHighway)
+        {
+            multiplier *= Mathf.Lerp(1.0f, 1.35f, trailConfidence);
+        }
+
+        multiplier *= Mathf.Lerp(1f, 1.14f, foodCommitment);
+
+        if (IsNearHub(position))
+        {
+            multiplier *= HubSeekDepositSuppression;
+        }
+
+        return Mathf.Max(0f, multiplier);
+    }
+
+    private float ComputeTrailConfidence(float localTrail, float center, float left, float right)
+    {
+        var directionality = Mathf.Clamp01(center - ((left + right) * 0.5f) + 0.5f);
+        var density = Mathf.Clamp01(localTrail * 6f);
+        var centerStrength = Mathf.Clamp01(center * 5f);
+        return Mathf.Clamp01((density * 0.45f) + (centerStrength * 0.35f) + (directionality * 0.20f));
+    }
+
+    private float ComputeBoundaryAvoidanceTurn(Vector2 position, float heading)
+    {
+        var halfX = mapSize.x * 0.5f;
+        var halfY = mapSize.y * 0.5f;
+
+        var away = Vector2.zero;
+
+        var leftDistance = position.x + halfX;
+        var rightDistance = halfX - position.x;
+        var bottomDistance = position.y + halfY;
+        var topDistance = halfY - position.y;
+
+        if (leftDistance < BoundaryAvoidanceMargin)
+        {
+            away.x += 1f - Mathf.Clamp01(leftDistance / BoundaryAvoidanceMargin);
+        }
+
+        if (rightDistance < BoundaryAvoidanceMargin)
+        {
+            away.x -= 1f - Mathf.Clamp01(rightDistance / BoundaryAvoidanceMargin);
+        }
+
+        if (bottomDistance < BoundaryAvoidanceMargin)
+        {
+            away.y += 1f - Mathf.Clamp01(bottomDistance / BoundaryAvoidanceMargin);
+        }
+
+        if (topDistance < BoundaryAvoidanceMargin)
+        {
+            away.y -= 1f - Mathf.Clamp01(topDistance / BoundaryAvoidanceMargin);
+        }
+
+        if (away.sqrMagnitude <= 0.0001f)
+        {
+            return 0f;
+        }
+
+        away.Normalize();
+
+        var forward = Direction(heading);
+        var cross = (forward.x * away.y) - (forward.y * away.x);
+        var dot = Vector2.Dot(forward, away);
+        var signedAngle = Mathf.Atan2(cross, dot);
+        return Mathf.Clamp(signedAngle / Mathf.PI, -1f, 1f) * BoundaryAvoidanceStrength;
+    }
+
+    private float ComputeFoodCrowdingPenalty(int foodIndex)
+    {
+        if (foodIndex < 0 || foodIndex >= foodNodes.Length)
+        {
+            return 0f;
+        }
+
+        var node = foodNodes[foodIndex];
+        var radius = Mathf.Max(0.01f, node.consumeRadius * FoodCrowdingRadiusMultiplier);
+        var radiusSqr = radius * radius;
+
+        var crowdCount = 0;
+        for (var i = 0; i < agents.Length; i++)
+        {
+            if ((agents[i].position - node.position).sqrMagnitude <= radiusSqr)
+            {
+                crowdCount++;
+            }
+        }
+
+        var normalized = Mathf.Clamp01(crowdCount / 32f);
+        return normalized * FoodCrowdingPenaltyStrength;
+    }
+
+    private void ConsumeFood(float dt)
     {
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var wasActive = node.active;
-            var previousCapacity = node.capacity;
-            var depletedFor = node.timeSinceDepleted;
-            node.timeSinceDepleted = node.active ? 0f : node.timeSinceDepleted + Mathf.Max(0f, dt);
-            if (node.maxCapacity <= 0f)
-            {
-                node.capacity = 0f;
-                node.active = false;
-                foodNodes[i] = node;
-                continue;
-            }
+            var maxCapacity = Mathf.Max(0.01f, node.capacity);
 
-            if (node.active)
+            if (!foodIsDepleted[i])
             {
-                var consumed = nodeVisitCounts[i] * node.depletionRate * dt;
-                node.capacity = Mathf.Max(0f, node.capacity - consumed);
-                if (node.capacity <= 0.0001f)
+                var consumed = node.consumeRate * foodConsumerCounts[i] * Mathf.Max(0f, dt);
+                var previousCapacity = node.currentCapacity;
+                node.currentCapacity = Mathf.Clamp(node.currentCapacity - consumed, 0f, maxCapacity);
+
+                if (!foodDepletionLogged[i] && previousCapacity > 0f && node.currentCapacity <= 0f)
                 {
-                    node.capacity = 0f;
-                    node.active = false;
-                    node.timeSinceDepleted = 0f;
+                    foodDepletionLogged[i] = true;
+                    foodIsDepleted[i] = true;
+                    foodRegrowDelayTimers[i] = foodRegrowDelaySeconds;
+                    UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {i} depleted at t={simulationTime:F2}s.");
                 }
             }
-
-            if (!node.active && allowFoodRegrowth && node.regrowRate > 0f)
+            else
             {
-                node.capacity = Mathf.Min(node.maxCapacity, node.capacity + (node.regrowRate * dt));
-                var reactivateThreshold = Mathf.Clamp01(foodReactivationThreshold) * node.maxCapacity;
-                var canReactivate = node.timeSinceDepleted >= Mathf.Max(0f, foodReactivationDelay);
-                if (canReactivate && node.capacity > reactivateThreshold)
+                if (!allowFoodRegrowth)
                 {
-                    node.active = true;
-                    node.timeSinceDepleted = 0f;
+                    node.currentCapacity = 0f;
                 }
-            }
+                else if (foodRegrowDelayTimers[i] > 0f)
+                {
+                    foodRegrowDelayTimers[i] -= Mathf.Max(0f, dt);
+                }
+                else
+                {
+                    var regrowAmount = maxCapacity * foodRegrowPerSecondFraction * Mathf.Max(0f, dt);
+                    node.currentCapacity = Mathf.Min(maxCapacity, node.currentCapacity + regrowAmount);
 
-            if (debugFoodLifecycleLogging)
-            {
-                if (wasActive && !node.active)
-                {
-                    Debug.Log($"[NeuralSlimeMold] food[{i}] depleted at pos={node.position} cap={previousCapacity:F2}->{node.capacity:F2}");
-                }
-                else if (!wasActive && node.active)
-                {
-                    Debug.Log($"[NeuralSlimeMold] food[{i}] reactivated at pos={node.position} cap={previousCapacity:F2}->{node.capacity:F2} depletedFor={depletedFor:F2}s");
+                    if (node.currentCapacity >= maxCapacity * foodReactivationThreshold)
+                    {
+                        foodIsDepleted[i] = false;
+                        foodDepletionLogged[i] = false;
+                        UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {i} reactivated at t={simulationTime:F2}s.");
+                    }
                 }
             }
 
@@ -327,587 +797,186 @@ public sealed class NeuralSlimeMoldRunner
         }
     }
 
-    private void AccumulateFoodVisits(Vector2 agentPosition)
+    private void MarkConsumingFoodNodes(Vector2 agentPosition)
     {
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            if (!node.active)
+            if (node.currentCapacity <= 0f || foodIsDepleted[i])
             {
                 continue;
             }
 
-            var captureRadius = Mathf.Max(0.2f, node.radius);
-            if ((agentPosition - node.position).sqrMagnitude <= captureRadius * captureRadius)
+            var radius = Mathf.Max(0.01f, node.consumeRadius);
+            var distanceSqr = (agentPosition - node.position).sqrMagnitude;
+            if (distanceSqr <= radius * radius)
             {
-                nodeVisitCounts[i]++;
+                foodConsumerCounts[i]++;
             }
         }
     }
 
-    private float SampleFieldWithObstacles(Vector2 samplePosition)
+    private int GetContainingEmptyFoodNodeIndex(Vector2 agentPosition)
     {
-        if (IsPointInObstacle(samplePosition))
-        {
-            return 0f;
-        }
-
-        return Field.SampleBilinear(samplePosition);
-    }
-
-    private float ComputeObstacleTurn(Vector2 position, float heading, float sensorDistance)
-    {
-        if (obstacles.Length == 0)
-        {
-            return 0f;
-        }
-
-        var forward = Direction(heading);
-        var probe = position + (forward * Mathf.Max(0.2f, sensorDistance * 1.1f));
-        if (!TryGetObstacleNormal(probe, out var normal, out var depth))
-        {
-            return 0f;
-        }
-
-        var toSafe = -normal;
-        var cross = (forward.x * toSafe.y) - (forward.y * toSafe.x);
-        return cross * Mathf.Clamp01(depth * 0.8f);
-    }
-
-    private void ResolveObstacleMove(Vector2 previous, ref Vector2 candidate, ref float heading)
-    {
-        if (obstacles.Length == 0)
-        {
-            return;
-        }
-
-        if (!TryGetObstacleNormal(candidate, out var normal, out _))
-        {
-            return;
-        }
-
-        candidate = previous;
-        var reflected = Vector2.Reflect(Direction(heading), normal);
-        heading = Mathf.Repeat(Mathf.Atan2(reflected.y, reflected.x), Mathf.PI * 2f);
-    }
-
-    private bool TryGetObstacleNormal(Vector2 point, out Vector2 normal, out float penetration)
-    {
-        normal = Vector2.zero;
-        penetration = 0f;
-        var hasHit = false;
-
-        for (var i = 0; i < obstacles.Length; i++)
-        {
-            var obstacle = obstacles[i];
-            if (obstacle.shape == NeuralObstacleShape.Rectangle)
-            {
-                if (!TryRectCollision(point, obstacle, out var rectNormal, out var rectDepth))
-                {
-                    continue;
-                }
-
-                if (!hasHit || rectDepth > penetration)
-                {
-                    hasHit = true;
-                    penetration = rectDepth;
-                    normal = rectNormal;
-                }
-
-                continue;
-            }
-
-            var radius = Mathf.Max(0.1f, obstacle.radius) + AgentCollisionPadding;
-            var delta = point - obstacle.center;
-            var dist = delta.magnitude;
-            if (dist >= radius)
-            {
-                continue;
-            }
-
-            var depth = radius - Mathf.Max(0.0001f, dist);
-            if (!hasHit || depth > penetration)
-            {
-                hasHit = true;
-                penetration = depth;
-                normal = dist > 0.0001f ? delta / dist : Vector2.up;
-            }
-        }
-
-        return hasHit;
-    }
-
-    private static bool TryRectCollision(Vector2 point, NeuralObstacle obstacle, out Vector2 normal, out float depth)
-    {
-        var half = new Vector2(Mathf.Max(0.15f, obstacle.size.x * 0.5f), Mathf.Max(0.15f, obstacle.size.y * 0.5f));
-        var local = point - obstacle.center;
-        var overlapX = half.x + AgentCollisionPadding - Mathf.Abs(local.x);
-        var overlapY = half.y + AgentCollisionPadding - Mathf.Abs(local.y);
-
-        if (overlapX <= 0f || overlapY <= 0f)
-        {
-            normal = Vector2.zero;
-            depth = 0f;
-            return false;
-        }
-
-        if (overlapX < overlapY)
-        {
-            normal = new Vector2(Mathf.Sign(local.x), 0f);
-            depth = overlapX;
-            return true;
-        }
-
-        normal = new Vector2(0f, Mathf.Sign(local.y));
-        depth = overlapY;
-        return true;
-    }
-
-    private bool IsPointInObstacle(Vector2 point)
-    {
-        return TryGetObstacleNormal(point, out _, out _);
-    }
-
-    private NeuralControllerParams CreateControllerProfile(int index)
-    {
-        var profileRng = new SeededRng(StableHashUtility.CombineSeed(Seed, $"slime-agent-{index}"));
-        return new NeuralControllerParams
-        {
-            leftWeight = profileRng.Range(0.5f, 1.4f),
-            centerWeight = profileRng.Range(0.5f, 1.8f),
-            rightWeight = profileRng.Range(0.5f, 1.4f),
-            densityWeight = profileRng.Range(0.2f, 1.2f),
-            noiseWeight = profileRng.Range(0.01f, 0.25f)
-        };
-    }
-
-    private float ComputeFoodTurn(Vector2 position, float heading, float liveFoodStrength, float foodAttractionWeight, float foodSenseRadius, float foodTurnBias, float depletedFoodStrengthMultiplier, float pulseStrength, float time)
-    {
-        if (foodNodes == null || foodNodes.Length == 0 || liveFoodStrength <= 0f || foodAttractionWeight <= 0f)
-        {
-            return 0f;
-        }
-
-        var weightedDirection = Vector2.zero;
-        var totalInfluence = 0f;
-
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
-            if (effectiveStrength <= 0f)
+            if (!foodIsDepleted[i] && node.currentCapacity > 0f)
             {
                 continue;
             }
 
+            var radius = Mathf.Max(0.01f, node.consumeRadius);
+            if ((agentPosition - node.position).sqrMagnitude <= radius * radius)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private int GetContainingFoodNodeIndex(Vector2 agentPosition, bool requireNonEmpty)
+    {
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+
+            if (requireNonEmpty && (foodIsDepleted[i] || node.currentCapacity <= 0f))
+            {
+                continue;
+            }
+
+            var radius = Mathf.Max(0.01f, node.consumeRadius);
+            if ((agentPosition - node.position).sqrMagnitude <= radius * radius)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private float ComputeAwayFromEmptyFoodTurn(Vector2 position, float heading)
+    {
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            if (!foodIsDepleted[i] && node.currentCapacity > 0f)
+            {
+                continue;
+            }
+
+            var radius = Mathf.Max(0.01f, node.consumeRadius);
             var toNode = node.position - position;
-            var distance = toNode.magnitude;
-            if (distance <= 0.001f)
+            if (toNode.sqrMagnitude > radius * radius)
             {
                 continue;
             }
 
-            var influenceRange = Mathf.Max(0.001f, Mathf.Max(node.radius, foodSenseRadius));
-            var normalizedDistance = Mathf.Clamp01(distance / influenceRange);
-            var distanceFalloff = (1f - normalizedDistance);
-            distanceFalloff = distanceFalloff * distanceFalloff;
-            var coreBoost = Mathf.SmoothStep(1.55f, 1f, normalizedDistance);
-            var influence = distanceFalloff * effectiveStrength * coreBoost;
-            if (influence <= 0f)
-            {
-                continue;
-            }
-
-            weightedDirection += (toNode / distance) * influence;
-            totalInfluence += influence;
+            var away = (position - node.position).normalized;
+            var forward = Direction(heading);
+            var cross = (forward.x * away.y) - (forward.y * away.x);
+            var dot = Vector2.Dot(forward, away);
+            var signedAngle = Mathf.Atan2(cross, dot);
+            return Mathf.Clamp(signedAngle / Mathf.PI, -1f, 1f);
         }
 
-        if (totalInfluence <= 0f)
-        {
-            return 0f;
-        }
-
-        var toTarget = (weightedDirection / totalInfluence).normalized;
-        var forward = Direction(heading);
-        var cross = (forward.x * toTarget.y) - (forward.y * toTarget.x);
-        var alignment = Vector2.Dot(forward, toTarget);
-        var misalignment = Mathf.Clamp01(1f - ((alignment + 1f) * 0.5f));
-        var turnAmplifier = 1f + (misalignment * Mathf.Max(0f, foodTurnBias));
-        turnAmplifier *= 1f + Mathf.Clamp01(totalInfluence) * 0.55f;
-        return cross * Mathf.Max(0f, liveFoodStrength) * foodAttractionWeight * turnAmplifier;
+        return 0f;
     }
 
-    private float ComputeFoodProximity(Vector2 position, float foodSenseRadius, float depletedFoodStrengthMultiplier, float pulseStrength)
+    private void LogOccupiedFoodLevels()
     {
-        if (foodNodes == null || foodNodes.Length == 0)
+        if (simulationTime < nextOccupiedFoodLogTime)
         {
-            return 0f;
-        }
-
-        var proximity = 0f;
-        for (var i = 0; i < foodNodes.Length; i++)
-        {
-            var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
-            if (effectiveStrength <= 0f)
-            {
-                continue;
-            }
-
-            var range = Mathf.Max(node.radius, foodSenseRadius);
-            var distance = Vector2.Distance(position, node.position);
-            var nodeProximity = Mathf.Clamp01(1f - (distance / Mathf.Max(0.001f, range))) * Mathf.Clamp01(effectiveStrength);
-            proximity = Mathf.Max(proximity, nodeProximity);
-        }
-
-        return proximity;
-    }
-
-    private float ComputeInterNodeBridgeSignal(Vector2 position, float foodSenseRadius, float depletedFoodStrengthMultiplier, float pulseStrength)
-    {
-        if (foodNodes == null || foodNodes.Length < 2)
-        {
-            return 0f;
-        }
-
-        var strongest = 0f;
-        var secondStrongest = 0f;
-
-        for (var i = 0; i < foodNodes.Length; i++)
-        {
-            var node = foodNodes[i];
-            var effectiveStrength = ComputeEffectiveStrength(node, depletedFoodStrengthMultiplier, pulseStrength, i, foodNodes.Length, simulationTime);
-            if (effectiveStrength <= 0f)
-            {
-                continue;
-            }
-
-            var range = Mathf.Max(node.radius, foodSenseRadius);
-            var distance = Vector2.Distance(position, node.position);
-            var pull = Mathf.Clamp01(1f - (distance / Mathf.Max(0.001f, range))) * effectiveStrength;
-
-            if (pull > strongest)
-            {
-                secondStrongest = strongest;
-                strongest = pull;
-            }
-            else if (pull > secondStrongest)
-            {
-                secondStrongest = pull;
-            }
-        }
-
-        return Mathf.Clamp01(strongest * secondStrongest);
-    }
-
-    private static float ComputeEffectiveStrength(NeuralFoodNodeState node, float depletedFoodStrengthMultiplier, float pulseStrength, int nodeIndex, int nodeCount, float time)
-    {
-        if (node.maxCapacity <= 0f || node.strength <= 0f)
-        {
-            return 0f;
-        }
-
-        var activeStrength = node.strength * (node.Capacity01 * node.Capacity01);
-        var depletedStrength = node.strength * Mathf.Clamp01(depletedFoodStrengthMultiplier);
-        var baseStrength = node.active ? activeStrength : depletedStrength;
-
-        if (baseStrength <= 0f)
-        {
-            return 0f;
-        }
-
-        var safeNodeCount = Mathf.Max(1, nodeCount);
-        var nodePhase = (nodeIndex / (float)safeNodeCount);
-        var staggerPhase = (nodePhase * Mathf.PI * 2f) + (time * 0.37f);
-        var stagger = 0.82f + (Mathf.Sin(staggerPhase + (pulseStrength * Mathf.PI)) * 0.18f);
-        return baseStrength * Mathf.Max(0.1f, pulseStrength) * Mathf.Max(0.35f, stagger);
-    }
-
-    private float ComputeRestlessnessTurn(Vector2 position, float heading, float migrationRestlessness)
-    {
-        if (migrationRestlessness <= 0f)
-        {
-            return 0f;
-        }
-
-        var fieldStrength = Mathf.Clamp01(Field.SampleBilinear(position));
-        var intensity = Mathf.Clamp01((fieldStrength - 0.55f) / 0.45f);
-        if (intensity <= 0f)
-        {
-            return 0f;
-        }
-
-        var phase = (position.x * 0.173f) + (position.y * 0.219f) + (simulationTime * 0.61f) + (heading * 0.37f);
-        var deterministicNoise = Mathf.Sin(phase) * 0.5f;
-        return deterministicNoise * Mathf.Max(0f, migrationRestlessness) * intensity;
-    }
-
-    private float ComputeLoopSuppressionTurn(float left, float center, float right, float localLoopSuppression)
-    {
-        if (localLoopSuppression <= 0f)
-        {
-            return 0f;
-        }
-
-        var sidePeak = Mathf.Max(left, right);
-        var ringSignal = Mathf.Clamp01(sidePeak - (center * 0.9f));
-        if (ringSignal <= 0f)
-        {
-            return 0f;
-        }
-
-        var preferredSide = right > left ? -1f : 1f;
-        return preferredSide * ringSignal * Mathf.Clamp01(localLoopSuppression) * 0.75f;
-    }
-
-    private void BuildFoodNodes(bool enableFoodNodes, int foodNodeCount, float defaultFoodCapacity, float defaultFoodDepletionRate, float defaultFoodRegrowRate, bool spawnFoodFromSeed, Vector2[] manualFoodNodes, NeuralFoodNodeConfig[] manualFoodConfigs)
-    {
-        var rejectedCount = 0;
-        if (!enableFoodNodes)
-        {
-            foodNodes = Array.Empty<NeuralFoodNodeState>();
-            nodeVisitCounts = Array.Empty<int>();
-            LastFoodSpawnInfo = new FoodSpawnDebugInfo(false, foodNodeCount, 0, 0);
             return;
         }
 
-        if (manualFoodConfigs != null && manualFoodConfigs.Length > 0)
+        nextOccupiedFoodLogTime += OccupiedFoodLogIntervalSeconds;
+        var loggedAny = false;
+
+        for (var i = 0; i < foodNodes.Length; i++)
         {
-            foodNodes = new NeuralFoodNodeState[manualFoodConfigs.Length];
-            for (var i = 0; i < manualFoodConfigs.Length; i++)
+            if (foodConsumerCounts[i] <= 0)
             {
-                var cfg = manualFoodConfigs[i];
-                foodNodes[i] = BuildFoodState(
-                    EnsureFoodNodePosition(cfg.position, i),
-                    Mathf.Max(0.25f, cfg.radius),
-                    Mathf.Max(0f, cfg.strength),
-                    Mathf.Max(0f, cfg.capacity),
-                    Mathf.Max(0f, cfg.depletionRate),
-                    Mathf.Max(0f, cfg.regrowRate),
-                    cfg.startActive);
+                continue;
             }
 
-            nodeVisitCounts = new int[foodNodes.Length];
-            LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, manualFoodConfigs.Length, foodNodes.Length, rejectedCount);
-            return;
-        }
+            var node = foodNodes[i];
+            if (!loggedAny)
+            {
+                UnityEngine.Debug.Log($"[NeuralSlimeMold] t={simulationTime:F1}s occupied food capacities follow.");
+                loggedAny = true;
+            }
 
+            UnityEngine.Debug.Log($"[NeuralSlimeMold] node={i} consumers={foodConsumerCounts[i]} capacity={node.currentCapacity:F2}/{Mathf.Max(0.01f, node.capacity):F2}");
+        }
+    }
+
+    private void BuildFoodNodes(
+        int foodNodeCount,
+        float foodStrength,
+        float foodCapacity,
+        float consumeRadius,
+        float consumeRate,
+        bool spawnFoodFromSeed,
+        NeuralFoodNodeConfig[] manualFoodNodes)
+    {
         if (manualFoodNodes != null && manualFoodNodes.Length > 0)
         {
             foodNodes = new NeuralFoodNodeState[manualFoodNodes.Length];
             for (var i = 0; i < manualFoodNodes.Length; i++)
             {
-                var position = EnsureFoodNodePosition(manualFoodNodes[i], i);
-                foodNodes[i] = BuildFoodState(position, foodRadius, 1f, defaultFoodCapacity, defaultFoodDepletionRate, defaultFoodRegrowRate, true);
+                var cfg = manualFoodNodes[i];
+                foodNodes[i] = BuildFoodState(
+                    ClampNodeInsideBounds(cfg.position),
+                    Mathf.Max(0f, cfg.baseStrength),
+                    Mathf.Max(0f, cfg.capacity),
+                    Mathf.Max(0f, cfg.consumeRadius),
+                    Mathf.Max(0f, cfg.consumeRate));
             }
 
-            nodeVisitCounts = new int[foodNodes.Length];
-            LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, manualFoodNodes.Length, foodNodes.Length, rejectedCount);
+            foodConsumerCounts = new int[foodNodes.Length];
+            foodDepletionLogged = new bool[foodNodes.Length];
+            foodIsDepleted = new bool[foodNodes.Length];
+            foodRegrowDelayTimers = new float[foodNodes.Length];
             return;
         }
 
-        var count = Mathf.Max(1, foodNodeCount);
-        foodNodes = new NeuralFoodNodeState[count];
+        foodNodes = new NeuralFoodNodeState[foodNodeCount];
         var placementRng = spawnFoodFromSeed
             ? new SeededRng(StableHashUtility.CombineSeed(Seed, "slime-food-nodes"))
             : new SeededRng((int)(DateTime.UtcNow.Ticks & 0x7FFFFFFF));
 
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < foodNodeCount; i++)
         {
-            var placed = TrySampleFoodPosition(placementRng, out var position);
-            if (!placed)
-            {
-                rejectedCount++;
-                position = EnsureFoodNodePosition(Vector2.zero + placementRng.InsideUnitCircle() * (mapSize * 0.1f), i);
-            }
-
-            foodNodes[i] = BuildFoodState(position, foodRadius, 1f, defaultFoodCapacity, defaultFoodDepletionRate, defaultFoodRegrowRate, true);
+            var pos = new Vector2(
+                placementRng.Range(-mapSize.x * 0.4f, mapSize.x * 0.4f),
+                placementRng.Range(-mapSize.y * 0.4f, mapSize.y * 0.4f));
+            pos = ClampNodeInsideBounds(pos);
+            foodNodes[i] = BuildFoodState(pos, foodStrength, foodCapacity, consumeRadius, consumeRate);
         }
 
-        nodeVisitCounts = new int[foodNodes.Length];
-        LastFoodSpawnInfo = new FoodSpawnDebugInfo(true, count, foodNodes.Length, rejectedCount);
+        foodConsumerCounts = new int[foodNodes.Length];
+        foodDepletionLogged = new bool[foodNodes.Length];
+        foodIsDepleted = new bool[foodNodes.Length];
+        foodRegrowDelayTimers = new float[foodNodes.Length];
     }
 
-    private Vector2 EnsureFoodNodePosition(Vector2 candidate, int index)
-    {
-        var position = ClampNodeInsideBounds(candidate);
-        if (!IsPointInObstacle(position))
-        {
-            return position;
-        }
-
-        var placementRng = new SeededRng(StableHashUtility.CombineSeed(Seed, $"slime-food-clear-{index}"));
-        for (var attempt = 0; attempt < 40; attempt++)
-        {
-            var jitter = placementRng.InsideUnitCircle() * Mathf.Lerp(foodRadius * 0.4f, mapSize.magnitude * 0.08f, attempt / 39f);
-            var retry = ClampNodeInsideBounds(position + jitter);
-            if (!IsPointInObstacle(retry))
-            {
-                return retry;
-            }
-        }
-
-        for (var attempt = 0; attempt < 60; attempt++)
-        {
-            var retry = new Vector2(
-                placementRng.Range(-mapSize.x * 0.5f, mapSize.x * 0.5f),
-                placementRng.Range(-mapSize.y * 0.5f, mapSize.y * 0.5f));
-            retry = ClampNodeInsideBounds(retry);
-            if (!IsPointInObstacle(retry))
-            {
-                return retry;
-            }
-        }
-
-        return Vector2.zero;
-    }
-
-    private bool TrySampleFoodPosition(SeededRng placementRng, out Vector2 position)
-    {
-        const int maxAttempts = 80;
-        for (var attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            position = new Vector2(
-                placementRng.Range(-mapSize.x * 0.5f, mapSize.x * 0.5f),
-                placementRng.Range(-mapSize.y * 0.5f, mapSize.y * 0.5f));
-
-            position = ClampNodeInsideBounds(position);
-            if (IsPointInObstacle(position))
-            {
-                continue;
-            }
-
-            var overlaps = false;
-            for (var i = 0; i < foodNodes.Length; i++)
-            {
-                var existing = foodNodes[i];
-                if ((existing.position - position).sqrMagnitude < minFoodSpacing * minFoodSpacing)
-                {
-                    overlaps = true;
-                    break;
-                }
-            }
-
-            if (!overlaps)
-            {
-                return true;
-            }
-        }
-
-        position = Vector2.zero;
-        return false;
-    }
-
-    private static NeuralFoodNodeState BuildFoodState(Vector2 position, float radius, float strength, float capacity, float depletionRate, float regrowRate, bool startActive)
+    private static NeuralFoodNodeState BuildFoodState(Vector2 position, float baseStrength, float capacity, float consumeRadius, float consumeRate)
     {
         return new NeuralFoodNodeState
         {
             position = position,
-            radius = radius,
-            strength = strength,
-            maxCapacity = capacity,
-            capacity = startActive ? capacity : 0f,
-            depletionRate = depletionRate,
-            regrowRate = regrowRate,
-            active = startActive && capacity > 0f,
-            timeSinceDepleted = 0f
+            baseStrength = baseStrength,
+            capacity = capacity,
+            currentCapacity = capacity,
+            consumeRadius = consumeRadius,
+            consumeRate = consumeRate
         };
     }
 
-    private Vector2 FindSpawnPoint(int index)
-    {
-        var seed = StableHashUtility.CombineSeed(Seed, $"slime-spawn-{index}");
-        var spawnRng = new SeededRng(seed);
-        for (var attempt = 0; attempt < 50; attempt++)
-        {
-            var radial = spawnRng.InsideUnitCircle();
-            var pos = new Vector2(radial.x * mapSize.x * 0.25f, radial.y * mapSize.y * 0.25f);
-            if (!IsPointInObstacle(pos))
-            {
-                return pos;
-            }
-        }
-
-        return Vector2.zero;
-    }
-
-    private void ValidateObstaclesInBounds()
-    {
-        if (obstacles == null)
-        {
-            obstacles = Array.Empty<NeuralObstacle>();
-            return;
-        }
-
-        for (var i = 0; i < obstacles.Length; i++)
-        {
-            var obstacle = obstacles[i];
-            obstacle.center = ClampNodeInsideBounds(obstacle.center);
-            obstacle.radius = Mathf.Max(0.1f, obstacle.radius);
-            obstacle.size = new Vector2(Mathf.Max(0.5f, obstacle.size.x), Mathf.Max(0.5f, obstacle.size.y));
-            obstacles[i] = obstacle;
-        }
-    }
-
-    private float ComputeBoundaryTurn(Vector2 position, float heading)
-    {
-        if (boundaryMode != BoundaryMode.SoftWall)
-        {
-            return 0f;
-        }
-
-        var margin = Mathf.Clamp(wallMargin, 0.01f, Mathf.Min(mapSize.x, mapSize.y) * 0.45f);
-        var halfX = mapSize.x * 0.5f;
-        var halfY = mapSize.y * 0.5f;
-
-        var left = position.x + halfX;
-        var right = halfX - position.x;
-        var bottom = position.y + halfY;
-        var top = halfY - position.y;
-
-        var wallNormal = Vector2.zero;
-
-        if (left < margin) wallNormal.x += (margin - left) / margin;
-        if (right < margin) wallNormal.x -= (margin - right) / margin;
-        if (bottom < margin) wallNormal.y += (margin - bottom) / margin;
-        if (top < margin) wallNormal.y -= (margin - top) / margin;
-
-        if (wallNormal.sqrMagnitude < 0.0001f)
-        {
-            return 0f;
-        }
-
-        var forward = Direction(heading);
-        var steerDir = wallNormal.normalized;
-        var cross = (forward.x * steerDir.y) - (forward.y * steerDir.x);
-        var strength = Mathf.Clamp01(wallNormal.magnitude) * 1.2f;
-        return cross * strength;
-    }
-
-    private void ApplyBoundary(ref Vector2 position, ref float heading)
-    {
-        if (boundaryMode == BoundaryMode.Wrap)
-        {
-            WrapPosition(ref position);
-            return;
-        }
-
-        ReflectPosition(ref position, ref heading);
-    }
-
-    private void WrapPosition(ref Vector2 position)
-    {
-        var halfX = mapSize.x * 0.5f;
-        var halfY = mapSize.y * 0.5f;
-
-        if (position.x > halfX) position.x -= mapSize.x;
-        else if (position.x < -halfX) position.x += mapSize.x;
-
-        if (position.y > halfY) position.y -= mapSize.y;
-        else if (position.y < -halfY) position.y += mapSize.y;
-    }
-
-    private void ReflectPosition(ref Vector2 position, ref float heading)
+    private void ApplyReflectBoundary(ref Vector2 position, ref float heading)
     {
         var halfX = mapSize.x * 0.5f;
         var halfY = mapSize.y * 0.5f;
@@ -946,11 +1015,110 @@ public sealed class NeuralSlimeMoldRunner
         }
     }
 
+    private void ApplyNonUsefulLoopPrune(Vector2 position, bool onActiveFood, bool returningToHub, float dt)
+    {
+        if (returningToHub || onActiveFood || nonUsefulLoopPruneStrength <= 0f)
+        {
+            return;
+        }
+
+        if (IsNearHub(position) || IsNearAnyActiveFood(position, hubInfluenceRadius * 0.65f))
+        {
+            return;
+        }
+
+        var localTrail = Field.SampleBilinear(position);
+        if (localTrail < nonUsefulLoopTrailThreshold)
+        {
+            return;
+        }
+
+        var curvature = Field.EstimateLocalCurvature(position, LoopCurvatureSampleRadius);
+        if (curvature < nonUsefulLoopCurvatureThreshold)
+        {
+            return;
+        }
+
+        Field.ScrubDisc(position, LoopPruneRadius, nonUsefulLoopPruneStrength * Mathf.Max(0f, dt));
+    }
+
+    private bool IsInsideHub(Vector2 position)
+    {
+        if (!useColonyHub)
+        {
+            return false;
+        }
+
+        return (position - colonyHub).sqrMagnitude <= (colonyHubRadius * colonyHubRadius);
+    }
+
+    private bool IsNearHub(Vector2 position)
+    {
+        if (!useColonyHub)
+        {
+            return false;
+        }
+
+        var radius = Mathf.Max(colonyHubRadius, hubInfluenceRadius);
+        return (position - colonyHub).sqrMagnitude <= (radius * radius);
+    }
+
+    private bool IsNearAnyActiveFood(Vector2 position, float extraRadius)
+    {
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            if (foodIsDepleted[i] || node.currentCapacity <= 0f)
+            {
+                continue;
+            }
+
+            var radius = Mathf.Max(0.01f, node.consumeRadius + extraRadius);
+            if ((position - node.position).sqrMagnitude <= radius * radius)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private float ComputeSteerTowardPoint(Vector2 position, float heading, Vector2 target)
+    {
+        var toTarget = target - position;
+        if (toTarget.sqrMagnitude <= 0.0001f)
+        {
+            return 0f;
+        }
+
+        toTarget.Normalize();
+        var forward = Direction(heading);
+        var cross = (forward.x * toTarget.y) - (forward.y * toTarget.x);
+        var dot = Vector2.Dot(forward, toTarget);
+        var signedAngle = Mathf.Atan2(cross, dot);
+        return Mathf.Clamp(signedAngle / Mathf.PI, -1f, 1f);
+    }
+
+    private float ComputeSteerAwayFromPoint(Vector2 position, float heading, Vector2 source)
+    {
+        var away = position - source;
+        if (away.sqrMagnitude <= 0.0001f)
+        {
+            return 0f;
+        }
+
+        away.Normalize();
+        var forward = Direction(heading);
+        var cross = (forward.x * away.y) - (forward.y * away.x);
+        var dot = Vector2.Dot(forward, away);
+        var signedAngle = Mathf.Atan2(cross, dot);
+        return Mathf.Clamp(signedAngle / Mathf.PI, -1f, 1f);
+    }
+
     private Vector2 ClampNodeInsideBounds(Vector2 node)
     {
-        var padding = Mathf.Max(wallMargin, foodRadius * 0.65f);
-        var halfX = Mathf.Max(0.25f, (mapSize.x * 0.5f) - padding);
-        var halfY = Mathf.Max(0.25f, (mapSize.y * 0.5f) - padding);
+        var halfX = (mapSize.x * 0.5f) - 0.5f;
+        var halfY = (mapSize.y * 0.5f) - 0.5f;
 
         node.x = Mathf.Clamp(node.x, -halfX, halfX);
         node.y = Mathf.Clamp(node.y, -halfY, halfY);
@@ -960,5 +1128,19 @@ public sealed class NeuralSlimeMoldRunner
     private static Vector2 Direction(float angle)
     {
         return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+    }
+
+    private NeuralControllerParams CreateControllerProfile(int index)
+    {
+        var profileRng = new SeededRng(StableHashUtility.CombineSeed(Seed, $"slime-controller-{index}"));
+        var sideBias = profileRng.Range(0.75f, 1.2f);
+        return new NeuralControllerParams
+        {
+            leftWeight = profileRng.Range(0.7f, 1.2f) * sideBias,
+            centerWeight = profileRng.Range(0.35f, 0.9f),
+            rightWeight = profileRng.Range(0.7f, 1.2f) / sideBias,
+            densityWeight = profileRng.Range(-0.2f, 0.35f),
+            noiseWeight = profileRng.Range(0.05f, 0.18f)
+        };
     }
 }
