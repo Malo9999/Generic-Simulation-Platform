@@ -1,0 +1,9 @@
+{
+  "simulationId": "ReactionDiffusion",
+  "world": {
+    "arenaWidth": 64,
+    "arenaHeight": 64,
+    "walls": false,
+    "obstacleDensity": 0.0
+  }
+}
