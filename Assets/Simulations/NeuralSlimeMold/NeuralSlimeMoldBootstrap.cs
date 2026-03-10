@@ -2,6 +2,13 @@ using UnityEngine;
 
 public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 {
+    public enum NeuralSlimeMoldQualityPreset
+    {
+        Low = 0,
+        Medium = 1,
+        High = 2
+    }
+
     [Header("Simulation")]
     [SerializeField] private bool autoStart = true;
     [SerializeField] private int seed = 12345;
@@ -10,6 +17,18 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private Vector2Int trailResolution = new(256, 256);
     [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.6f;
     [SerializeField, Range(0f, 1f)] private float trailDiffusion = 0.23f;
+
+    [Header("Quality / Performance")]
+    [SerializeField] private NeuralSlimeMoldQualityPreset qualityPreset = NeuralSlimeMoldQualityPreset.Medium;
+    [SerializeField] private bool overridePerformanceOptions;
+    [SerializeField, Min(1)] private int overrideFieldStepInterval = 1;
+    [SerializeField, Min(1)] private int overrideFieldTextureRefreshInterval = 1;
+    [SerializeField, Min(1)] private int overrideMaxVisibleAgents = 1500;
+
+    [Header("Stress Test")]
+    [SerializeField] private bool useStressTestProfile;
+    [SerializeField, Min(1)] private int stressAgentCount = 2000;
+    [SerializeField] private Vector2Int stressTrailResolution = new(384, 384);
 
     [Header("Agent Motion")]
     [SerializeField] private float sensorAngleDegrees = 35f;
@@ -96,6 +115,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private NeuralSlimeMoldRunner runner;
     private NeuralSlimeMoldRenderer rendererComponent;
     private bool hasStarted;
+    private int activeFieldStepInterval = 1;
 
     private static readonly Color MoldBackgroundPreset = new(0.10f, 0.09f, 0.07f, 1f);
 
@@ -109,6 +129,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         ApplyRendererOverrides();
+
+        if (rendererComponent != null)
+        {
+            var perf = ResolvePerformanceProfile();
+            rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
+        }
+
         ApplyCameraBackground();
     }
 
@@ -127,7 +154,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             return;
         }
 
-        runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, foodStrength, explorationTurnNoise);
+        runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, foodStrength, explorationTurnNoise, activeFieldStepInterval);
         rendererComponent.Render(runner);
 
         if (autoFrameCamera && adaptiveCameraFraming)
@@ -142,10 +169,18 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         var turnRateRadians = turnRateDegrees * Mathf.Deg2Rad;
         var sensorAngleRadians = sensorAngleDegrees * Mathf.Deg2Rad;
 
+        var activeAgentCount = useStressTestProfile ? Mathf.Max(1, stressAgentCount) : Mathf.Max(1, agentCount);
+        var activeTrailResolution = useStressTestProfile
+            ? new Vector2Int(Mathf.Max(16, stressTrailResolution.x), Mathf.Max(16, stressTrailResolution.y))
+            : new Vector2Int(Mathf.Max(16, trailResolution.x), Mathf.Max(16, trailResolution.y));
+
+        var perf = ResolvePerformanceProfile();
+        activeFieldStepInterval = perf.fieldStepInterval;
+
         runner.ResetWithSeed(
             seed,
-            agentCount,
-            trailResolution,
+            activeAgentCount,
+            activeTrailResolution,
             mapSize,
             speed,
             turnRateRadians,
@@ -191,6 +226,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             obstaclePadding);
 
         ApplyRendererOverrides();
+        rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
         ApplyCameraBackground();
         rendererComponent.Build(runner);
 
@@ -209,11 +245,27 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         StartSimulation();
     }
 
+    [ContextMenu("Apply Stress Test Profile")]
+    public void ApplyStressTestProfile()
+    {
+        useStressTestProfile = true;
+        qualityPreset = NeuralSlimeMoldQualityPreset.Low;
+        stressAgentCount = Mathf.Max(stressAgentCount, 2000);
+        stressTrailResolution = new Vector2Int(Mathf.Max(stressTrailResolution.x, 384), Mathf.Max(stressTrailResolution.y, 384));
+    }
+
     [ContextMenu("Apply Mold Palette Preset")]
     public void ApplyMoldPalettePreset()
     {
         backgroundColor = MoldBackgroundPreset;
         ApplyRendererOverrides();
+
+        if (rendererComponent != null)
+        {
+            var perf = ResolvePerformanceProfile();
+            rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
+        }
+
         ApplyCameraBackground();
     }
 
@@ -317,6 +369,42 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         return Mathf.Max(vertical, horizontal);
     }
 
+
+    private (int fieldStepInterval, int fieldTextureRefreshInterval, int maxVisibleAgents) ResolvePerformanceProfile()
+    {
+        var fieldStepInterval = 1;
+        var textureRefreshInterval = 1;
+        var visibleAgents = 1500;
+
+        switch (qualityPreset)
+        {
+            case NeuralSlimeMoldQualityPreset.Low:
+                fieldStepInterval = 2;
+                textureRefreshInterval = 3;
+                visibleAgents = 900;
+                break;
+            case NeuralSlimeMoldQualityPreset.High:
+                fieldStepInterval = 1;
+                textureRefreshInterval = 1;
+                visibleAgents = 2500;
+                break;
+            default:
+                fieldStepInterval = 1;
+                textureRefreshInterval = 2;
+                visibleAgents = 1500;
+                break;
+        }
+
+        if (overridePerformanceOptions)
+        {
+            fieldStepInterval = Mathf.Max(1, overrideFieldStepInterval);
+            textureRefreshInterval = Mathf.Max(1, overrideFieldTextureRefreshInterval);
+            visibleAgents = Mathf.Max(1, overrideMaxVisibleAgents);
+        }
+
+        return (fieldStepInterval, textureRefreshInterval, visibleAgents);
+    }
+
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = new Color(0.2f, 0.9f, 0.8f, 0.4f);
@@ -398,8 +486,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
         trailResolution.x = Mathf.Max(16, trailResolution.x);
         trailResolution.y = Mathf.Max(16, trailResolution.y);
+        stressTrailResolution.x = Mathf.Max(16, stressTrailResolution.x);
+        stressTrailResolution.y = Mathf.Max(16, stressTrailResolution.y);
 
         agentCount = Mathf.Max(1, agentCount);
+        stressAgentCount = Mathf.Max(1, stressAgentCount);
+        overrideFieldStepInterval = Mathf.Max(1, overrideFieldStepInterval);
+        overrideFieldTextureRefreshInterval = Mathf.Max(1, overrideFieldTextureRefreshInterval);
+        overrideMaxVisibleAgents = Mathf.Max(1, overrideMaxVisibleAgents);
         foodNodeCount = Mathf.Max(1, foodNodeCount);
 
         sensorDistance = Mathf.Max(0f, sensorDistance);
@@ -477,6 +571,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         ApplyRendererOverrides();
+
+        if (rendererComponent != null)
+        {
+            var perf = ResolvePerformanceProfile();
+            rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
+        }
+
         ApplyCameraBackground();
     }
 #endif

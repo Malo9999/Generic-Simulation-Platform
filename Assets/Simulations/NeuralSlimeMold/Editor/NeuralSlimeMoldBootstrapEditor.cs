@@ -20,6 +20,23 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "trailDiffusion"
         });
 
+
+        DrawSection("Quality / Performance", new[]
+        {
+            "qualityPreset",
+            "overridePerformanceOptions",
+            "overrideFieldStepInterval",
+            "overrideFieldTextureRefreshInterval",
+            "overrideMaxVisibleAgents"
+        });
+
+        DrawSection("Stress Test", new[]
+        {
+            "useStressTestProfile",
+            "stressAgentCount",
+            "stressTrailResolution"
+        });
+
         DrawSection("Agent Motion", new[]
         {
             "sensorAngleDegrees",
@@ -158,6 +175,12 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             if (GUILayout.Button("Reseed"))
             {
                 bootstrap.Reseed();
+                EditorUtility.SetDirty(bootstrap);
+            }
+
+            if (GUILayout.Button("Apply Stress Profile"))
+            {
+                bootstrap.ApplyStressTestProfile();
                 EditorUtility.SetDirty(bootstrap);
             }
         }

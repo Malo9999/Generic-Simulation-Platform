@@ -217,12 +217,50 @@ public sealed class NeuralFieldGrid
         float duplicateSuppressionRadiusWorld = 0f)
     {
         var kDiff = Mathf.Clamp01(diffusion);
-        var baseDecayFactor = Mathf.Clamp01(1f - (Mathf.Max(0f, decayPerSecond) * dt));
+        var clampedDecayPerSecond = Mathf.Max(0f, decayPerSecond);
+        var clampedDt = Mathf.Max(0f, dt);
+
+        if (clampedDt <= 0f)
+        {
+            return;
+        }
+
+        var hasSuppression = duplicateSuppressionRadiusWorld > 0f;
+        var hasStability = trunkStabilityBoost > 0f;
+
+        if (kDiff <= 0f && clampedDecayPerSecond <= 0f && !hasSuppression && !hasStability)
+        {
+            return;
+        }
+
+        var baseDecayFactor = Mathf.Clamp01(1f - (clampedDecayPerSecond * clampedDt));
         var trunkThreshold = Mathf.Max(0f, trunkTrailThreshold);
         var stabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
         var suppressionRadius = Mathf.Max(0f, duplicateSuppressionRadiusWorld);
         var suppressionRadiusX = Mathf.Max(1, Mathf.RoundToInt((suppressionRadius / worldSize.x) * width));
         var suppressionRadiusY = Mathf.Max(1, Mathf.RoundToInt((suppressionRadius / worldSize.y) * height));
+
+        if (kDiff <= 0f && !hasSuppression && !hasStability)
+        {
+            for (var i = 0; i < field.Length; i++)
+            {
+                if (IsBlockedIndex(i))
+                {
+                    field[i] = 0f;
+                    continue;
+                }
+
+                var value = field[i];
+                if (value < WeakSignalPruneThreshold)
+                {
+                    value *= Mathf.Clamp01(1f - (WeakSignalExtraDecay * clampedDt));
+                }
+
+                field[i] = Mathf.Max(0f, value * baseDecayFactor);
+            }
+
+            return;
+        }
 
         for (var y = 0; y < height; y++)
         {
@@ -280,12 +318,12 @@ public sealed class NeuralFieldGrid
                 if (stabilityBoost > 0f && diffused >= trunkThreshold)
                 {
                     var trunkStrength = Mathf.Clamp01((diffused - trunkThreshold) / Mathf.Max(0.0001f, trunkThreshold + 0.05f));
-                    decayFactor = Mathf.Lerp(decayFactor, 1f, Mathf.Clamp01(stabilityBoost * dt * (0.65f + (0.35f * trunkStrength))));
+                    decayFactor = Mathf.Lerp(decayFactor, 1f, Mathf.Clamp01(stabilityBoost * clampedDt * (0.65f + (0.35f * trunkStrength))));
                 }
 
                 if (diffused < WeakSignalPruneThreshold)
                 {
-                    decayFactor *= Mathf.Clamp01(1f - (WeakSignalExtraDecay * dt));
+                    decayFactor *= Mathf.Clamp01(1f - (WeakSignalExtraDecay * clampedDt));
                 }
 
                 if (suppressionRadius > 0f && diffused < trunkThreshold)
@@ -294,7 +332,7 @@ public sealed class NeuralFieldGrid
                     if (nearbyStrong > diffused)
                     {
                         var duplicatePressure = Mathf.Clamp01((nearbyStrong - diffused) / Mathf.Max(0.0001f, trunkThreshold));
-                        decayFactor *= Mathf.Clamp01(1f - (duplicatePressure * dt * 1.25f));
+                        decayFactor *= Mathf.Clamp01(1f - (duplicatePressure * clampedDt * 1.25f));
                     }
                 }
 

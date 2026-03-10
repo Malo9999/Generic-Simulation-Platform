@@ -78,6 +78,7 @@ public sealed class NeuralSlimeMoldRunner
 
     private float simulationTime;
     private float nextOccupiedFoodLogTime;
+    private int tickCounter;
 
     private SeededRng rng;
     private Vector2 mapSize;
@@ -237,6 +238,7 @@ public sealed class NeuralSlimeMoldRunner
 
         simulationTime = 0f;
         nextOccupiedFoodLogTime = OccupiedFoodLogIntervalSeconds;
+        tickCounter = 0;
         ActivityCenter = Vector2.zero;
         ActivityRadius = MinActivityRadius;
 
@@ -272,7 +274,7 @@ public sealed class NeuralSlimeMoldRunner
         UnityEngine.Debug.Log($"[NeuralSlimeMold] Initialized {foodNodes.Length} food nodes.");
     }
 
-    public void Tick(float dt, float diffusion, float decay, float foodStrength, float explorationTurnNoise)
+    public void Tick(float dt, float diffusion, float decay, float foodStrength, float explorationTurnNoise, int fieldStepInterval = 1)
     {
         if (agents == null || Field == null)
         {
@@ -413,7 +415,12 @@ public sealed class NeuralSlimeMoldRunner
         ConsumeFood(dt);
         ApplyNetworkMaintenance(dt);
         LogOccupiedFoodLevels();
-        Field.Step(diffusion, decay, dt, branchPromotionThreshold, trunkStabilityBoost, duplicateTubeSuppressionRadius);
+        tickCounter++;
+        var stepInterval = Mathf.Max(1, fieldStepInterval);
+        if (stepInterval <= 1 || tickCounter % stepInterval == 0)
+        {
+            Field.Step(diffusion, decay, dt * stepInterval, branchPromotionThreshold, trunkStabilityBoost, duplicateTubeSuppressionRadius);
+        }
 
         if (agents.Length > 0)
         {
