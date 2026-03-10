@@ -64,6 +64,14 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "nonUsefulLoopCurvatureThreshold"
         });
 
+        DrawSection("Network Maintenance", new[]
+        {
+            "bridgeReinforcementWeight",
+            "hubOrbitSuppression",
+            "staleCorridorDecayBoost",
+            "connectorSearchRadius"
+        });
+
         DrawSection("Rendering", new[]
         {
             "showFoodMarkers"
