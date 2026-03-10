@@ -53,6 +53,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 0.5f;
     [SerializeField, Min(0.1f)] private float connectorSearchRadius = 6f;
 
+    [Header("Branch Remodeling")]
+    [SerializeField, Min(0f)] private float branchSpawnChance = 0.18f;
+    [SerializeField, Min(0f)] private float branchSpawnTrailThreshold = 0.075f;
+    [SerializeField, Min(0f)] private float branchPromotionThreshold = 0.13f;
+    [SerializeField, Min(0f)] private float branchRetractionBoost = 0.72f;
+    [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.25f;
+    [SerializeField, Min(0f)] private float duplicateTubeSuppressionRadius = 1.35f;
+
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobOverlay = true;
@@ -155,7 +163,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             bridgeReinforcementWeight,
             hubOrbitSuppression,
             staleCorridorDecayBoost,
-            connectorSearchRadius);
+            connectorSearchRadius,
+            branchSpawnChance,
+            branchSpawnTrailThreshold,
+            branchPromotionThreshold,
+            branchRetractionBoost,
+            trunkStabilityBoost,
+            duplicateTubeSuppressionRadius);
 
         ApplyRendererOverrides();
         ApplyCameraBackground();
@@ -355,6 +369,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         hubOrbitSuppression = Mathf.Max(0f, hubOrbitSuppression);
         staleCorridorDecayBoost = Mathf.Max(0f, staleCorridorDecayBoost);
         connectorSearchRadius = Mathf.Max(0.1f, connectorSearchRadius);
+        branchSpawnChance = Mathf.Max(0f, branchSpawnChance);
+        branchSpawnTrailThreshold = Mathf.Max(0f, branchSpawnTrailThreshold);
+        branchPromotionThreshold = Mathf.Max(branchSpawnTrailThreshold, branchPromotionThreshold);
+        branchRetractionBoost = Mathf.Max(0f, branchRetractionBoost);
+        trunkStabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
+        duplicateTubeSuppressionRadius = Mathf.Max(0f, duplicateTubeSuppressionRadius);
 
         cameraPadding = Mathf.Max(0.1f, cameraPadding);
         cameraFollowSmooth = Mathf.Max(0.01f, cameraFollowSmooth);

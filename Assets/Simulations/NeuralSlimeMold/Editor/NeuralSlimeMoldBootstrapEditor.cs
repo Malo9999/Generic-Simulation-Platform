@@ -72,6 +72,16 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "connectorSearchRadius"
         });
 
+        DrawSection("Branch Remodeling", new[]
+        {
+            "branchSpawnChance",
+            "branchSpawnTrailThreshold",
+            "branchPromotionThreshold",
+            "branchRetractionBoost",
+            "trunkStabilityBoost",
+            "duplicateTubeSuppressionRadius"
+        });
+
         DrawSection("Rendering", new[]
         {
             "showFoodMarkers"

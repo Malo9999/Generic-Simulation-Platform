@@ -54,6 +54,12 @@ public sealed class NeuralSlimeMoldRunner
     private const float HubSeekDepositSuppression = 0.08f;
     private const float ConnectorReinforceTrailThreshold = 0.035f;
     private const int HubOrbitSampleCount = 10;
+    private const float BranchSpawnAngleMinDegrees = 24f;
+    private const float BranchSpawnAngleMaxDegrees = 68f;
+    private const float BranchSpawnFrontSampleDistance = 2.3f;
+    private const float BranchSpawnSideSampleDistance = 2.1f;
+    private const float ExploratoryBranchDepositScale = 0.34f;
+    private const float PromotedBranchDepositScale = 0.82f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -95,6 +101,12 @@ public sealed class NeuralSlimeMoldRunner
     private float hubOrbitSuppression;
     private float staleCorridorDecayBoost;
     private float connectorSearchRadius;
+    private float branchSpawnChance;
+    private float branchSpawnTrailThreshold;
+    private float branchPromotionThreshold;
+    private float branchRetractionBoost;
+    private float trunkStabilityBoost;
+    private float duplicateTubeSuppressionRadius;
 
     public NeuralFieldGrid Field { get; private set; }
     public NeuralSlimeMoldAgent[] Agents => agents;
@@ -146,7 +158,13 @@ public sealed class NeuralSlimeMoldRunner
         float bridgeReinforcementWeight,
         float hubOrbitSuppression,
         float staleCorridorDecayBoost,
-        float connectorSearchRadius)
+        float connectorSearchRadius,
+        float branchSpawnChance,
+        float branchSpawnTrailThreshold,
+        float branchPromotionThreshold,
+        float branchRetractionBoost,
+        float trunkStabilityBoost,
+        float duplicateTubeSuppressionRadius)
     {
         Seed = seed;
         this.mapSize = new Vector2(Mathf.Max(8f, mapSize.x), Mathf.Max(8f, mapSize.y));
@@ -172,6 +190,12 @@ public sealed class NeuralSlimeMoldRunner
         this.hubOrbitSuppression = Mathf.Max(0f, hubOrbitSuppression);
         this.staleCorridorDecayBoost = Mathf.Max(0f, staleCorridorDecayBoost);
         this.connectorSearchRadius = Mathf.Max(0.1f, connectorSearchRadius);
+        this.branchSpawnChance = Mathf.Max(0f, branchSpawnChance);
+        this.branchSpawnTrailThreshold = Mathf.Max(0f, branchSpawnTrailThreshold);
+        this.branchPromotionThreshold = Mathf.Max(this.branchSpawnTrailThreshold, branchPromotionThreshold);
+        this.branchRetractionBoost = Mathf.Max(0f, branchRetractionBoost);
+        this.trunkStabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
+        this.duplicateTubeSuppressionRadius = Mathf.Max(0f, duplicateTubeSuppressionRadius);
 
         Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, false);
 
@@ -344,6 +368,7 @@ public sealed class NeuralSlimeMoldRunner
                         agentFoodCommitment[i]);
 
                     Field.DepositKernel(agent.position, agent.depositAmount * depositMultiplier);
+                    TryNucleateBranch(agent.position, agent.heading, agent.depositAmount, dt, activeFoodIndex >= 0);
 
                     ApplyNonUsefulLoopPrune(
                         agent.position,
@@ -367,7 +392,7 @@ public sealed class NeuralSlimeMoldRunner
         ConsumeFood(dt);
         ApplyNetworkMaintenance(dt);
         LogOccupiedFoodLevels();
-        Field.Step(diffusion, decay, dt);
+        Field.Step(diffusion, decay, dt, branchPromotionThreshold, trunkStabilityBoost, duplicateTubeSuppressionRadius);
 
         if (agents.Length > 0)
         {
@@ -1075,6 +1100,57 @@ public sealed class NeuralSlimeMoldRunner
         if (hubOrbitSuppression > 0f && useColonyHub)
         {
             SuppressHubOrbiting(step, searchRadius);
+        }
+    }
+
+    private void TryNucleateBranch(Vector2 position, float heading, float depositAmount, float dt, bool nearFood)
+    {
+        if (branchSpawnChance <= 0f || dt <= 0f)
+        {
+            return;
+        }
+
+        var corridorTrail = Field.SampleBilinear(position);
+        if (corridorTrail < branchSpawnTrailThreshold)
+        {
+            return;
+        }
+
+        var spawnProbability = branchSpawnChance * dt * Mathf.Clamp01((corridorTrail - branchSpawnTrailThreshold) / Mathf.Max(0.001f, branchSpawnTrailThreshold + 0.05f));
+        if (rng.NextFloat01() > spawnProbability)
+        {
+            return;
+        }
+
+        var branchSign = rng.NextFloat01() < 0.5f ? -1f : 1f;
+        var branchAngle = Mathf.Deg2Rad * rng.Range(BranchSpawnAngleMinDegrees, BranchSpawnAngleMaxDegrees) * branchSign;
+        var branchDirection = Direction(Mathf.Repeat(heading + branchAngle, Mathf.PI * 2f));
+        var branchSamplePos = position + (branchDirection * BranchSpawnSideSampleDistance);
+        var aheadSamplePos = position + (Direction(heading) * BranchSpawnFrontSampleDistance);
+
+        var branchTrail = Field.SampleBilinear(branchSamplePos);
+        var aheadTrail = Field.SampleBilinear(aheadSamplePos);
+        var branchNutrient = Mathf.Clamp01(SampleNutrientField(branchSamplePos));
+
+        var openSpaceBias = Mathf.Clamp01((corridorTrail - aheadTrail) * 2.2f);
+        var branchValue = Mathf.Clamp01((branchTrail * 2.4f) + (branchNutrient * 0.9f) + (openSpaceBias * 0.7f));
+        var promoted = branchTrail >= branchPromotionThreshold || branchValue >= branchPromotionThreshold;
+
+        var branchDepositScale = promoted ? PromotedBranchDepositScale : ExploratoryBranchDepositScale;
+        var branchDeposit = depositAmount * branchDepositScale * Mathf.Lerp(0.65f, 1.12f, branchValue);
+
+        Field.DepositKernel(branchSamplePos, branchDeposit);
+
+        if (!promoted && branchRetractionBoost > 0f && !nearFood)
+        {
+            var retractAmount = branchRetractionBoost * dt * Mathf.Clamp01(1f - branchValue);
+            Field.ScrubDisc(branchSamplePos, 0.85f, retractAmount);
+            return;
+        }
+
+        if (promoted)
+        {
+            Field.DepositDisc(branchSamplePos, 0.6f, branchDeposit * 0.4f);
         }
     }
 
