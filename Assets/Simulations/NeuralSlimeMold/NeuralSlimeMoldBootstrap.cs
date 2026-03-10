@@ -1,5 +1,4 @@
 using UnityEngine;
-using static System.Net.Mime.MediaTypeNames;
 
 public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 {
@@ -33,6 +32,21 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private bool spawnFromSeed = true;
     [SerializeField] private NeuralFoodNodeConfig[] manualFoodConfigs;
 
+    [Header("Colony Hub")]
+    [SerializeField] private bool useColonyHub = true;
+    [SerializeField] private Vector2 colonyHub = Vector2.zero;
+    [SerializeField, Min(0.25f)] private float colonyHubRadius = 4.5f;
+    [SerializeField, Min(0f)] private float returnToHubWeight = 1.35f;
+    [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.82f;
+    [SerializeField, Min(0f)] private float returnDepositBoost = 2.8f;
+    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 6.0f;
+    [SerializeField, Min(0f)] private float hubInfluenceRadius = 9f;
+
+    [Header("Loop Pruning")]
+    [SerializeField, Min(0f)] private float nonUsefulLoopPruneStrength = 0.14f;
+    [SerializeField, Min(0f)] private float nonUsefulLoopTrailThreshold = 0.13f;
+    [SerializeField, Min(0f)] private float nonUsefulLoopCurvatureThreshold = 0.085f;
+
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobOverlay = true;
@@ -55,6 +69,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private NeuralSlimeMoldRenderer rendererComponent;
     private bool hasStarted;
 
+    private static readonly Color MoldBackgroundPreset = new(0.10f, 0.09f, 0.07f, 1f);
+
     private void Awake()
     {
         runner = new NeuralSlimeMoldRunner();
@@ -65,6 +81,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         ApplyRendererOverrides();
+        ApplyCameraBackground();
     }
 
     private void Start()
@@ -117,9 +134,21 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             regrowRate,
             foodReactivationThreshold,
             spawnFromSeed,
-            manualFoodConfigs);
+            manualFoodConfigs,
+            useColonyHub,
+            colonyHub,
+            colonyHubRadius,
+            returnToHubWeight,
+            returnTrailBlend,
+            returnDepositBoost,
+            successfulReturnDepositBurst,
+            hubInfluenceRadius,
+            nonUsefulLoopPruneStrength,
+            nonUsefulLoopTrailThreshold,
+            nonUsefulLoopCurvatureThreshold);
 
         ApplyRendererOverrides();
+        ApplyCameraBackground();
         rendererComponent.Build(runner);
 
         if (autoFrameCamera)
@@ -137,6 +166,14 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         StartSimulation();
     }
 
+    [ContextMenu("Apply Mold Palette Preset")]
+    public void ApplyMoldPalettePreset()
+    {
+        backgroundColor = MoldBackgroundPreset;
+        ApplyRendererOverrides();
+        ApplyCameraBackground();
+    }
+
     private void ApplyRendererOverrides()
     {
         if (rendererComponent == null)
@@ -148,6 +185,17 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         rendererComponent.SetFoodDebugVisuals(showFoodMarkers);
         rendererComponent.SetFoodInfluenceDebugVisuals(false);
         rendererComponent.SetBackgroundColor(backgroundColor);
+    }
+
+    private void ApplyCameraBackground()
+    {
+        var cam = Camera.main;
+        if (cam == null)
+        {
+            return;
+        }
+
+        cam.backgroundColor = backgroundColor;
     }
 
     private void FrameCameraImmediate()
@@ -185,7 +233,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         if (delta.magnitude > cameraDeadZoneRadius)
         {
             var lookAheadCenter = Vector2.Lerp(current2D, targetCenter, 1f + cameraLookAheadToActivity);
-            var smoothed = Vector2.Lerp(current2D, lookAheadCenter, 1f - Mathf.Exp(-cameraFollowSmooth * Mathf.Max(0f, dt)));
+            var smoothed = Vector2.Lerp(
+                current2D,
+                lookAheadCenter,
+                1f - Mathf.Exp(-cameraFollowSmooth * Mathf.Max(0f, dt)));
             cam.transform.position = new Vector3(smoothed.x, smoothed.y, cam.transform.position.z);
         }
 
@@ -210,9 +261,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private float ComputeActivityCameraSize(Camera cam)
     {
         var aspect = Mathf.Max(0.1f, cam.aspect);
-        var radius = Mathf.Max(1f, runner.ActivityRadius);
-        var vertical = radius * Mathf.Max(0.1f, cameraPadding);
-        var horizontal = (radius * Mathf.Max(0.1f, cameraPadding)) / aspect;
+        var radius = Mathf.Max(1f, runner != null ? runner.ActivityRadius : 1f);
+        var paddedRadius = radius * Mathf.Max(0.1f, cameraPadding);
+        var vertical = paddedRadius;
+        var horizontal = paddedRadius / aspect;
         return Mathf.Max(vertical, horizontal);
     }
 
@@ -231,6 +283,18 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
                     new Vector3(node.position.x, node.position.y, 0f),
                     Mathf.Max(0.01f, node.consumeRadius));
             }
+        }
+
+        if (useColonyHub)
+        {
+            Gizmos.color = new Color(0.35f, 0.95f, 1f, 0.5f);
+            Gizmos.DrawWireSphere(new Vector3(colonyHub.x, colonyHub.y, 0f), colonyHubRadius);
+
+            Gizmos.color = new Color(0.35f, 0.95f, 1f, 0.15f);
+            Gizmos.DrawWireSphere(new Vector3(colonyHub.x, colonyHub.y, 0f), Mathf.Max(colonyHubRadius, hubInfluenceRadius));
+
+            Gizmos.color = new Color(0.75f, 1f, 1f, 0.8f);
+            Gizmos.DrawSphere(new Vector3(colonyHub.x, colonyHub.y, 0f), 0.25f);
         }
 
         if (UnityEngine.Application.isPlaying && runner != null)
@@ -267,6 +331,17 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         foodReactivationDelay = Mathf.Max(0f, foodReactivationDelay);
         regrowRate = Mathf.Max(0f, regrowRate);
 
+        colonyHubRadius = Mathf.Max(0.25f, colonyHubRadius);
+        returnToHubWeight = Mathf.Max(0f, returnToHubWeight);
+        returnTrailBlend = Mathf.Clamp01(returnTrailBlend);
+        returnDepositBoost = Mathf.Max(0f, returnDepositBoost);
+        successfulReturnDepositBurst = Mathf.Max(0f, successfulReturnDepositBurst);
+        hubInfluenceRadius = Mathf.Max(colonyHubRadius, hubInfluenceRadius);
+
+        nonUsefulLoopPruneStrength = Mathf.Max(0f, nonUsefulLoopPruneStrength);
+        nonUsefulLoopTrailThreshold = Mathf.Max(0f, nonUsefulLoopTrailThreshold);
+        nonUsefulLoopCurvatureThreshold = Mathf.Max(0f, nonUsefulLoopCurvatureThreshold);
+
         cameraPadding = Mathf.Max(0.1f, cameraPadding);
         cameraFollowSmooth = Mathf.Max(0.01f, cameraFollowSmooth);
         cameraZoomSmooth = Mathf.Max(0.01f, cameraZoomSmooth);
@@ -279,6 +354,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         ApplyRendererOverrides();
+        ApplyCameraBackground();
     }
 #endif
 }

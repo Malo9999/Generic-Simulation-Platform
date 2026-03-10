@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using UnityEngine;
-using static System.Net.Mime.MediaTypeNames;
 
 public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 {
@@ -16,12 +15,12 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private int fieldTextureRefreshInterval = 1;
 
     [Header("Field Network Styling")]
-    [SerializeField, Range(0.1f, 4f)] private float veinContrast = 1.65f;
-    [SerializeField, Range(0f, 1f)] private float veinFloor = 0.05f;
-    [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.2f;
-    [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.15f;
-    [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.85f;
-    [SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.06f;
+    [SerializeField, Range(0.1f, 4f)] private float veinContrast = 1.8f;
+    [SerializeField, Range(0f, 1f)] private float veinFloor = 0.08f;
+    [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.35f;
+    [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.3f;
+    [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.88f;
+    [SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
 
     [Header("World Marker Visuals")]
     [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
@@ -196,7 +195,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
     }
 
-    private void BuildField(Vector2 worldSize, int width, int height)
+    private void BuildField(Vector2 size, int width, int height)
     {
         var fieldGo = new GameObject("Field");
         fieldGo.transform.SetParent(transform, false);
@@ -213,32 +212,23 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             fieldTexture,
             new Rect(0, 0, width, height),
             new Vector2(0.5f, 0.5f),
-            width / worldSize.x);
+            width / size.x);
 
         fieldRenderer.sprite = densitySprite;
         fieldRenderer.color = Color.white;
 
         if (useFieldBlobSpriteForFieldOverlay)
         {
-            Sprite overlaySprite = null;
+            var overlaySprite = GetFallbackSquareSprite();
 
-            if (ShapeLibraryProvider.TryGetSprite(ShapeId.FieldBlob, out var blobSprite) && blobSprite != null)
-            {
-                overlaySprite = blobSprite;
-            }
-            else
-            {
-                overlaySprite = GetFallbackSquareSprite();
-            }
-
-            fieldRenderer.drawMode = SpriteDrawMode.Tiled;
+            fieldRenderer.drawMode = SpriteDrawMode.Sliced;
             fieldRenderer.sprite = overlaySprite;
-            fieldRenderer.size = worldSize;
+            fieldRenderer.size = size;
             fieldRenderer.color = new Color(
-                Mathf.Lerp(backgroundColor.r, fieldHighColor.r, 0.18f + fieldBackgroundLift),
-                Mathf.Lerp(backgroundColor.g, fieldHighColor.g, 0.18f + fieldBackgroundLift),
-                Mathf.Lerp(backgroundColor.b, fieldHighColor.b, 0.18f + fieldBackgroundLift),
-                0.22f);
+                backgroundColor.r,
+                backgroundColor.g,
+                backgroundColor.b,
+                0.96f);
 
             var fieldTextureGo = new GameObject("FieldDensityTexture");
             fieldTextureGo.transform.SetParent(transform, false);
@@ -373,7 +363,6 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             {
                 var index = yOffset + x;
                 var raw = values[index];
-
                 var normalized = Mathf.Clamp01((raw / max) * fieldExposure);
 
                 var center = normalized;
@@ -393,9 +382,14 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 glow = Mathf.Clamp01(glow);
 
                 var visible = Mathf.Clamp01(Mathf.Max(veinValue, glow * 0.9f));
-
-                var alpha = Mathf.Pow(visible, Mathf.Lerp(1.8f, 0.65f, fieldAlphaSoftness));
+                var alpha = Mathf.Pow(visible, Mathf.Lerp(1.9f, 0.60f, fieldAlphaSoftness));
                 alpha = Mathf.Clamp01(alpha);
+
+                if (alpha <= 0.003f)
+                {
+                    pixels[index] = new Color(0f, 0f, 0f, 0f);
+                    continue;
+                }
 
                 var colorLerp = Mathf.Clamp01(Mathf.Lerp(visible, glow, 0.45f));
                 var color = Color.Lerp(fieldLowColor, fieldHighColor, colorLerp);

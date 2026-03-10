@@ -45,6 +45,25 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "manualFoodConfigs"
         });
 
+        DrawSection("Colony Hub", new[]
+        {
+            "useColonyHub",
+            "colonyHub",
+            "colonyHubRadius",
+            "returnToHubWeight",
+            "returnTrailBlend",
+            "returnDepositBoost",
+            "successfulReturnDepositBurst",
+            "hubInfluenceRadius"
+        });
+
+        DrawSection("Loop Pruning", new[]
+        {
+            "nonUsefulLoopPruneStrength",
+            "nonUsefulLoopTrailThreshold",
+            "nonUsefulLoopCurvatureThreshold"
+        });
+
         DrawSection("Rendering", new[]
         {
             "showFoodMarkers"
