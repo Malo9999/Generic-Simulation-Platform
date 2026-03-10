@@ -52,6 +52,8 @@ public sealed class NeuralSlimeMoldRunner
     private const float ExitHubNoiseMultiplier = 0.22f;
     private const float HubRingScrubStrength = 0.22f;
     private const float HubSeekDepositSuppression = 0.08f;
+    private const float ConnectorReinforceTrailThreshold = 0.035f;
+    private const int HubOrbitSampleCount = 10;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -89,6 +91,10 @@ public sealed class NeuralSlimeMoldRunner
     private float nonUsefulLoopPruneStrength;
     private float nonUsefulLoopTrailThreshold;
     private float nonUsefulLoopCurvatureThreshold;
+    private float bridgeReinforcementWeight;
+    private float hubOrbitSuppression;
+    private float staleCorridorDecayBoost;
+    private float connectorSearchRadius;
 
     public NeuralFieldGrid Field { get; private set; }
     public NeuralSlimeMoldAgent[] Agents => agents;
@@ -136,7 +142,11 @@ public sealed class NeuralSlimeMoldRunner
         float hubInfluenceRadius,
         float nonUsefulLoopPruneStrength,
         float nonUsefulLoopTrailThreshold,
-        float nonUsefulLoopCurvatureThreshold)
+        float nonUsefulLoopCurvatureThreshold,
+        float bridgeReinforcementWeight,
+        float hubOrbitSuppression,
+        float staleCorridorDecayBoost,
+        float connectorSearchRadius)
     {
         Seed = seed;
         this.mapSize = new Vector2(Mathf.Max(8f, mapSize.x), Mathf.Max(8f, mapSize.y));
@@ -158,6 +168,10 @@ public sealed class NeuralSlimeMoldRunner
         this.nonUsefulLoopPruneStrength = Mathf.Max(0f, nonUsefulLoopPruneStrength);
         this.nonUsefulLoopTrailThreshold = Mathf.Max(0f, nonUsefulLoopTrailThreshold);
         this.nonUsefulLoopCurvatureThreshold = Mathf.Max(0f, nonUsefulLoopCurvatureThreshold);
+        this.bridgeReinforcementWeight = Mathf.Max(0f, bridgeReinforcementWeight);
+        this.hubOrbitSuppression = Mathf.Max(0f, hubOrbitSuppression);
+        this.staleCorridorDecayBoost = Mathf.Max(0f, staleCorridorDecayBoost);
+        this.connectorSearchRadius = Mathf.Max(0.1f, connectorSearchRadius);
 
         Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, false);
 
@@ -351,6 +365,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         ConsumeFood(dt);
+        ApplyNetworkMaintenance(dt);
         LogOccupiedFoodLevels();
         Field.Step(diffusion, decay, dt);
 
@@ -1013,6 +1028,253 @@ public sealed class NeuralSlimeMoldRunner
         {
             heading = Mathf.Repeat(Mathf.Atan2(direction.y, direction.x), Mathf.PI * 2f);
         }
+    }
+
+    private void ApplyNetworkMaintenance(float dt)
+    {
+        if (foodNodes == null || foodNodes.Length == 0)
+        {
+            return;
+        }
+
+        var step = Mathf.Max(0f, dt);
+        if (step <= 0f)
+        {
+            return;
+        }
+
+        var searchRadius = Mathf.Max(0.1f, connectorSearchRadius);
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            var node = foodNodes[i];
+            var active = IsFoodNodeActive(i);
+            var usefulBridge = !active && IsFoodNodeBridgeUseful(i, searchRadius);
+
+            if (active || usefulBridge)
+            {
+                var desirability = ComputeFoodNodeDesirability(i, searchRadius);
+                if (desirability > 0f && bridgeReinforcementWeight > 0f)
+                {
+                    var reinforce = bridgeReinforcementWeight * desirability * step;
+                    Field.DepositDisc(node.position, Mathf.Max(0.35f, node.consumeRadius * 0.45f), reinforce);
+                }
+            }
+            else if (staleCorridorDecayBoost > 0f)
+            {
+                var scrub = staleCorridorDecayBoost * step;
+                Field.ScrubDisc(node.position, Mathf.Max(0.45f, node.consumeRadius * 1.05f), scrub);
+            }
+        }
+
+        if (bridgeReinforcementWeight > 0f)
+        {
+            ReinforceUsefulConnectors(step, searchRadius);
+        }
+
+        if (hubOrbitSuppression > 0f && useColonyHub)
+        {
+            SuppressHubOrbiting(step, searchRadius);
+        }
+    }
+
+    private void ReinforceUsefulConnectors(float dt, float searchRadius)
+    {
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            if (!IsFoodNodeActive(i))
+            {
+                continue;
+            }
+
+            var node = foodNodes[i];
+            var desirability = ComputeFoodNodeDesirability(i, searchRadius);
+
+            if (useColonyHub)
+            {
+                ReinforceConnectorMidpoint(colonyHub, node.position, desirability, dt);
+            }
+
+            for (var j = i + 1; j < foodNodes.Length; j++)
+            {
+                if (!IsFoodNodeActive(j))
+                {
+                    continue;
+                }
+
+                var other = foodNodes[j];
+                if ((other.position - node.position).sqrMagnitude > (searchRadius * searchRadius * 4f))
+                {
+                    continue;
+                }
+
+                var pairDesirability = Mathf.Min(desirability, ComputeFoodNodeDesirability(j, searchRadius));
+                ReinforceConnectorMidpoint(node.position, other.position, pairDesirability, dt);
+            }
+        }
+    }
+
+    private void ReinforceConnectorMidpoint(Vector2 a, Vector2 b, float desirability, float dt)
+    {
+        var midpoint = (a + b) * 0.5f;
+        var trailAtMid = Field.SampleBilinear(midpoint);
+        if (trailAtMid < ConnectorReinforceTrailThreshold)
+        {
+            return;
+        }
+
+        var reinforce = bridgeReinforcementWeight * desirability * Mathf.Lerp(0.55f, 1.25f, Mathf.Clamp01(trailAtMid * 4.5f)) * dt;
+        Field.DepositDisc(midpoint, 0.6f, reinforce);
+    }
+
+    private void SuppressHubOrbiting(float dt, float searchRadius)
+    {
+        var orbitRadius = Mathf.Max(colonyHubRadius * 1.2f, Mathf.Min(hubInfluenceRadius, colonyHubRadius + searchRadius));
+
+        for (var i = 0; i < HubOrbitSampleCount; i++)
+        {
+            var t = (i / (float)HubOrbitSampleCount) * Mathf.PI * 2f;
+            var radial = new Vector2(Mathf.Cos(t), Mathf.Sin(t));
+            var tangent = new Vector2(-radial.y, radial.x);
+            var samplePos = colonyHub + radial * orbitRadius;
+
+            var tangentTrail = (Field.SampleBilinear(samplePos + (tangent * 0.8f)) + Field.SampleBilinear(samplePos - (tangent * 0.8f))) * 0.5f;
+            var radialTrail = (Field.SampleBilinear(samplePos + (radial * 0.8f)) + Field.SampleBilinear(samplePos - (radial * 0.8f))) * 0.5f;
+
+            var tangentialBias = tangentTrail - radialTrail;
+            if (tangentialBias <= nonUsefulLoopTrailThreshold * 0.35f)
+            {
+                continue;
+            }
+
+            var useful = IsNearAnyActiveFood(samplePos, searchRadius * 0.45f) || IsConnectorDirectionUseful(samplePos, searchRadius);
+            if (useful)
+            {
+                continue;
+            }
+
+            var scrub = hubOrbitSuppression * tangentialBias * dt;
+            Field.ScrubDisc(samplePos, 0.95f, scrub);
+        }
+    }
+
+    private bool IsConnectorDirectionUseful(Vector2 position, float searchRadius)
+    {
+        var bestScore = 0f;
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            if (!IsFoodNodeActive(i))
+            {
+                continue;
+            }
+
+            var node = foodNodes[i];
+            var distToNode = Vector2.Distance(position, node.position);
+            var distToHub = useColonyHub ? Vector2.Distance(position, colonyHub) : 0f;
+
+            var direct = useColonyHub ? Vector2.Distance(node.position, colonyHub) : Mathf.Max(0.01f, node.consumeRadius);
+            var split = distToNode + distToHub;
+
+            var shortening = useColonyHub
+                ? Mathf.Clamp01(1f - (split / Mathf.Max(0.01f, direct * 1.5f)))
+                : Mathf.Clamp01(1f - (distToNode / Mathf.Max(0.01f, searchRadius * 2f)));
+
+            var proximity = Mathf.Clamp01(1f - (distToNode / Mathf.Max(0.01f, searchRadius * 1.8f)));
+            var score = Mathf.Max(shortening, proximity * 0.75f);
+            if (score > bestScore)
+            {
+                bestScore = score;
+            }
+        }
+
+        return bestScore > 0.2f;
+    }
+
+    private bool IsFoodNodeActive(int index)
+    {
+        if (index < 0 || index >= foodNodes.Length)
+        {
+            return false;
+        }
+
+        var node = foodNodes[index];
+        return !foodIsDepleted[index] && node.currentCapacity > 0f;
+    }
+
+    private float ComputeFoodNodeDesirability(int index, float searchRadius)
+    {
+        if (index < 0 || index >= foodNodes.Length)
+        {
+            return 0f;
+        }
+
+        var node = foodNodes[index];
+        var active = IsFoodNodeActive(index);
+        var activity = 0f;
+
+        if (active)
+        {
+            var fill = Mathf.Clamp01(node.currentCapacity / Mathf.Max(0.01f, node.capacity));
+            activity = Mathf.Lerp(0.25f, 1f, fill);
+        }
+
+        var neighborhood = 0f;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            if (i == index || !IsFoodNodeActive(i))
+            {
+                continue;
+            }
+
+            var dist = Vector2.Distance(node.position, foodNodes[i].position);
+            neighborhood += Mathf.Clamp01(1f - (dist / Mathf.Max(0.01f, searchRadius * 2f)));
+        }
+
+        neighborhood = Mathf.Clamp01(neighborhood * 0.5f);
+        if (!active)
+        {
+            return neighborhood * 0.5f;
+        }
+
+        return Mathf.Clamp01(activity * 0.7f + neighborhood * 0.3f);
+    }
+
+    private bool IsFoodNodeBridgeUseful(int index, float searchRadius)
+    {
+        if (index < 0 || index >= foodNodes.Length)
+        {
+            return false;
+        }
+
+        var pivot = foodNodes[index].position;
+        var activeNeighborCount = 0;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            if (i == index || !IsFoodNodeActive(i))
+            {
+                continue;
+            }
+
+            var dist = Vector2.Distance(pivot, foodNodes[i].position);
+            if (dist <= searchRadius * 1.75f)
+            {
+                activeNeighborCount++;
+            }
+        }
+
+        if (activeNeighborCount >= 2)
+        {
+            return true;
+        }
+
+        if (useColonyHub && activeNeighborCount >= 1)
+        {
+            return Vector2.Distance(pivot, colonyHub) <= searchRadius * 1.75f;
+        }
+
+        return false;
     }
 
     private void ApplyNonUsefulLoopPrune(Vector2 position, bool onActiveFood, bool returningToHub, float dt)

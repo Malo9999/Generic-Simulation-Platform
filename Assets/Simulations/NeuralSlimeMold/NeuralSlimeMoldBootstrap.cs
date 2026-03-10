@@ -47,6 +47,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float nonUsefulLoopTrailThreshold = 0.13f;
     [SerializeField, Min(0f)] private float nonUsefulLoopCurvatureThreshold = 0.085f;
 
+    [Header("Network Maintenance")]
+    [SerializeField, Min(0f)] private float bridgeReinforcementWeight = 0.3f;
+    [SerializeField, Min(0f)] private float hubOrbitSuppression = 0.5f;
+    [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 0.5f;
+    [SerializeField, Min(0.1f)] private float connectorSearchRadius = 6f;
+
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
     [SerializeField] private bool useFieldBlobOverlay = true;
@@ -145,7 +151,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             hubInfluenceRadius,
             nonUsefulLoopPruneStrength,
             nonUsefulLoopTrailThreshold,
-            nonUsefulLoopCurvatureThreshold);
+            nonUsefulLoopCurvatureThreshold,
+            bridgeReinforcementWeight,
+            hubOrbitSuppression,
+            staleCorridorDecayBoost,
+            connectorSearchRadius);
 
         ApplyRendererOverrides();
         ApplyCameraBackground();
@@ -341,6 +351,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         nonUsefulLoopPruneStrength = Mathf.Max(0f, nonUsefulLoopPruneStrength);
         nonUsefulLoopTrailThreshold = Mathf.Max(0f, nonUsefulLoopTrailThreshold);
         nonUsefulLoopCurvatureThreshold = Mathf.Max(0f, nonUsefulLoopCurvatureThreshold);
+        bridgeReinforcementWeight = Mathf.Max(0f, bridgeReinforcementWeight);
+        hubOrbitSuppression = Mathf.Max(0f, hubOrbitSuppression);
+        staleCorridorDecayBoost = Mathf.Max(0f, staleCorridorDecayBoost);
+        connectorSearchRadius = Mathf.Max(0.1f, connectorSearchRadius);
 
         cameraPadding = Mathf.Max(0.1f, cameraPadding);
         cameraFollowSmooth = Mathf.Max(0.01f, cameraFollowSmooth);
