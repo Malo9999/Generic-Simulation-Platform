@@ -68,6 +68,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     private readonly List<SpriteRenderer> obstacleRenderers = new();
 
     private Texture2D fieldTexture;
+    private Color32[] fieldPixels;
     private SpriteRenderer fieldRenderer;
     private SpriteRenderer activityFocusRenderer;
     private int frameCounter;
@@ -108,6 +109,12 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     public void SetBackgroundColor(Color color)
     {
         backgroundColor = color;
+    }
+
+    public void SetPerformanceOptions(int textureRefreshInterval, int visibleAgentLimit)
+    {
+        fieldTextureRefreshInterval = Mathf.Max(1, textureRefreshInterval);
+        maxVisibleAgents = Mathf.Max(1, visibleAgentLimit);
     }
 
     public void Build(NeuralSlimeMoldRunner runner)
@@ -259,6 +266,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp
         };
+        fieldPixels = new Color32[width * height];
 
         var densitySprite = Sprite.Create(
             fieldTexture,
@@ -416,7 +424,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             }
         }
 
-        var pixels = fieldTexture.GetPixels32();
+        if (fieldPixels == null || fieldPixels.Length != values.Length)
+        {
+            fieldPixels = new Color32[values.Length];
+        }
 
         for (var y = 0; y < height; y++)
         {
@@ -464,7 +475,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
                 if (alpha <= 0.003f)
                 {
-                    pixels[index] = new Color(0f, 0f, 0f, 0f);
+                    fieldPixels[index] = new Color32(0, 0, 0, 0);
                     continue;
                 }
 
@@ -481,11 +492,11 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 color.b = Mathf.Clamp01(color.b + glow * 0.02f);
                 color.a = alpha;
 
-                pixels[index] = color;
+                fieldPixels[index] = color;
             }
         }
 
-        fieldTexture.SetPixels32(pixels);
+        fieldTexture.SetPixels32(fieldPixels);
         fieldTexture.Apply(false, false);
     }
 
@@ -535,6 +546,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
             fieldTexture = null;
         }
+
+        fieldPixels = null;
 
         if (fallbackSquareSprite != null)
         {
