@@ -199,10 +199,21 @@ public sealed class NeuralFieldGrid
         return laplacian;
     }
 
-    public void Step(float diffusion, float decayPerSecond, float dt)
+    public void Step(
+        float diffusion,
+        float decayPerSecond,
+        float dt,
+        float trunkTrailThreshold = StrongSignalPreserveThreshold,
+        float trunkStabilityBoost = 0f,
+        float duplicateSuppressionRadiusWorld = 0f)
     {
         var kDiff = Mathf.Clamp01(diffusion);
         var baseDecayFactor = Mathf.Clamp01(1f - (Mathf.Max(0f, decayPerSecond) * dt));
+        var trunkThreshold = Mathf.Max(0f, trunkTrailThreshold);
+        var stabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
+        var suppressionRadius = Mathf.Max(0f, duplicateSuppressionRadiusWorld);
+        var suppressionRadiusX = Mathf.Max(1, Mathf.RoundToInt((suppressionRadius / worldSize.x) * width));
+        var suppressionRadiusY = Mathf.Max(1, Mathf.RoundToInt((suppressionRadius / worldSize.y) * height));
 
         for (var y = 0; y < height; y++)
         {
@@ -240,9 +251,26 @@ public sealed class NeuralFieldGrid
                 }
 
                 var decayFactor = baseDecayFactor;
+
+                if (stabilityBoost > 0f && diffused >= trunkThreshold)
+                {
+                    var trunkStrength = Mathf.Clamp01((diffused - trunkThreshold) / Mathf.Max(0.0001f, trunkThreshold + 0.05f));
+                    decayFactor = Mathf.Lerp(decayFactor, 1f, Mathf.Clamp01(stabilityBoost * dt * (0.65f + (0.35f * trunkStrength))));
+                }
+
                 if (diffused < WeakSignalPruneThreshold)
                 {
                     decayFactor *= Mathf.Clamp01(1f - (WeakSignalExtraDecay * dt));
+                }
+
+                if (suppressionRadius > 0f && diffused < trunkThreshold)
+                {
+                    var nearbyStrong = SampleNearbyStrongest(x, y, suppressionRadiusX, suppressionRadiusY);
+                    if (nearbyStrong > diffused)
+                    {
+                        var duplicatePressure = Mathf.Clamp01((nearbyStrong - diffused) / Mathf.Max(0.0001f, trunkThreshold));
+                        decayFactor *= Mathf.Clamp01(1f - (duplicatePressure * dt * 1.25f));
+                    }
                 }
 
                 if (x < BorderBleedThickness || x > width - 1 - BorderBleedThickness ||
@@ -259,6 +287,23 @@ public sealed class NeuralFieldGrid
         {
             field[i] = scratch[i];
         }
+    }
+
+    private float SampleNearbyStrongest(int x, int y, int radiusX, int radiusY)
+    {
+        var maxTrail = 0f;
+
+        maxTrail = Mathf.Max(maxTrail, field[(y * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(y * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + x]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + x]);
+
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
+
+        return maxTrail;
     }
 
     private void AddAt(int x, int y, float amount)
