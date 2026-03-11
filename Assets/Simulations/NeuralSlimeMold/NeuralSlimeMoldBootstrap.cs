@@ -71,7 +71,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float hubOrbitSuppression = 1.2f;
     [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 0.5f;
     [SerializeField, Min(0.1f)] private float connectorSearchRadius = 6f;
-    [SerializeField, Min(0f)] private float connectorSteerWeight = 1.65f;
+    [SerializeField, Min(0f)] private float connectorSteerWeight = 1.6f;
     [SerializeField, Min(0f)] private float hubTangentialPenalty = 1.4f;
     [SerializeField, Min(0.25f)] private float connectorCorridorWidth = 2.8f;
     [SerializeField, Range(0f, 1f)] private float returnOrbitDepositPenalty = 0.18f;

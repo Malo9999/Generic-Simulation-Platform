@@ -61,11 +61,10 @@ public sealed class NeuralSlimeMoldRunner
     private const float ExploratoryBranchDepositScale = 0.34f;
     private const float PromotedBranchDepositScale = 0.82f;
 
-    // Connector-field shaping.
-    private const int MaxAccumulatedConnectorContributors = 3;
     private const float ConnectorSoftCorridorOuterMultiplier = 2.4f;
     private const float ConnectorSoftProgressSlack = 1.45f;
     private const float NearHubReturnCrossBias = 0.95f;
+    private const int MaxAccumulatedConnectorContributors = 3;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -677,6 +676,7 @@ public sealed class NeuralSlimeMoldRunner
         var randomTurn = signedNoise * explorationTurnNoise * ReturnNoiseMultiplier;
 
         var steer = (hubSteer * 0.9f) + awayFoodSteer + (trailSteer * (1f - returnTrailBlend));
+
         if (connectorStrength > 0.0001f)
         {
             var connectorBlend = Mathf.Clamp01(connectorStrength * 1.3f);
@@ -696,7 +696,6 @@ public sealed class NeuralSlimeMoldRunner
                 var towardHub = ComputeSteerTowardPoint(agent.position, agent.heading, colonyHub);
                 var outward = ComputeSteerAwayFromPoint(agent.position, agent.heading, colonyHub);
 
-                // Strongly discourage orbiting in the influence zone and force crossing/committing.
                 steer += towardHub * NearHubReturnCrossBias;
 
                 if (IsTangentialHubOrbit(agent.position, agent.heading))
@@ -800,12 +799,7 @@ public sealed class NeuralSlimeMoldRunner
         bool onEmptyFood,
         float foodCommitment)
     {
-        if (onActiveFood)
-        {
-            return 0f;
-        }
-
-        if (onEmptyFood)
+        if (onActiveFood || onEmptyFood)
         {
             return 0f;
         }
@@ -1377,24 +1371,21 @@ public sealed class NeuralSlimeMoldRunner
 
         void PushScore(float score)
         {
-            if (score <= first)
+            if (score > first)
             {
-                if (score > second)
-                {
-                    third = second;
-                    second = score;
-                }
-                else if (score > third)
-                {
-                    third = score;
-                }
-
-                return;
+                third = second;
+                second = first;
+                first = score;
             }
-
-            third = second;
-            second = first;
-            first = score;
+            else if (score > second)
+            {
+                third = second;
+                second = score;
+            }
+            else if (score > third)
+            {
+                third = score;
+            }
         }
 
         for (var i = 0; i < foodNodes.Length; i++)
@@ -1565,7 +1556,7 @@ public sealed class NeuralSlimeMoldRunner
         var closest = ClosestPointOnSegment(position, a, b);
         var distToSegment = Vector2.Distance(position, closest);
         var corridor = 1f - Mathf.Clamp01(distToSegment / softOuter);
-        corridor = corridor * corridor;
+        corridor *= corridor;
         if (corridor <= 0f)
         {
             return 0f;
