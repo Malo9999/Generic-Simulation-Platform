@@ -12,6 +12,7 @@ public sealed class ReactionDiffusionRunner : MonoBehaviour, ITickableSimulation
             bootstrap = gameObject.AddComponent<ReactionDiffusionBootstrap>();
         }
 
+        bootstrap.SetExternallyDriven(true);
         bootstrap.StartOrResetSimulation();
     }
 
@@ -33,5 +34,6 @@ public sealed class ReactionDiffusionRunner : MonoBehaviour, ITickableSimulation
         }
 
         bootstrap.ShutdownSimulation();
+        bootstrap.SetExternallyDriven(false);
     }
 }
