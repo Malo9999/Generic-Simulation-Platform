@@ -42,6 +42,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     private int stepKernel = -1;
     private bool initialized;
     private bool running;
+    private bool externallyDriven;
     private bool useStateAAsRead = true;
     private int allocatedWidth;
     private int allocatedHeight;
@@ -73,6 +74,21 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             StartOrResetSimulation();
         }
+    }
+
+    private void Update()
+    {
+        if (externallyDriven)
+        {
+            return;
+        }
+
+        Tick(Time.deltaTime);
+    }
+
+    public void SetExternallyDriven(bool value)
+    {
+        externallyDriven = value;
     }
 
     public void Tick(float frameDt)
