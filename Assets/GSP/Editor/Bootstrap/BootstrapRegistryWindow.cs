@@ -2,10 +2,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using UnityEditor;
-using UnityEditor.SceneManagement;
-using UnityEngine.SceneManagement;
 using UnityEngine;
 
 public sealed class BootstrapRegistryWindow : EditorWindow
@@ -20,51 +17,6 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         Unknown
     }
 
-    private sealed class BootstrapEntry
-    {
-        public string ClassName;
-        public GspBootstrapKind ResolvedKind;
-        public string AssetPath;
-        public string Notes;
-        public string ClassificationSource;
-        public MonoScript Script;
-        public Type Type;
-        public readonly List<UsageRecord> SceneUsages = new();
-        public readonly List<UsageRecord> PrefabUsages = new();
-
-        public string UsageStatus
-        {
-            get
-            {
-                var hasScene = SceneUsages.Count > 0;
-                var hasPrefab = PrefabUsages.Count > 0;
-                if (hasScene && hasPrefab)
-                {
-                    return "Used In Scene + Prefab";
-                }
-
-                if (hasScene)
-                {
-                    return "Used In Scene";
-                }
-
-                if (hasPrefab)
-                {
-                    return "Used In Prefab";
-                }
-
-                return "Script Only";
-            }
-        }
-    }
-
-    private sealed class UsageRecord
-    {
-        public string AssetPath;
-        public string GameObjectName;
-        public UnityEngine.Object Asset;
-    }
-
     private static readonly GUIContent[] FilterTabs =
     {
         new("All"),
@@ -75,7 +27,7 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         new("Unknown")
     };
 
-    private readonly List<BootstrapEntry> allEntries = new();
+    private readonly List<BootstrapRegistryIndex.Entry> allEntries = new();
     private Vector2 scroll;
     [SerializeField] private FilterKind filter = FilterKind.All;
 
@@ -129,7 +81,7 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         EditorGUILayout.EndHorizontal();
     }
 
-    private void DrawEntry(BootstrapEntry entry)
+    private static void DrawEntry(BootstrapRegistryIndex.Entry entry)
     {
         EditorGUILayout.BeginVertical("box");
         EditorGUILayout.LabelField(entry.ClassName, EditorStyles.boldLabel);
@@ -162,7 +114,7 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         EditorGUILayout.EndVertical();
     }
 
-    private static void DrawUsageSection(string heading, List<UsageRecord> usages)
+    private static void DrawUsageSection(string heading, List<BootstrapRegistryIndex.UsageRecord> usages)
     {
         EditorGUILayout.LabelField(heading, EditorStyles.miniBoldLabel);
         if (usages.Count == 0)
@@ -187,155 +139,11 @@ public sealed class BootstrapRegistryWindow : EditorWindow
     private void RefreshEntries()
     {
         allEntries.Clear();
-
-        var guids = AssetDatabase.FindAssets("t:MonoScript", new[] { "Assets" });
-        foreach (var guid in guids)
-        {
-            var path = AssetDatabase.GUIDToAssetPath(guid);
-            var script = AssetDatabase.LoadAssetAtPath<MonoScript>(path);
-            if (script == null)
-            {
-                continue;
-            }
-
-            var type = script.GetClass();
-            if (type == null)
-            {
-                continue;
-            }
-
-            var attribute = type.GetCustomAttribute<GspBootstrapAttribute>(false);
-            var hasBootstrapName = GspBootstrapConventions.MatchesBootstrapNaming(type.Name);
-            if (attribute == null && !hasBootstrapName)
-            {
-                continue;
-            }
-
-            var entry = new BootstrapEntry
-            {
-                ClassName = type.Name,
-                ResolvedKind = ResolveKind(attribute, path),
-                AssetPath = path,
-                Notes = attribute?.Notes ?? string.Empty,
-                ClassificationSource = attribute != null ? "Attribute" : "Naming",
-                Script = script,
-                Type = type
-            };
-
-            allEntries.Add(entry);
-        }
-
-        allEntries.Sort((left, right) =>
-        {
-            var kindCompare = left.ResolvedKind.CompareTo(right.ResolvedKind);
-            if (kindCompare != 0)
-            {
-                return kindCompare;
-            }
-
-            return string.Compare(left.ClassName, right.ClassName, StringComparison.Ordinal);
-        });
-
-        ScanPrefabUsage();
-        ScanSceneUsage();
-
+        allEntries.AddRange(BootstrapRegistryIndex.Build());
         Repaint();
     }
 
-    private void ScanPrefabUsage()
-    {
-        var entriesByType = allEntries.ToDictionary(entry => entry.Type);
-        var prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets" });
-        foreach (var guid in prefabGuids)
-        {
-            var prefabPath = AssetDatabase.GUIDToAssetPath(guid);
-            var prefabRoot = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-            if (prefabRoot == null)
-            {
-                continue;
-            }
-
-            RegisterUsageForRoot(entriesByType, prefabRoot, prefabPath, isScene: false, prefabRoot);
-        }
-    }
-
-    private void ScanSceneUsage()
-    {
-        var entriesByType = allEntries.ToDictionary(entry => entry.Type);
-        var sceneGuids = AssetDatabase.FindAssets("t:Scene", new[] { "Assets" });
-        foreach (var guid in sceneGuids)
-        {
-            var scenePath = AssetDatabase.GUIDToAssetPath(guid);
-            var existingScene = SceneManager.GetSceneByPath(scenePath);
-            var alreadyLoaded = existingScene.isLoaded;
-            var scene = existingScene;
-
-            try
-            {
-                if (!alreadyLoaded)
-                {
-                    scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
-                }
-
-                foreach (var root in scene.GetRootGameObjects())
-                {
-                    RegisterUsageForRoot(entriesByType, root, scenePath, isScene: true, AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[BootstrapRegistry] Failed to scan scene usage for '{scenePath}'. Bootstrap registry data remains available. {ex}");
-            }
-            finally
-            {
-                if (!alreadyLoaded && scene.isLoaded)
-                {
-                    EditorSceneManager.CloseScene(scene, true);
-                }
-            }
-        }
-    }
-
-    private static void RegisterUsageForRoot(
-        IReadOnlyDictionary<Type, BootstrapEntry> entriesByType,
-        GameObject root,
-        string assetPath,
-        bool isScene,
-        UnityEngine.Object asset)
-    {
-        var monoBehaviours = root.GetComponentsInChildren<MonoBehaviour>(true);
-        foreach (var monoBehaviour in monoBehaviours)
-        {
-            if (monoBehaviour == null)
-            {
-                continue;
-            }
-
-            var type = monoBehaviour.GetType();
-            if (!entriesByType.TryGetValue(type, out var entry))
-            {
-                continue;
-            }
-
-            var usage = new UsageRecord
-            {
-                AssetPath = assetPath,
-                GameObjectName = monoBehaviour.gameObject.name,
-                Asset = asset
-            };
-
-            if (isScene)
-            {
-                entry.SceneUsages.Add(usage);
-            }
-            else
-            {
-                entry.PrefabUsages.Add(usage);
-            }
-        }
-    }
-
-    private bool ShouldShow(BootstrapEntry entry)
+    private bool ShouldShow(BootstrapRegistryIndex.Entry entry)
     {
         if (filter == FilterKind.All)
         {
@@ -343,16 +151,6 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         }
 
         return entry.ResolvedKind == GetFilterKind(filter);
-    }
-
-    private static GspBootstrapKind ResolveKind(GspBootstrapAttribute attribute, string assetPath)
-    {
-        if (attribute != null)
-        {
-            return attribute.Kind;
-        }
-
-        return GspBootstrapConventions.GuessKindFromPath(assetPath);
     }
 
     private static GspBootstrapKind GetFilterKind(FilterKind selectedFilter)
