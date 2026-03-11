@@ -4,7 +4,6 @@ Shader "GSP/ReactionDiffusion/Display"
     {
         _StateTex("State Texture", 2D) = "black" {}
         _DisplayMode("Display Mode", Float) = 0
-        _TextureSize("Texture Size", Vector) = (256,256,0.00390625,0.00390625)
     }
 
     SubShader
@@ -24,7 +23,6 @@ Shader "GSP/ReactionDiffusion/Display"
             sampler2D _StateTex;
             float4 _StateTex_ST;
             float _DisplayMode;
-            float4 _TextureSize;
 
             struct appdata
             {
@@ -46,17 +44,9 @@ Shader "GSP/ReactionDiffusion/Display"
                 return o;
             }
 
-            float2 SnapUvToTexel(float2 uv)
-            {
-                float2 texSize = max(_TextureSize.xy, float2(1.0, 1.0));
-                float2 pixel = floor(uv * texSize);
-                return (pixel + 0.5) / texSize;
-            }
-
             fixed4 frag(v2f i) : SV_Target
             {
-                float2 snappedUv = SnapUvToTexel(i.uv);
-                float2 ab = tex2D(_StateTex, snappedUv).xy;
+                float2 ab = tex2D(_StateTex, i.uv).xy;
                 float value = _DisplayMode < 0.5 ? ab.y : saturate(ab.x - ab.y);
                 return fixed4(value, value, value, 1.0);
             }

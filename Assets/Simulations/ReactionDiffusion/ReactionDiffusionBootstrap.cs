@@ -131,7 +131,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             displayMaterial.SetTexture("_StateTex", read);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
-            displayMaterial.SetVector("_TextureSize", new Vector4(gridWidth, gridHeight, 1f / gridWidth, 1f / gridHeight));
         }
     }
 
@@ -266,7 +265,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         };
         displayMaterial.SetTexture("_StateTex", stateA);
         displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
-        displayMaterial.SetVector("_TextureSize", new Vector4(gridWidth, gridHeight, 1f / gridWidth, 1f / gridHeight));
         displayRenderer.sharedMaterial = displayMaterial;
 
         if (fitMainCameraToDisplay)
@@ -328,7 +326,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             displayMaterial.SetTexture("_StateTex", stateA);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
-            displayMaterial.SetVector("_TextureSize", new Vector4(gridWidth, gridHeight, 1f / gridWidth, 1f / gridHeight));
         }
     }
 
