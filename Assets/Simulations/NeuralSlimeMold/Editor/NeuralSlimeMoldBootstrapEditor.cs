@@ -20,7 +20,6 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "trailDiffusion"
         });
 
-
         DrawSection("Quality / Performance", new[]
         {
             "qualityPreset",

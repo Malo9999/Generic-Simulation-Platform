@@ -45,7 +45,6 @@ public sealed class NeuralSlimeMoldRunner
     private const float LoopCurvatureSampleRadius = 1.2f;
     private const float LoopPruneRadius = 1.0f;
 
-    // New: explicitly push agents out of the hub after delivery so the sim does not collapse into one final ring.
     private const float ExitHubDurationMin = 0.65f;
     private const float ExitHubDurationMax = 1.35f;
     private const float ExitHubSteerStrength = 1.75f;
@@ -61,6 +60,12 @@ public sealed class NeuralSlimeMoldRunner
     private const float BranchSpawnSideSampleDistance = 2.1f;
     private const float ExploratoryBranchDepositScale = 0.34f;
     private const float PromotedBranchDepositScale = 0.82f;
+
+    // Connector-field shaping.
+    private const int MaxAccumulatedConnectorContributors = 3;
+    private const float ConnectorSoftCorridorOuterMultiplier = 2.4f;
+    private const float ConnectorSoftProgressSlack = 1.45f;
+    private const float NearHubReturnCrossBias = 0.95f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -434,6 +439,7 @@ public sealed class NeuralSlimeMoldRunner
         ApplyNetworkMaintenance(dt);
         LogOccupiedFoodLevels();
         tickCounter++;
+
         var stepInterval = Mathf.Max(1, fieldStepInterval);
         if (stepInterval <= 1 || tickCounter % stepInterval == 0)
         {
@@ -477,7 +483,7 @@ public sealed class NeuralSlimeMoldRunner
         var centerNutrient = SampleNutrientField(centerSamplePos);
         var rightNutrient = SampleNutrientField(rightSamplePos);
 
-        ComputeConnectorSteer(agent.position, agent.heading, agent.sensorAngle, agent.sensorDistance, out var connectorEdge, out var connectorCenterBias, out var connectorStrength);
+        ComputeConnectorSensorSamples(agent.position, agent.heading, agent.sensorAngle, agent.sensorDistance, out var connectorEdge, out var connectorCenterBias, out var connectorStrength);
 
         var weightedTrail = (leftTrail * agent.controller.leftWeight)
                           + (centerTrail * agent.controller.centerWeight)
@@ -504,6 +510,7 @@ public sealed class NeuralSlimeMoldRunner
 
         var connectorSteer = (connectorEdge * 1.15f) + (connectorCenterBias * 0.8f);
         var topologySteer = trailSteer;
+
         if (connectorStrength > 0.0001f)
         {
             var blend = Mathf.Clamp01(connectorStrength * 1.25f);
@@ -647,6 +654,8 @@ public sealed class NeuralSlimeMoldRunner
         var centerTrail = Field.SampleBilinear(centerSamplePos);
         var rightTrail = Field.SampleBilinear(rightSamplePos);
 
+        ComputeConnectorSensorSamples(agent.position, agent.heading, agent.sensorAngle, agent.sensorDistance, out var connectorEdge, out var connectorCenterBias, out var connectorStrength);
+
         var trailEdge = rightTrail - leftTrail;
         var trailCenterBias = centerTrail - ((leftTrail + rightTrail) * 0.5f);
         var trailSteer = trailEdge + (trailCenterBias * 0.95f);
@@ -663,10 +672,42 @@ public sealed class NeuralSlimeMoldRunner
             awayFoodSteer = ComputeSteerAwayFromPoint(agent.position, agent.heading, foodNodes[lastFoodIndex].position) * ReturnFoodRepulsionStrength;
         }
 
+        var connectorSteer = (connectorEdge * 1.15f) + (connectorCenterBias * 0.85f);
         var signedNoise = (rng.NextFloat01() * 2f) - 1f;
         var randomTurn = signedNoise * explorationTurnNoise * ReturnNoiseMultiplier;
 
-        var steer = Mathf.Lerp(hubSteer + awayFoodSteer, trailSteer + hubSteer, returnTrailBlend) + randomTurn;
+        var steer = (hubSteer * 0.9f) + awayFoodSteer + (trailSteer * (1f - returnTrailBlend));
+        if (connectorStrength > 0.0001f)
+        {
+            var connectorBlend = Mathf.Clamp01(connectorStrength * 1.3f);
+            var connectorTarget = (connectorSteer * connectorSteerWeight) + (hubSteer * 0.85f) + (trailSteer * 0.25f);
+            steer = Mathf.Lerp(steer, connectorTarget, connectorBlend);
+        }
+        else
+        {
+            steer = Mathf.Lerp(hubSteer + awayFoodSteer, trailSteer + hubSteer, returnTrailBlend);
+        }
+
+        if (IsNearHub(agent.position))
+        {
+            var usefulAlignment = ComputeUsefulConnectorAlignment(agent.position, Direction(agent.heading));
+            if (usefulAlignment < 0.45f)
+            {
+                var towardHub = ComputeSteerTowardPoint(agent.position, agent.heading, colonyHub);
+                var outward = ComputeSteerAwayFromPoint(agent.position, agent.heading, colonyHub);
+
+                // Strongly discourage orbiting in the influence zone and force crossing/committing.
+                steer += towardHub * NearHubReturnCrossBias;
+
+                if (IsTangentialHubOrbit(agent.position, agent.heading))
+                {
+                    steer += towardHub * hubTangentialPenalty;
+                    steer += outward * (hubTangentialPenalty * 0.18f);
+                }
+            }
+        }
+
+        steer += randomTurn;
         steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
         steer += ComputeObstacleAvoidanceTurn(agent.position, agent.heading) * obstacleAvoidanceStrength;
         steer += ComputeCorridorSteer(agent.position, agent.heading);
@@ -1307,6 +1348,21 @@ public sealed class NeuralSlimeMoldRunner
         }
     }
 
+    private void ComputeConnectorSensorSamples(Vector2 position, float heading, float sensorAngle, float sensorDistance, out float connectorEdge, out float connectorCenterBias, out float connectorStrength)
+    {
+        var leftPos = position + (Direction(heading - sensorAngle) * sensorDistance);
+        var centerPos = position + (Direction(heading) * sensorDistance);
+        var rightPos = position + (Direction(heading + sensorAngle) * sensorDistance);
+
+        var left = SampleConnectorDemand(leftPos);
+        var center = SampleConnectorDemand(centerPos);
+        var right = SampleConnectorDemand(rightPos);
+
+        connectorEdge = right - left;
+        connectorCenterBias = center - ((left + right) * 0.5f);
+        connectorStrength = Mathf.Max(left, Mathf.Max(center, right));
+    }
+
     private float SampleConnectorDemand(Vector2 position)
     {
         if (foodNodes == null || foodNodes.Length == 0)
@@ -1314,8 +1370,32 @@ public sealed class NeuralSlimeMoldRunner
             return 0f;
         }
 
-        var best = 0f;
+        var first = 0f;
+        var second = 0f;
+        var third = 0f;
         var pairRange = Mathf.Max(0.1f, connectorSearchRadius) * 2f;
+
+        void PushScore(float score)
+        {
+            if (score <= first)
+            {
+                if (score > second)
+                {
+                    third = second;
+                    second = score;
+                }
+                else if (score > third)
+                {
+                    third = score;
+                }
+
+                return;
+            }
+
+            third = second;
+            second = first;
+            first = score;
+        }
 
         for (var i = 0; i < foodNodes.Length; i++)
         {
@@ -1328,7 +1408,7 @@ public sealed class NeuralSlimeMoldRunner
 
             if (useColonyHub)
             {
-                best = Mathf.Max(best, EvaluateConnectorDemand(position, colonyHub, node.position, nodeWeight));
+                PushScore(EvaluateConnectorDemand(position, colonyHub, node.position, nodeWeight));
             }
 
             for (var j = i + 1; j < foodNodes.Length; j++)
@@ -1345,26 +1425,25 @@ public sealed class NeuralSlimeMoldRunner
                     continue;
                 }
 
-                best = Mathf.Max(best, EvaluateConnectorDemand(position, node.position, other.position, Mathf.Min(nodeWeight, otherWeight)));
+                PushScore(EvaluateConnectorDemand(position, node.position, other.position, Mathf.Min(nodeWeight, otherWeight)));
             }
         }
 
-        return Mathf.Clamp01(best);
-    }
+        float combined;
+        switch (MaxAccumulatedConnectorContributors)
+        {
+            case 1:
+                combined = first;
+                break;
+            case 2:
+                combined = first + (second * 0.55f);
+                break;
+            default:
+                combined = first + (second * 0.55f) + (third * 0.30f);
+                break;
+        }
 
-    private void ComputeConnectorSteer(Vector2 position, float heading, float sensorAngle, float sensorDistance, out float connectorEdge, out float connectorCenterBias, out float connectorStrength)
-    {
-        var leftPos = position + (Direction(heading - sensorAngle) * sensorDistance);
-        var centerPos = position + (Direction(heading) * sensorDistance);
-        var rightPos = position + (Direction(heading + sensorAngle) * sensorDistance);
-
-        var left = SampleConnectorDemand(leftPos);
-        var center = SampleConnectorDemand(centerPos);
-        var right = SampleConnectorDemand(rightPos);
-
-        connectorEdge = right - left;
-        connectorCenterBias = center - ((left + right) * 0.5f);
-        connectorStrength = Mathf.Max(left, Mathf.Max(center, right));
+        return Mathf.Clamp01(combined);
     }
 
     private bool IsTangentialHubOrbit(Vector2 position, float heading)
@@ -1443,7 +1522,7 @@ public sealed class NeuralSlimeMoldRunner
 
         var closest = ClosestPointOnSegment(position, a, b);
         var dist = Vector2.Distance(position, closest);
-        if (dist > connectorCorridorWidth * 2.2f)
+        if (dist > connectorCorridorWidth * ConnectorSoftCorridorOuterMultiplier)
         {
             return 0f;
         }
@@ -1482,9 +1561,11 @@ public sealed class NeuralSlimeMoldRunner
             return 0f;
         }
 
+        var softOuter = Mathf.Max(0.25f, connectorCorridorWidth * ConnectorSoftCorridorOuterMultiplier);
         var closest = ClosestPointOnSegment(position, a, b);
         var distToSegment = Vector2.Distance(position, closest);
-        var corridor = 1f - Mathf.Clamp01(distToSegment / Mathf.Max(0.25f, connectorCorridorWidth));
+        var corridor = 1f - Mathf.Clamp01(distToSegment / softOuter);
+        corridor = corridor * corridor;
         if (corridor <= 0f)
         {
             return 0f;
@@ -1492,7 +1573,7 @@ public sealed class NeuralSlimeMoldRunner
 
         var direct = Vector2.Distance(a, b);
         var via = Vector2.Distance(position, a) + Vector2.Distance(position, b);
-        var progress = Mathf.Clamp01(1f - Mathf.Max(0f, via - direct) / Mathf.Max(0.01f, direct * 1.2f));
+        var progress = Mathf.Clamp01(1f - Mathf.Max(0f, via - direct) / Mathf.Max(0.01f, direct * ConnectorSoftProgressSlack));
 
         var localTrail = Mathf.Clamp01(Field.SampleBilinear(position) * 3.2f);
         var support = Mathf.Lerp(0.35f, 1f, localTrail);

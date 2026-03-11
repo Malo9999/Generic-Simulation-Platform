@@ -377,7 +377,6 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         return Mathf.Max(vertical, horizontal);
     }
 
-
     private (int fieldStepInterval, int fieldTextureRefreshInterval, int maxVisibleAgents) ResolvePerformanceProfile()
     {
         var fieldStepInterval = 1;
@@ -526,16 +525,23 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         nonUsefulLoopPruneStrength = Mathf.Max(0f, nonUsefulLoopPruneStrength);
         nonUsefulLoopTrailThreshold = Mathf.Max(0f, nonUsefulLoopTrailThreshold);
         nonUsefulLoopCurvatureThreshold = Mathf.Max(0f, nonUsefulLoopCurvatureThreshold);
+
         bridgeReinforcementWeight = Mathf.Max(0f, bridgeReinforcementWeight);
         hubOrbitSuppression = Mathf.Max(0f, hubOrbitSuppression);
         staleCorridorDecayBoost = Mathf.Max(0f, staleCorridorDecayBoost);
         connectorSearchRadius = Mathf.Max(0.1f, connectorSearchRadius);
+        connectorSteerWeight = Mathf.Max(0f, connectorSteerWeight);
+        hubTangentialPenalty = Mathf.Max(0f, hubTangentialPenalty);
+        connectorCorridorWidth = Mathf.Max(0.25f, connectorCorridorWidth);
+        returnOrbitDepositPenalty = Mathf.Clamp01(returnOrbitDepositPenalty);
+
         branchSpawnChance = Mathf.Max(0f, branchSpawnChance);
         branchSpawnTrailThreshold = Mathf.Max(0f, branchSpawnTrailThreshold);
         branchPromotionThreshold = Mathf.Max(branchSpawnTrailThreshold, branchPromotionThreshold);
         branchRetractionBoost = Mathf.Max(0f, branchRetractionBoost);
         trunkStabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
         duplicateTubeSuppressionRadius = Mathf.Max(0f, duplicateTubeSuppressionRadius);
+
         obstacleAvoidanceStrength = Mathf.Max(0f, obstacleAvoidanceStrength);
         obstaclePadding = Mathf.Max(0f, obstaclePadding);
 
