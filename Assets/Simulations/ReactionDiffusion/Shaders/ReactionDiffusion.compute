@@ -5,10 +5,10 @@ RWTexture2D<float4> _WriteState;
 Texture2D<float4> _ReadState;
 RWTexture2D<float4> _DisplayTex;
 
-int _Width;
-int _Height;
+uint _Width;
+uint _Height;
 int _SeedMode;
-int _Seed;
+uint _Seed;
 int _WrapEdges;
 float _DiffuseA;
 float _DiffuseB;
@@ -32,16 +32,41 @@ float Random01(uint2 p, uint seed)
     return (h & 0x00ffffffu) / 16777215.0;
 }
 
-int2 ResolveCoord(int2 c)
+uint2 ResolveCoord(int2 c)
 {
     if (_WrapEdges == 1)
     {
-        int x = (c.x % _Width + _Width) % _Width;
-        int y = (c.y % _Height + _Height) % _Height;
-        return int2(x, y);
+        int maxX = (int)_Width - 1;
+        int maxY = (int)_Height - 1;
+
+        int x = c.x;
+        int y = c.y;
+
+        if (x < 0)
+        {
+            x = maxX;
+        }
+        else if (x > maxX)
+        {
+            x = 0;
+        }
+
+        if (y < 0)
+        {
+            y = maxY;
+        }
+        else if (y > maxY)
+        {
+            y = 0;
+        }
+
+        return uint2((uint)x, (uint)y);
     }
 
-    return clamp(c, int2(0, 0), int2(_Width - 1, _Height - 1));
+    int clampMaxX = max(0, (int)_Width - 1);
+    int clampMaxY = max(0, (int)_Height - 1);
+    int2 clamped = clamp(c, int2(0, 0), int2(clampMaxX, clampMaxY));
+    return uint2((uint)clamped.x, (uint)clamped.y);
 }
 
 float4 ReadState(int2 c)
@@ -57,7 +82,7 @@ void Init(uint3 id : SV_DispatchThreadID)
         return;
     }
 
-    float2 uv = (float2(id.xy) + 0.5) / float2(_Width, _Height);
+    float2 uv = (float2(id.xy) + 0.5) / float2((float)_Width, (float)_Height);
 
     float A = 1.0;
     float B = 0.0;
@@ -74,7 +99,7 @@ void Init(uint3 id : SV_DispatchThreadID)
     else if (_SeedMode == 1)
     {
         uint2 cell = id.xy / 12u;
-        float n = Random01(cell, (uint)_Seed);
+        float n = Random01(cell, _Seed);
         if (n > 0.86)
         {
             B = 1.0;

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -199,7 +200,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         if (simulationShader == null || displayShader == null)
         {
-            Debug.LogError("[ReactionDiffusion] Missing compute shader or display shader reference.");
+            UnityEngine.Debug.LogError("[ReactionDiffusion] Missing compute shader or display shader reference.");
             return false;
         }
 
@@ -241,7 +242,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
         quad.name = "ReactionDiffusionDisplay";
         quad.transform.SetParent(transform, false);
-        quad.transform.localPosition = new Vector3(0f, 0f, 0f);
+        quad.transform.localPosition = Vector3.zero;
         quad.transform.localRotation = Quaternion.identity;
 
         var aspect = gridWidth / (float)gridHeight;
@@ -311,7 +312,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             enableRandomWrite = true,
             useMipMap = false,
             autoGenerateMips = false,
-            filterMode = FilterMode.Bilinear,
+            filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp
         };
         texture.Create();
@@ -326,7 +327,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             enableRandomWrite = true,
             useMipMap = false,
             autoGenerateMips = false,
-            filterMode = FilterMode.Bilinear,
+            filterMode = FilterMode.Point,
             wrapMode = TextureWrapMode.Clamp
         };
         texture.Create();
