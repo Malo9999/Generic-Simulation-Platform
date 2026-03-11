@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
+[GspBootstrap(GspBootstrapKind.Simulation, "Reaction-diffusion simulation bootstrap")]
 public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 {
     private const int ThreadGroupSize = 8;
