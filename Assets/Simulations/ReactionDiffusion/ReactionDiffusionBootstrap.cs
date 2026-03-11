@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -30,6 +29,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [Header("Display")]
     [SerializeField] private ReactionDiffusionDisplayMode displayMode = ReactionDiffusionDisplayMode.ChemicalB;
     [SerializeField, Min(0.1f)] private float simulationScale = 18f;
+    [SerializeField] private bool fitMainCameraToDisplay = true;
+    [SerializeField, Min(0f)] private float cameraPadding = 0.25f;
     [SerializeField] private ComputeShader simulationShader;
     [SerializeField] private Shader displayShader;
 
@@ -56,6 +57,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         dt = Mathf.Max(0.0001f, dt);
         stepsPerFrame = Mathf.Max(1, stepsPerFrame);
         simulationScale = Mathf.Max(0.1f, simulationScale);
+        cameraPadding = Mathf.Max(0f, cameraPadding);
 
         if (preset != ReactionDiffusionPreset.Custom && preset != lastAppliedPreset)
         {
@@ -129,6 +131,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             displayMaterial.SetTexture("_StateTex", read);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
+            displayMaterial.SetVector("_TextureSize", new Vector4(gridWidth, gridHeight, 1f / gridWidth, 1f / gridHeight));
         }
     }
 
@@ -263,7 +266,31 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         };
         displayMaterial.SetTexture("_StateTex", stateA);
         displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
+        displayMaterial.SetVector("_TextureSize", new Vector4(gridWidth, gridHeight, 1f / gridWidth, 1f / gridHeight));
         displayRenderer.sharedMaterial = displayMaterial;
+
+        if (fitMainCameraToDisplay)
+        {
+            FitMainCameraToQuad(width, height);
+        }
+    }
+
+    private void FitMainCameraToQuad(float quadWidth, float quadHeight)
+    {
+        var cam = Camera.main;
+        if (cam == null || !cam.orthographic)
+        {
+            return;
+        }
+
+        var paddedWidth = quadWidth + cameraPadding * 2f;
+        var paddedHeight = quadHeight + cameraPadding * 2f;
+        var halfHeight = paddedHeight * 0.5f;
+        var halfWidthOverAspect = (paddedWidth * 0.5f) / Mathf.Max(0.0001f, cam.aspect);
+        cam.orthographicSize = Mathf.Max(halfHeight, halfWidthOverAspect);
+
+        var cameraPosition = cam.transform.position;
+        cam.transform.position = new Vector3(0f, 0f, cameraPosition.z);
     }
 
     private void ResetSimulationState()
@@ -301,6 +328,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             displayMaterial.SetTexture("_StateTex", stateA);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
+            displayMaterial.SetVector("_TextureSize", new Vector4(gridWidth, gridHeight, 1f / gridWidth, 1f / gridHeight));
         }
     }
 
@@ -313,7 +341,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             useMipMap = false,
             autoGenerateMips = false,
             filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
+            wrapMode = TextureWrapMode.Clamp,
+            anisoLevel = 0
         };
         texture.Create();
         return texture;
@@ -328,7 +357,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             useMipMap = false,
             autoGenerateMips = false,
             filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp
+            wrapMode = TextureWrapMode.Clamp,
+            anisoLevel = 0
         };
         texture.Create();
         return texture;
