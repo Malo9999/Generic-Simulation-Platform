@@ -70,8 +70,8 @@ public sealed class NeuralSlimeMoldRunner
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
     private int[] foodConsumerCounts = Array.Empty<int>();
     private bool[] foodDepletionLogged = Array.Empty<bool>();
-    private bool[] foodIsDepleted = Array.Empty<bool>();
-    private float[] foodRegrowDelayTimers = Array.Empty<float>();
+    private bool[] foodIsActive = Array.Empty<bool>();
+    private float[] foodRespawnTimers = Array.Empty<float>();
 
     private float[] agentTrailConfidence = Array.Empty<float>();
     private float[] agentFoodCommitment = Array.Empty<float>();
@@ -87,10 +87,10 @@ public sealed class NeuralSlimeMoldRunner
     private SeededRng rng;
     private Vector2 mapSize;
 
-    private bool allowFoodRegrowth;
-    private float foodRegrowDelaySeconds;
-    private float foodRegrowPerSecondFraction;
-    private float foodReactivationThreshold;
+    private float foodRespawnDelaySeconds;
+    private float foodRespawnDistanceBias;
+    private float outerRingSpawnBias;
+    private int maxSimultaneousActiveFood;
 
     private bool useColonyHub;
     private Vector2 colonyHub;
@@ -155,10 +155,11 @@ public sealed class NeuralSlimeMoldRunner
         float foodCapacity,
         float consumeRadius,
         float consumeRate,
-        bool allowFoodRegrowth,
-        float regrowDelaySeconds,
-        float regrowRate,
-        float reactivationThreshold,
+        int candidateFoodNodeCount,
+        int maxSimultaneousActiveFood,
+        float foodRespawnDelay,
+        float foodRespawnDistanceBias,
+        float outerRingSpawnBias,
         bool spawnFoodFromSeed,
         NeuralFoodNodeConfig[] manualFoodNodes,
         bool useColonyHub,
@@ -196,10 +197,10 @@ public sealed class NeuralSlimeMoldRunner
         this.mapSize = new Vector2(Mathf.Max(8f, mapSize.x), Mathf.Max(8f, mapSize.y));
         rng = new SeededRng(seed);
 
-        this.allowFoodRegrowth = allowFoodRegrowth;
-        foodRegrowDelaySeconds = Mathf.Max(0f, regrowDelaySeconds);
-        foodRegrowPerSecondFraction = Mathf.Max(0f, regrowRate);
-        foodReactivationThreshold = Mathf.Clamp01(reactivationThreshold);
+        this.maxSimultaneousActiveFood = Mathf.Max(1, maxSimultaneousActiveFood);
+        foodRespawnDelaySeconds = Mathf.Max(0f, foodRespawnDelay);
+        this.foodRespawnDistanceBias = Mathf.Clamp01(foodRespawnDistanceBias);
+        this.outerRingSpawnBias = Mathf.Clamp01(outerRingSpawnBias);
 
         this.useColonyHub = useColonyHub;
         this.colonyHub = ClampNodeInsideBounds(colonyHub);
@@ -245,12 +246,14 @@ public sealed class NeuralSlimeMoldRunner
 
         BuildFoodNodes(
             Mathf.Max(1, foodNodeCount),
+            Mathf.Max(1, candidateFoodNodeCount),
             Mathf.Max(0f, foodStrength),
             Mathf.Max(0f, foodCapacity),
             Mathf.Max(0f, consumeRadius),
             Mathf.Max(0f, consumeRate),
             spawnFoodFromSeed,
             manualFoodNodes);
+        InitializeFoodActivationState();
 
         simulationTime = 0f;
         nextOccupiedFoodLogTime = OccupiedFoodLogIntervalSeconds;
@@ -756,7 +759,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            if (foodIsDepleted[i] || node.currentCapacity <= 0f || node.capacity <= 0f)
+            if (!foodIsActive[i] || node.currentCapacity <= 0f || node.capacity <= 0f)
             {
                 continue;
             }
@@ -905,51 +908,39 @@ public sealed class NeuralSlimeMoldRunner
 
     private void ConsumeFood(float dt)
     {
+        var deltaTime = Mathf.Max(0f, dt);
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
             var maxCapacity = Mathf.Max(0.01f, node.capacity);
 
-            if (!foodIsDepleted[i])
+            if (foodIsActive[i])
             {
-                var consumed = node.consumeRate * foodConsumerCounts[i] * Mathf.Max(0f, dt);
+                var consumed = node.consumeRate * foodConsumerCounts[i] * deltaTime;
                 var previousCapacity = node.currentCapacity;
                 node.currentCapacity = Mathf.Clamp(node.currentCapacity - consumed, 0f, maxCapacity);
 
                 if (!foodDepletionLogged[i] && previousCapacity > 0f && node.currentCapacity <= 0f)
                 {
                     foodDepletionLogged[i] = true;
-                    foodIsDepleted[i] = true;
-                    foodRegrowDelayTimers[i] = foodRegrowDelaySeconds;
+                    foodIsActive[i] = false;
+                    foodRespawnTimers[i] = foodRespawnDelaySeconds;
                     UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {i} depleted at t={simulationTime:F2}s.");
                 }
             }
             else
             {
-                if (!allowFoodRegrowth)
+                node.currentCapacity = 0f;
+                if (foodRespawnTimers[i] > 0f)
                 {
-                    node.currentCapacity = 0f;
-                }
-                else if (foodRegrowDelayTimers[i] > 0f)
-                {
-                    foodRegrowDelayTimers[i] -= Mathf.Max(0f, dt);
-                }
-                else
-                {
-                    var regrowAmount = maxCapacity * foodRegrowPerSecondFraction * Mathf.Max(0f, dt);
-                    node.currentCapacity = Mathf.Min(maxCapacity, node.currentCapacity + regrowAmount);
-
-                    if (node.currentCapacity >= maxCapacity * foodReactivationThreshold)
-                    {
-                        foodIsDepleted[i] = false;
-                        foodDepletionLogged[i] = false;
-                        UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {i} reactivated at t={simulationTime:F2}s.");
-                    }
+                    foodRespawnTimers[i] -= deltaTime;
                 }
             }
 
             foodNodes[i] = node;
         }
+
+        TryActivateFoodReplacements();
     }
 
     private void MarkConsumingFoodNodes(Vector2 agentPosition)
@@ -957,7 +948,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            if (node.currentCapacity <= 0f || foodIsDepleted[i])
+            if (!foodIsActive[i] || node.currentCapacity <= 0f)
             {
                 continue;
             }
@@ -976,7 +967,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            if (!foodIsDepleted[i] && node.currentCapacity > 0f)
+            if (foodIsActive[i] && node.currentCapacity > 0f)
             {
                 continue;
             }
@@ -997,7 +988,7 @@ public sealed class NeuralSlimeMoldRunner
         {
             var node = foodNodes[i];
 
-            if (requireNonEmpty && (foodIsDepleted[i] || node.currentCapacity <= 0f))
+            if (requireNonEmpty && (!foodIsActive[i] || node.currentCapacity <= 0f))
             {
                 continue;
             }
@@ -1017,7 +1008,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            if (!foodIsDepleted[i] && node.currentCapacity > 0f)
+            if (foodIsActive[i] && node.currentCapacity > 0f)
             {
                 continue;
             }
@@ -1070,6 +1061,7 @@ public sealed class NeuralSlimeMoldRunner
 
     private void BuildFoodNodes(
         int foodNodeCount,
+        int candidateFoodNodeCount,
         float foodStrength,
         float foodCapacity,
         float consumeRadius,
@@ -1095,17 +1087,18 @@ public sealed class NeuralSlimeMoldRunner
 
             foodConsumerCounts = new int[foodNodes.Length];
             foodDepletionLogged = new bool[foodNodes.Length];
-            foodIsDepleted = new bool[foodNodes.Length];
-            foodRegrowDelayTimers = new float[foodNodes.Length];
+            foodIsActive = new bool[foodNodes.Length];
+            foodRespawnTimers = new float[foodNodes.Length];
             return;
         }
 
-        foodNodes = new NeuralFoodNodeState[foodNodeCount];
+        var candidateCount = Mathf.Max(foodNodeCount, candidateFoodNodeCount);
+        foodNodes = new NeuralFoodNodeState[candidateCount];
         var placementRng = spawnFoodFromSeed
             ? new SeededRng(StableHashUtility.CombineSeed(Seed, "slime-food-nodes"))
             : new SeededRng((int)(DateTime.UtcNow.Ticks & 0x7FFFFFFF));
 
-        for (var i = 0; i < foodNodeCount; i++)
+        for (var i = 0; i < candidateCount; i++)
         {
             var pos = SampleOpenFoodPosition(placementRng);
             foodNodes[i] = BuildFoodState(pos, foodStrength, foodCapacity, consumeRadius, consumeRate);
@@ -1113,8 +1106,152 @@ public sealed class NeuralSlimeMoldRunner
 
         foodConsumerCounts = new int[foodNodes.Length];
         foodDepletionLogged = new bool[foodNodes.Length];
-        foodIsDepleted = new bool[foodNodes.Length];
-        foodRegrowDelayTimers = new float[foodNodes.Length];
+        foodIsActive = new bool[foodNodes.Length];
+        foodRespawnTimers = new float[foodNodes.Length];
+    }
+
+    private void InitializeFoodActivationState()
+    {
+        if (foodNodes == null || foodNodes.Length == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            foodIsActive[i] = false;
+            foodRespawnTimers[i] = 0f;
+            foodDepletionLogged[i] = false;
+            var node = foodNodes[i];
+            node.currentCapacity = 0f;
+            foodNodes[i] = node;
+        }
+
+        var initialActiveTarget = Mathf.Clamp(maxSimultaneousActiveFood, 1, foodNodes.Length);
+        for (var i = 0; i < initialActiveTarget; i++)
+        {
+            var index = SelectBestReplacementFoodIndex();
+            if (index < 0)
+            {
+                break;
+            }
+
+            ActivateFoodNode(index);
+        }
+    }
+
+    private void TryActivateFoodReplacements()
+    {
+        if (foodNodes == null || foodNodes.Length == 0)
+        {
+            return;
+        }
+
+        var activeCount = 0;
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            if (foodIsActive[i] && foodNodes[i].currentCapacity > 0f)
+            {
+                activeCount++;
+            }
+        }
+
+        var target = Mathf.Clamp(maxSimultaneousActiveFood, 1, foodNodes.Length);
+        while (activeCount < target)
+        {
+            var replacementIndex = SelectBestReplacementFoodIndex();
+            if (replacementIndex < 0)
+            {
+                break;
+            }
+
+            ActivateFoodNode(replacementIndex);
+            activeCount++;
+        }
+    }
+
+    private int SelectBestReplacementFoodIndex()
+    {
+        var bestScore = float.NegativeInfinity;
+        var bestIndex = -1;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            if (foodIsActive[i] || foodRespawnTimers[i] > 0f)
+            {
+                continue;
+            }
+
+            var score = ComputeReplacementScore(i);
+            score += rng.Range(0f, 0.05f);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
+    }
+
+    private float ComputeReplacementScore(int candidateIndex)
+    {
+        var node = foodNodes[candidateIndex];
+        var nearestDistance = float.MaxValue;
+        var activeCenter = Vector2.zero;
+        var activeCount = 0;
+
+        for (var i = 0; i < foodNodes.Length; i++)
+        {
+            if (!foodIsActive[i] || foodNodes[i].currentCapacity <= 0f)
+            {
+                continue;
+            }
+
+            activeCenter += foodNodes[i].position;
+            activeCount++;
+            var dist = Vector2.Distance(node.position, foodNodes[i].position);
+            nearestDistance = Mathf.Min(nearestDistance, dist);
+        }
+
+        var mapRadius = Mathf.Max(1f, Mathf.Min(mapSize.x, mapSize.y) * 0.5f);
+        var hubDistance = useColonyHub ? Vector2.Distance(node.position, colonyHub) : node.position.magnitude;
+        var outerBias = Mathf.Clamp01(hubDistance / mapRadius);
+
+        var distanceFromActive = 1f;
+        if (nearestDistance < float.MaxValue)
+        {
+            distanceFromActive = Mathf.Clamp01(nearestDistance / mapRadius);
+        }
+
+        var clusterDistance = 1f;
+        if (activeCount > 0)
+        {
+            activeCenter /= activeCount;
+            clusterDistance = Mathf.Clamp01(Vector2.Distance(node.position, activeCenter) / mapRadius);
+        }
+
+        var spreadScore = Mathf.Lerp(clusterDistance, distanceFromActive, foodRespawnDistanceBias);
+        var score = Mathf.Lerp(spreadScore, outerBias, outerRingSpawnBias);
+        return score;
+    }
+
+    private void ActivateFoodNode(int index)
+    {
+        if (index < 0 || index >= foodNodes.Length)
+        {
+            return;
+        }
+
+        foodIsActive[index] = true;
+        foodRespawnTimers[index] = 0f;
+        foodDepletionLogged[index] = false;
+
+        var node = foodNodes[index];
+        node.currentCapacity = node.capacity;
+        foodNodes[index] = node;
+
+        UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {index} activated at t={simulationTime:F2}s.");
     }
 
     private static NeuralFoodNodeState BuildFoodState(Vector2 position, float baseStrength, float capacity, float consumeRadius, float consumeRate)
@@ -1657,7 +1794,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         var node = foodNodes[index];
-        return !foodIsDepleted[index] && node.currentCapacity > 0f;
+        return foodIsActive[index] && node.currentCapacity > 0f;
     }
 
     private float ComputeFoodNodeDesirability(int index, float searchRadius)
@@ -1789,7 +1926,7 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < foodNodes.Length; i++)
         {
             var node = foodNodes[i];
-            if (foodIsDepleted[i] || node.currentCapacity <= 0f)
+            if (!foodIsActive[i] || node.currentCapacity <= 0f)
             {
                 continue;
             }
