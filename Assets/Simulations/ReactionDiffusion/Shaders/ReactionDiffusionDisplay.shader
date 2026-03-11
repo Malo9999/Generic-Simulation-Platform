@@ -8,10 +8,10 @@ Shader "GSP/ReactionDiffusion/Display"
 
     SubShader
     {
-        Tags { "RenderType" = "Opaque" "Queue" = "Geometry" }
+        Tags { "RenderType"="Opaque" }
         Cull Off
-        ZWrite On
-        ZTest LEqual
+        ZWrite Off
+        ZTest Always
 
         Pass
         {
@@ -21,7 +21,7 @@ Shader "GSP/ReactionDiffusion/Display"
             #include "UnityCG.cginc"
 
             sampler2D _StateTex;
-            float4 _StateTex_ST;
+            float4 _StateTex_TexelSize;
             float _DisplayMode;
 
             struct appdata
@@ -40,16 +40,44 @@ Shader "GSP/ReactionDiffusion/Display"
             {
                 v2f o;
                 o.vertex = UnityObjectToClipPos(v.vertex);
-                o.uv = TRANSFORM_TEX(v.uv, _StateTex);
+                o.uv = v.uv;
                 return o;
+            }
+
+            float sampleB(float2 uv)
+            {
+                float2 ab = tex2D(_StateTex, uv).xy;
+
+                if (_DisplayMode < 0.5)
+                    return ab.y;
+
+                return abs(ab.x - ab.y);
             }
 
             fixed4 frag(v2f i) : SV_Target
             {
-                float2 ab = tex2D(_StateTex, i.uv).xy;
-                float value = _DisplayMode < 0.5 ? ab.y : saturate(ab.x - ab.y);
-                return fixed4(value, value, value, 1.0);
+                float2 t = _StateTex_TexelSize.xy;
+
+                float c = sampleB(i.uv);
+
+                float l = sampleB(i.uv + float2(-t.x,0));
+                float r = sampleB(i.uv + float2(t.x,0));
+                float u = sampleB(i.uv + float2(0,t.y));
+                float d = sampleB(i.uv + float2(0,-t.y));
+
+                float edge = abs(r-l) + abs(u-d);
+
+                edge *= 8.0;
+                edge = saturate(edge);
+
+                float3 background = float3(0.95,0.97,0.99);
+                float3 pattern = float3(0.05,0.08,0.12);
+
+                float3 color = lerp(background, pattern, edge);
+
+                return float4(color,1);
             }
+
             ENDCG
         }
     }

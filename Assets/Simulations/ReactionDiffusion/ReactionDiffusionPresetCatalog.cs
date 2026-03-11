@@ -29,41 +29,53 @@ public static class ReactionDiffusionPresetCatalog
         switch (preset)
         {
             case ReactionDiffusionPreset.Default:
-                parameters = new Parameters(1.0f, 0.5f, 0.0367f, 0.0649f, 1f, 6);
+                parameters = new Parameters(1.0f, 0.5f, 0.0367f, 0.0649f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Mitosis:
-                parameters = new Parameters(1.0f, 0.5f, 0.0367f, 0.0649f, 1f, 8);
+                parameters = new Parameters(1.0f, 0.5f, 0.0367f, 0.0649f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Solitons:
-                parameters = new Parameters(1.0f, 0.5f, 0.030f, 0.062f, 1f, 6);
+                parameters = new Parameters(1.0f, 0.5f, 0.0300f, 0.0620f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Flower:
-                parameters = new Parameters(1.0f, 0.5f, 0.024f, 0.055f, 1f, 7);
+                parameters = new Parameters(1.0f, 0.5f, 0.0240f, 0.0550f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Finger:
-                parameters = new Parameters(1.0f, 0.5f, 0.037f, 0.060f, 1f, 6);
+                parameters = new Parameters(1.0f, 0.5f, 0.0370f, 0.0600f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.USkate:
-                parameters = new Parameters(1.0f, 0.5f, 0.062f, 0.061f, 1f, 4);
+                parameters = new Parameters(1.0f, 0.5f, 0.0620f, 0.0610f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Mazes:
-                parameters = new Parameters(1.0f, 0.5f, 0.029f, 0.057f, 1f, 8);
+                parameters = new Parameters(1.0f, 0.5f, 0.0290f, 0.0570f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Spirals:
-                parameters = new Parameters(1.0f, 0.5f, 0.018f, 0.051f, 1f, 8);
+                parameters = new Parameters(1.0f, 0.5f, 0.0180f, 0.0510f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Coral:
-                parameters = new Parameters(1.0f, 0.5f, 0.054f, 0.062f, 1f, 5);
+                parameters = new Parameters(1.0f, 0.5f, 0.0540f, 0.0620f, 1f, 2);
                 return true;
+
             case ReactionDiffusionPreset.Worms:
-                parameters = new Parameters(1.0f, 0.5f, 0.078f, 0.061f, 1f, 5);
+                parameters = new Parameters(1.0f, 0.5f, 0.0780f, 0.0610f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Spots:
-                parameters = new Parameters(1.0f, 0.5f, 0.026f, 0.051f, 1f, 7);
+                parameters = new Parameters(1.0f, 0.5f, 0.0260f, 0.0510f, 1f, 1);
                 return true;
+
             case ReactionDiffusionPreset.Chaos:
-                parameters = new Parameters(1.0f, 0.5f, 0.042f, 0.060f, 1f, 10);
+                parameters = new Parameters(1.0f, 0.5f, 0.0420f, 0.0600f, 1f, 1);
                 return true;
+
             default:
                 parameters = default;
                 return false;

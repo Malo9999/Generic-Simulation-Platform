@@ -110,7 +110,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         simulationShader.SetFloat("_DiffuseB", diffuseB);
         simulationShader.SetFloat("_Feed", feed);
         simulationShader.SetFloat("_Kill", kill);
-        simulationShader.SetFloat("_Dt", dt * Mathf.Max(0.0001f, frameDt) * 60f);
+        simulationShader.SetFloat("_Dt", dt);
         simulationShader.SetInt("_WrapEdges", wrapEdges ? 1 : 0);
 
         var groupsX = Mathf.CeilToInt(gridWidth / (float)ThreadGroupSize);
@@ -247,9 +247,11 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         quad.transform.localPosition = Vector3.zero;
         quad.transform.localRotation = Quaternion.identity;
 
-        var aspect = gridWidth / (float)gridHeight;
-        var width = simulationScale;
-        var height = width / Mathf.Max(0.01f, aspect);
+        var cam = Camera.main;
+        var targetAspect = cam != null ? cam.aspect : (16f / 9f);
+
+        var height = simulationScale;
+        var width = height * targetAspect;
         quad.transform.localScale = new Vector3(width, height, 1f);
 
         var collider = quad.GetComponent<Collider>();
@@ -281,14 +283,10 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             return;
         }
 
-        var paddedWidth = quadWidth + cameraPadding * 2f;
-        var paddedHeight = quadHeight + cameraPadding * 2f;
-        var halfHeight = paddedHeight * 0.5f;
-        var halfWidthOverAspect = (paddedWidth * 0.5f) / Mathf.Max(0.0001f, cam.aspect);
-        cam.orthographicSize = Mathf.Max(halfHeight, halfWidthOverAspect);
+        cam.orthographicSize = (quadHeight * 0.5f) + cameraPadding;
 
-        var cameraPosition = cam.transform.position;
-        cam.transform.position = new Vector3(0f, 0f, cameraPosition.z);
+        var pos = cam.transform.position;
+        cam.transform.position = new Vector3(0f, 0f, pos.z);
     }
 
     private void ResetSimulationState()
