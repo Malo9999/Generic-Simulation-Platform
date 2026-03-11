@@ -49,14 +49,15 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
         DrawSection("Food", new[]
         {
             "foodNodeCount",
+            "candidateFoodNodeCount",
+            "maxSimultaneousActiveFood",
+            "foodRespawnDelay",
+            "foodRespawnDistanceBias",
+            "outerRingSpawnBias",
             "foodStrength",
             "foodCapacity",
             "consumeRadius",
             "consumeRate",
-            "allowFoodRegrowth",
-            "foodReactivationDelay",
-            "regrowRate",
-            "foodReactivationThreshold",
             "spawnFromSeed",
             "manualFoodConfigs"
         });

@@ -40,14 +40,15 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
     [Header("Food")]
     [SerializeField, Min(1)] private int foodNodeCount = 10;
+    [SerializeField, Min(1)] private int candidateFoodNodeCount = 12;
+    [SerializeField, Min(1)] private int maxSimultaneousActiveFood = 3;
+    [SerializeField, Min(0f)] private float foodRespawnDelay = 6f;
+    [SerializeField, Range(0f, 1f)] private float foodRespawnDistanceBias = 0.65f;
+    [SerializeField, Range(0f, 1f)] private float outerRingSpawnBias = 0.45f;
     [SerializeField, Min(0f)] private float foodStrength = 1.1f;
     [SerializeField, Min(0f)] private float foodCapacity = 2000f;
     [SerializeField, Min(0f)] private float consumeRadius = 6f;
     [SerializeField, Min(0f)] private float consumeRate = 0.25f;
-    [SerializeField] private bool allowFoodRegrowth = true;
-    [SerializeField, Min(0f)] private float foodReactivationDelay = 10f;
-    [SerializeField, Min(0f)] private float regrowRate = 0.08f;
-    [SerializeField, Range(0f, 1f)] private float foodReactivationThreshold = 0.25f;
     [SerializeField] private bool spawnFromSeed = true;
     [SerializeField] private NeuralFoodNodeConfig[] manualFoodConfigs;
 
@@ -196,10 +197,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             foodCapacity,
             consumeRadius,
             consumeRate,
-            allowFoodRegrowth,
-            foodReactivationDelay,
-            regrowRate,
-            foodReactivationThreshold,
+            candidateFoodNodeCount,
+            maxSimultaneousActiveFood,
+            foodRespawnDelay,
+            foodRespawnDistanceBias,
+            outerRingSpawnBias,
             spawnFromSeed,
             manualFoodConfigs,
             useColonyHub,
@@ -502,6 +504,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         overrideFieldTextureRefreshInterval = Mathf.Max(1, overrideFieldTextureRefreshInterval);
         overrideMaxVisibleAgents = Mathf.Max(1, overrideMaxVisibleAgents);
         foodNodeCount = Mathf.Max(1, foodNodeCount);
+        candidateFoodNodeCount = Mathf.Max(1, candidateFoodNodeCount);
+        maxSimultaneousActiveFood = Mathf.Max(1, maxSimultaneousActiveFood);
 
         sensorDistance = Mathf.Max(0f, sensorDistance);
         speed = Mathf.Max(0f, speed);
@@ -512,8 +516,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         foodCapacity = Mathf.Max(0f, foodCapacity);
         consumeRadius = Mathf.Max(0f, consumeRadius);
         consumeRate = Mathf.Max(0f, consumeRate);
-        foodReactivationDelay = Mathf.Max(0f, foodReactivationDelay);
-        regrowRate = Mathf.Max(0f, regrowRate);
+        foodRespawnDelay = Mathf.Max(0f, foodRespawnDelay);
+        foodRespawnDistanceBias = Mathf.Clamp01(foodRespawnDistanceBias);
+        outerRingSpawnBias = Mathf.Clamp01(outerRingSpawnBias);
 
         colonyHubRadius = Mathf.Max(0.25f, colonyHubRadius);
         returnToHubWeight = Mathf.Max(0f, returnToHubWeight);
