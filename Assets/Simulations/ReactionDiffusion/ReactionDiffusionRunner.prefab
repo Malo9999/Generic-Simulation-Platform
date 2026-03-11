@@ -1,0 +1,77 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4145475651234926721
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1286555984917754573}
+  - component: {fileID: 5923998463254467229}
+  - component: {fileID: 3257115251161516094}
+  m_Layer: 0
+  m_Name: ReactionDiffusionRunner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1286555984917754573
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4145475651234926721}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5923998463254467229
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4145475651234926721}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a7ce1fda54a442a8a466690beb58bf40, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ReactionDiffusionRunner
+--- !u!114 &3257115251161516094
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4145475651234926721}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e42545ab23e04de8a39c6505a087ebf9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ReactionDiffusionBootstrap
+  autoStart: 1
+  preset: 0
+  gridWidth: 256
+  gridHeight: 256
+  diffuseA: 1
+  diffuseB: 0.5
+  feed: 0.0367
+  kill: 0.0649
+  dt: 1
+  stepsPerFrame: 6
+  wrapEdges: 1
+  seedMode: 0
+  randomSeed: 1337
+  useRandomSeed: 0
+  displayMode: 0
+  simulationScale: 18
+  simulationShader: {fileID: 7200000, guid: a238b5a95fe74cf09e46a736f9f8f417, type: 3}
+  displayShader: {fileID: 4800000, guid: 6f94df817165493abe4c0eeafd68852c, type: 3}

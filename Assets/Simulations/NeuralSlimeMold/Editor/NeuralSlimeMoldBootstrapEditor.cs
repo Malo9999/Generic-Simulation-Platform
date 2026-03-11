@@ -20,6 +20,22 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "trailDiffusion"
         });
 
+        DrawSection("Quality / Performance", new[]
+        {
+            "qualityPreset",
+            "overridePerformanceOptions",
+            "overrideFieldStepInterval",
+            "overrideFieldTextureRefreshInterval",
+            "overrideMaxVisibleAgents"
+        });
+
+        DrawSection("Stress Test", new[]
+        {
+            "useStressTestProfile",
+            "stressAgentCount",
+            "stressTrailResolution"
+        });
+
         DrawSection("Agent Motion", new[]
         {
             "sensorAngleDegrees",
@@ -33,14 +49,15 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
         DrawSection("Food", new[]
         {
             "foodNodeCount",
+            "candidateFoodNodeCount",
+            "maxSimultaneousActiveFood",
+            "foodRespawnDelay",
+            "foodRespawnDistanceBias",
+            "outerRingSpawnBias",
             "foodStrength",
             "foodCapacity",
             "consumeRadius",
             "consumeRate",
-            "allowFoodRegrowth",
-            "foodReactivationDelay",
-            "regrowRate",
-            "foodReactivationThreshold",
             "spawnFromSeed",
             "manualFoodConfigs"
         });
@@ -64,9 +81,47 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "nonUsefulLoopCurvatureThreshold"
         });
 
+        DrawSection("Network Maintenance", new[]
+        {
+            "bridgeReinforcementWeight",
+            "hubOrbitSuppression",
+            "staleCorridorDecayBoost",
+            "connectorSearchRadius",
+            "connectorSteerWeight",
+            "hubTangentialPenalty",
+            "connectorCorridorWidth",
+            "returnOrbitDepositPenalty"
+        });
+
+        DrawSection("Branch Remodeling", new[]
+        {
+            "branchSpawnChance",
+            "branchSpawnTrailThreshold",
+            "branchPromotionThreshold",
+            "branchRetractionBoost",
+            "trunkStabilityBoost",
+            "duplicateTubeSuppressionRadius"
+        });
+
+        DrawSection("World Obstacles", new[]
+        {
+            "useWorldObstacles",
+            "worldObstacles",
+            "corridorBands",
+            "obstacleAvoidanceStrength",
+            "obstaclePadding"
+        });
+
         DrawSection("Rendering", new[]
         {
-            "showFoodMarkers"
+            "showFoodMarkers",
+            "emphasizePrimaryTubes",
+            "showExplorationBranches",
+            "showFoodStateMarkers",
+            "showActivityFocus",
+            "tubeExposure",
+            "staleTrailFade",
+            "branchAlphaBias"
         });
 
         DrawSection("Palette", new[]
@@ -124,6 +179,12 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             if (GUILayout.Button("Reseed"))
             {
                 bootstrap.Reseed();
+                EditorUtility.SetDirty(bootstrap);
+            }
+
+            if (GUILayout.Button("Apply Stress Profile"))
+            {
+                bootstrap.ApplyStressTestProfile();
                 EditorUtility.SetDirty(bootstrap);
             }
         }

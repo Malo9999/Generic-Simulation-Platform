@@ -600,7 +600,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_BackGroundColor: {r: 0.01, g: 0.02, b: 0.04, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -1222,31 +1222,83 @@ MonoBehaviour:
   agentCount: 600
   mapSize: {x: 64, y: 64}
   trailResolution: {x: 256, y: 256}
-  trailDecayPerSecond: 0.6
-  trailDiffusion: 0.23
+  trailDecayPerSecond: 0.65
+  trailDiffusion: 0.18
+  qualityPreset: 1
+  overridePerformanceOptions: 0
+  overrideFieldStepInterval: 1
+  overrideFieldTextureRefreshInterval: 1
+  overrideMaxVisibleAgents: 1500
+  useStressTestProfile: 0
+  stressAgentCount: 2000
+  stressTrailResolution: {x: 384, y: 384}
   sensorAngleDegrees: 35
-  sensorDistance: 1.4
+  sensorDistance: 1.2
   speed: 6.7
   turnRateDegrees: 180
-  depositAmount: 1.2
-  explorationTurnNoise: 0.08
+  depositAmount: 1
+  explorationTurnNoise: 0.06
   foodNodeCount: 10
-  foodStrength: 1.1
-  foodCapacity: 1200
+  candidateFoodNodeCount: 12
+  maxSimultaneousActiveFood: 3
+  foodRespawnDelay: 6
+  foodRespawnDistanceBias: 0.65
+  outerRingSpawnBias: 0.45
+  foodStrength: 1.15
+  foodCapacity: 1600
   consumeRadius: 6
   consumeRate: 0.25
-  allowFoodRegrowth: 1
-  foodReactivationDelay: 10
-  regrowRate: 0.08
-  foodReactivationThreshold: 0.25
   spawnFromSeed: 1
   manualFoodConfigs: []
+  useColonyHub: 1
+  colonyHub: {x: 0, y: 0}
+  colonyHubRadius: 4.5
+  returnToHubWeight: 1.9
+  returnTrailBlend: 0.55
+  returnDepositBoost: 2.8
+  successfulReturnDepositBurst: 8
+  hubInfluenceRadius: 9
+  nonUsefulLoopPruneStrength: 0.22
+  nonUsefulLoopTrailThreshold: 0.13
+  nonUsefulLoopCurvatureThreshold: 0.085
+  bridgeReinforcementWeight: 0.3
+  hubOrbitSuppression: 0.5
+  staleCorridorDecayBoost: 0.5
+  connectorSearchRadius: 6
+  connectorSteerWeight: 1.65
+  hubTangentialPenalty: 1.4
+  connectorCorridorWidth: 2.8
+  returnOrbitDepositPenalty: 0.18
+  branchSpawnChance: 0.18
+  branchSpawnTrailThreshold: 0.075
+  branchPromotionThreshold: 0.13
+  branchRetractionBoost: 0.72
+  trunkStabilityBoost: 0.25
+  duplicateTubeSuppressionRadius: 1.35
+  useWorldObstacles: 0
+  worldObstacles: []
+  corridorBands: []
+  obstacleAvoidanceStrength: 0.85
+  obstaclePadding: 0.45
   useGlowAgentShape: 1
-  useFieldBlobOverlay: 1
+  useFieldBlobOverlay: 0
   backgroundColor: {r: 0.01, g: 0.02, b: 0.04, a: 1}
   showFoodMarkers: 1
+  emphasizePrimaryTubes: 1
+  showExplorationBranches: 1
+  showFoodStateMarkers: 1
+  showActivityFocus: 0
+  tubeExposure: 1.15
+  staleTrailFade: 0.4
+  branchAlphaBias: 0.62
   autoFrameCamera: 1
-  cameraPadding: 1.1
+  adaptiveCameraFraming: 0
+  cameraPadding: 1.15
+  cameraFollowSmooth: 3.5
+  cameraZoomSmooth: 2.5
+  minimumCameraSize: 10
+  cameraLookAheadToActivity: 0.12
+  cameraDeadZoneRadius: 0.6
 --- !u!1 &1246062244
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,0 +1,158 @@
+#pragma kernel Init
+#pragma kernel Step
+
+RWTexture2D<float4> _WriteState;
+Texture2D<float4> _ReadState;
+RWTexture2D<float4> _DisplayTex;
+
+uint _Width;
+uint _Height;
+int _SeedMode;
+uint _Seed;
+int _WrapEdges;
+float _DiffuseA;
+float _DiffuseB;
+float _Feed;
+float _Kill;
+float _Dt;
+
+uint Hash(uint x)
+{
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    x ^= x >> 16;
+    return x;
+}
+
+float Random01(uint2 p, uint seed)
+{
+    uint h = Hash((p.x * 73856093u) ^ (p.y * 19349663u) ^ seed);
+    return (h & 0x00ffffffu) / 16777215.0;
+}
+
+uint2 ResolveCoord(int2 c)
+{
+    if (_WrapEdges == 1)
+    {
+        int maxX = (int)_Width - 1;
+        int maxY = (int)_Height - 1;
+
+        int x = c.x;
+        int y = c.y;
+
+        if (x < 0)
+        {
+            x = maxX;
+        }
+        else if (x > maxX)
+        {
+            x = 0;
+        }
+
+        if (y < 0)
+        {
+            y = maxY;
+        }
+        else if (y > maxY)
+        {
+            y = 0;
+        }
+
+        return uint2((uint)x, (uint)y);
+    }
+
+    int clampMaxX = max(0, (int)_Width - 1);
+    int clampMaxY = max(0, (int)_Height - 1);
+    int2 clamped = clamp(c, int2(0, 0), int2(clampMaxX, clampMaxY));
+    return uint2((uint)clamped.x, (uint)clamped.y);
+}
+
+float4 ReadState(int2 c)
+{
+    return _ReadState[ResolveCoord(c)];
+}
+
+[numthreads(8, 8, 1)]
+void Init(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    float2 uv = (float2(id.xy) + 0.5) / float2((float)_Width, (float)_Height);
+
+    float A = 1.0;
+    float B = 0.0;
+
+    if (_SeedMode == 0)
+    {
+        float2 d = abs(uv - 0.5);
+        if (d.x < 0.08 && d.y < 0.08)
+        {
+            B = 1.0;
+            A = 0.0;
+        }
+    }
+    else if (_SeedMode == 1)
+    {
+        uint2 cell = id.xy / 12u;
+        float n = Random01(cell, _Seed);
+        if (n > 0.86)
+        {
+            B = 1.0;
+            A = 0.0;
+        }
+    }
+    else
+    {
+        float2 p = uv - 0.5;
+        float r = length(p);
+        if (r > 0.16 && r < 0.23)
+        {
+            B = 1.0;
+            A = 0.0;
+        }
+    }
+
+    float4 value = float4(A, B, 0.0, 1.0);
+    _WriteState[id.xy] = value;
+    _DisplayTex[id.xy] = float4(B, B, B, 1.0);
+}
+
+[numthreads(8, 8, 1)]
+void Step(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    int2 p = int2(id.xy);
+
+    float2 center = ReadState(p).xy;
+    float2 up = ReadState(p + int2(0, 1)).xy;
+    float2 down = ReadState(p + int2(0, -1)).xy;
+    float2 left = ReadState(p + int2(-1, 0)).xy;
+    float2 right = ReadState(p + int2(1, 0)).xy;
+    float2 upLeft = ReadState(p + int2(-1, 1)).xy;
+    float2 upRight = ReadState(p + int2(1, 1)).xy;
+    float2 downLeft = ReadState(p + int2(-1, -1)).xy;
+    float2 downRight = ReadState(p + int2(1, -1)).xy;
+
+    float2 lap =
+        (up + down + left + right) * 0.2 +
+        (upLeft + upRight + downLeft + downRight) * 0.05 -
+        center;
+
+    float A = center.x;
+    float B = center.y;
+    float reaction = A * B * B;
+
+    float nextA = A + (_DiffuseA * lap.x - reaction + _Feed * (1.0 - A)) * _Dt;
+    float nextB = B + (_DiffuseB * lap.y + reaction - (_Kill + _Feed) * B) * _Dt;
+
+    _WriteState[id.xy] = float4(saturate(nextA), saturate(nextB), 0.0, 1.0);
+}

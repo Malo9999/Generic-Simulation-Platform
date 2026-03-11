@@ -23,10 +23,10 @@ public sealed class BootstrapRegistryWindow : EditorWindow
     private sealed class BootstrapEntry
     {
         public string ClassName;
-        public GspBootstrapKind Kind;
+        public GspBootstrapKind ResolvedKind;
         public string AssetPath;
         public string Notes;
-        public string Source;
+        public string ClassificationSource;
         public MonoScript Script;
         public Type Type;
         public readonly List<UsageRecord> SceneUsages = new();
@@ -133,10 +133,10 @@ public sealed class BootstrapRegistryWindow : EditorWindow
     {
         EditorGUILayout.BeginVertical("box");
         EditorGUILayout.LabelField(entry.ClassName, EditorStyles.boldLabel);
-        EditorGUILayout.LabelField("Kind", entry.Kind.ToString());
+        EditorGUILayout.LabelField("Kind", entry.ResolvedKind.ToString());
         EditorGUILayout.LabelField("Asset Path", entry.AssetPath);
         EditorGUILayout.LabelField("Notes", string.IsNullOrWhiteSpace(entry.Notes) ? "-" : entry.Notes);
-        EditorGUILayout.LabelField("Heuristic Source", entry.Source);
+        EditorGUILayout.LabelField("Heuristic Source", entry.ClassificationSource);
         EditorGUILayout.LabelField("Usage Status", entry.UsageStatus);
 
         DrawUsageSection("Scene Usage", entry.SceneUsages);
@@ -214,10 +214,10 @@ public sealed class BootstrapRegistryWindow : EditorWindow
             var entry = new BootstrapEntry
             {
                 ClassName = type.Name,
-                Kind = attribute?.Kind ?? GspBootstrapConventions.GuessKindFromPath(path),
+                ResolvedKind = ResolveKind(attribute, path),
                 AssetPath = path,
                 Notes = attribute?.Notes ?? string.Empty,
-                Source = attribute != null ? "Attribute" : "Naming",
+                ClassificationSource = attribute != null ? "Attribute" : "Naming",
                 Script = script,
                 Type = type
             };
@@ -227,7 +227,7 @@ public sealed class BootstrapRegistryWindow : EditorWindow
 
         allEntries.Sort((left, right) =>
         {
-            var kindCompare = left.Kind.CompareTo(right.Kind);
+            var kindCompare = left.ResolvedKind.CompareTo(right.ResolvedKind);
             if (kindCompare != 0)
             {
                 return kindCompare;
@@ -266,17 +266,25 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         foreach (var guid in sceneGuids)
         {
             var scenePath = AssetDatabase.GUIDToAssetPath(guid);
-            var alreadyLoaded = SceneManager.GetSceneByPath(scenePath).isLoaded;
-            var scene = alreadyLoaded
-                ? SceneManager.GetSceneByPath(scenePath)
-                : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+            var existingScene = SceneManager.GetSceneByPath(scenePath);
+            var alreadyLoaded = existingScene.isLoaded;
+            var scene = existingScene;
 
             try
             {
+                if (!alreadyLoaded)
+                {
+                    scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+                }
+
                 foreach (var root in scene.GetRootGameObjects())
                 {
                     RegisterUsageForRoot(entriesByType, root, scenePath, isScene: true, AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
                 }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[BootstrapRegistry] Failed to scan scene usage for '{scenePath}'. Bootstrap registry data remains available. {ex}");
             }
             finally
             {
@@ -334,7 +342,30 @@ public sealed class BootstrapRegistryWindow : EditorWindow
             return true;
         }
 
-        return entry.Kind == (GspBootstrapKind)filter;
+        return entry.ResolvedKind == GetFilterKind(filter);
+    }
+
+    private static GspBootstrapKind ResolveKind(GspBootstrapAttribute attribute, string assetPath)
+    {
+        if (attribute != null)
+        {
+            return attribute.Kind;
+        }
+
+        return GspBootstrapConventions.GuessKindFromPath(assetPath);
+    }
+
+    private static GspBootstrapKind GetFilterKind(FilterKind selectedFilter)
+    {
+        return selectedFilter switch
+        {
+            FilterKind.Platform => GspBootstrapKind.Platform,
+            FilterKind.Simulation => GspBootstrapKind.Simulation,
+            FilterKind.Preview => GspBootstrapKind.Preview,
+            FilterKind.Tool => GspBootstrapKind.Tool,
+            FilterKind.Unknown => GspBootstrapKind.Unknown,
+            _ => GspBootstrapKind.Unknown
+        };
     }
 }
 #endif
