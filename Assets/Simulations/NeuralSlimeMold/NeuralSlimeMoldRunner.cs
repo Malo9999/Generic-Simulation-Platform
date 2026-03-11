@@ -1557,19 +1557,7 @@ public sealed class NeuralSlimeMoldRunner
             }
         }
 
-        float combined;
-        switch (MaxAccumulatedConnectorContributors)
-        {
-            case 1:
-                combined = first;
-                break;
-            case 2:
-                combined = first + (second * 0.55f);
-                break;
-            default:
-                combined = first + (second * 0.55f) + (third * 0.30f);
-                break;
-        }
+        var combined = first + (second * 0.55f) + (third * 0.30f);
 
         return Mathf.Clamp01(combined);
     }

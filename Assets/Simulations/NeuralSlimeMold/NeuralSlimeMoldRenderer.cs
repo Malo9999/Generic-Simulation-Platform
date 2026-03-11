@@ -20,7 +20,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.35f;
     [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.3f;
     [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.88f;
-    [SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
+    //[SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
     [SerializeField] private bool emphasizePrimaryTubes = true;
     [SerializeField] private bool showExplorationBranches = true;
     [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.15f;
