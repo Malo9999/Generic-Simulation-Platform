@@ -65,6 +65,11 @@ public sealed class SimulationLauncherWindow : EditorWindow
             RefreshEntries();
         }
 
+        if (GUILayout.Button("Refresh Scene Usage", EditorStyles.toolbarButton, GUILayout.Width(140f)))
+        {
+            ResolveSceneUsageForVisibleEntries();
+        }
+
         if (GUILayout.Button("Open Bootstrap Registry", EditorStyles.toolbarButton, GUILayout.Width(160f)))
         {
             BootstrapRegistryWindow.Open();
@@ -75,17 +80,25 @@ public sealed class SimulationLauncherWindow : EditorWindow
 
     private static string BuildUsageSummary(BootstrapRegistryIndex.Entry entry)
     {
-        return $"{entry.SceneUsages.Count} scene(s), {entry.PrefabUsages.Count} prefab(s), source: {entry.ClassificationSource}";
+        var sceneSummary = entry.SceneUsageResolutionState == BootstrapRegistryIndex.UsageResolutionState.Resolved
+            ? $"{entry.SceneUsages.Count} scene(s)"
+            : "scene usage not resolved";
+        var prefabSummary = entry.PrefabUsageResolutionState == BootstrapRegistryIndex.UsageResolutionState.Resolved
+            ? $"{entry.PrefabUsages.Count} prefab(s)"
+            : "prefab usage not resolved";
+
+        return $"{sceneSummary}, {prefabSummary}, source: {entry.ClassificationSource}";
     }
 
     private void DrawSimulationRow(BootstrapRegistryIndex.Entry entry)
     {
-        var primaryScene = entry.PrimarySceneUsage;
-        var hasMultipleScenes = entry.SceneUsages.Count > 1;
+        var sceneUsageResolved = entry.SceneUsageResolutionState == BootstrapRegistryIndex.UsageResolutionState.Resolved;
+        var primaryScene = sceneUsageResolved ? entry.PrimarySceneUsage : null;
+        var hasMultipleScenes = sceneUsageResolved && entry.SceneUsages.Count > 1;
 
         EditorGUILayout.BeginVertical("box");
         EditorGUILayout.LabelField(entry.ClassName, EditorStyles.boldLabel);
-        EditorGUILayout.LabelField("Primary Scene", primaryScene?.AssetPath ?? "no scene found");
+        EditorGUILayout.LabelField("Primary Scene", primaryScene?.AssetPath ?? (sceneUsageResolved ? "no scene found" : "scene usage not resolved"));
         if (hasMultipleScenes)
         {
             EditorGUILayout.LabelField("Scenes", $"{entry.SceneUsages.Count} associated (using deterministic first-by-path rule)");
@@ -94,7 +107,11 @@ public sealed class SimulationLauncherWindow : EditorWindow
         EditorGUILayout.LabelField("Script Asset", entry.AssetPath);
         EditorGUILayout.LabelField("Usage", BuildUsageSummary(entry));
 
-        if (primaryScene == null)
+        if (!sceneUsageResolved)
+        {
+            EditorGUILayout.HelpBox("Scene usage not resolved. Click Refresh Scene Usage.", MessageType.None);
+        }
+        else if (primaryScene == null)
         {
             EditorGUILayout.HelpBox("No scene usage found for this simulation.", MessageType.None);
         }
@@ -124,8 +141,9 @@ public sealed class SimulationLauncherWindow : EditorWindow
         EditorGUILayout.EndVertical();
     }
 
-    private static bool OpenPrimaryScene(BootstrapRegistryIndex.Entry entry)
+    private bool OpenPrimaryScene(BootstrapRegistryIndex.Entry entry)
     {
+        EnsureSceneUsageResolved(entry);
         var primaryScene = entry.PrimarySceneUsage;
         if (primaryScene == null || string.IsNullOrWhiteSpace(primaryScene.AssetPath))
         {
@@ -158,7 +176,7 @@ public sealed class SimulationLauncherWindow : EditorWindow
             .FirstOrDefault();
     }
 
-    private static void SelectBootstrapInScene(BootstrapRegistryIndex.Entry entry, bool openSceneIfNeeded)
+    private void SelectBootstrapInScene(BootstrapRegistryIndex.Entry entry, bool openSceneIfNeeded)
     {
         if (openSceneIfNeeded && !OpenPrimaryScene(entry))
         {
@@ -197,10 +215,26 @@ public sealed class SimulationLauncherWindow : EditorWindow
     private void RefreshEntries()
     {
         simulationEntries.Clear();
-        simulationEntries.AddRange(BootstrapRegistryIndex.Build()
+        simulationEntries.AddRange(BootstrapRegistryIndex.Build(BootstrapRegistryIndex.BuildOptions.WithPrefabUsage())
             .Where(entry => entry.ResolvedKind == GspBootstrapKind.Simulation)
             .OrderBy(entry => entry.ClassName, StringComparer.Ordinal));
         Repaint();
+    }
+
+    private void ResolveSceneUsageForVisibleEntries()
+    {
+        BootstrapRegistryIndex.ResolveSceneUsage(simulationEntries);
+        Repaint();
+    }
+
+    private static void EnsureSceneUsageResolved(BootstrapRegistryIndex.Entry entry)
+    {
+        if (entry.SceneUsageResolutionState == BootstrapRegistryIndex.UsageResolutionState.Resolved)
+        {
+            return;
+        }
+
+        BootstrapRegistryIndex.ResolveSceneUsage(new List<BootstrapRegistryIndex.Entry> { entry });
     }
 }
 #endif
