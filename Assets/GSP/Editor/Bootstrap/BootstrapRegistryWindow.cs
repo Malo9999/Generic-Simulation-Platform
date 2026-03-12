@@ -78,6 +78,11 @@ public sealed class BootstrapRegistryWindow : EditorWindow
             RefreshEntries();
         }
 
+        if (GUILayout.Button("Resolve Scene Usage", EditorStyles.toolbarButton, GUILayout.Width(135f)))
+        {
+            ResolveSceneUsage();
+        }
+
         EditorGUILayout.EndHorizontal();
     }
 
@@ -91,10 +96,14 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         EditorGUILayout.LabelField("Heuristic Source", entry.ClassificationSource);
         EditorGUILayout.LabelField("Usage Status", entry.UsageStatus);
 
-        DrawUsageSection("Scene Usage", entry.SceneUsages);
-        DrawUsageSection("Prefab Usage", entry.PrefabUsages);
+        DrawUsageSection("Scene Usage", entry.SceneUsages, entry.SceneUsageResolutionState);
+        DrawUsageSection("Prefab Usage", entry.PrefabUsages, entry.PrefabUsageResolutionState);
 
-        if (entry.SceneUsages.Count == 0 && entry.PrefabUsages.Count == 0)
+        if (entry.SceneUsageResolutionState != BootstrapRegistryIndex.UsageResolutionState.Resolved)
+        {
+            EditorGUILayout.HelpBox("Scene usage not resolved. Click Resolve Scene Usage.", MessageType.None);
+        }
+        else if (entry.SceneUsages.Count == 0 && entry.PrefabUsages.Count == 0)
         {
             EditorGUILayout.HelpBox("No scene/prefab references found", MessageType.None);
         }
@@ -114,9 +123,18 @@ public sealed class BootstrapRegistryWindow : EditorWindow
         EditorGUILayout.EndVertical();
     }
 
-    private static void DrawUsageSection(string heading, List<BootstrapRegistryIndex.UsageRecord> usages)
+    private static void DrawUsageSection(
+        string heading,
+        List<BootstrapRegistryIndex.UsageRecord> usages,
+        BootstrapRegistryIndex.UsageResolutionState resolutionState)
     {
         EditorGUILayout.LabelField(heading, EditorStyles.miniBoldLabel);
+        if (resolutionState != BootstrapRegistryIndex.UsageResolutionState.Resolved)
+        {
+            EditorGUILayout.LabelField("-", "Not resolved");
+            return;
+        }
+
         if (usages.Count == 0)
         {
             EditorGUILayout.LabelField("-", "None");
@@ -139,7 +157,13 @@ public sealed class BootstrapRegistryWindow : EditorWindow
     private void RefreshEntries()
     {
         allEntries.Clear();
-        allEntries.AddRange(BootstrapRegistryIndex.Build());
+        allEntries.AddRange(BootstrapRegistryIndex.Build(BootstrapRegistryIndex.BuildOptions.WithPrefabUsage()));
+        Repaint();
+    }
+
+    private void ResolveSceneUsage()
+    {
+        BootstrapRegistryIndex.ResolveSceneUsage(allEntries);
         Repaint();
     }
 

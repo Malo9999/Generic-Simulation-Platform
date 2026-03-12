@@ -10,6 +10,45 @@ using UnityEngine.SceneManagement;
 
 internal static class BootstrapRegistryIndex
 {
+    internal enum UsageResolutionState
+    {
+        NotResolved,
+        Resolved
+    }
+
+    internal sealed class BuildOptions
+    {
+        public bool IncludePrefabUsage = true;
+        public bool IncludeSceneUsage;
+
+        public static BuildOptions MetadataOnly()
+        {
+            return new BuildOptions
+            {
+                IncludePrefabUsage = false,
+                IncludeSceneUsage = false
+            };
+        }
+
+        public static BuildOptions WithPrefabUsage()
+        {
+            return new BuildOptions
+            {
+                IncludePrefabUsage = true,
+                IncludeSceneUsage = false
+            };
+        }
+
+        public static BuildOptions FullUsage()
+        {
+            return new BuildOptions
+            {
+                IncludePrefabUsage = true,
+                IncludeSceneUsage = true
+            };
+        }
+    }
+
     internal sealed class Entry
     {
         public string ClassName;
@@ -21,6 +60,8 @@ internal static class BootstrapRegistryIndex
         public Type Type;
         public readonly List<UsageRecord> SceneUsages = new();
         public readonly List<UsageRecord> PrefabUsages = new();
+        public UsageResolutionState SceneUsageResolutionState = UsageResolutionState.NotResolved;
+        public UsageResolutionState PrefabUsageResolutionState = UsageResolutionState.NotResolved;
 
         public string UsageStatus
         {
@@ -28,6 +69,13 @@ internal static class BootstrapRegistryIndex
             {
                 var hasScene = SceneUsages.Count > 0;
                 var hasPrefab = PrefabUsages.Count > 0;
+
+                if (SceneUsageResolutionState == UsageResolutionState.NotResolved
+                    || PrefabUsageResolutionState == UsageResolutionState.NotResolved)
+                {
+                    return "Usage Not Fully Resolved";
+                }
+
                 if (hasScene && hasPrefab)
                 {
                     return "Used In Scene + Prefab";
@@ -61,12 +109,45 @@ internal static class BootstrapRegistryIndex
         public UnityEngine.Object Asset;
     }
 
-    internal static List<Entry> Build()
+    internal static List<Entry> Build(BuildOptions options = null)
     {
+        options ??= BuildOptions.WithPrefabUsage();
         var allEntries = DiscoverEntries();
-        ScanPrefabUsage(allEntries);
-        ScanSceneUsage(allEntries);
+
+        if (options.IncludePrefabUsage)
+        {
+            ScanPrefabUsage(allEntries);
+        }
+        else
+        {
+            MarkPrefabUsageUnresolved(allEntries);
+        }
+
+        if (options.IncludeSceneUsage)
+        {
+            ScanSceneUsage(allEntries);
+        }
+        else
+        {
+            MarkSceneUsageUnresolved(allEntries);
+        }
+
         return allEntries;
+    }
+
+    internal static void ResolveSceneUsage(List<Entry> entries)
+    {
+        if (entries == null)
+        {
+            return;
+        }
+
+        foreach (var entry in entries)
+        {
+            entry.SceneUsages.Clear();
+        }
+
+        ScanSceneUsage(entries);
     }
 
     private static List<Entry> DiscoverEntries()
@@ -123,6 +204,11 @@ internal static class BootstrapRegistryIndex
 
     private static void ScanPrefabUsage(List<Entry> entries)
     {
+        foreach (var entry in entries)
+        {
+            entry.PrefabUsages.Clear();
+        }
+
         var entriesByType = entries.ToDictionary(entry => entry.Type);
         var prefabGuids = AssetDatabase.FindAssets("t:Prefab", new[] { "Assets" });
         foreach (var guid in prefabGuids)
@@ -136,42 +222,79 @@ internal static class BootstrapRegistryIndex
 
             RegisterUsageForRoot(entriesByType, prefabRoot, prefabPath, isScene: false, prefabRoot);
         }
+
+        foreach (var entry in entries)
+        {
+            entry.PrefabUsageResolutionState = UsageResolutionState.Resolved;
+        }
     }
 
     private static void ScanSceneUsage(List<Entry> entries)
     {
         var entriesByType = entries.ToDictionary(entry => entry.Type);
         var sceneGuids = AssetDatabase.FindAssets("t:Scene", new[] { "Assets" });
-        foreach (var guid in sceneGuids)
+        var previousSetup = EditorSceneManager.GetSceneManagerSetup();
+
+        try
         {
-            var scenePath = AssetDatabase.GUIDToAssetPath(guid);
-            var existingScene = SceneManager.GetSceneByPath(scenePath);
-            var alreadyLoaded = existingScene.isLoaded;
-            var scene = existingScene;
+            foreach (var guid in sceneGuids)
+            {
+                var scenePath = AssetDatabase.GUIDToAssetPath(guid);
+                var existingScene = SceneManager.GetSceneByPath(scenePath);
+                var alreadyLoaded = existingScene.isLoaded;
+                var scene = existingScene;
 
-            try
-            {
-                if (!alreadyLoaded)
+                try
                 {
-                    scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
-                }
+                    if (!alreadyLoaded)
+                    {
+                        scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+                    }
 
-                foreach (var root in scene.GetRootGameObjects())
+                    foreach (var root in scene.GetRootGameObjects())
+                    {
+                        RegisterUsageForRoot(entriesByType, root, scenePath, isScene: true, AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
+                    }
+                }
+                catch (Exception ex)
                 {
-                    RegisterUsageForRoot(entriesByType, root, scenePath, isScene: true, AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
+                    Debug.LogError($"[BootstrapRegistry] Failed to scan scene usage for '{scenePath}'. Bootstrap registry data remains available. {ex}");
+                }
+                finally
+                {
+                    if (!alreadyLoaded && scene.isLoaded)
+                    {
+                        EditorSceneManager.CloseScene(scene, true);
+                    }
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[BootstrapRegistry] Failed to scan scene usage for '{scenePath}'. Bootstrap registry data remains available. {ex}");
-            }
-            finally
-            {
-                if (!alreadyLoaded && scene.isLoaded)
-                {
-                    EditorSceneManager.CloseScene(scene, true);
-                }
-            }
+        }
+        finally
+        {
+            EditorSceneManager.RestoreSceneManagerSetup(previousSetup);
+        }
+
+        foreach (var entry in entries)
+        {
+            entry.SceneUsageResolutionState = UsageResolutionState.Resolved;
+        }
+    }
+
+    private static void MarkSceneUsageUnresolved(List<Entry> entries)
+    {
+        foreach (var entry in entries)
+        {
+            entry.SceneUsages.Clear();
+            entry.SceneUsageResolutionState = UsageResolutionState.NotResolved;
+        }
+    }
+
+    private static void MarkPrefabUsageUnresolved(List<Entry> entries)
+    {
+        foreach (var entry in entries)
+        {
+            entry.PrefabUsages.Clear();
+            entry.PrefabUsageResolutionState = UsageResolutionState.NotResolved;
         }
     }
 
