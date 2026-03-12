@@ -16,8 +16,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField, Min(16)] private int gridHeight = 540;
     [SerializeField, Min(0f)] private float diffuseA = 1.0f;
     [SerializeField, Min(0f)] private float diffuseB = 0.5f;
-    [SerializeField, Min(0f)] private float feed = 0.0415f;
-    [SerializeField, Min(0f)] private float kill = 0.0595f;
+    [SerializeField, Min(0f)] private float feed = 0.0420f;
+    [SerializeField, Min(0f)] private float kill = 0.0600f;
     [SerializeField, Min(0.0001f)] private float dt = 1f;
     [SerializeField, Min(1)] private int stepsPerFrame = 1;
     [SerializeField] private bool wrapEdges = true;
@@ -29,26 +29,26 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     [Header("Parameter Drift")]
     [SerializeField] private bool enableParameterDrift = true;
-    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.0015f;
-    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.0010f;
-    [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 36f;
-    [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 47f;
+    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.0008f;
+    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.0005f;
+    [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 40f;
+    [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 55f;
     [SerializeField] private float killDriftPhaseOffsetRadians = 1.7f;
 
     [Header("Micro Reseeding")]
     [SerializeField] private bool enableMicroReseeding = true;
-    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 2.5f;
-    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 4.0f;
-    [SerializeField, Range(1, 8)] private int microReseedCount = 3;
-    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.028f;
-    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 1.0f;
+    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 4f;
+    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 7f;
+    [SerializeField, Range(1, 8)] private int microReseedCount = 2;
+    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.035f;
+    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.65f;
     [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.08f;
 
     [Header("Color Presentation")]
     [SerializeField] private ReactionDiffusionPalettePreset palettePreset = ReactionDiffusionPalettePreset.Ember;
     [SerializeField] private ReactionDiffusionColorMode colorMode = ReactionDiffusionColorMode.TwoColor;
-    [SerializeField, Min(0.1f)] private float overlayPulseLifetimeSeconds = 12f;
-    [SerializeField, Min(0f)] private float overlayPulseGlow = 3.0f;
+    [SerializeField, Min(0.1f)] private float overlayPulseLifetimeSeconds = 8f;
+    [SerializeField, Min(0f)] private float overlayPulseGlow = 2.0f;
 
     [Header("Display")]
     [SerializeField] private ReactionDiffusionDisplayMode displayMode = ReactionDiffusionDisplayMode.ChemicalB;
@@ -84,6 +84,59 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     private readonly float[] pulseRadii = new float[MaxOverlayPulses];
     private readonly float[] pulseStrengths = new float[MaxOverlayPulses];
     private int pulseWriteIndex;
+
+    private void Reset()
+    {
+        ApplyRecommendedLivingDefaults();
+    }
+
+    [ContextMenu("Apply Recommended Living Defaults")]
+    public void ApplyRecommendedLivingDefaults()
+    {
+        preset = ReactionDiffusionPreset.Chaos;
+
+        gridWidth = 960;
+        gridHeight = 540;
+        diffuseA = 1.0f;
+        diffuseB = 0.5f;
+        feed = 0.0420f;
+        kill = 0.0600f;
+        dt = 1f;
+        stepsPerFrame = 1;
+        wrapEdges = true;
+
+        seedMode = ReactionDiffusionSeedMode.RandomPatches;
+        randomSeed = 1337;
+        useRandomSeed = true;
+
+        enableParameterDrift = true;
+        feedDriftAmplitude = 0.0008f;
+        killDriftAmplitude = 0.0005f;
+        feedDriftPeriodSeconds = 40f;
+        killDriftPeriodSeconds = 55f;
+        killDriftPhaseOffsetRadians = 1.7f;
+
+        enableMicroReseeding = true;
+        microReseedStartDelaySeconds = 4f;
+        microReseedIntervalSeconds = 7f;
+        microReseedCount = 2;
+        microReseedRadius = 0.035f;
+        microReseedStrength = 0.65f;
+        microReseedBorderPadding = 0.08f;
+
+        palettePreset = ReactionDiffusionPalettePreset.Ember;
+        colorMode = ReactionDiffusionColorMode.TwoColor;
+        overlayPulseLifetimeSeconds = 8f;
+        overlayPulseGlow = 2.0f;
+
+        displayMode = ReactionDiffusionDisplayMode.ChemicalB;
+        simulationScale = 1f;
+        fitMainCameraToDisplay = true;
+        cameraPadding = 0f;
+
+        lastAppliedPreset = preset;
+        OnValidate();
+    }
 
     private void OnValidate()
     {
