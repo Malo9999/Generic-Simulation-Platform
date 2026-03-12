@@ -5,26 +5,27 @@ using UnityEngine.Rendering;
 public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 {
     private const int ThreadGroupSize = 8;
+    private const int MaxOverlayPulses = 8;
 
     [Header("Startup")]
     [SerializeField] private bool autoStart = true;
-    [SerializeField] private ReactionDiffusionPreset preset = ReactionDiffusionPreset.Default;
+    [SerializeField] private ReactionDiffusionPreset preset = ReactionDiffusionPreset.Chaos;
 
     [Header("Simulation")]
-    [SerializeField, Min(16)] private int gridWidth = 256;
-    [SerializeField, Min(16)] private int gridHeight = 256;
+    [SerializeField, Min(16)] private int gridWidth = 960;
+    [SerializeField, Min(16)] private int gridHeight = 540;
     [SerializeField, Min(0f)] private float diffuseA = 1.0f;
     [SerializeField, Min(0f)] private float diffuseB = 0.5f;
-    [SerializeField, Min(0f)] private float feed = 0.0367f;
-    [SerializeField, Min(0f)] private float kill = 0.0649f;
+    [SerializeField, Min(0f)] private float feed = 0.0415f;
+    [SerializeField, Min(0f)] private float kill = 0.0595f;
     [SerializeField, Min(0.0001f)] private float dt = 1f;
     [SerializeField, Min(1)] private int stepsPerFrame = 1;
     [SerializeField] private bool wrapEdges = true;
 
     [Header("Seeding")]
-    [SerializeField] private ReactionDiffusionSeedMode seedMode = ReactionDiffusionSeedMode.CenterSquare;
+    [SerializeField] private ReactionDiffusionSeedMode seedMode = ReactionDiffusionSeedMode.RandomPatches;
     [SerializeField] private int randomSeed = 1337;
-    [SerializeField] private bool useRandomSeed;
+    [SerializeField] private bool useRandomSeed = true;
 
     [Header("Parameter Drift")]
     [SerializeField] private bool enableParameterDrift = true;
@@ -36,12 +37,18 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     [Header("Micro Reseeding")]
     [SerializeField] private bool enableMicroReseeding = true;
-    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 5f;
-    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 9f;
-    [SerializeField, Range(1, 8)] private int microReseedCount = 2;
-    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.012f;
-    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.95f;
-    [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.10f;
+    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 2.5f;
+    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 4.0f;
+    [SerializeField, Range(1, 8)] private int microReseedCount = 3;
+    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.028f;
+    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 1.0f;
+    [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.08f;
+
+    [Header("Color Presentation")]
+    [SerializeField] private ReactionDiffusionPalettePreset palettePreset = ReactionDiffusionPalettePreset.Ember;
+    [SerializeField] private ReactionDiffusionColorMode colorMode = ReactionDiffusionColorMode.TwoColor;
+    [SerializeField, Min(0.1f)] private float overlayPulseLifetimeSeconds = 12f;
+    [SerializeField, Min(0f)] private float overlayPulseGlow = 3.0f;
 
     [Header("Display")]
     [SerializeField] private ReactionDiffusionDisplayMode displayMode = ReactionDiffusionDisplayMode.ChemicalB;
@@ -72,6 +79,12 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     private float nextMicroReseedTime;
     private int microReseedIndex;
 
+    private readonly Vector4[] pulseCenters = new Vector4[MaxOverlayPulses];
+    private readonly float[] pulseAges = new float[MaxOverlayPulses];
+    private readonly float[] pulseRadii = new float[MaxOverlayPulses];
+    private readonly float[] pulseStrengths = new float[MaxOverlayPulses];
+    private int pulseWriteIndex;
+
     private void OnValidate()
     {
         gridWidth = Mathf.Max(16, gridWidth);
@@ -92,6 +105,9 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         microReseedRadius = Mathf.Clamp(microReseedRadius, 0.002f, 0.08f);
         microReseedStrength = Mathf.Clamp01(microReseedStrength);
         microReseedBorderPadding = Mathf.Clamp(microReseedBorderPadding, 0f, 0.45f);
+
+        overlayPulseLifetimeSeconds = Mathf.Max(0.1f, overlayPulseLifetimeSeconds);
+        overlayPulseGlow = Mathf.Max(0f, overlayPulseGlow);
 
         if (preset != ReactionDiffusionPreset.Custom && preset != lastAppliedPreset)
         {
@@ -158,8 +174,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         simulationShader.SetFloat("_Feed", Mathf.Max(0f, runtimeFeed));
         simulationShader.SetFloat("_Kill", Mathf.Max(0f, runtimeKill));
-
-        // Stable timestep. Do not scale by frame time.
         simulationShader.SetFloat("_Dt", dt);
         simulationShader.SetInt("_WrapEdges", wrapEdges ? 1 : 0);
 
@@ -184,10 +198,19 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             nextMicroReseedTime = timeSeconds + microReseedIntervalSeconds;
         }
 
+        UpdatePulseAges(frameDt);
+
         if (displayMaterial != null)
         {
+            ApplyPaletteToMaterial();
             displayMaterial.SetTexture("_StateTex", read);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
+            displayMaterial.SetFloat("_OverlayPulseGlow", overlayPulseGlow);
+            displayMaterial.SetFloat("_ColorMode", (float)colorMode);
+            displayMaterial.SetVectorArray("_PulseCenters", pulseCenters);
+            displayMaterial.SetFloatArray("_PulseAges", pulseAges);
+            displayMaterial.SetFloatArray("_PulseRadii", pulseRadii);
+            displayMaterial.SetFloatArray("_PulseStrengths", pulseStrengths);
         }
     }
 
@@ -327,17 +350,21 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             name = "ReactionDiffusionDisplayRuntime"
         };
+
+        ApplyPaletteToMaterial();
         displayMaterial.SetTexture("_StateTex", stateA);
         displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
+        displayMaterial.SetFloat("_OverlayPulseGlow", overlayPulseGlow);
+        displayMaterial.SetFloat("_ColorMode", (float)colorMode);
         displayRenderer.sharedMaterial = displayMaterial;
 
         if (fitMainCameraToDisplay)
         {
-            FitMainCameraToQuad(width, height);
+            FitMainCameraToQuad(height);
         }
     }
 
-    private void FitMainCameraToQuad(float quadWidth, float quadHeight)
+    private void FitMainCameraToQuad(float quadHeight)
     {
         var cam = Camera.main;
         if (cam == null || !cam.orthographic)
@@ -371,7 +398,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         simulationShader.SetInt("_Height", gridHeight);
         simulationShader.SetInt("_SeedMode", (int)seedMode);
         simulationShader.SetInt("_Seed", activeSeed);
-
         simulationShader.SetTexture(initKernel, "_WriteState", stateA);
         simulationShader.SetTexture(initKernel, "_DisplayTex", displayTexture);
 
@@ -384,9 +410,19 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         nextMicroReseedTime = Time.timeSinceLevelLoad + microReseedStartDelaySeconds;
         microReseedIndex = 0;
+        pulseWriteIndex = 0;
+
+        for (var i = 0; i < MaxOverlayPulses; i++)
+        {
+            pulseCenters[i] = Vector4.zero;
+            pulseAges[i] = 0f;
+            pulseRadii[i] = 0f;
+            pulseStrengths[i] = 0f;
+        }
 
         if (displayMaterial != null)
         {
+            ApplyPaletteToMaterial();
             displayMaterial.SetTexture("_StateTex", stateA);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
         }
@@ -404,6 +440,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             simulationShader.SetFloat("_InjectStrength", microReseedStrength);
             simulationShader.Dispatch(injectKernel, groupsX, groupsY, 1);
 
+            AddOverlayPulse(center, microReseedRadius, microReseedStrength);
+
             var temp = read;
             read = write;
             write = temp;
@@ -411,10 +449,41 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         }
     }
 
+    private void AddOverlayPulse(Vector2 center, float radius, float strength)
+    {
+        pulseCenters[pulseWriteIndex] = new Vector4(center.x, center.y, 0f, 0f);
+        pulseAges[pulseWriteIndex] = 1f;
+        pulseRadii[pulseWriteIndex] = radius;
+        pulseStrengths[pulseWriteIndex] = strength;
+        pulseWriteIndex = (pulseWriteIndex + 1) % MaxOverlayPulses;
+    }
+
+    private void UpdatePulseAges(float frameDt)
+    {
+        var decay = frameDt / Mathf.Max(0.1f, overlayPulseLifetimeSeconds);
+        for (var i = 0; i < MaxOverlayPulses; i++)
+        {
+            pulseAges[i] = Mathf.Max(0f, pulseAges[i] - decay);
+        }
+    }
+
+    private void ApplyPaletteToMaterial()
+    {
+        if (displayMaterial == null)
+        {
+            return;
+        }
+
+        var palette = ReactionDiffusionPaletteCatalog.Get(palettePreset);
+        displayMaterial.SetColor("_BaseColor", palette.baseColor);
+        displayMaterial.SetColor("_ReseedColor", palette.reseedColor);
+        displayMaterial.SetColor("_HotspotColor", palette.hotspotColor);
+    }
+
     private Vector2 GetMicroReseedCenter(int index)
     {
-        var gx = Frac(0.173f + index * 0.61803398875f);
-        var gy = Frac(0.619f + index * 0.38196601125f);
+        var gx = Frac(0.173 + index * 0.61803398875);
+        var gy = Frac(0.619 + index * 0.38196601125);
 
         var min = microReseedBorderPadding;
         var max = 1f - microReseedBorderPadding;

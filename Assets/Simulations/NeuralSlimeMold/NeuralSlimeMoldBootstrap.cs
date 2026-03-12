@@ -15,8 +15,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(1)] private int agentCount = 600;
     [SerializeField] private Vector2 mapSize = new(64f, 64f);
     [SerializeField] private Vector2Int trailResolution = new(256, 256);
-    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.42f;
-    [SerializeField, Range(0f, 1f)] private float trailDiffusion = 0.19f;
+    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.18f;
+    [SerializeField, Range(0f, 1f)] private float trailDiffusion = 0.20f;
 
     [Header("Quality / Performance")]
     [SerializeField] private NeuralSlimeMoldQualityPreset qualityPreset = NeuralSlimeMoldQualityPreset.Medium;
@@ -31,24 +31,24 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private Vector2Int stressTrailResolution = new(384, 384);
 
     [Header("Agent Motion")]
-    [SerializeField] private float sensorAngleDegrees = 35f;
-    [SerializeField] private float sensorDistance = 1.4f;
-    [SerializeField] private float speed = 6.7f;
-    [SerializeField] private float turnRateDegrees = 180f;
-    [SerializeField, Min(0f)] private float depositAmount = 1.2f;
-    [SerializeField, Min(0f)] private float explorationTurnNoise = 0.08f;
+    [SerializeField] private float sensorAngleDegrees = 30f;
+    [SerializeField] private float sensorDistance = 1.6f;
+    [SerializeField] private float speed = 6.4f;
+    [SerializeField] private float turnRateDegrees = 110f;
+    [SerializeField, Min(0f)] private float depositAmount = 2.6f;
+    [SerializeField, Min(0f)] private float explorationTurnNoise = 0.05f;
 
     [Header("Food")]
     [SerializeField, Min(1)] private int foodNodeCount = 10;
-    [SerializeField, Min(1)] private int candidateFoodNodeCount = 14;
-    [SerializeField, Min(1)] private int maxSimultaneousActiveFood = 3;
-    [SerializeField, Min(0f)] private float foodRespawnDelay = 5f;
-    [SerializeField, Range(0f, 1f)] private float foodRespawnDistanceBias = 0.78f;
-    [SerializeField, Range(0f, 1f)] private float outerRingSpawnBias = 0.58f;
-    [SerializeField, Min(0f)] private float foodStrength = 1.1f;
-    [SerializeField, Min(0f)] private float foodCapacity = 2000f;
+    [SerializeField, Min(1)] private int candidateFoodNodeCount = 12;
+    [SerializeField, Min(1)] private int maxSimultaneousActiveFood = 2;
+    [SerializeField, Min(0f)] private float foodRespawnDelay = 6f;
+    [SerializeField, Range(0f, 1f)] private float foodRespawnDistanceBias = 0.65f;
+    [SerializeField, Range(0f, 1f)] private float outerRingSpawnBias = 0.45f;
+    [SerializeField, Min(0f)] private float foodStrength = 2.2f;
+    [SerializeField, Min(0f)] private float foodCapacity = 280f;
     [SerializeField, Min(0f)] private float consumeRadius = 6f;
-    [SerializeField, Min(0f)] private float consumeRate = 0.25f;
+    [SerializeField, Min(0f)] private float consumeRate = 0.35f;
     [SerializeField] private bool spawnFromSeed = true;
     [SerializeField] private NeuralFoodNodeConfig[] manualFoodConfigs;
 
@@ -58,8 +58,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0.25f)] private float colonyHubRadius = 4.5f;
     [SerializeField, Min(0f)] private float returnToHubWeight = 1.35f;
     [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.68f;
-    [SerializeField, Min(0f)] private float returnDepositBoost = 1.4f;
-    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 2.2f;
+    [SerializeField, Min(0f)] private float returnDepositBoost = 2.2f;
+    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 4.5f;
     [SerializeField, Min(0f)] private float hubInfluenceRadius = 9f;
 
     [Header("Loop Pruning")]
@@ -68,9 +68,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float nonUsefulLoopCurvatureThreshold = 0.085f;
 
     [Header("Network Maintenance")]
-    [SerializeField, Min(0f)] private float bridgeReinforcementWeight = 0.42f;
+    [SerializeField, Min(0f)] private float bridgeReinforcementWeight = 0.5f;
     [SerializeField, Min(0f)] private float hubOrbitSuppression = 1.2f;
-    [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 0.72f;
+    [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 0.85f;
     [SerializeField, Min(0.1f)] private float connectorSearchRadius = 6f;
     [SerializeField, Min(0f)] private float connectorSteerWeight = 1.6f;
     [SerializeField, Min(0f)] private float hubTangentialPenalty = 1.4f;
@@ -81,8 +81,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float branchSpawnChance = 0.18f;
     [SerializeField, Min(0f)] private float branchSpawnTrailThreshold = 0.075f;
     [SerializeField, Min(0f)] private float branchPromotionThreshold = 0.13f;
-    [SerializeField, Min(0f)] private float branchRetractionBoost = 0.72f;
-    [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.38f;
+    [SerializeField, Min(0f)] private float branchRetractionBoost = 1.05f;
+    [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.65f;
     [SerializeField, Min(0f)] private float duplicateTubeSuppressionRadius = 1.35f;
 
     [Header("World Obstacles")]
@@ -103,8 +103,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private bool showExplorationBranches = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField] private bool showActivityFocus = false;
-    [SerializeField, Min(0.1f)] private float tubeExposure = 1.28f;
-    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.24f;
+    [SerializeField, Min(0.1f)] private float tubeExposure = 1.15f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.4f;
     [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.62f;
 
     [Header("Camera Framing")]

@@ -6,13 +6,9 @@ public sealed class NeuralFieldGrid
     private readonly int height;
     private readonly float[] field;
     private readonly float[] scratch;
-    private readonly float[] veinField;
-    private readonly float[] veinScratch;
-    private readonly float[] combinedField;
     private bool[] blockedMask;
     private readonly Vector2 worldSize;
     private readonly bool wrapEdges;
-    private bool combinedDirty = true;
 
     private const float DiagonalWeight = 0.70710678f;
     private const float WeakSignalPruneThreshold = 0.015f;
@@ -23,12 +19,6 @@ public sealed class NeuralFieldGrid
     private const float BorderBleedFactor = 0.82f;
     private const int BorderBleedThickness = 2;
 
-    private const float VeinSampleWeight = 1.45f;
-    private const float VeinDiffusionScale = 0.35f;
-    private const float VeinDecayScale = 0.18f;
-    private const float VeinPreserveThreshold = 0.12f;
-    private const float VeinPreserveBoost = 0.14f;
-
     public NeuralFieldGrid(int width, int height, Vector2 worldSize, bool wrapEdges)
     {
         this.width = Mathf.Max(4, width);
@@ -37,22 +27,12 @@ public sealed class NeuralFieldGrid
         this.wrapEdges = wrapEdges;
         field = new float[this.width * this.height];
         scratch = new float[field.Length];
-        veinField = new float[field.Length];
-        veinScratch = new float[field.Length];
-        combinedField = new float[field.Length];
     }
 
     public int Width => width;
     public int Height => height;
     public Vector2 WorldSize => worldSize;
-    public float[] Raw
-    {
-        get
-        {
-            RebuildCombinedField();
-            return combinedField;
-        }
-    }
+    public float[] Raw => field;
 
     public void Clear(float value = 0f)
     {
@@ -60,11 +40,7 @@ public sealed class NeuralFieldGrid
         {
             field[i] = value;
             scratch[i] = value;
-            veinField[i] = 0f;
-            veinScratch[i] = 0f;
-            combinedField[i] = value;
         }
-        combinedDirty = false;
     }
 
     public void Deposit(Vector2 worldPosition, float amount)
@@ -81,7 +57,6 @@ public sealed class NeuralFieldGrid
         }
 
         field[(y * width) + x] += amount;
-        combinedDirty = true;
     }
 
     public void DepositKernel(Vector2 worldPosition, float amount)
@@ -93,52 +68,19 @@ public sealed class NeuralFieldGrid
 
         WorldToGrid(worldPosition, out var x, out var y);
 
-        AddAt(field, x, y, amount * 1.0f);
-        AddAt(field, x - 1, y, amount * 0.45f);
-        AddAt(field, x + 1, y, amount * 0.45f);
-        AddAt(field, x, y - 1, amount * 0.45f);
-        AddAt(field, x, y + 1, amount * 0.45f);
+        AddAt(x, y, amount * 1.0f);
+        AddAt(x - 1, y, amount * 0.45f);
+        AddAt(x + 1, y, amount * 0.45f);
+        AddAt(x, y - 1, amount * 0.45f);
+        AddAt(x, y + 1, amount * 0.45f);
 
-        AddAt(field, x - 1, y - 1, amount * 0.20f);
-        AddAt(field, x + 1, y - 1, amount * 0.20f);
-        AddAt(field, x - 1, y + 1, amount * 0.20f);
-        AddAt(field, x + 1, y + 1, amount * 0.20f);
-        combinedDirty = true;
-    }
-
-    public void DepositVeinKernel(Vector2 worldPosition, float amount)
-    {
-        if (amount <= 0f)
-        {
-            return;
-        }
-
-        WorldToGrid(worldPosition, out var x, out var y);
-
-        AddAt(veinField, x, y, amount * 1.0f);
-        AddAt(veinField, x - 1, y, amount * 0.65f);
-        AddAt(veinField, x + 1, y, amount * 0.65f);
-        AddAt(veinField, x, y - 1, amount * 0.65f);
-        AddAt(veinField, x, y + 1, amount * 0.65f);
-
-        AddAt(veinField, x - 1, y - 1, amount * 0.35f);
-        AddAt(veinField, x + 1, y - 1, amount * 0.35f);
-        AddAt(veinField, x - 1, y + 1, amount * 0.35f);
-        AddAt(veinField, x + 1, y + 1, amount * 0.35f);
-        combinedDirty = true;
+        AddAt(x - 1, y - 1, amount * 0.20f);
+        AddAt(x + 1, y - 1, amount * 0.20f);
+        AddAt(x - 1, y + 1, amount * 0.20f);
+        AddAt(x + 1, y + 1, amount * 0.20f);
     }
 
     public void DepositDisc(Vector2 worldPosition, float radiusWorld, float amount)
-    {
-        DepositDiscTo(field, worldPosition, radiusWorld, amount, 1f);
-    }
-
-    public void DepositVeinDisc(Vector2 worldPosition, float radiusWorld, float amount)
-    {
-        DepositDiscTo(veinField, worldPosition, radiusWorld, amount, 1.15f);
-    }
-
-    private void DepositDiscTo(float[] target, Vector2 worldPosition, float radiusWorld, float amount, float softnessScale)
     {
         if (amount <= 0f || radiusWorld <= 0f)
         {
@@ -169,15 +111,13 @@ public sealed class NeuralFieldGrid
                     continue;
                 }
 
-                var weight = Mathf.Pow(1f - d2, softnessScale);
+                var weight = 1f - d2;
                 if (!IsBlockedCell(x, y))
                 {
-                    target[(y * width) + x] += amount * weight;
+                    field[(y * width) + x] += amount * weight;
                 }
             }
         }
-
-        combinedDirty = true;
     }
 
     public void ScrubAt(Vector2 worldPosition, float amount)
@@ -190,20 +130,9 @@ public sealed class NeuralFieldGrid
         WorldToGrid(worldPosition, out var x, out var y);
         var idx = (y * width) + x;
         field[idx] = Mathf.Max(0f, field[idx] * (1f - Mathf.Clamp01(amount)));
-        combinedDirty = true;
     }
 
     public void ScrubDisc(Vector2 worldPosition, float radiusWorld, float amount)
-    {
-        ScrubDiscOn(field, worldPosition, radiusWorld, amount);
-    }
-
-    public void ScrubVeinDisc(Vector2 worldPosition, float radiusWorld, float amount)
-    {
-        ScrubDiscOn(veinField, worldPosition, radiusWorld, amount);
-    }
-
-    private void ScrubDiscOn(float[] target, Vector2 worldPosition, float radiusWorld, float amount)
     {
         if (amount <= 0f || radiusWorld <= 0f)
         {
@@ -238,11 +167,9 @@ public sealed class NeuralFieldGrid
 
                 var weight = 1f - d2;
                 var idx = (y * width) + x;
-                target[idx] = Mathf.Max(0f, target[idx] * (1f - (scrub * weight)));
+                field[idx] = Mathf.Max(0f, field[idx] * (1f - (scrub * weight)));
             }
         }
-
-        combinedDirty = true;
     }
 
     public float SampleBilinear(Vector2 worldPosition)
@@ -259,10 +186,10 @@ public sealed class NeuralFieldGrid
         var tx = x - x0;
         var ty = y - y0;
 
-        var v00 = SampleCombinedAtIndex((y0 * width) + x0);
-        var v10 = SampleCombinedAtIndex((y0 * width) + x1);
-        var v01 = SampleCombinedAtIndex((y1 * width) + x0);
-        var v11 = SampleCombinedAtIndex((y1 * width) + x1);
+        var v00 = field[(y0 * width) + x0];
+        var v10 = field[(y0 * width) + x1];
+        var v01 = field[(y1 * width) + x0];
+        var v11 = field[(y1 * width) + x1];
 
         var a = Mathf.Lerp(v00, v10, tx);
         var b = Mathf.Lerp(v01, v11, tx);
@@ -288,13 +215,6 @@ public sealed class NeuralFieldGrid
         float trunkTrailThreshold = StrongSignalPreserveThreshold,
         float trunkStabilityBoost = 0f,
         float duplicateSuppressionRadiusWorld = 0f)
-    {
-        StepLayer(field, scratch, diffusion, decayPerSecond, dt, trunkTrailThreshold, trunkStabilityBoost, duplicateSuppressionRadiusWorld, StrongSignalPreserveThreshold, StrongSignalPreserveBoost);
-        StepLayer(veinField, veinScratch, diffusion * VeinDiffusionScale, decayPerSecond * VeinDecayScale, dt, Mathf.Max(trunkTrailThreshold, VeinPreserveThreshold), trunkStabilityBoost + 0.25f, duplicateSuppressionRadiusWorld * 0.75f, VeinPreserveThreshold, VeinPreserveBoost);
-        combinedDirty = true;
-    }
-
-    private void StepLayer(float[] source, float[] target, float diffusion, float decayPerSecond, float dt, float trunkTrailThreshold, float trunkStabilityBoost, float duplicateSuppressionRadiusWorld, float preserveThreshold, float preserveBoost)
     {
         var kDiff = Mathf.Clamp01(diffusion);
         var clampedDecayPerSecond = Mathf.Max(0f, decayPerSecond);
@@ -322,21 +242,21 @@ public sealed class NeuralFieldGrid
 
         if (kDiff <= 0f && !hasSuppression && !hasStability)
         {
-            for (var i = 0; i < source.Length; i++)
+            for (var i = 0; i < field.Length; i++)
             {
                 if (IsBlockedIndex(i))
                 {
-                    source[i] = 0f;
+                    field[i] = 0f;
                     continue;
                 }
 
-                var value = source[i];
+                var value = field[i];
                 if (value < WeakSignalPruneThreshold)
                 {
                     value *= Mathf.Clamp01(1f - (WeakSignalExtraDecay * clampedDt));
                 }
 
-                source[i] = Mathf.Max(0f, value * baseDecayFactor);
+                field[i] = Mathf.Max(0f, value * baseDecayFactor);
             }
 
             return;
@@ -353,27 +273,30 @@ public sealed class NeuralFieldGrid
                 var xRight = x == width - 1 ? (wrapEdges ? 0 : width - 1) : x + 1;
 
                 var idx = (y * width) + x;
-                var c = source[idx];
+
+                var c = field[idx];
 
                 if (IsBlockedIndex(idx))
                 {
-                    target[idx] = 0f;
+                    scratch[idx] = 0f;
                     continue;
                 }
 
-                var n = source[(yUp * width) + x];
-                var s = source[(yDown * width) + x];
-                var w = source[(y * width) + xLeft];
-                var e = source[(y * width) + xRight];
-                var nw = source[(yUp * width) + xLeft];
-                var ne = source[(yUp * width) + xRight];
-                var sw = source[(yDown * width) + xLeft];
-                var se = source[(yDown * width) + xRight];
+                var n = field[(yUp * width) + x];
+                var s = field[(yDown * width) + x];
+                var w = field[(y * width) + xLeft];
+                var e = field[(y * width) + xRight];
+
+                var nw = field[(yUp * width) + xLeft];
+                var ne = field[(yUp * width) + xRight];
+                var sw = field[(yDown * width) + xLeft];
+                var se = field[(yDown * width) + xRight];
 
                 n = IsBlockedCell(x, yUp) ? c : n;
                 s = IsBlockedCell(x, yDown) ? c : s;
                 w = IsBlockedCell(xLeft, y) ? c : w;
                 e = IsBlockedCell(xRight, y) ? c : e;
+
                 nw = IsBlockedCell(xLeft, yUp) ? c : nw;
                 ne = IsBlockedCell(xRight, yUp) ? c : ne;
                 sw = IsBlockedCell(xLeft, yDown) ? c : sw;
@@ -385,9 +308,9 @@ public sealed class NeuralFieldGrid
 
                 var diffused = Mathf.Lerp(c, neighborAvg, kDiff);
 
-                if (c >= preserveThreshold)
+                if (c >= StrongSignalPreserveThreshold)
                 {
-                    diffused = Mathf.Lerp(diffused, c, preserveBoost);
+                    diffused = Mathf.Lerp(diffused, c, StrongSignalPreserveBoost);
                 }
 
                 var decayFactor = baseDecayFactor;
@@ -405,7 +328,7 @@ public sealed class NeuralFieldGrid
 
                 if (suppressionRadius > 0f && diffused < trunkThreshold)
                 {
-                    var nearbyStrong = SampleNearbyStrongest(source, x, y, suppressionRadiusX, suppressionRadiusY);
+                    var nearbyStrong = SampleNearbyStrongest(x, y, suppressionRadiusX, suppressionRadiusY);
                     if (nearbyStrong > diffused)
                     {
                         var duplicatePressure = Mathf.Clamp01((nearbyStrong - diffused) / Mathf.Max(0.0001f, trunkThreshold));
@@ -419,13 +342,13 @@ public sealed class NeuralFieldGrid
                     diffused *= BorderBleedFactor;
                 }
 
-                target[idx] = Mathf.Max(0f, diffused * decayFactor);
+                scratch[idx] = Mathf.Max(0f, diffused * decayFactor);
             }
         }
 
-        for (var i = 0; i < source.Length; i++)
+        for (var i = 0; i < field.Length; i++)
         {
-            source[i] = target[i];
+            field[i] = scratch[i];
         }
     }
 
@@ -445,13 +368,8 @@ public sealed class NeuralFieldGrid
             {
                 field[i] = 0f;
                 scratch[i] = 0f;
-                veinField[i] = 0f;
-                veinScratch[i] = 0f;
-                combinedField[i] = 0f;
             }
         }
-
-        combinedDirty = true;
     }
 
     public int WorldToIndex(Vector2 worldPosition)
@@ -471,21 +389,24 @@ public sealed class NeuralFieldGrid
         return new Vector2(worldX, worldY);
     }
 
-    private float SampleNearbyStrongest(float[] source, int x, int y, int radiusX, int radiusY)
+    private float SampleNearbyStrongest(int x, int y, int radiusX, int radiusY)
     {
         var maxTrail = 0f;
-        maxTrail = Mathf.Max(maxTrail, source[(y * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
-        maxTrail = Mathf.Max(maxTrail, source[(y * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
-        maxTrail = Mathf.Max(maxTrail, source[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + x]);
-        maxTrail = Mathf.Max(maxTrail, source[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + x]);
-        maxTrail = Mathf.Max(maxTrail, source[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
-        maxTrail = Mathf.Max(maxTrail, source[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
-        maxTrail = Mathf.Max(maxTrail, source[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
-        maxTrail = Mathf.Max(maxTrail, source[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
+
+        maxTrail = Mathf.Max(maxTrail, field[(y * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(y * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + x]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + x]);
+
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y - radiusY, 0, height - 1) * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + Mathf.Clamp(x - radiusX, 0, width - 1)]);
+        maxTrail = Mathf.Max(maxTrail, field[(Mathf.Clamp(y + radiusY, 0, height - 1) * width) + Mathf.Clamp(x + radiusX, 0, width - 1)]);
+
         return maxTrail;
     }
 
-    private void AddAt(float[] target, int x, int y, float amount)
+    private void AddAt(int x, int y, float amount)
     {
         if (amount <= 0f)
         {
@@ -494,31 +415,7 @@ public sealed class NeuralFieldGrid
 
         x = Mathf.Clamp(x, 0, width - 1);
         y = Mathf.Clamp(y, 0, height - 1);
-        if (IsBlockedCell(x, y))
-        {
-            return;
-        }
-        target[(y * width) + x] += amount;
-    }
-
-    private float SampleCombinedAtIndex(int idx)
-    {
-        return field[idx] + (veinField[idx] * VeinSampleWeight);
-    }
-
-    private void RebuildCombinedField()
-    {
-        if (!combinedDirty)
-        {
-            return;
-        }
-
-        for (var i = 0; i < combinedField.Length; i++)
-        {
-            combinedField[i] = SampleCombinedAtIndex(i);
-        }
-
-        combinedDirty = false;
+        field[(y * width) + x] += amount;
     }
 
     private bool IsBlockedCell(int x, int y)

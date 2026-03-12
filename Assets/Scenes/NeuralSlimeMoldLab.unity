@@ -1218,12 +1218,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   autoStart: 1
-  seed: 12345
+  seed: 1337
   agentCount: 600
   mapSize: {x: 64, y: 64}
   trailResolution: {x: 256, y: 256}
-  trailDecayPerSecond: 0.65
-  trailDiffusion: 0.18
+  trailDecayPerSecond: 0.12
+  trailDiffusion: 0.22
   qualityPreset: 1
   overridePerformanceOptions: 0
   overrideFieldStepInterval: 1
@@ -1232,22 +1232,22 @@ MonoBehaviour:
   useStressTestProfile: 0
   stressAgentCount: 2000
   stressTrailResolution: {x: 384, y: 384}
-  sensorAngleDegrees: 35
-  sensorDistance: 1.2
+  sensorAngleDegrees: 30
+  sensorDistance: 1.6
   speed: 6.7
-  turnRateDegrees: 180
-  depositAmount: 1
+  turnRateDegrees: 95
+  depositAmount: 2.4
   explorationTurnNoise: 0.06
   foodNodeCount: 10
   candidateFoodNodeCount: 12
-  maxSimultaneousActiveFood: 3
-  foodRespawnDelay: 6
+  maxSimultaneousActiveFood: 2
+  foodRespawnDelay: 4
   foodRespawnDistanceBias: 0.65
   outerRingSpawnBias: 0.45
-  foodStrength: 1.15
-  foodCapacity: 200
+  foodStrength: 2.2
+  foodCapacity: 280
   consumeRadius: 6
-  consumeRate: 0.25
+  consumeRate: 0.35
   spawnFromSeed: 1
   manualFoodConfigs: []
   useColonyHub: 1
@@ -1261,20 +1261,20 @@ MonoBehaviour:
   nonUsefulLoopPruneStrength: 0.22
   nonUsefulLoopTrailThreshold: 0.13
   nonUsefulLoopCurvatureThreshold: 0.085
-  bridgeReinforcementWeight: 0.3
-  hubOrbitSuppression: 0.5
-  staleCorridorDecayBoost: 0.5
+  bridgeReinforcementWeight: 0.8
+  hubOrbitSuppression: 2.2
+  staleCorridorDecayBoost: 1.8
   connectorSearchRadius: 6
-  connectorSteerWeight: 1.65
+  connectorSteerWeight: 2
   hubTangentialPenalty: 1.4
-  connectorCorridorWidth: 2.8
+  connectorCorridorWidth: 3.2
   returnOrbitDepositPenalty: 0.18
-  branchSpawnChance: 0.18
+  branchSpawnChance: 0.08
   branchSpawnTrailThreshold: 0.075
   branchPromotionThreshold: 0.13
-  branchRetractionBoost: 0.72
-  trunkStabilityBoost: 0.25
-  duplicateTubeSuppressionRadius: 1.35
+  branchRetractionBoost: 1.6
+  trunkStabilityBoost: 1.2
+  duplicateTubeSuppressionRadius: 2.2
   useWorldObstacles: 0
   worldObstacles: []
   corridorBands: []
@@ -1288,9 +1288,9 @@ MonoBehaviour:
   showExplorationBranches: 1
   showFoodStateMarkers: 1
   showActivityFocus: 0
-  tubeExposure: 1.15
-  staleTrailFade: 0.4
-  branchAlphaBias: 0.62
+  tubeExposure: 1.55
+  staleTrailFade: 0.18
+  branchAlphaBias: 0.38
   autoFrameCamera: 1
   adaptiveCameraFraming: 0
   cameraPadding: 1.15
