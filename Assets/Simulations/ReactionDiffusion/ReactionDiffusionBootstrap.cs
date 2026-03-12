@@ -18,7 +18,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float feed = 0.0367f;
     [SerializeField, Min(0f)] private float kill = 0.0649f;
     [SerializeField, Min(0.0001f)] private float dt = 1f;
-    [SerializeField, Min(1)] private int stepsPerFrame = 6;
+    [SerializeField, Min(1)] private int stepsPerFrame = 1;
     [SerializeField] private bool wrapEdges = true;
 
     [Header("Seeding")]
@@ -26,11 +26,28 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField] private int randomSeed = 1337;
     [SerializeField] private bool useRandomSeed;
 
+    [Header("Parameter Drift")]
+    [SerializeField] private bool enableParameterDrift = true;
+    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.0015f;
+    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.0010f;
+    [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 36f;
+    [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 47f;
+    [SerializeField] private float killDriftPhaseOffsetRadians = 1.7f;
+
+    [Header("Micro Reseeding")]
+    [SerializeField] private bool enableMicroReseeding = true;
+    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 5f;
+    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 9f;
+    [SerializeField, Range(1, 8)] private int microReseedCount = 2;
+    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.012f;
+    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.95f;
+    [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.10f;
+
     [Header("Display")]
     [SerializeField] private ReactionDiffusionDisplayMode displayMode = ReactionDiffusionDisplayMode.ChemicalB;
-    [SerializeField, Min(0.1f)] private float simulationScale = 18f;
+    [SerializeField, Min(0.1f)] private float simulationScale = 1f;
     [SerializeField] private bool fitMainCameraToDisplay = true;
-    [SerializeField, Min(0f)] private float cameraPadding = 0.25f;
+    [SerializeField, Min(0f)] private float cameraPadding = 0f;
     [SerializeField] private ComputeShader simulationShader;
     [SerializeField] private Shader displayShader;
 
@@ -42,6 +59,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     private int initKernel = -1;
     private int stepKernel = -1;
+    private int injectKernel = -1;
+
     private bool initialized;
     private bool running;
     private bool externallyDriven;
@@ -49,6 +68,9 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     private int allocatedWidth;
     private int allocatedHeight;
     private ReactionDiffusionPreset lastAppliedPreset = (ReactionDiffusionPreset)(-1);
+
+    private float nextMicroReseedTime;
+    private int microReseedIndex;
 
     private void OnValidate()
     {
@@ -58,6 +80,18 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         stepsPerFrame = Mathf.Max(1, stepsPerFrame);
         simulationScale = Mathf.Max(0.1f, simulationScale);
         cameraPadding = Mathf.Max(0f, cameraPadding);
+
+        feedDriftAmplitude = Mathf.Max(0f, feedDriftAmplitude);
+        killDriftAmplitude = Mathf.Max(0f, killDriftAmplitude);
+        feedDriftPeriodSeconds = Mathf.Max(1f, feedDriftPeriodSeconds);
+        killDriftPeriodSeconds = Mathf.Max(1f, killDriftPeriodSeconds);
+
+        microReseedStartDelaySeconds = Mathf.Max(0f, microReseedStartDelaySeconds);
+        microReseedIntervalSeconds = Mathf.Max(0.25f, microReseedIntervalSeconds);
+        microReseedCount = Mathf.Clamp(microReseedCount, 1, 8);
+        microReseedRadius = Mathf.Clamp(microReseedRadius, 0.002f, 0.08f);
+        microReseedStrength = Mathf.Clamp01(microReseedStrength);
+        microReseedBorderPadding = Mathf.Clamp(microReseedBorderPadding, 0f, 0.45f);
 
         if (preset != ReactionDiffusionPreset.Custom && preset != lastAppliedPreset)
         {
@@ -108,13 +142,30 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         simulationShader.SetInt("_Height", gridHeight);
         simulationShader.SetFloat("_DiffuseA", diffuseA);
         simulationShader.SetFloat("_DiffuseB", diffuseB);
-        simulationShader.SetFloat("_Feed", feed);
-        simulationShader.SetFloat("_Kill", kill);
+
+        var timeSeconds = Time.timeSinceLevelLoad;
+        var runtimeFeed = feed;
+        var runtimeKill = kill;
+
+        if (enableParameterDrift)
+        {
+            var feedOmega = (Mathf.PI * 2f) / Mathf.Max(1f, feedDriftPeriodSeconds);
+            var killOmega = (Mathf.PI * 2f) / Mathf.Max(1f, killDriftPeriodSeconds);
+
+            runtimeFeed += Mathf.Sin(timeSeconds * feedOmega) * feedDriftAmplitude;
+            runtimeKill += Mathf.Sin(timeSeconds * killOmega + killDriftPhaseOffsetRadians) * killDriftAmplitude;
+        }
+
+        simulationShader.SetFloat("_Feed", Mathf.Max(0f, runtimeFeed));
+        simulationShader.SetFloat("_Kill", Mathf.Max(0f, runtimeKill));
+
+        // Stable timestep. Do not scale by frame time.
         simulationShader.SetFloat("_Dt", dt);
         simulationShader.SetInt("_WrapEdges", wrapEdges ? 1 : 0);
 
         var groupsX = Mathf.CeilToInt(gridWidth / (float)ThreadGroupSize);
         var groupsY = Mathf.CeilToInt(gridHeight / (float)ThreadGroupSize);
+
         for (var i = 0; i < stepsPerFrame; i++)
         {
             simulationShader.SetTexture(stepKernel, "_ReadState", read);
@@ -125,6 +176,12 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             read = write;
             write = temp;
             useStateAAsRead = !useStateAAsRead;
+        }
+
+        if (enableMicroReseeding && timeSeconds >= nextMicroReseedTime)
+        {
+            PerformMicroReseed(groupsX, groupsY, ref read, ref write);
+            nextMicroReseedTime = timeSeconds + microReseedIntervalSeconds;
         }
 
         if (displayMaterial != null)
@@ -214,6 +271,11 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         if (stepKernel < 0)
         {
             stepKernel = simulationShader.FindKernel("Step");
+        }
+
+        if (injectKernel < 0)
+        {
+            injectKernel = simulationShader.FindKernel("Inject");
         }
 
         return true;
@@ -320,11 +382,51 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         Graphics.Blit(stateA, stateB);
         useStateAAsRead = true;
 
+        nextMicroReseedTime = Time.timeSinceLevelLoad + microReseedStartDelaySeconds;
+        microReseedIndex = 0;
+
         if (displayMaterial != null)
         {
             displayMaterial.SetTexture("_StateTex", stateA);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
         }
+    }
+
+    private void PerformMicroReseed(int groupsX, int groupsY, ref RenderTexture read, ref RenderTexture write)
+    {
+        for (var i = 0; i < microReseedCount; i++)
+        {
+            var center = GetMicroReseedCenter(microReseedIndex++);
+            simulationShader.SetTexture(injectKernel, "_ReadState", read);
+            simulationShader.SetTexture(injectKernel, "_WriteState", write);
+            simulationShader.SetVector("_InjectCenter", new Vector4(center.x, center.y, 0f, 0f));
+            simulationShader.SetFloat("_InjectRadius", microReseedRadius);
+            simulationShader.SetFloat("_InjectStrength", microReseedStrength);
+            simulationShader.Dispatch(injectKernel, groupsX, groupsY, 1);
+
+            var temp = read;
+            read = write;
+            write = temp;
+            useStateAAsRead = !useStateAAsRead;
+        }
+    }
+
+    private Vector2 GetMicroReseedCenter(int index)
+    {
+        var gx = Frac(0.173f + index * 0.61803398875f);
+        var gy = Frac(0.619f + index * 0.38196601125f);
+
+        var min = microReseedBorderPadding;
+        var max = 1f - microReseedBorderPadding;
+
+        return new Vector2(
+            Mathf.Lerp(min, max, gx),
+            Mathf.Lerp(min, max, gy));
+    }
+
+    private static float Frac(double value)
+    {
+        return (float)(value - System.Math.Floor(value));
     }
 
     private static RenderTexture CreateStateTexture(int width, int height, string textureName)

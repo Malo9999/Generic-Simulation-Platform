@@ -8,7 +8,7 @@ Shader "GSP/ReactionDiffusion/Display"
 
     SubShader
     {
-        Tags { "RenderType"="Opaque" }
+        Tags { "RenderType"="Opaque" "Queue"="Geometry" }
         Cull Off
         ZWrite Off
         ZTest Always
@@ -44,40 +44,33 @@ Shader "GSP/ReactionDiffusion/Display"
                 return o;
             }
 
-            float sampleB(float2 uv)
+            float GetSignal(float2 uv)
             {
                 float2 ab = tex2D(_StateTex, uv).xy;
-
-                if (_DisplayMode < 0.5)
-                    return ab.y;
-
-                return abs(ab.x - ab.y);
+                return (_DisplayMode < 0.5) ? ab.y : abs(ab.x - ab.y);
             }
 
             fixed4 frag(v2f i) : SV_Target
             {
                 float2 t = _StateTex_TexelSize.xy;
 
-                float c = sampleB(i.uv);
+                float c = GetSignal(i.uv);
+                float l = GetSignal(i.uv + float2(-t.x, 0.0));
+                float r = GetSignal(i.uv + float2( t.x, 0.0));
+                float d = GetSignal(i.uv + float2(0.0, -t.y));
+                float u = GetSignal(i.uv + float2(0.0,  t.y));
 
-                float l = sampleB(i.uv + float2(-t.x,0));
-                float r = sampleB(i.uv + float2(t.x,0));
-                float u = sampleB(i.uv + float2(0,t.y));
-                float d = sampleB(i.uv + float2(0,-t.y));
+                float edge = abs(r - l) + abs(u - d);
+                edge = saturate(edge * 8.0);
+                edge = pow(edge, 0.85);
 
-                float edge = abs(r-l) + abs(u-d);
+                float glow = saturate(c * 1.15);
+                glow = pow(glow, 1.6) * 0.35;
 
-                edge *= 8.0;
-                edge = saturate(edge);
+                float value = saturate(max(edge, glow));
 
-                float3 background = float3(0.95,0.97,0.99);
-                float3 pattern = float3(0.05,0.08,0.12);
-
-                float3 color = lerp(background, pattern, edge);
-
-                return float4(color,1);
+                return fixed4(value, value, value, 1.0);
             }
-
             ENDCG
         }
     }

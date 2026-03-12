@@ -1,5 +1,6 @@
 #pragma kernel Init
 #pragma kernel Step
+#pragma kernel Inject
 
 RWTexture2D<float4> _WriteState;
 Texture2D<float4> _ReadState;
@@ -15,6 +16,10 @@ float _DiffuseB;
 float _Feed;
 float _Kill;
 float _Dt;
+
+float2 _InjectCenter;
+float _InjectRadius;
+float _InjectStrength;
 
 uint Hash(uint x)
 {
@@ -38,27 +43,14 @@ uint2 ResolveCoord(int2 c)
     {
         int maxX = (int)_Width - 1;
         int maxY = (int)_Height - 1;
-
         int x = c.x;
         int y = c.y;
 
-        if (x < 0)
-        {
-            x = maxX;
-        }
-        else if (x > maxX)
-        {
-            x = 0;
-        }
+        if (x < 0) x = maxX;
+        else if (x > maxX) x = 0;
 
-        if (y < 0)
-        {
-            y = maxY;
-        }
-        else if (y > maxY)
-        {
-            y = 0;
-        }
+        if (y < 0) y = maxY;
+        else if (y > maxY) y = 0;
 
         return uint2((uint)x, (uint)y);
     }
@@ -155,4 +147,25 @@ void Step(uint3 id : SV_DispatchThreadID)
     float nextB = B + (_DiffuseB * lap.y + reaction - (_Kill + _Feed) * B) * _Dt;
 
     _WriteState[id.xy] = float4(saturate(nextA), saturate(nextB), 0.0, 1.0);
+}
+
+[numthreads(8, 8, 1)]
+void Inject(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Width || id.y >= _Height)
+    {
+        return;
+    }
+
+    float2 uv = (float2(id.xy) + 0.5) / float2((float)_Width, (float)_Height);
+    float4 state = _ReadState[id.xy];
+
+    float dist = distance(uv, _InjectCenter);
+    float pulse = 1.0 - smoothstep(0.0, _InjectRadius, dist);
+    pulse *= _InjectStrength;
+
+    float A = lerp(state.x, 0.0, pulse);
+    float B = lerp(state.y, 1.0, pulse);
+
+    _WriteState[id.xy] = float4(A, B, 0.0, 1.0);
 }

@@ -370,11 +370,15 @@ public sealed class NeuralSlimeMoldRunner
                         Field.ScrubAt(agent.position, ActiveFoodTrailScrub);
                     }
 
-                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier);
+                    var returnDeposit = agent.depositAmount * returnDepositBoost * returnDepositMultiplier;
+                    DepositKernelIfOpen(agent.position, returnDeposit);
+                    DepositVeinKernelIfOpen(agent.position, returnDeposit * 0.42f);
 
                     if (useColonyHub && IsInsideHub(agent.position))
                     {
-                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst * returnDepositMultiplier);
+                        var burst = successfulReturnDepositBurst * returnDepositMultiplier;
+                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.95f, burst);
+                        DepositVeinDiscIfOpen(agent.position, colonyHubRadius * 0.7f, burst * 0.28f);
                         Field.ScrubDisc(agent.position, colonyHubRadius * 0.75f, HubRingScrubStrength);
 
                         mode = AgentMode.ExitHub;
@@ -415,7 +419,12 @@ public sealed class NeuralSlimeMoldRunner
                         emptyFoodIndex >= 0,
                         agentFoodCommitment[i]);
 
-                    DepositKernelIfOpen(agent.position, agent.depositAmount * depositMultiplier);
+                    var seekDeposit = agent.depositAmount * depositMultiplier;
+                    DepositKernelIfOpen(agent.position, seekDeposit);
+                    if (movedLocalTrail >= branchPromotionThreshold)
+                    {
+                        DepositVeinKernelIfOpen(agent.position, seekDeposit * 0.08f * Mathf.Clamp01(movedLocalTrail * 2.5f));
+                    }
                     TryNucleateBranch(agent.position, agent.heading, agent.depositAmount, dt, activeFoodIndex >= 0);
 
                     ApplyNonUsefulLoopPrune(
@@ -919,22 +928,35 @@ public sealed class NeuralSlimeMoldRunner
                 var consumed = node.consumeRate * foodConsumerCounts[i] * deltaTime;
                 var previousCapacity = node.currentCapacity;
                 node.currentCapacity = Mathf.Clamp(node.currentCapacity - consumed, 0f, maxCapacity);
+                node.isActive = true;
+                node.cooldown01 = 0f;
 
                 if (!foodDepletionLogged[i] && previousCapacity > 0f && node.currentCapacity <= 0f)
                 {
                     foodDepletionLogged[i] = true;
                     foodIsActive[i] = false;
                     foodRespawnTimers[i] = foodRespawnDelaySeconds;
+                    node.isActive = false;
+                    node.cooldown01 = 1f;
                     UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {i} depleted at t={simulationTime:F2}s.");
+
+                    Field.ScrubDisc(node.position, Mathf.Max(0.6f, node.consumeRadius * 1.15f), 0.35f);
+                    Field.ScrubVeinDisc(node.position, Mathf.Max(0.45f, node.consumeRadius * 0.9f), 0.18f);
                 }
             }
             else
             {
                 node.currentCapacity = 0f;
+                node.isActive = false;
+
                 if (foodRespawnTimers[i] > 0f)
                 {
                     foodRespawnTimers[i] -= deltaTime;
                 }
+
+                node.cooldown01 = foodRespawnDelaySeconds <= 0.0001f
+                    ? 0f
+                    : Mathf.Clamp01(foodRespawnTimers[i] / foodRespawnDelaySeconds);
             }
 
             foodNodes[i] = node;
@@ -1124,6 +1146,8 @@ public sealed class NeuralSlimeMoldRunner
             foodDepletionLogged[i] = false;
             var node = foodNodes[i];
             node.currentCapacity = 0f;
+            node.isActive = false;
+            node.cooldown01 = 0f;
             foodNodes[i] = node;
         }
 
@@ -1249,8 +1273,11 @@ public sealed class NeuralSlimeMoldRunner
 
         var node = foodNodes[index];
         node.currentCapacity = node.capacity;
+        node.isActive = true;
+        node.cooldown01 = 0f;
         foodNodes[index] = node;
 
+        Field.ScrubDisc(node.position, Mathf.Max(0.45f, node.consumeRadius * 0.75f), 0.12f);
         UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {index} activated at t={simulationTime:F2}s.");
     }
 
@@ -1263,7 +1290,9 @@ public sealed class NeuralSlimeMoldRunner
             capacity = capacity,
             currentCapacity = capacity,
             consumeRadius = consumeRadius,
-            consumeRate = consumeRate
+            consumeRate = consumeRate,
+            isActive = false,
+            cooldown01 = 0f
         };
     }
 
@@ -1340,6 +1369,7 @@ public sealed class NeuralSlimeMoldRunner
             {
                 var scrub = staleCorridorDecayBoost * step;
                 Field.ScrubDisc(node.position, Mathf.Max(0.45f, node.consumeRadius * 1.05f), scrub);
+                Field.ScrubVeinDisc(node.position, Mathf.Max(0.35f, node.consumeRadius * 0.85f), scrub * 0.35f);
             }
         }
 
@@ -1476,6 +1506,7 @@ public sealed class NeuralSlimeMoldRunner
                             * dt;
 
             DepositDiscIfOpen(samplePos, corridorWidth * 0.45f, reinforce);
+            DepositVeinDiscIfOpen(samplePos, corridorWidth * 0.32f, reinforce * 0.5f);
         }
     }
 
@@ -1782,7 +1813,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         var node = foodNodes[index];
-        return foodIsActive[index] && node.currentCapacity > 0f;
+        return foodIsActive[index] && node.isActive && node.currentCapacity > 0f;
     }
 
     private float ComputeFoodNodeDesirability(int index, float searchRadius)
@@ -2148,6 +2179,26 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         Field.DepositDisc(position, radius, amount);
+    }
+
+    private void DepositVeinKernelIfOpen(Vector2 position, float amount)
+    {
+        if (amount <= 0f || IsBlocked(position, 0f))
+        {
+            return;
+        }
+
+        Field.DepositVeinKernel(position, amount);
+    }
+
+    private void DepositVeinDiscIfOpen(Vector2 position, float radius, float amount)
+    {
+        if (amount <= 0f || radius <= 0f || IsBlocked(position, 0f))
+        {
+            return;
+        }
+
+        Field.DepositVeinDisc(position, radius, amount);
     }
 
     private Vector2 SampleOpenFoodPosition(SeededRng placementRng)

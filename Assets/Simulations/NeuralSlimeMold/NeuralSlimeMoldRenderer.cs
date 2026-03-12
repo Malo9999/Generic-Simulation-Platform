@@ -17,17 +17,17 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [Header("Field Network Styling")]
     [SerializeField, Range(0.1f, 4f)] private float veinContrast = 1.8f;
     [SerializeField, Range(0f, 1f)] private float veinFloor = 0.08f;
-    [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.35f;
-    [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.3f;
+    [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.55f;
+    [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.55f;
     [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.88f;
     //[SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
     [SerializeField] private bool emphasizePrimaryTubes = true;
     [SerializeField] private bool showExplorationBranches = true;
     [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.15f;
-    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.4f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.28f;
     [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.62f;
-    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.62f;
-    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.24f;
+    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.56f;
+    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.18f;
 
     [Header("World Marker Visuals")]
     [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
@@ -196,10 +196,12 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
             var node = foodNodes[i];
             var capacity01 = Mathf.Clamp01(node.Capacity01);
-            var isDepleted = capacity01 <= depletedThreshold01;
-            var isLow = !isDepleted && capacity01 < lowFoodThreshold01;
-            var isDrying = !isDepleted && capacity01 < lowFoodThreshold01;
-            var isRegrowing = !isDepleted && !isDrying && capacity01 < recoveredFoodThreshold01;
+            var cooldown01 = Mathf.Clamp01(node.cooldown01);
+            var regrowProgress = 1f - cooldown01;
+            var isActiveNode = node.isActive && capacity01 > depletedThreshold01;
+            var isDepleted = !isActiveNode && cooldown01 > 0.85f;
+            var isRegrowing = !isActiveNode && cooldown01 > 0.001f && cooldown01 <= 0.85f;
+            var isLow = isActiveNode && capacity01 < lowFoodThreshold01;
 
             var clamped = ClampNodeMarker(node.position);
             sr.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
@@ -214,38 +216,34 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             float stateScale;
             float stateAlpha;
 
-            if (isDepleted)
+            if (isActiveNode)
             {
-                markerColor = foodDepletedColor;
-                stateScale = depletedScaleMultiplier;
-                stateAlpha = Mathf.Max(0.15f, foodMarkerMinAlpha * depletedAlphaMultiplier);
-            }
-            else if (isLow)
-            {
-                markerColor = Color.Lerp(foodDepletedColor, foodDryingColor, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
-                var regrowPulse = 1f + (pulse * regrowPulseAmplitude);
-                stateScale = Mathf.Lerp(depletedScaleMultiplier, activeScaleBoost, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01)) * regrowPulse;
-                stateAlpha = Mathf.Lerp(
-                    Mathf.Max(0.35f, foodMarkerMinAlpha * 0.55f),
-                    Mathf.Max(0.6f, foodMarkerMinAlpha * 0.9f),
-                    Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
+                if (isLow)
+                {
+                    markerColor = Color.Lerp(foodDryingColor, foodActiveColor, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
+                    stateScale = Mathf.Lerp(0.82f, activeScaleBoost, capacity01);
+                    stateAlpha = Mathf.Lerp(0.55f, Mathf.Max(foodMarkerMinAlpha, 0.92f), capacity01);
+                }
+                else
+                {
+                    markerColor = foodActiveColor;
+                    var ripePulse = 1f + (pulse * activePulseAmplitude);
+                    stateScale = activeScaleBoost * ripePulse;
+                    stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a);
+                }
             }
             else if (isRegrowing)
             {
-                markerColor = Color.Lerp(foodRegrowingColor, foodActiveColor, Mathf.InverseLerp(lowFoodThreshold01, 1f, capacity01));
-                var pulseScale = 1f + (pulse * regrowPulseAmplitude * 0.75f);
-                stateScale = Mathf.Lerp(0.9f, activeScaleBoost, capacity01) * pulseScale;
-                stateAlpha = Mathf.Lerp(
-                    Mathf.Max(0.65f, foodMarkerMinAlpha * 0.9f),
-                    Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a),
-                    capacity01);
+                markerColor = Color.Lerp(foodDepletedColor, foodRegrowingColor, regrowProgress);
+                var pulseScale = 0.75f + (pulse * regrowPulseAmplitude);
+                stateScale = Mathf.Lerp(depletedScaleMultiplier * 0.9f, 0.95f, regrowProgress) * pulseScale;
+                stateAlpha = Mathf.Lerp(0.2f, 0.82f, regrowProgress);
             }
             else
             {
-                markerColor = foodActiveColor;
-                var ripePulse = 1f + (pulse * activePulseAmplitude);
-                stateScale = activeScaleBoost * ripePulse;
-                stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a);
+                markerColor = foodDepletedColor;
+                stateScale = depletedScaleMultiplier;
+                stateAlpha = Mathf.Max(0.12f, foodMarkerMinAlpha * depletedAlphaMultiplier);
             }
 
             sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;

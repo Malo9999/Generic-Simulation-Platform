@@ -33,7 +33,7 @@ public static class ReactionDiffusionPresetCatalog
                 return true;
 
             case ReactionDiffusionPreset.Mitosis:
-                parameters = new Parameters(1.0f, 0.5f, 0.0367f, 0.0649f, 1f, 1);
+                parameters = new Parameters(1.0f, 0.5f, 0.0340f, 0.0620f, 1f, 1);
                 return true;
 
             case ReactionDiffusionPreset.Solitons:
@@ -41,7 +41,7 @@ public static class ReactionDiffusionPresetCatalog
                 return true;
 
             case ReactionDiffusionPreset.Flower:
-                parameters = new Parameters(1.0f, 0.5f, 0.0240f, 0.0550f, 1f, 1);
+                parameters = new Parameters(1.0f, 0.5f, 0.0220f, 0.0510f, 1f, 1);
                 return true;
 
             case ReactionDiffusionPreset.Finger:
@@ -73,7 +73,7 @@ public static class ReactionDiffusionPresetCatalog
                 return true;
 
             case ReactionDiffusionPreset.Chaos:
-                parameters = new Parameters(1.0f, 0.5f, 0.0420f, 0.0600f, 1f, 1);
+                parameters = new Parameters(1.0f, 0.5f, 0.0415f, 0.0595f, 1f, 1);
                 return true;
 
             default:

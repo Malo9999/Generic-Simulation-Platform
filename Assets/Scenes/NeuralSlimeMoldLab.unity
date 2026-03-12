@@ -1245,7 +1245,7 @@ MonoBehaviour:
   foodRespawnDistanceBias: 0.65
   outerRingSpawnBias: 0.45
   foodStrength: 1.15
-  foodCapacity: 1600
+  foodCapacity: 200
   consumeRadius: 6
   consumeRate: 0.25
   spawnFromSeed: 1

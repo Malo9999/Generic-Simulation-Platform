@@ -398,21 +398,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   autoStart: 1
-  preset: 11
+  preset: 8
   gridWidth: 960
   gridHeight: 540
   diffuseA: 1
   diffuseB: 0.5
-  feed: 0.042
-  kill: 0.06
+  feed: 0.054
+  kill: 0.062
   dt: 1
   stepsPerFrame: 1
   wrapEdges: 1
-  seedMode: 0
+  seedMode: 2
   randomSeed: 1337
-  useRandomSeed: 0
+  useRandomSeed: 1
   displayMode: 0
-  simulationScale: 10
+  simulationScale: 1
   fitMainCameraToDisplay: 1
   cameraPadding: 0
   simulationShader: {fileID: 7200000, guid: a238b5a95fe74cf09e46a736f9f8f417, type: 3}
