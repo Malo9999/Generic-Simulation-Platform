@@ -101,7 +101,7 @@ public sealed class BootstrapRegistryWindow : EditorWindow
 
         if (entry.SceneUsageResolutionState != BootstrapRegistryIndex.UsageResolutionState.Resolved)
         {
-            EditorGUILayout.HelpBox("Scene usage not resolved. Click Resolve Scene Usage.", MessageType.None);
+            EditorGUILayout.HelpBox("Scene usage unresolved. Use Resolve Scene Usage to populate scene references.", MessageType.None);
         }
         else if (entry.SceneUsages.Count == 0 && entry.PrefabUsages.Count == 0)
         {
