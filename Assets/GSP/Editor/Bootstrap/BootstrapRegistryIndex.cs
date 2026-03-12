@@ -1,15 +1,17 @@
 #if UNITY_EDITOR
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
-using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 internal static class BootstrapRegistryIndex
 {
+    private const string UnresolvedSceneObjectName = "(resolved without scene open)";
+    private static readonly Dictionary<string, List<UsageRecord>> SceneUsageByScriptGuidCache = new(StringComparer.Ordinal);
+
     internal enum UsageResolutionState
     {
         NotResolved,
@@ -112,7 +114,7 @@ internal static class BootstrapRegistryIndex
     internal static List<Entry> Build(BuildOptions options = null)
     {
         options ??= BuildOptions.WithPrefabUsage();
-        var allEntries = DiscoverEntries();
+        var allEntries = BuildMetadataIndex();
 
         if (options.IncludePrefabUsage)
         {
@@ -135,6 +137,15 @@ internal static class BootstrapRegistryIndex
         return allEntries;
     }
 
+    internal static List<Entry> BuildMetadataIndex()
+    {
+        InvalidateSceneUsageCache();
+        var allEntries = DiscoverEntries();
+        MarkSceneUsageUnresolved(allEntries);
+        MarkPrefabUsageUnresolved(allEntries);
+        return allEntries;
+    }
+
     internal static void ResolveSceneUsage(List<Entry> entries)
     {
         if (entries == null)
@@ -144,10 +155,47 @@ internal static class BootstrapRegistryIndex
 
         foreach (var entry in entries)
         {
-            entry.SceneUsages.Clear();
+            ResolveSceneUsageForEntry(entry);
+        }
+    }
+
+    internal static void ResolveSceneUsageForEntry(Entry entry)
+    {
+        if (entry == null)
+        {
+            return;
         }
 
-        ScanSceneUsage(entries);
+        entry.SceneUsages.Clear();
+        foreach (var usage in GetSceneUsageForEntry(entry))
+        {
+            entry.SceneUsages.Add(usage);
+        }
+
+        entry.SceneUsageResolutionState = UsageResolutionState.Resolved;
+    }
+
+    internal static bool TryGetPrimaryScenePath(Entry entry, out string path)
+    {
+        path = null;
+        if (entry == null)
+        {
+            return false;
+        }
+
+        if (entry.SceneUsageResolutionState != UsageResolutionState.Resolved)
+        {
+            ResolveSceneUsageForEntry(entry);
+        }
+
+        var primary = entry.PrimarySceneUsage;
+        if (primary == null || string.IsNullOrWhiteSpace(primary.AssetPath))
+        {
+            return false;
+        }
+
+        path = primary.AssetPath;
+        return true;
     }
 
     private static List<Entry> DiscoverEntries()
@@ -231,53 +279,79 @@ internal static class BootstrapRegistryIndex
 
     private static void ScanSceneUsage(List<Entry> entries)
     {
-        var entriesByType = entries.ToDictionary(entry => entry.Type);
-        var sceneGuids = AssetDatabase.FindAssets("t:Scene", new[] { "Assets" });
-        var previousSetup = EditorSceneManager.GetSceneManagerSetup();
-
-        try
-        {
-            foreach (var guid in sceneGuids)
-            {
-                var scenePath = AssetDatabase.GUIDToAssetPath(guid);
-                var existingScene = SceneManager.GetSceneByPath(scenePath);
-                var alreadyLoaded = existingScene.isLoaded;
-                var scene = existingScene;
-
-                try
-                {
-                    if (!alreadyLoaded)
-                    {
-                        scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
-                    }
-
-                    foreach (var root in scene.GetRootGameObjects())
-                    {
-                        RegisterUsageForRoot(entriesByType, root, scenePath, isScene: true, AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[BootstrapRegistry] Failed to scan scene usage for '{scenePath}'. Bootstrap registry data remains available. {ex}");
-                }
-                finally
-                {
-                    if (!alreadyLoaded && scene.isLoaded)
-                    {
-                        EditorSceneManager.CloseScene(scene, true);
-                    }
-                }
-            }
-        }
-        finally
-        {
-            EditorSceneManager.RestoreSceneManagerSetup(previousSetup);
-        }
-
         foreach (var entry in entries)
         {
-            entry.SceneUsageResolutionState = UsageResolutionState.Resolved;
+            ResolveSceneUsageForEntry(entry);
         }
+    }
+
+    private static List<UsageRecord> GetSceneUsageForEntry(Entry entry)
+    {
+        var scriptGuid = AssetDatabase.AssetPathToGUID(entry.AssetPath);
+        if (string.IsNullOrWhiteSpace(scriptGuid))
+        {
+            return new List<UsageRecord>();
+        }
+
+        if (!SceneUsageByScriptGuidCache.TryGetValue(scriptGuid, out var cachedUsages))
+        {
+            cachedUsages = BuildSceneUsageRecordsForScript(scriptGuid);
+            SceneUsageByScriptGuidCache[scriptGuid] = cachedUsages;
+        }
+
+        return cachedUsages;
+    }
+
+    private static List<UsageRecord> BuildSceneUsageRecordsForScript(string scriptGuid)
+    {
+        var usages = new List<UsageRecord>();
+        var sceneGuids = AssetDatabase.FindAssets("t:Scene", new[] { "Assets" });
+        foreach (var sceneGuid in sceneGuids)
+        {
+            var scenePath = AssetDatabase.GUIDToAssetPath(sceneGuid);
+            if (string.IsNullOrWhiteSpace(scenePath) || !File.Exists(scenePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                var sceneText = File.ReadAllText(scenePath);
+                if (!sceneText.Contains($"guid: {scriptGuid}", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                usages.Add(new UsageRecord
+                {
+                    AssetPath = scenePath,
+                    GameObjectName = UnresolvedSceneObjectName,
+                    Asset = AssetDatabase.LoadAssetAtPath<SceneAsset>(scenePath)
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[BootstrapRegistry] Failed to inspect scene '{scenePath}' while resolving usage. {ex.Message}");
+            }
+        }
+
+        usages.Sort((left, right) =>
+        {
+            var pathCompare = string.Compare(left.AssetPath, right.AssetPath, StringComparison.Ordinal);
+            if (pathCompare != 0)
+            {
+                return pathCompare;
+            }
+
+            return string.Compare(left.GameObjectName, right.GameObjectName, StringComparison.Ordinal);
+        });
+
+        return usages;
+    }
+
+    private static void InvalidateSceneUsageCache()
+    {
+        SceneUsageByScriptGuidCache.Clear();
     }
 
     private static void MarkSceneUsageUnresolved(List<Entry> entries)
