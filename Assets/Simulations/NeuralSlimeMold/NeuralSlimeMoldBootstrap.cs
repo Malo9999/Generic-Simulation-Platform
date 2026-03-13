@@ -69,7 +69,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private bool useColonyHub = true;
     [SerializeField] private Vector2 colonyHub = Vector2.zero;
     [SerializeField, Min(0.25f)] private float colonyHubRadius = 4.5f;
-    [SerializeField, Min(0f)] private float returnToHubWeight = 1.35f;
+    [SerializeField, Min(0f)] private float returnToHubWeight = 1.55f;
     [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.68f;
     [SerializeField, Min(0f)] private float returnDepositBoost = 1.4f;
     [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 2.2f;
@@ -82,11 +82,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
     [Header("Network Maintenance")]
     [SerializeField, Min(0f)] private float bridgeReinforcementWeight = 0.3f;
-    [SerializeField, Min(0f)] private float hubOrbitSuppression = 1.2f;
+    [SerializeField, Min(0f)] private float hubOrbitSuppression = 1.75f;
     [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 0.5f;
     [SerializeField, Min(0.1f)] private float connectorSearchRadius = 6f;
     [SerializeField, Min(0f)] private float connectorSteerWeight = 1.6f;
-    [SerializeField, Min(0f)] private float hubTangentialPenalty = 1.4f;
+    [SerializeField, Min(0f)] private float hubTangentialPenalty = 1.85f;
     [SerializeField, Min(0.25f)] private float connectorCorridorWidth = 2.8f;
     [SerializeField, Range(0f, 1f)] private float returnOrbitDepositPenalty = 0.18f;
 

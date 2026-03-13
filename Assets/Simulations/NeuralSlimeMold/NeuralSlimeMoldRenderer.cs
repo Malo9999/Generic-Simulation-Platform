@@ -34,6 +34,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private Color foodDepletedColor = new(0.38f, 0.25f, 0.12f, 0.95f);
     [SerializeField] private Color foodRegrowingColor = new(0.76f, 0.56f, 0.22f, 0.98f);
     [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
+    [SerializeField] private Color colonyHubCoreColor = new(0.38f, 0.92f, 1f, 0.95f);
+    [SerializeField] private Color colonyHubRingColor = new(0.24f, 0.64f, 0.94f, 0.85f);
+    [SerializeField, Min(0.2f)] private float colonyHubCoreScale = 1.2f;
+    [SerializeField, Min(0.2f)] private float colonyHubRingScale = 2.2f;
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
@@ -67,6 +71,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     private readonly List<SpriteRenderer> foodNodeRenderers = new();
     private readonly List<SpriteRenderer> foodGlowRenderers = new();
     private readonly List<SpriteRenderer> obstacleRenderers = new();
+    private SpriteRenderer colonyHubRingRenderer;
+    private SpriteRenderer colonyHubCoreRenderer;
 
     private Texture2D fieldTexture;
     private Color32[] fieldPixels;
@@ -132,6 +138,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         BuildObstacles(runner.Obstacles);
         BuildAgents(runner.AgentCount);
         BuildFoodNodes(runner.FoodNodes);
+        BuildColonyHub(runner.ColonyHub, runner.ColonyHubRadius);
     }
 
     public void Render(NeuralSlimeMoldRunner runner)
@@ -152,6 +159,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         }
 
         UpdateFoodNodes(runner.FoodNodes);
+        UpdateColonyHub(runner.ColonyHub, runner.ColonyHubRadius);
         UpdateActivityFocus(runner.ActivityCenter, runner.ActivityRadius);
 
         frameCounter++;
@@ -267,6 +275,61 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 glow.color = glowColor;
             }
         }
+    }
+
+    private void BuildColonyHub(Vector2 hub, float hubRadius)
+    {
+        Sprite markerSprite = null;
+        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlowSmall, out markerSprite) || markerSprite == null)
+        {
+            markerSprite = GetFallbackSquareSprite();
+        }
+
+        Sprite glowSprite = null;
+        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlow, out glowSprite) || glowSprite == null)
+        {
+            glowSprite = markerSprite;
+        }
+
+        var hubGo = new GameObject("ColonyHub");
+        hubGo.transform.SetParent(transform, false);
+
+        var ringGo = new GameObject("Ring");
+        ringGo.transform.SetParent(hubGo.transform, false);
+        colonyHubRingRenderer = ringGo.AddComponent<SpriteRenderer>();
+        colonyHubRingRenderer.sortingOrder = 30;
+        colonyHubRingRenderer.sprite = glowSprite;
+
+        var coreGo = new GameObject("Core");
+        coreGo.transform.SetParent(hubGo.transform, false);
+        colonyHubCoreRenderer = coreGo.AddComponent<SpriteRenderer>();
+        colonyHubCoreRenderer.sortingOrder = 31;
+        colonyHubCoreRenderer.sprite = markerSprite;
+
+        UpdateColonyHub(hub, hubRadius);
+    }
+
+    private void UpdateColonyHub(Vector2 hub, float hubRadius)
+    {
+        if (colonyHubCoreRenderer == null || colonyHubRingRenderer == null)
+        {
+            return;
+        }
+
+        var clamped = ClampNodeMarker(hub);
+        colonyHubCoreRenderer.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.62f);
+        colonyHubRingRenderer.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.64f);
+
+        var diameter = Mathf.Max(1.2f, hubRadius * 2f);
+        colonyHubCoreRenderer.transform.localScale = Vector3.one * diameter * colonyHubCoreScale;
+        colonyHubRingRenderer.transform.localScale = Vector3.one * diameter * colonyHubRingScale;
+
+        colonyHubCoreRenderer.color = colonyHubCoreColor;
+
+        var pulsing = 0.92f + (Mathf.Sin(Time.time * 1.7f) * 0.08f + 0.08f);
+        var ring = colonyHubRingColor;
+        ring.a *= pulsing;
+        colonyHubRingRenderer.color = ring;
     }
 
     private void BuildField(Vector2 size, int width, int height)
