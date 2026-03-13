@@ -67,17 +67,13 @@ Shader "GSP/ReactionDiffusion/Display"
                 float baseGlow = saturate(c * 1.1);
                 baseGlow = pow(baseGlow, 1.8) * 0.18;
 
-                // Organic color comes from motion/instability, not fake circles.
-                float hot = saturate(edge * 1.6);
-                float3 baseColor = float3(0.96, 0.97, 0.99);
-                float3 ridgeColor = float3(0.96, 0.96, 0.98);
-                float3 motionColor = float3(1.00, 0.38, 0.16);
+                float ridge = saturate(max(edge, baseGlow));
 
-                float3 color = baseColor;
-                color = lerp(color, ridgeColor, saturate(max(edge, baseGlow)));
-                color = lerp(color, motionColor, hot * smoothstep(0.18, 0.55, c));
+                float3 background = float3(0.98, 0.98, 0.99);
+                float3 lineColor = float3(0.12, 0.12, 0.14);
 
-                return float4(saturate(color), 1.0);
+                float3 color = lerp(background, lineColor, ridge);
+                return float4(color, 1.0);
             }
             ENDCG
         }

@@ -28,19 +28,19 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     [Header("Parameter Drift")]
     [SerializeField] private bool enableParameterDrift = true;
-    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.0008f;
-    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.0005f;
-    [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 40f;
-    [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 55f;
+    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.0012f;
+    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.0008f;
+    [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 28f;
+    [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 36f;
     [SerializeField] private float killDriftPhaseOffsetRadians = 1.7f;
 
     [Header("Micro Reseeding")]
     [SerializeField] private bool enableMicroReseeding = true;
-    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 4f;
-    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 7f;
-    [SerializeField, Range(1, 8)] private int microReseedCount = 2;
-    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.035f;
-    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.65f;
+    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 3f;
+    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 4.5f;
+    [SerializeField, Range(1, 8)] private int microReseedCount = 3;
+    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.05f;
+    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.75f;
     [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.08f;
 
     [Header("Display")]
@@ -96,18 +96,18 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         useRandomSeed = true;
 
         enableParameterDrift = true;
-        feedDriftAmplitude = 0.0008f;
-        killDriftAmplitude = 0.0005f;
-        feedDriftPeriodSeconds = 40f;
-        killDriftPeriodSeconds = 55f;
+        feedDriftAmplitude = 0.0012f;
+        killDriftAmplitude = 0.0008f;
+        feedDriftPeriodSeconds = 28f;
+        killDriftPeriodSeconds = 36f;
         killDriftPhaseOffsetRadians = 1.7f;
 
         enableMicroReseeding = true;
-        microReseedStartDelaySeconds = 4f;
-        microReseedIntervalSeconds = 7f;
-        microReseedCount = 2;
-        microReseedRadius = 0.035f;
-        microReseedStrength = 0.65f;
+        microReseedStartDelaySeconds = 3f;
+        microReseedIntervalSeconds = 4.5f;
+        microReseedCount = 3;
+        microReseedRadius = 0.05f;
+        microReseedStrength = 0.75f;
         microReseedBorderPadding = 0.08f;
 
         displayMode = ReactionDiffusionDisplayMode.ChemicalB;
@@ -142,7 +142,14 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         if (preset != ReactionDiffusionPreset.Custom && preset != lastAppliedPreset)
         {
-            ReactionDiffusionPresetCatalog.ApplyTo(preset, ref diffuseA, ref diffuseB, ref feed, ref kill, ref dt, ref stepsPerFrame);
+            ReactionDiffusionPresetCatalog.ApplyTo(
+                preset,
+                ref diffuseA,
+                ref diffuseB,
+                ref feed,
+                ref kill,
+                ref dt,
+                ref stepsPerFrame);
             lastAppliedPreset = preset;
         }
 
@@ -402,7 +409,14 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         if (preset != ReactionDiffusionPreset.Custom)
         {
-            ReactionDiffusionPresetCatalog.ApplyTo(preset, ref diffuseA, ref diffuseB, ref feed, ref kill, ref dt, ref stepsPerFrame);
+            ReactionDiffusionPresetCatalog.ApplyTo(
+                preset,
+                ref diffuseA,
+                ref diffuseB,
+                ref feed,
+                ref kill,
+                ref dt,
+                ref stepsPerFrame);
             lastAppliedPreset = preset;
         }
 

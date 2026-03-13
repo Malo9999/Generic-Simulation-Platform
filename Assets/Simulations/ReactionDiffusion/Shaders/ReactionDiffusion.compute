@@ -161,7 +161,6 @@ void Inject(uint3 id : SV_DispatchThreadID)
     float pulse = 1.0 - smoothstep(0.0, _InjectRadius, dist);
     pulse *= _InjectStrength;
 
-    // Gentle chemistry nudge, not a destructive bomb.
     float A = lerp(state.x, 0.15, pulse * 0.65);
     float B = lerp(state.y, 0.85, pulse * 0.65);
 

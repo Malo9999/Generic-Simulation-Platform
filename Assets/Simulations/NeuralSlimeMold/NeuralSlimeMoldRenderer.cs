@@ -20,6 +20,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.35f;
     [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.3f;
     [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.88f;
+    //[SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
     [SerializeField] private bool emphasizePrimaryTubes = true;
     [SerializeField] private bool showExplorationBranches = true;
     [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.15f;
@@ -28,25 +29,30 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.62f;
     [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.24f;
 
-    [Header("Food Visuals")]
+    [Header("World Marker Visuals")]
+    [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
+    [SerializeField] private Color foodDepletedColor = new(0.38f, 0.25f, 0.12f, 0.95f);
+    [SerializeField] private Color foodRegrowingColor = new(0.76f, 0.56f, 0.22f, 0.98f);
+    [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
-    [SerializeField] private Color foodActiveColor = new(1f, 0.93f, 0.36f, 1f);
-    [SerializeField] private Color foodDryingColor = new(1f, 0.62f, 0.18f, 0.98f);
-    [SerializeField] private Color foodDepletedColor = new(0.28f, 0.16f, 0.10f, 0.65f);
-    [SerializeField] private Color foodRegrowingColor = new(1f, 0.72f, 0.24f, 0.92f);
-    [SerializeField, Range(0f, 0.5f)] private float depletedThreshold01 = 0.08f;
-    [SerializeField, Range(0f, 0.7f)] private float lowFoodThreshold01 = 0.42f;
-    [SerializeField, Range(0.4f, 1f)] private float recoveredFoodThreshold01 = 0.82f;
-    [SerializeField, Range(0.1f, 10f)] private float foodPulseSpeed = 2.6f;
-    [SerializeField, Range(0f, 0.4f)] private float foodHaloPulse = 0.14f;
-    [SerializeField, Range(0f, 0.4f)] private float foodRingPulse = 0.20f;
-    [SerializeField, Range(0f, 2f)] private float foodHaloScaleMultiplier = 3.2f;
-    [SerializeField, Range(0f, 2f)] private float foodRingScaleMultiplier = 1.85f;
-    [SerializeField, Range(0f, 2f)] private float foodCoreScaleMultiplier = 0.82f;
-    [SerializeField, Range(0f, 2f)] private float foodScentVisualBoost = 0.55f;
-    [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
+    [SerializeField, Range(0f, 1f)] private float foodMarkerMinAlpha = 0.75f;
+
+    [Header("Food Marker State Styling")]
+    [SerializeField, Range(0.2f, 1.5f)] private float depletedScaleMultiplier = 0.5f;
+    [SerializeField, Range(0.1f, 1f)] private float depletedAlphaMultiplier = 0.35f;
+    [SerializeField, Range(0.2f, 2f)] private float activeScaleBoost = 1.15f;
+    [SerializeField, Range(0f, 0.5f)] private float depletedThreshold01 = 0.12f;
+    [SerializeField, Range(0f, 0.5f)] private float lowFoodThreshold01 = 0.45f;
+    [SerializeField, Range(0.5f, 1f)] private float recoveredFoodThreshold01 = 0.82f;
+    [SerializeField] private Color foodDryingColor = new(0.62f, 0.38f, 0.14f, 0.96f);
+    [SerializeField, Range(0f, 0.3f)] private float activePulseAmplitude = 0.08f;
+    [SerializeField, Range(0f, 0.3f)] private float regrowPulseAmplitude = 0.12f;
+    [SerializeField, Range(0.1f, 8f)] private float foodPulseSpeed = 2.2f;
+
+    private bool foodInfluenceDebugVisuals;
+    private Color backgroundColor = new(0.10f, 0.09f, 0.07f, 1f);
 
     [Header("Palette")]
     [SerializeField] private bool useGlowAgentShape = true;
@@ -57,12 +63,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private Color activityFocusColor = new(0.52f, 0.94f, 0.9f, 0.55f);
     [SerializeField, Range(0.2f, 2f)] private float activityFocusScale = 1f;
 
-    private bool foodInfluenceDebugVisuals;
-    private Color backgroundColor = new(0.10f, 0.09f, 0.07f, 1f);
-
     private readonly List<SpriteRenderer> agentRenderers = new();
+    private readonly List<SpriteRenderer> foodNodeRenderers = new();
+    private readonly List<SpriteRenderer> foodGlowRenderers = new();
     private readonly List<SpriteRenderer> obstacleRenderers = new();
-    private readonly List<FoodNodeVisual> foodNodeVisuals = new();
 
     private Texture2D fieldTexture;
     private Color32[] fieldPixels;
@@ -70,19 +74,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     private SpriteRenderer activityFocusRenderer;
     private int frameCounter;
     private Vector2 worldSize;
-
     private Sprite fallbackSquareSprite;
-    private Sprite circleSprite;
-    private Sprite softCircleSprite;
-    private Sprite ringSprite;
-
-    private struct FoodNodeVisual
-    {
-        public GameObject root;
-        public SpriteRenderer halo;
-        public SpriteRenderer ring;
-        public SpriteRenderer core;
-    }
 
     public void SetShapeToggles(bool glowAgents, bool fieldBlobOverlay)
     {
@@ -159,7 +151,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             t.localRotation = Quaternion.Euler(0f, 0f, state.heading * Mathf.Rad2Deg);
         }
 
-        UpdateFoodNodes(runner);
+        UpdateFoodNodes(runner.FoodNodes);
         UpdateActivityFocus(runner.ActivityCenter, runner.ActivityRadius);
 
         frameCounter++;
@@ -188,21 +180,21 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         activityFocusRenderer.color = activityFocusColor;
     }
 
-    private void UpdateFoodNodes(NeuralSlimeMoldRunner runner)
+    private void UpdateFoodNodes(NeuralFoodNodeState[] foodNodes)
     {
-        var foodNodes = runner.FoodNodes;
-        var time = Application.isPlaying ? Time.time : 0f;
+        var time = UnityEngine.Application.isPlaying ? Time.time : 0f;
 
-        for (var i = 0; i < foodNodeVisuals.Count; i++)
+        for (var i = 0; i < foodNodeRenderers.Count; i++)
         {
             var active = showFoodMarkers && showFoodStateMarkers && i < foodNodes.Length;
-            var visual = foodNodeVisuals[i];
-            if (visual.root == null)
+            var sr = foodNodeRenderers[i];
+            var glow = i < foodGlowRenderers.Count ? foodGlowRenderers[i] : null;
+            sr.gameObject.SetActive(active);
+            if (glow != null)
             {
-                continue;
+                glow.gameObject.SetActive(active);
             }
 
-            visual.root.SetActive(active);
             if (!active)
             {
                 continue;
@@ -210,98 +202,70 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
             var node = foodNodes[i];
             var capacity01 = Mathf.Clamp01(node.Capacity01);
-            var isActive = runner.GetFoodIsActive(i);
-            var respawn01 = runner.GetFoodRespawn01(i);
-            var recentConsumption01 = runner.GetFoodRecentConsumption01(i);
-            var activationFlash01 = runner.GetFoodActivationFlash01(i);
-            var scent01 = runner.GetFoodScent01(i);
-
-            var isDepleted = !isActive && respawn01 > 0.01f;
-            var isRegrowing = !isActive && respawn01 <= 0.01f && capacity01 <= depletedThreshold01;
-            var isDrying = isActive && capacity01 < lowFoodThreshold01;
+            var isDepleted = capacity01 <= depletedThreshold01;
+            var isLow = !isDepleted && capacity01 < lowFoodThreshold01;
+            var isDrying = !isDepleted && capacity01 < lowFoodThreshold01;
+            var isRegrowing = !isDepleted && !isDrying && capacity01 < recoveredFoodThreshold01;
 
             var clamped = ClampNodeMarker(node.position);
-            visual.root.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
+            sr.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.8f);
 
-            var baseRadius = Mathf.Lerp(0.95f, 1.9f, Mathf.Clamp01(node.consumeRadius * 0.09f));
-            var pulse = Mathf.Sin((time * foodPulseSpeed) + (i * 0.71f)) * 0.5f + 0.5f;
-            var discoveryPulse = activationFlash01 > 0f ? Mathf.Lerp(1f, 1.9f, activationFlash01) : 1f;
-            var scentPulse = 1f + (pulse * foodHaloPulse * Mathf.Lerp(0.35f, 1f, scent01));
-            var ringPulse = 1f + (pulse * foodRingPulse * Mathf.Lerp(0.25f, 1f, scent01));
-            var consumeFlash = Mathf.Lerp(1f, 1.28f, Mathf.Clamp01(recentConsumption01));
+            var markerScaleBoost = foodInfluenceDebugVisuals ? 1.35f : 1f;
+            var markerRadius = Mathf.Lerp(0.9f, 1.6f, Mathf.Clamp01(node.consumeRadius * 0.08f));
 
-            Color coreColor;
-            Color haloColor;
-            Color ringColor;
-            float coreScale;
-            float haloScale;
-            float ringScale;
-            float coreAlpha;
-            float haloAlpha;
-            float ringAlpha;
+            var perNodePhase = i * 0.73f;
+            var pulse = Mathf.Sin((time * foodPulseSpeed) + perNodePhase) * 0.5f + 0.5f;
 
-            if (isActive)
+            Color markerColor;
+            float stateScale;
+            float stateAlpha;
+
+            if (isDepleted)
             {
-                var dryness = 1f - capacity01;
-                coreColor = Color.Lerp(foodActiveColor, foodDryingColor, Mathf.SmoothStep(0f, 1f, dryness));
-                haloColor = Color.Lerp(foodActiveColor, foodDryingColor, Mathf.Clamp01(dryness * 0.8f));
-                ringColor = Color.Lerp(new Color(1f, 1f, 0.7f, 1f), foodDryingColor, dryness);
-
-                coreScale = baseRadius * foodCoreScaleMultiplier * Mathf.Lerp(0.95f, 1.15f, capacity01) * consumeFlash;
-                haloScale = baseRadius * foodHaloScaleMultiplier * scentPulse * discoveryPulse * Mathf.Lerp(0.8f, 1.2f, scent01 + (recentConsumption01 * foodScentVisualBoost));
-                ringScale = baseRadius * foodRingScaleMultiplier * ringPulse * Mathf.Lerp(0.85f, 1.15f, 1f - dryness);
-
-                coreAlpha = Mathf.Lerp(0.88f, 1f, capacity01);
-                haloAlpha = Mathf.Lerp(0.18f, 0.34f, scent01) + (recentConsumption01 * 0.10f) + (activationFlash01 * 0.18f);
-                ringAlpha = Mathf.Lerp(0.22f, 0.72f, capacity01) + (activationFlash01 * 0.18f);
+                markerColor = foodDepletedColor;
+                stateScale = depletedScaleMultiplier;
+                stateAlpha = Mathf.Max(0.15f, foodMarkerMinAlpha * depletedAlphaMultiplier);
             }
-            else if (isDepleted)
+            else if (isLow)
             {
-                coreColor = foodDepletedColor;
-                haloColor = Color.Lerp(foodDepletedColor, foodRegrowingColor, 0.1f);
-                ringColor = foodDepletedColor;
-
-                coreScale = baseRadius * 0.38f;
-                haloScale = baseRadius * 0.95f;
-                ringScale = baseRadius * 0.55f;
-
-                coreAlpha = 0.45f;
-                haloAlpha = 0.08f;
-                ringAlpha = 0.12f;
+                markerColor = Color.Lerp(foodDepletedColor, foodDryingColor, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
+                var regrowPulse = 1f + (pulse * regrowPulseAmplitude);
+                stateScale = Mathf.Lerp(depletedScaleMultiplier, activeScaleBoost, Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01)) * regrowPulse;
+                stateAlpha = Mathf.Lerp(
+                    Mathf.Max(0.35f, foodMarkerMinAlpha * 0.55f),
+                    Mathf.Max(0.6f, foodMarkerMinAlpha * 0.9f),
+                    Mathf.InverseLerp(depletedThreshold01, lowFoodThreshold01, capacity01));
+            }
+            else if (isRegrowing)
+            {
+                markerColor = Color.Lerp(foodRegrowingColor, foodActiveColor, Mathf.InverseLerp(lowFoodThreshold01, 1f, capacity01));
+                var pulseScale = 1f + (pulse * regrowPulseAmplitude * 0.75f);
+                stateScale = Mathf.Lerp(0.9f, activeScaleBoost, capacity01) * pulseScale;
+                stateAlpha = Mathf.Lerp(
+                    Mathf.Max(0.65f, foodMarkerMinAlpha * 0.9f),
+                    Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a),
+                    capacity01);
             }
             else
             {
-                var regrowPulse = 1f + (pulse * 0.22f);
-                coreColor = foodRegrowingColor;
-                haloColor = Color.Lerp(foodDepletedColor, foodRegrowingColor, 0.55f);
-                ringColor = Color.Lerp(foodRegrowingColor, foodActiveColor, pulse);
-
-                coreScale = baseRadius * 0.55f * regrowPulse;
-                haloScale = baseRadius * 1.85f * regrowPulse;
-                ringScale = baseRadius * 1.2f * (1f + (pulse * 0.18f));
-
-                coreAlpha = 0.78f;
-                haloAlpha = 0.18f;
-                ringAlpha = 0.32f;
+                markerColor = foodActiveColor;
+                var ripePulse = 1f + (pulse * activePulseAmplitude);
+                stateScale = activeScaleBoost * ripePulse;
+                stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a);
             }
 
-            if (foodInfluenceDebugVisuals)
+            sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;
+            markerColor.a = stateAlpha;
+            sr.color = markerColor;
+
+            if (glow != null)
             {
-                haloScale *= 1.15f;
-                ringScale *= 1.1f;
+                var glowColor = markerColor;
+                glowColor.a *= isDepleted ? 0.20f : (isRegrowing ? 0.42f : 0.52f);
+                glow.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.9f);
+                glow.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale * (isDepleted ? 1.8f : 2.5f);
+                glow.color = glowColor;
             }
-
-            visual.core.transform.localScale = Vector3.one * foodMarkerScale * coreScale;
-            visual.halo.transform.localScale = Vector3.one * foodMarkerScale * haloScale;
-            visual.ring.transform.localScale = Vector3.one * foodMarkerScale * ringScale;
-
-            coreColor.a = Mathf.Clamp01(coreAlpha);
-            haloColor.a = Mathf.Clamp01(haloAlpha);
-            ringColor.a = Mathf.Clamp01(ringAlpha);
-
-            visual.core.color = coreColor;
-            visual.halo.color = haloColor;
-            visual.ring.color = ringColor;
         }
     }
 
@@ -335,7 +299,11 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             fieldRenderer.drawMode = SpriteDrawMode.Sliced;
             fieldRenderer.sprite = overlaySprite;
             fieldRenderer.size = size;
-            fieldRenderer.color = new Color(backgroundColor.r, backgroundColor.g, backgroundColor.b, 0.96f);
+            fieldRenderer.color = new Color(
+                backgroundColor.r,
+                backgroundColor.g,
+                backgroundColor.b,
+                0.96f);
 
             var fieldTextureGo = new GameObject("FieldDensityTexture");
             fieldTextureGo.transform.SetParent(transform, false);
@@ -412,9 +380,17 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
     private void BuildFoodNodes(NeuralFoodNodeState[] foodNodes)
     {
-        var haloSprite = GetSoftCircleSprite();
-        var coreSprite = GetCircleSprite();
-        var foodRingSprite = GetRingSprite();
+        Sprite markerSprite = null;
+        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlowSmall, out markerSprite) || markerSprite == null)
+        {
+            markerSprite = GetFallbackSquareSprite();
+        }
+
+        Sprite glowSprite = null;
+        if (!ShapeLibraryProvider.TryGetSprite(ShapeId.DotGlow, out glowSprite) || glowSprite == null)
+        {
+            glowSprite = markerSprite;
+        }
 
         for (var i = 0; i < foodNodes.Length; i++)
         {
@@ -422,34 +398,22 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             root.transform.SetParent(transform, false);
             root.transform.localScale = Vector3.one;
 
-            var haloGo = new GameObject("Halo");
-            haloGo.transform.SetParent(root.transform, false);
-            var halo = haloGo.AddComponent<SpriteRenderer>();
-            halo.sortingOrder = 38;
-            halo.sprite = haloSprite;
-            halo.color = new Color(foodActiveColor.r, foodActiveColor.g, foodActiveColor.b, 0.22f);
-
-            var ringGo = new GameObject("Ring");
-            ringGo.transform.SetParent(root.transform, false);
-            var ring = ringGo.AddComponent<SpriteRenderer>();
-            ring.sortingOrder = 39;
-            ring.sprite = foodRingSprite;
-            ring.color = foodActiveColor;
+            var glowGo = new GameObject("Glow");
+            glowGo.transform.SetParent(root.transform, false);
+            var glow = glowGo.AddComponent<SpriteRenderer>();
+            glow.sortingOrder = 39;
+            glow.sprite = glowSprite;
+            glow.color = new Color(foodActiveColor.r, foodActiveColor.g, foodActiveColor.b, 0.45f);
+            foodGlowRenderers.Add(glow);
 
             var coreGo = new GameObject("Core");
             coreGo.transform.SetParent(root.transform, false);
-            var core = coreGo.AddComponent<SpriteRenderer>();
-            core.sortingOrder = 40;
-            core.sprite = coreSprite;
-            core.color = foodActiveColor;
-
-            foodNodeVisuals.Add(new FoodNodeVisual
-            {
-                root = root,
-                halo = halo,
-                ring = ring,
-                core = core,
-            });
+            var sr = coreGo.AddComponent<SpriteRenderer>();
+            sr.sortingOrder = 40;
+            sr.sprite = markerSprite;
+            sr.drawMode = SpriteDrawMode.Simple;
+            sr.color = foodActiveColor;
+            foodNodeRenderers.Add(sr);
         }
 
         var focusGo = new GameObject("ActivityFocus");
@@ -458,7 +422,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
         activityFocusRenderer = focusGo.AddComponent<SpriteRenderer>();
         activityFocusRenderer.sortingOrder = 35;
-        activityFocusRenderer.sprite = GetSoftCircleSprite();
+        activityFocusRenderer.sprite = markerSprite;
         activityFocusRenderer.drawMode = SpriteDrawMode.Simple;
         activityFocusRenderer.color = activityFocusColor;
         activityFocusRenderer.gameObject.SetActive(showActivityFocus);
@@ -502,6 +466,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         for (var y = 0; y < height; y++)
         {
             var yOffset = y * width;
+
             for (var x = 0; x < width; x++)
             {
                 var index = yOffset + x;
@@ -520,10 +485,11 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 var contrast = Mathf.Pow(Mathf.Max(0f, reinforced), veinContrast);
                 var thicknessValue = Mathf.Sqrt(Mathf.Max(0f, contrast));
                 var veinValue = Mathf.InverseLerp(veinFloor, 1f, thicknessValue);
+
                 var glow = Mathf.Log(1f + (reinforced * trafficGlowStrength)) / Mathf.Log(1f + trafficGlowStrength + 1f);
                 glow = Mathf.Clamp01(glow);
-                var visible = Mathf.Clamp01(Mathf.Max(veinValue, glow * 0.9f));
 
+                var visible = Mathf.Clamp01(Mathf.Max(veinValue, glow * 0.9f));
                 var trunkMask = Mathf.SmoothStep(trunkThreshold01 - 0.18f, trunkThreshold01 + 0.1f, visible);
                 var branchMask = Mathf.SmoothStep(branchThreshold01, trunkThreshold01, visible) * (1f - trunkMask);
                 var staleMask = Mathf.Clamp01(1f - trunkMask - branchMask) * Mathf.Clamp01(visible / Mathf.Max(0.0001f, branchThreshold01));
@@ -531,13 +497,15 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 var readabilityExposure = Mathf.Lerp(1f, tubeExposure, trunkMask);
                 var branchExposure = showExplorationBranches ? Mathf.Lerp(0.72f, 1f, branchMask) : 0f;
                 var staleExposure = showExplorationBranches ? Mathf.Lerp(0.08f, staleTrailFade, staleMask) : 0f;
-                var visualStrength = Mathf.Clamp01((trunkMask * readabilityExposure) + (branchMask * branchExposure) + (staleMask * staleExposure));
+                var visualStrength = (trunkMask * readabilityExposure) + (branchMask * branchExposure) + (staleMask * staleExposure);
+                visualStrength = Mathf.Clamp01(visualStrength);
 
                 var alpha = Mathf.Pow(visible, Mathf.Lerp(1.9f, 0.60f, fieldAlphaSoftness));
                 alpha *= Mathf.Lerp(branchAlphaBias, 1f, trunkMask);
                 alpha *= Mathf.Lerp(staleTrailFade, 1f, trunkMask + (branchMask * 0.5f));
                 alpha *= showExplorationBranches ? 1f : (0.35f + (0.65f * trunkMask));
                 alpha = Mathf.Clamp01(alpha * visualStrength);
+                alpha = Mathf.Clamp01(alpha);
 
                 if (alpha <= 0.003f)
                 {
@@ -547,6 +515,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
                 var colorLerp = Mathf.Clamp01(Mathf.Lerp(visible, glow, 0.45f));
                 var color = Color.Lerp(fieldLowColor, fieldHighColor, colorLerp);
+
                 if (emphasizePrimaryTubes)
                 {
                     color = Color.Lerp(color * 0.7f, color, 0.45f + (0.55f * trunkMask));
@@ -556,6 +525,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 color.g = Mathf.Clamp01(color.g + glow * 0.07f);
                 color.b = Mathf.Clamp01(color.b + glow * 0.02f);
                 color.a = alpha;
+
                 fieldPixels[index] = color;
             }
         }
@@ -578,113 +548,60 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         return fallbackSquareSprite;
     }
 
-    private Sprite GetCircleSprite()
-    {
-        if (circleSprite != null) return circleSprite;
-        circleSprite = CreateProceduralSprite("FoodCircle", 64, false, true);
-        return circleSprite;
-    }
-
-    private Sprite GetSoftCircleSprite()
-    {
-        if (softCircleSprite != null) return softCircleSprite;
-        softCircleSprite = CreateProceduralSprite("FoodSoftCircle", 96, true, true);
-        return softCircleSprite;
-    }
-
-    private Sprite GetRingSprite()
-    {
-        if (ringSprite != null) return ringSprite;
-        ringSprite = CreateProceduralSprite("FoodRing", 96, false, false);
-        return ringSprite;
-    }
-
-    private static Sprite CreateProceduralSprite(string name, int size, bool soft, bool filled)
-    {
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
-        {
-            filterMode = FilterMode.Bilinear,
-            wrapMode = TextureWrapMode.Clamp,
-            name = name + "_Tex"
-        };
-
-        var center = (size - 1) * 0.5f;
-        var radius = center * 0.88f;
-        var innerRadius = radius * 0.72f;
-
-        for (var y = 0; y < size; y++)
-        {
-            for (var x = 0; x < size; x++)
-            {
-                var dx = x - center;
-                var dy = y - center;
-                var dist = Mathf.Sqrt((dx * dx) + (dy * dy));
-                float alpha;
-                if (filled)
-                {
-                    alpha = soft ? Mathf.Clamp01(1f - Mathf.Pow(dist / radius, 2.2f)) : (dist <= radius ? 1f : 0f);
-                }
-                else
-                {
-                    var outer = dist <= radius ? 1f : 0f;
-                    var inner = dist <= innerRadius ? 1f : 0f;
-                    alpha = Mathf.Clamp01(outer - inner);
-                    if (soft)
-                    {
-                        alpha *= Mathf.Clamp01(1f - Mathf.Abs((dist - ((innerRadius + radius) * 0.5f)) / (radius - innerRadius)));
-                    }
-                }
-                tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
-            }
-        }
-
-        tex.Apply(false, false);
-        return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
-    }
-
     private void ClearChildren()
     {
         agentRenderers.Clear();
+        foodNodeRenderers.Clear();
+        foodGlowRenderers.Clear();
         obstacleRenderers.Clear();
-        foodNodeVisuals.Clear();
 
         for (var i = transform.childCount - 1; i >= 0; i--)
         {
             var child = transform.GetChild(i);
-            if (Application.isPlaying) Destroy(child.gameObject); else DestroyImmediate(child.gameObject);
+            if (UnityEngine.Application.isPlaying)
+            {
+                Destroy(child.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(child.gameObject);
+            }
         }
 
         if (fieldTexture != null)
         {
-            if (Application.isPlaying) Destroy(fieldTexture); else DestroyImmediate(fieldTexture);
+            if (UnityEngine.Application.isPlaying)
+            {
+                Destroy(fieldTexture);
+            }
+            else
+            {
+                DestroyImmediate(fieldTexture);
+            }
+
             fieldTexture = null;
         }
 
         fieldPixels = null;
-        DestroySprite(ref fallbackSquareSprite);
-        DestroySprite(ref circleSprite);
-        DestroySprite(ref softCircleSprite);
-        DestroySprite(ref ringSprite);
+
+        if (fallbackSquareSprite != null)
+        {
+            if (UnityEngine.Application.isPlaying)
+            {
+                Destroy(fallbackSquareSprite.texture);
+                Destroy(fallbackSquareSprite);
+            }
+            else
+            {
+                DestroyImmediate(fallbackSquareSprite.texture);
+                DestroyImmediate(fallbackSquareSprite);
+            }
+
+            fallbackSquareSprite = null;
+        }
 
         fieldRenderer = null;
         frameCounter = 0;
         worldSize = Vector2.one;
-    }
-
-    private void DestroySprite(ref Sprite sprite)
-    {
-        if (sprite == null) return;
-        var tex = sprite.texture;
-        if (Application.isPlaying)
-        {
-            if (tex != null) Destroy(tex);
-            Destroy(sprite);
-        }
-        else
-        {
-            if (tex != null) DestroyImmediate(tex);
-            DestroyImmediate(sprite);
-        }
-        sprite = null;
     }
 }
