@@ -73,7 +73,7 @@ public static class ReactionDiffusionPresetCatalog
                 return true;
 
             case ReactionDiffusionPreset.Chaos:
-                parameters = new Parameters(1.0f, 0.5f, 0.0420f, 0.0600f, 1f, 1);
+                parameters = new Parameters(1.0f, 0.55f, 0.0420f, 0.0600f, 1f, 1);
                 return true;
 
             default:
