@@ -273,6 +273,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     {
         var fieldGo = new GameObject("Field");
         fieldGo.transform.SetParent(transform, false);
+        fieldGo.transform.localScale = new Vector3(
+            size.x / Mathf.Max(1f, width),
+            size.y / Mathf.Max(1f, height),
+            1f);
         fieldRenderer = fieldGo.AddComponent<SpriteRenderer>();
         fieldRenderer.sortingOrder = -20;
 
@@ -287,7 +291,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             fieldTexture,
             new Rect(0, 0, width, height),
             new Vector2(0.5f, 0.5f),
-            width / size.x);
+            1f);
 
         fieldRenderer.sprite = densitySprite;
         fieldRenderer.color = Color.white;
@@ -307,6 +311,10 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
             var fieldTextureGo = new GameObject("FieldDensityTexture");
             fieldTextureGo.transform.SetParent(transform, false);
+            fieldTextureGo.transform.localScale = new Vector3(
+                size.x / Mathf.Max(1f, width),
+                size.y / Mathf.Max(1f, height),
+                1f);
             var densityRenderer = fieldTextureGo.AddComponent<SpriteRenderer>();
             densityRenderer.sortingOrder = -19;
             densityRenderer.sprite = densitySprite;

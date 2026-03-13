@@ -134,6 +134,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private NeuralSlimeMoldRenderer rendererComponent;
     private bool hasStarted;
     private int activeFieldStepInterval = 1;
+    private Vector2 activeWorldSize;
 
     private static readonly Color MoldBackgroundPreset = new(0.10f, 0.09f, 0.07f, 1f);
 
@@ -154,6 +155,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
         }
 
+        activeWorldSize = GetResolvedWorldSizeForView();
         ApplyCameraBackground();
     }
 
@@ -208,6 +210,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         var effectiveFoodNodeCount = effectiveSpawnFromSeed
             ? foodNodeCount
             : Mathf.Max(1, effectiveManualFoodConfigs != null ? effectiveManualFoodConfigs.Length : foodNodeCount);
+
+        activeWorldSize = new Vector2(Mathf.Max(8f, effectiveMapSize.x), Mathf.Max(8f, effectiveMapSize.y));
 
         runner.ResetWithSeed(
             seed,
@@ -271,6 +275,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         {
             FrameCameraImmediate();
         }
+
+        Debug.Log($"[NeuralSlimeMold] World resolved map={activeWorldSize} hub={effectiveColonyHub} food={effectiveManualFoodConfigs?.Length ?? 0} obstacles={effectiveWorldObstacles?.Length ?? 0} corridorBands={effectiveCorridorBands?.Length ?? 0} field={runner.Field.Width}x{runner.Field.Height}");
 
         hasStarted = true;
     }
@@ -463,8 +469,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
     private float ComputeFullMapCameraSize(Camera cam)
     {
-        var halfHeight = mapSize.y * 0.5f;
-        var halfWidth = mapSize.x * 0.5f;
+        var size = GetResolvedWorldSizeForView();
+        var halfHeight = size.y * 0.5f;
+        var halfWidth = size.x * 0.5f;
         var aspect = Mathf.Max(0.1f, cam.aspect);
         var orthoFromWidth = halfWidth / aspect;
         return Mathf.Max(halfHeight, orthoFromWidth) * Mathf.Max(0.1f, cameraPadding);
@@ -478,6 +485,27 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         var vertical = paddedRadius;
         var horizontal = paddedRadius / aspect;
         return Mathf.Max(vertical, horizontal);
+    }
+
+    private Vector2 GetResolvedWorldSizeForView()
+    {
+        if (UnityEngine.Application.isPlaying && runner != null && runner.Field != null)
+        {
+            return runner.Field.WorldSize;
+        }
+
+        if (useArenaPreset)
+        {
+            var setup = NeuralSlimeMoldArenaPresetBuilder.Build(
+                selectedArenaPreset,
+                foodStrength,
+                foodCapacity,
+                consumeRadius,
+                consumeRate);
+            return new Vector2(Mathf.Max(8f, setup.mapSize.x), Mathf.Max(8f, setup.mapSize.y));
+        }
+
+        return new Vector2(Mathf.Max(8f, mapSize.x), Mathf.Max(8f, mapSize.y));
     }
 
     private (int fieldStepInterval, int fieldTextureRefreshInterval, int maxVisibleAgents) ResolvePerformanceProfile()
@@ -518,7 +546,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = new Color(0.2f, 0.9f, 0.8f, 0.4f);
-        Gizmos.DrawWireCube(Vector3.zero, new Vector3(mapSize.x, mapSize.y, 0f));
+        var gizmoWorldSize = GetResolvedWorldSizeForView();
+        Gizmos.DrawWireCube(Vector3.zero, new Vector3(gizmoWorldSize.x, gizmoWorldSize.y, 0f));
 
         if (manualFoodConfigs != null)
         {
