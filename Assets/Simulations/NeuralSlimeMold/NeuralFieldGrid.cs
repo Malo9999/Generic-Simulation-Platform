@@ -382,8 +382,8 @@ public sealed class NeuralFieldGrid
     {
         var clampedX = Mathf.Clamp(x, 0, width - 1);
         var clampedY = Mathf.Clamp(y, 0, height - 1);
-        var u = width <= 1 ? 0f : clampedX / (float)(width - 1);
-        var v = height <= 1 ? 0f : clampedY / (float)(height - 1);
+        var u = (clampedX + 0.5f) / Mathf.Max(1f, width);
+        var v = (clampedY + 0.5f) / Mathf.Max(1f, height);
         var worldX = Mathf.Lerp(-worldSize.x * 0.5f, worldSize.x * 0.5f, u);
         var worldY = Mathf.Lerp(-worldSize.y * 0.5f, worldSize.y * 0.5f, v);
         return new Vector2(worldX, worldY);
@@ -438,8 +438,8 @@ public sealed class NeuralFieldGrid
     private void WorldToGrid(Vector2 worldPosition, out int x, out int y)
     {
         var uv = WorldToUv(worldPosition);
-        x = Mathf.Clamp(Mathf.RoundToInt(uv.x * (width - 1)), 0, width - 1);
-        y = Mathf.Clamp(Mathf.RoundToInt(uv.y * (height - 1)), 0, height - 1);
+        x = Mathf.Clamp(Mathf.FloorToInt(uv.x * width), 0, width - 1);
+        y = Mathf.Clamp(Mathf.FloorToInt(uv.y * height), 0, height - 1);
     }
 
     private Vector2 WorldToUv(Vector2 worldPosition)
