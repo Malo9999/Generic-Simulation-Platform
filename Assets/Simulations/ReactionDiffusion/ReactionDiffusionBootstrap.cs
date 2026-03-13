@@ -14,7 +14,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField, Min(16)] private int gridWidth = 960;
     [SerializeField, Min(16)] private int gridHeight = 540;
     [SerializeField, Min(0f)] private float diffuseA = 1.0f;
-    [SerializeField, Min(0f)] private float diffuseB = 0.55f;
+    [SerializeField, Min(0f)] private float diffuseB = 0.52f;
     [SerializeField, Min(0f)] private float feed = 0.0420f;
     [SerializeField, Min(0f)] private float kill = 0.0600f;
     [SerializeField, Min(0.0001f)] private float dt = 1f;
@@ -28,8 +28,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     [Header("Parameter Drift")]
     [SerializeField] private bool enableParameterDrift = true;
-    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.0004f;
-    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.00025f;
+    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.0003f;
+    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.0002f;
     [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 24f;
     [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 32f;
     [SerializeField] private float killDriftPhaseOffsetRadians = 1.7f;
@@ -235,6 +235,14 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             runtimeDiffuseB = morphDiffuseB;
             runtimeFeed = morphFeed;
             runtimeKill = morphKill;
+        }
+
+        if (enableRegimeMorph)
+        {
+            SampleMorphParameters(timeSeconds, out var morphDiffuseB, out var morphFeed, out var morphKill);
+            runtimeDiffuseB = Mathf.Lerp(diffuseB, morphDiffuseB, morphStrength);
+            runtimeFeed = Mathf.Lerp(feed, morphFeed, morphStrength);
+            runtimeKill = Mathf.Lerp(kill, morphKill, morphStrength);
         }
 
         if (enableParameterDrift)
