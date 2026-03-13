@@ -269,12 +269,16 @@ public sealed class NeuralSlimeMoldRunner
         for (var i = 0; i < agents.Length; i++)
         {
             var radial = rng.InsideUnitCircle();
-            var pos = new Vector2(
-                radial.x * this.mapSize.x * 0.48f,
-                radial.y * this.mapSize.y * 0.48f);
+            var spawnRadius = useColonyHub
+                ? Mathf.Max(0.65f, this.colonyHubRadius * 0.55f)
+                : Mathf.Min(this.mapSize.x, this.mapSize.y) * 0.2f;
+            var spawnCenter = useColonyHub ? this.colonyHub : Vector2.zero;
+            var pos = spawnCenter + new Vector2(radial.x * spawnRadius, radial.y * spawnRadius);
             pos = ResolveToOpenPosition(pos, 0.75f);
 
-            var heading = rng.Range(0f, Mathf.PI * 2f);
+            var heading = useColonyHub
+                ? Mathf.Atan2(pos.y - this.colonyHub.y, pos.x - this.colonyHub.x) + rng.Range(-0.55f, 0.55f)
+                : rng.Range(0f, Mathf.PI * 2f);
 
             agents[i] = new NeuralSlimeMoldAgent
             {

@@ -83,17 +83,18 @@ public static class NeuralSlimeMoldArenaPresetBuilder
         {
             mapSize = new Vector2(72f, 72f),
             colonyHub = Vector2.zero,
-            colonyHubRadius = 4.8f,
+            colonyHubRadius = 5.6f,
             manualFoodConfigs = new[]
             {
-                Food(new Vector2(0f, 27f), strength, capacity, radius, rate),
-                Food(new Vector2(-23f, -18f), strength, capacity, radius, rate),
-                Food(new Vector2(24f, -16f), strength, capacity, radius, rate)
+                Food(new Vector2(0f, 28f), strength, capacity, radius, rate),
+                Food(new Vector2(-25f, -20f), strength, capacity, radius, rate),
+                Food(new Vector2(25f, -20f), strength, capacity, radius, rate)
             },
             worldObstacles = System.Array.Empty<NeuralObstacle>(),
             corridorBands = new[]
             {
-                Band(new Vector2(0f, 0f), new Vector2(50f, 10f), 0f, 0.08f)
+                Band(new Vector2(0f, 6f), new Vector2(58f, 12f), 0f, 0.18f),
+                Band(new Vector2(0f, -8f), new Vector2(58f, 12f), 0f, 0.14f)
             },
             useWorldObstacles = false
         };
@@ -104,26 +105,29 @@ public static class NeuralSlimeMoldArenaPresetBuilder
         return new NeuralSlimeMoldArenaSetup
         {
             mapSize = new Vector2(84f, 56f),
-            colonyHub = new Vector2(-21f, -2f),
-            colonyHubRadius = 4.4f,
+            colonyHub = new Vector2(-34f, 0f),
+            colonyHubRadius = 5.3f,
             manualFoodConfigs = new[]
             {
-                Food(new Vector2(32f, 18f), strength, capacity, radius, rate),
-                Food(new Vector2(33f, -19f), strength, capacity, radius, rate),
-                Food(new Vector2(6f, 22f), strength, capacity, radius, rate)
+                Food(new Vector2(36f, 0f), strength, capacity, radius, rate),
+                Food(new Vector2(27f, 19f), strength, capacity, radius, rate),
+                Food(new Vector2(27f, -19f), strength, capacity, radius, rate)
             },
             worldObstacles = new[]
             {
-                Rect(new Vector2(-2f, 10f), new Vector2(30f, 5.5f)),
-                Rect(new Vector2(-2f, -10f), new Vector2(30f, 5.5f)),
-                Rect(new Vector2(22f, 0f), new Vector2(6f, 16f)),
-                Rect(new Vector2(8f, 0f), new Vector2(4f, 9f))
+                Rect(new Vector2(-6f, 12.5f), new Vector2(64f, 7f)),
+                Rect(new Vector2(-6f, -12.5f), new Vector2(64f, 7f)),
+                Rect(new Vector2(-24f, 0f), new Vector2(2.4f, 14f)),
+                Rect(new Vector2(14f, 6f), new Vector2(6f, 9.5f)),
+                Rect(new Vector2(14f, -6f), new Vector2(6f, 9.5f)),
+                Rect(new Vector2(28f, 12f), new Vector2(18f, 6f)),
+                Rect(new Vector2(28f, -12f), new Vector2(18f, 6f))
             },
             corridorBands = new[]
             {
-                Band(new Vector2(-4f, 16f), new Vector2(70f, 7f), 0f, 0.95f),
-                Band(new Vector2(-4f, -16f), new Vector2(70f, 7f), 0f, 0.95f),
-                Band(new Vector2(18f, 0f), new Vector2(42f, 6f), 0f, 0.58f)
+                Band(new Vector2(-2f, 0f), new Vector2(78f, 7.5f), 0f, 1f),
+                Band(new Vector2(18f, 18f), new Vector2(24f, 6f), 0f, 0.86f),
+                Band(new Vector2(18f, -18f), new Vector2(24f, 6f), 0f, 0.86f)
             },
             useWorldObstacles = true
         };
@@ -134,8 +138,8 @@ public static class NeuralSlimeMoldArenaPresetBuilder
         return new NeuralSlimeMoldArenaSetup
         {
             mapSize = new Vector2(80f, 80f),
-            colonyHub = new Vector2(0f, -3f),
-            colonyHubRadius = 4.8f,
+            colonyHub = Vector2.zero,
+            colonyHubRadius = 5.4f,
             manualFoodConfigs = new[]
             {
                 Food(new Vector2(0f, 31f), strength, capacity, radius, rate),
@@ -145,10 +149,10 @@ public static class NeuralSlimeMoldArenaPresetBuilder
             },
             worldObstacles = new[]
             {
-                Rect(new Vector2(-10f, 10f), new Vector2(8f, 8f)),
-                Rect(new Vector2(10f, 10f), new Vector2(8f, 8f)),
-                Rect(new Vector2(-10f, -10f), new Vector2(8f, 8f)),
-                Rect(new Vector2(10f, -10f), new Vector2(8f, 8f))
+                Rect(new Vector2(-10f, 10f), new Vector2(10f, 10f)),
+                Rect(new Vector2(10f, 10f), new Vector2(10f, 10f)),
+                Rect(new Vector2(-10f, -10f), new Vector2(10f, 10f)),
+                Rect(new Vector2(10f, -10f), new Vector2(10f, 10f))
             },
             corridorBands = new[]
             {
@@ -166,27 +170,32 @@ public static class NeuralSlimeMoldArenaPresetBuilder
         return new NeuralSlimeMoldArenaSetup
         {
             mapSize = new Vector2(88f, 64f),
-            colonyHub = new Vector2(-30f, -20f),
-            colonyHubRadius = 4.4f,
+            colonyHub = new Vector2(-33f, -21f),
+            colonyHubRadius = 5.2f,
             manualFoodConfigs = new[]
             {
-                Food(new Vector2(30f, 22f), strength, capacity, radius, rate),
-                Food(new Vector2(36f, -6f), strength, capacity, radius, rate),
-                Food(new Vector2(16f, 25f), strength, capacity, radius, rate)
+                Food(new Vector2(31f, 22f), strength, capacity, radius, rate),
+                Food(new Vector2(34f, -19f), strength, capacity, radius, rate),
+                Food(new Vector2(5f, 24f), strength, capacity, radius, rate)
             },
             worldObstacles = new[]
             {
-                Rect(new Vector2(-14f, -8f), new Vector2(24f, 4f)),
-                Rect(new Vector2(2f, 8f), new Vector2(4f, 28f)),
-                Rect(new Vector2(18f, -14f), new Vector2(22f, 4f)),
-                Rect(new Vector2(26f, 14f), new Vector2(4f, 20f)),
-                Rect(new Vector2(-2f, 20f), new Vector2(18f, 4f))
+                Rect(new Vector2(-30f, -7f), new Vector2(26f, 4f)),
+                Rect(new Vector2(-14f, -18f), new Vector2(4f, 20f)),
+                Rect(new Vector2(-2f, 5f), new Vector2(4f, 36f)),
+                Rect(new Vector2(14f, -8f), new Vector2(30f, 4f)),
+                Rect(new Vector2(24f, 13f), new Vector2(4f, 24f)),
+                Rect(new Vector2(6f, 19f), new Vector2(24f, 4f)),
+                Rect(new Vector2(18f, -24f), new Vector2(32f, 4f)),
+                Rect(new Vector2(-28f, 12f), new Vector2(4f, 18f))
             },
             corridorBands = new[]
             {
-                Band(new Vector2(-18f, -16f), new Vector2(36f, 6f), 18f, 0.65f),
-                Band(new Vector2(6f, -2f), new Vector2(46f, 6f), 33f, 0.82f),
-                Band(new Vector2(18f, 14f), new Vector2(40f, 6f), -20f, 0.74f)
+                Band(new Vector2(-24f, -20f), new Vector2(22f, 7f), 0f, 0.78f),
+                Band(new Vector2(-8f, -10f), new Vector2(24f, 6f), 34f, 0.9f),
+                Band(new Vector2(6f, 10f), new Vector2(26f, 6f), 0f, 0.88f),
+                Band(new Vector2(21f, 17f), new Vector2(22f, 6f), 24f, 0.84f),
+                Band(new Vector2(18f, -16f), new Vector2(30f, 6f), 0f, 0.84f)
             },
             useWorldObstacles = true
         };
