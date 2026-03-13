@@ -68,12 +68,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Colony Hub")]
     [SerializeField] private bool useColonyHub = true;
     [SerializeField] private Vector2 colonyHub = Vector2.zero;
-    [SerializeField, Min(0.25f)] private float colonyHubRadius = 4.5f;
+    [SerializeField, Min(0.25f)] private float colonyHubRadius = 2.8f;
     [SerializeField, Min(0f)] private float returnToHubWeight = 1.55f;
     [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.68f;
-    [SerializeField, Min(0f)] private float returnDepositBoost = 1.4f;
-    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 2.2f;
-    [SerializeField, Min(0f)] private float hubInfluenceRadius = 9f;
+    [SerializeField, Min(0f)] private float returnDepositBoost = 2.05f;
+    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 3.1f;
+    [SerializeField, Min(0f)] private float hubInfluenceRadius = 4.4f;
 
     [Header("Loop Pruning")]
     [SerializeField, Min(0f)] private float nonUsefulLoopPruneStrength = 0.14f;
@@ -94,8 +94,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float branchSpawnChance = 0.18f;
     [SerializeField, Min(0f)] private float branchSpawnTrailThreshold = 0.075f;
     [SerializeField, Min(0f)] private float branchPromotionThreshold = 0.13f;
-    [SerializeField, Min(0f)] private float branchRetractionBoost = 0.72f;
-    [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.25f;
+    [SerializeField, Min(0f)] private float branchRetractionBoost = 0.9f;
+    [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.42f;
     [SerializeField, Min(0f)] private float duplicateTubeSuppressionRadius = 1.35f;
 
     [Header("World Obstacles")]

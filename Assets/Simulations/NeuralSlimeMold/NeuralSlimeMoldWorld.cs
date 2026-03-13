@@ -169,33 +169,54 @@ public static class NeuralSlimeMoldArenaPresetBuilder
     {
         return new NeuralSlimeMoldArenaSetup
         {
-            mapSize = new Vector2(88f, 64f),
-            colonyHub = new Vector2(-33f, -21f),
-            colonyHubRadius = 5.2f,
+            mapSize = new Vector2(92f, 66f),
+            colonyHub = new Vector2(-33f, 0f),
+            colonyHubRadius = 3.2f,
             manualFoodConfigs = new[]
             {
-                Food(new Vector2(31f, 22f), strength, capacity, radius, rate),
-                Food(new Vector2(34f, -19f), strength, capacity, radius, rate),
-                Food(new Vector2(5f, 24f), strength, capacity, radius, rate)
+                Food(new Vector2(33f, 20f), strength, capacity, radius, rate),
+                Food(new Vector2(35f, -20f), strength, capacity, radius, rate)
             },
             worldObstacles = new[]
             {
-                Rect(new Vector2(-30f, -7f), new Vector2(26f, 4f)),
-                Rect(new Vector2(-14f, -18f), new Vector2(4f, 20f)),
-                Rect(new Vector2(-2f, 5f), new Vector2(4f, 36f)),
-                Rect(new Vector2(14f, -8f), new Vector2(30f, 4f)),
-                Rect(new Vector2(24f, 13f), new Vector2(4f, 24f)),
-                Rect(new Vector2(6f, 19f), new Vector2(24f, 4f)),
-                Rect(new Vector2(18f, -24f), new Vector2(32f, 4f)),
-                Rect(new Vector2(-28f, 12f), new Vector2(4f, 18f))
+                // Left start chamber shell.
+                Rect(new Vector2(-33f, 14f), new Vector2(28f, 9f)),
+                Rect(new Vector2(-33f, -14f), new Vector2(28f, 9f)),
+                Rect(new Vector2(-46f, 0f), new Vector2(4f, 38f)),
+
+                // Chamber dividers with two narrow corridor gates.
+                Rect(new Vector2(-8f, 22f), new Vector2(7f, 21f)),
+                Rect(new Vector2(-8f, 0f), new Vector2(7f, 9f)),
+                Rect(new Vector2(-8f, -22f), new Vector2(7f, 21f)),
+
+                // Upper-right chamber shell.
+                Rect(new Vector2(27f, 32f), new Vector2(34f, 6f)),
+                Rect(new Vector2(44f, 20f), new Vector2(4f, 30f)),
+                Rect(new Vector2(27f, 8f), new Vector2(34f, 6f)),
+
+                // Lower-right chamber shell.
+                Rect(new Vector2(27f, -8f), new Vector2(34f, 6f)),
+                Rect(new Vector2(44f, -20f), new Vector2(4f, 30f)),
+                Rect(new Vector2(27f, -32f), new Vector2(34f, 6f)),
+
+                // Dead-space blockers to force chamber/corridor pressure.
+                Rect(new Vector2(14f, 0f), new Vector2(16f, 12f)),
+                Rect(new Vector2(22f, 0f), new Vector2(10f, 8f))
             },
             corridorBands = new[]
             {
-                Band(new Vector2(-24f, -20f), new Vector2(22f, 7f), 0f, 0.78f),
-                Band(new Vector2(-8f, -10f), new Vector2(24f, 6f), 34f, 0.9f),
-                Band(new Vector2(6f, 10f), new Vector2(26f, 6f), 0f, 0.88f),
-                Band(new Vector2(21f, 17f), new Vector2(22f, 6f), 24f, 0.84f),
-                Band(new Vector2(18f, -16f), new Vector2(30f, 6f), 0f, 0.84f)
+                // Main top corridor trunk: start chamber -> upper-right chamber.
+                Band(new Vector2(-20f, 8f), new Vector2(26f, 5f), 0f, 1f),
+                Band(new Vector2(2f, 14f), new Vector2(30f, 5f), 0f, 0.97f),
+                Band(new Vector2(21f, 18f), new Vector2(28f, 6f), 0f, 0.92f),
+
+                // Main bottom corridor trunk: start chamber -> lower-right chamber.
+                Band(new Vector2(-20f, -8f), new Vector2(26f, 5f), 0f, 1f),
+                Band(new Vector2(2f, -14f), new Vector2(30f, 5f), 0f, 0.97f),
+                Band(new Vector2(22f, -18f), new Vector2(28f, 6f), 0f, 0.92f),
+
+                // Light cross-support inside left chamber only.
+                Band(new Vector2(-33f, 0f), new Vector2(9f, 20f), 90f, 0.46f)
             },
             useWorldObstacles = true
         };
