@@ -1,0 +1,9 @@
+{
+  "brainType": "RuleBrain",
+  "controls": ["SlidingGate", "DiverterFlap"],
+  "targets": {
+    "upperFillTarget": 0.58,
+    "jamThreshold": 0.62,
+    "throughputPriority": 0.7
+  }
+}

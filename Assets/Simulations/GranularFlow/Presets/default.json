@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "scenarioName": "Granular Flow Pilot",
+  "mode": "Sim",
+  "seed": 246810,
+  "activeSimulation": "GranularFlow",
+  "world": {
+    "arenaWidth": 80,
+    "arenaHeight": 80,
+    "walls": true,
+    "obstacleDensity": 0.0
+  },
+  "recording": {
+    "enabled": true,
+    "snapshotEveryNTicks": 30,
+    "eventsEnabled": true,
+    "outputRoot": "Runs"
+  },
+  "granularFlow": {
+    "machineArchetype": "SplitterTower",
+    "machine": {
+      "feederRatePerSecond": 165.0,
+      "gateMaxOpen": 1.0,
+      "gateMoveSpeed": 4.6,
+      "flapMoveSpeed": 12.0,
+      "flapMaxAngle": 34.0,
+      "laneSlope": 0.55
+    },
+    "particles": {
+      "maxParticles": 12000,
+      "radius": 0.16,
+      "gravity": 18.0,
+      "damping": 0.994,
+      "collisionBounce": 0.34,
+      "feederJitter": 0.8
+    },
+    "ruleBrain": {
+      "upperFillTarget": 0.58,
+      "jamThreshold": 0.62,
+      "flapBiasStrength": 0.95,
+      "gatePulseMinSeconds": 0.20,
+      "gatePulseMaxSeconds": 0.90
+    }
+  }
+}
