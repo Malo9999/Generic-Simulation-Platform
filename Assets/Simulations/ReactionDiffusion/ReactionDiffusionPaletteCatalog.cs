@@ -1,7 +1,5 @@
 using UnityEngine;
 
-using UnityEngine;
-
 public static class ReactionDiffusionPaletteCatalog
 {
     public readonly struct Palette

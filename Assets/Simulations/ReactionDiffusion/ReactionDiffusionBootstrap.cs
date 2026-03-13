@@ -36,6 +36,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     [Header("Regime Morph")]
     [SerializeField] private bool enableRegimeMorph = true;
+    [SerializeField, Range(0f, 1f)] private float morphStrength = 0.20f;
     [SerializeField] private ReactionDiffusionPreset morphPresetA = ReactionDiffusionPreset.Chaos;
     [SerializeField] private ReactionDiffusionPreset morphPresetB = ReactionDiffusionPreset.Mazes;
     [SerializeField] private ReactionDiffusionPreset morphPresetC = ReactionDiffusionPreset.Worms;
@@ -101,6 +102,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         stepsPerFrame = 1;
         wrapEdges = true;
 
+
         seedMode = ReactionDiffusionSeedMode.RandomPatches;
         randomSeed = 1337;
         useRandomSeed = true;
@@ -118,6 +120,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         morphPresetC = ReactionDiffusionPreset.Worms;
         morphPresetD = ReactionDiffusionPreset.Spots;
         morphSegmentSeconds = 18f;
+        morphStrength = 0.20f;
 
         enableMicroReseeding = true;
         microReseedStartDelaySeconds = 5f;
@@ -147,6 +150,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         cameraPadding = Mathf.Max(0f, cameraPadding);
         activityGain = Mathf.Max(0f, activityGain);
         morphSegmentSeconds = Mathf.Max(2f, morphSegmentSeconds);
+        morphStrength = Mathf.Clamp01(morphStrength);
 
         feedDriftAmplitude = Mathf.Max(0f, feedDriftAmplitude);
         killDriftAmplitude = Mathf.Max(0f, killDriftAmplitude);
