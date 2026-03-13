@@ -38,16 +38,17 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField] private bool enableRegimeMorph = true;
     [SerializeField] private ReactionDiffusionPreset morphPresetA = ReactionDiffusionPreset.Chaos;
     [SerializeField] private ReactionDiffusionPreset morphPresetB = ReactionDiffusionPreset.Mazes;
-    [SerializeField, Min(2f)] private float morphCycleSeconds = 24f;
-    [SerializeField, Range(0f, 1f)] private float morphStrength = 0.45f;
+    [SerializeField] private ReactionDiffusionPreset morphPresetC = ReactionDiffusionPreset.Worms;
+    [SerializeField] private ReactionDiffusionPreset morphPresetD = ReactionDiffusionPreset.Spots;
+    [SerializeField, Min(2f)] private float morphSegmentSeconds = 18f;
 
     [Header("Micro Reseeding")]
     [SerializeField] private bool enableMicroReseeding = true;
     [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 5f;
-    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 7f;
+    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 6f;
     [SerializeField, Range(1, 8)] private int microReseedCount = 1;
-    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.025f;
-    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.40f;
+    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.03f;
+    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.5f;
     [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.08f;
 
     [Header("Display")]
@@ -55,7 +56,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField, Min(0.1f)] private float simulationScale = 1f;
     [SerializeField] private bool fitMainCameraToDisplay = true;
     [SerializeField, Min(0f)] private float cameraPadding = 0f;
-    [SerializeField, Min(0f)] private float activityGain = 14.0f;
+    [SerializeField, Min(0f)] private float activityGain = 18.0f;
     [SerializeField] private ComputeShader simulationShader;
     [SerializeField] private Shader displayShader;
 
@@ -93,7 +94,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         gridWidth = 960;
         gridHeight = 540;
         diffuseA = 1.0f;
-        diffuseB = 0.52f;
+        diffuseB = 0.55f;
         feed = 0.0420f;
         kill = 0.0600f;
         dt = 1f;
@@ -105,8 +106,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         useRandomSeed = true;
 
         enableParameterDrift = true;
-        feedDriftAmplitude = 0.0003f;
-        killDriftAmplitude = 0.0002f;
+        feedDriftAmplitude = 0.0004f;
+        killDriftAmplitude = 0.00025f;
         feedDriftPeriodSeconds = 24f;
         killDriftPeriodSeconds = 32f;
         killDriftPhaseOffsetRadians = 1.7f;
@@ -114,22 +115,23 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         enableRegimeMorph = true;
         morphPresetA = ReactionDiffusionPreset.Chaos;
         morphPresetB = ReactionDiffusionPreset.Mazes;
-        morphCycleSeconds = 24f;
-        morphStrength = 0.45f;
+        morphPresetC = ReactionDiffusionPreset.Worms;
+        morphPresetD = ReactionDiffusionPreset.Spots;
+        morphSegmentSeconds = 18f;
 
         enableMicroReseeding = true;
         microReseedStartDelaySeconds = 5f;
-        microReseedIntervalSeconds = 7f;
+        microReseedIntervalSeconds = 6f;
         microReseedCount = 1;
-        microReseedRadius = 0.025f;
-        microReseedStrength = 0.40f;
+        microReseedRadius = 0.03f;
+        microReseedStrength = 0.5f;
         microReseedBorderPadding = 0.08f;
 
         displayMode = ReactionDiffusionDisplayMode.ChemicalB;
         simulationScale = 1f;
         fitMainCameraToDisplay = true;
         cameraPadding = 0f;
-        activityGain = 14.0f;
+        activityGain = 18.0f;
 
         lastAppliedPreset = preset;
         OnValidate();
@@ -144,8 +146,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         simulationScale = Mathf.Max(0.1f, simulationScale);
         cameraPadding = Mathf.Max(0f, cameraPadding);
         activityGain = Mathf.Max(0f, activityGain);
-        morphCycleSeconds = Mathf.Max(2f, morphCycleSeconds);
-        morphStrength = Mathf.Clamp01(morphStrength);
+        morphSegmentSeconds = Mathf.Max(2f, morphSegmentSeconds);
 
         feedDriftAmplitude = Mathf.Max(0f, feedDriftAmplitude);
         killDriftAmplitude = Mathf.Max(0f, killDriftAmplitude);
@@ -219,9 +220,22 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         var timeSeconds = Time.timeSinceLevelLoad;
 
-        var runtimeDiffuseB = diffuseB;
         var runtimeFeed = feed;
         var runtimeKill = kill;
+        var runtimeDiffuseB = diffuseB;
+
+        if (enableRegimeMorph)
+        {
+            SampleMorphParameters(
+                timeSeconds,
+                out var morphDiffuseB,
+                out var morphFeed,
+                out var morphKill);
+
+            runtimeDiffuseB = morphDiffuseB;
+            runtimeFeed = morphFeed;
+            runtimeKill = morphKill;
+        }
 
         if (enableRegimeMorph)
         {
@@ -280,13 +294,36 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     {
         var a = GetPresetParameters(morphPresetA);
         var b = GetPresetParameters(morphPresetB);
+        var c = GetPresetParameters(morphPresetC);
+        var d = GetPresetParameters(morphPresetD);
 
-        var phase = Mathf.Sin((timeSeconds / morphCycleSeconds) * Mathf.PI * 2f) * 0.5f + 0.5f;
-        phase = Mathf.SmoothStep(0f, 1f, phase);
+        var segment = Mathf.FloorToInt(timeSeconds / morphSegmentSeconds) % 4;
+        var t = Mathf.Repeat(timeSeconds, morphSegmentSeconds) / morphSegmentSeconds;
+        t = Mathf.SmoothStep(0f, 1f, t);
 
-        outDiffuseB = Mathf.Lerp(a.diffuseB, b.diffuseB, phase);
-        outFeed = Mathf.Lerp(a.feed, b.feed, phase);
-        outKill = Mathf.Lerp(a.kill, b.kill, phase);
+        switch (segment)
+        {
+            case 0:
+                outDiffuseB = Mathf.Lerp(a.diffuseB, b.diffuseB, t);
+                outFeed = Mathf.Lerp(a.feed, b.feed, t);
+                outKill = Mathf.Lerp(a.kill, b.kill, t);
+                break;
+            case 1:
+                outDiffuseB = Mathf.Lerp(b.diffuseB, c.diffuseB, t);
+                outFeed = Mathf.Lerp(b.feed, c.feed, t);
+                outKill = Mathf.Lerp(b.kill, c.kill, t);
+                break;
+            case 2:
+                outDiffuseB = Mathf.Lerp(c.diffuseB, d.diffuseB, t);
+                outFeed = Mathf.Lerp(c.feed, d.feed, t);
+                outKill = Mathf.Lerp(c.kill, d.kill, t);
+                break;
+            default:
+                outDiffuseB = Mathf.Lerp(d.diffuseB, a.diffuseB, t);
+                outFeed = Mathf.Lerp(d.feed, a.feed, t);
+                outKill = Mathf.Lerp(d.kill, a.kill, t);
+                break;
+        }
     }
 
     private static ReactionDiffusionPresetCatalog.Parameters GetPresetParameters(ReactionDiffusionPreset preset)
@@ -296,7 +333,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             return parameters;
         }
 
-        return new ReactionDiffusionPresetCatalog.Parameters(1.0f, 0.52f, 0.0420f, 0.0600f, 1f, 1);
+        return new ReactionDiffusionPresetCatalog.Parameters(1.0f, 0.55f, 0.0420f, 0.0600f, 1f, 1);
     }
 
     public void ShutdownSimulation()

@@ -161,8 +161,8 @@ void Inject(uint3 id : SV_DispatchThreadID)
     float pulse = 1.0 - smoothstep(0.0, _InjectRadius, dist);
     pulse *= _InjectStrength;
 
-    float A = lerp(state.x, 0.12, pulse * 0.60);
-    float B = lerp(state.y, 0.88, pulse * 0.60);
+    float A = lerp(state.x, 0.10, pulse * 0.70);
+    float B = lerp(state.y, 0.90, pulse * 0.70);
 
     _WriteState[id.xy] = float4(saturate(A), saturate(B), 0.0, 1.0);
 }

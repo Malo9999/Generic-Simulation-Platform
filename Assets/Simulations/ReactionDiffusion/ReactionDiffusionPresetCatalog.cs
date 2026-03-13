@@ -65,15 +65,15 @@ public static class ReactionDiffusionPresetCatalog
                 return true;
 
             case ReactionDiffusionPreset.Worms:
-                parameters = new Parameters(1.0f, 0.56f, 0.0500f, 0.0590f, 1f, 1);
+                parameters = new Parameters(1.0f, 0.57f, 0.0780f, 0.0610f, 1f, 1);
                 return true;
 
             case ReactionDiffusionPreset.Spots:
-                parameters = new Parameters(1.0f, 0.55f, 0.0340f, 0.0560f, 1f, 1);
+                parameters = new Parameters(1.0f, 0.56f, 0.0260f, 0.0510f, 1f, 1);
                 return true;
 
             case ReactionDiffusionPreset.Chaos:
-                parameters = new Parameters(1.0f, 0.52f, 0.0420f, 0.0600f, 1f, 1);
+                parameters = new Parameters(1.0f, 0.55f, 0.0420f, 0.0600f, 1f, 1);
                 return true;
 
             default:
