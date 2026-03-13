@@ -65,6 +65,8 @@ public sealed class GranularFlowBootstrap : MonoBehaviour
         };
         config.NormalizeAliases();
 
+        InitializeDeterministicRng(seed);
+
         tick = 0;
         runner.Initialize(config);
         running = true;
@@ -92,5 +94,11 @@ public sealed class GranularFlowBootstrap : MonoBehaviour
         {
             runner = gameObject.AddComponent<GranularFlowRunner>();
         }
+    }
+
+    private static void InitializeDeterministicRng(int bootstrapSeed)
+    {
+        UnityEngine.Random.InitState(bootstrapSeed);
+        RngService.SetGlobalSeed(bootstrapSeed);
     }
 }
