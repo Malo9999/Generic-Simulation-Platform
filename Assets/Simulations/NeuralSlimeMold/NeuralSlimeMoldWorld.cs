@@ -44,15 +44,6 @@ public struct NeuralFoodNodeState
     public float consumeRadius;
     public float consumeRate;
 
-    public bool isActive;
-    public float respawnTimer;
-    public float respawnDelay;
-    public float recentConsumption01;
-    public float visualEnergy01;
-    public float scentIntensity01;
-    public float discoveryFlash01;
-
     public float Capacity01 => capacity <= 0f ? 0f : Mathf.Clamp01(currentCapacity / capacity);
     public float EffectiveStrength => baseStrength * Capacity01;
-    public float RespawnProgress01 => respawnDelay <= 0f ? (isActive ? 1f : 0f) : Mathf.Clamp01(1f - (respawnTimer / respawnDelay));
 }

@@ -5,7 +5,6 @@ using UnityEngine.Rendering;
 public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 {
     private const int ThreadGroupSize = 8;
-    private const int MaxOverlayPulses = 8;
 
     [Header("Startup")]
     [SerializeField] private bool autoStart = true;
@@ -44,12 +43,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.65f;
     [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.08f;
 
-    [Header("Color Presentation")]
-    [SerializeField] private ReactionDiffusionPalettePreset palettePreset = ReactionDiffusionPalettePreset.Ember;
-    [SerializeField] private ReactionDiffusionColorMode colorMode = ReactionDiffusionColorMode.TwoColor;
-    [SerializeField, Min(0.1f)] private float overlayPulseLifetimeSeconds = 8f;
-    [SerializeField, Min(0f)] private float overlayPulseGlow = 2.0f;
-
     [Header("Display")]
     [SerializeField] private ReactionDiffusionDisplayMode displayMode = ReactionDiffusionDisplayMode.ChemicalB;
     [SerializeField, Min(0.1f)] private float simulationScale = 1f;
@@ -60,7 +53,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     private RenderTexture stateA;
     private RenderTexture stateB;
-    private RenderTexture displayTexture;
     private Material displayMaterial;
     private Renderer displayRenderer;
 
@@ -78,12 +70,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     private float nextMicroReseedTime;
     private int microReseedIndex;
-
-    private readonly Vector4[] pulseCenters = new Vector4[MaxOverlayPulses];
-    private readonly float[] pulseAges = new float[MaxOverlayPulses];
-    private readonly float[] pulseRadii = new float[MaxOverlayPulses];
-    private readonly float[] pulseStrengths = new float[MaxOverlayPulses];
-    private int pulseWriteIndex;
 
     private void Reset()
     {
@@ -124,11 +110,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         microReseedStrength = 0.65f;
         microReseedBorderPadding = 0.08f;
 
-        palettePreset = ReactionDiffusionPalettePreset.Ember;
-        colorMode = ReactionDiffusionColorMode.TwoColor;
-        overlayPulseLifetimeSeconds = 8f;
-        overlayPulseGlow = 2.0f;
-
         displayMode = ReactionDiffusionDisplayMode.ChemicalB;
         simulationScale = 1f;
         fitMainCameraToDisplay = true;
@@ -158,9 +139,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         microReseedRadius = Mathf.Clamp(microReseedRadius, 0.002f, 0.08f);
         microReseedStrength = Mathf.Clamp01(microReseedStrength);
         microReseedBorderPadding = Mathf.Clamp(microReseedBorderPadding, 0f, 0.45f);
-
-        overlayPulseLifetimeSeconds = Mathf.Max(0.1f, overlayPulseLifetimeSeconds);
-        overlayPulseGlow = Mathf.Max(0f, overlayPulseGlow);
 
         if (preset != ReactionDiffusionPreset.Custom && preset != lastAppliedPreset)
         {
@@ -251,19 +229,10 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             nextMicroReseedTime = timeSeconds + microReseedIntervalSeconds;
         }
 
-        UpdatePulseAges(frameDt);
-
         if (displayMaterial != null)
         {
-            ApplyPaletteToMaterial();
             displayMaterial.SetTexture("_StateTex", read);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
-            displayMaterial.SetFloat("_OverlayPulseGlow", overlayPulseGlow);
-            displayMaterial.SetFloat("_ColorMode", (float)colorMode);
-            displayMaterial.SetVectorArray("_PulseCenters", pulseCenters);
-            displayMaterial.SetFloatArray("_PulseAges", pulseAges);
-            displayMaterial.SetFloatArray("_PulseRadii", pulseRadii);
-            displayMaterial.SetFloatArray("_PulseStrengths", pulseStrengths);
         }
     }
 
@@ -274,7 +243,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         ReleaseTexture(ref stateA);
         ReleaseTexture(ref stateB);
-        ReleaseTexture(ref displayTexture);
 
         if (displayMaterial != null)
         {
@@ -361,11 +329,9 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     {
         ReleaseTexture(ref stateA);
         ReleaseTexture(ref stateB);
-        ReleaseTexture(ref displayTexture);
 
         stateA = CreateStateTexture(gridWidth, gridHeight, "ReactionDiffusionStateA");
         stateB = CreateStateTexture(gridWidth, gridHeight, "ReactionDiffusionStateB");
-        displayTexture = CreateDisplayTexture(gridWidth, gridHeight, "ReactionDiffusionDisplay");
         useStateAAsRead = true;
         allocatedWidth = gridWidth;
         allocatedHeight = gridHeight;
@@ -403,12 +369,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             name = "ReactionDiffusionDisplayRuntime"
         };
-
-        ApplyPaletteToMaterial();
         displayMaterial.SetTexture("_StateTex", stateA);
         displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
-        displayMaterial.SetFloat("_OverlayPulseGlow", overlayPulseGlow);
-        displayMaterial.SetFloat("_ColorMode", (float)colorMode);
         displayRenderer.sharedMaterial = displayMaterial;
 
         if (fitMainCameraToDisplay)
@@ -452,7 +414,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         simulationShader.SetInt("_SeedMode", (int)seedMode);
         simulationShader.SetInt("_Seed", activeSeed);
         simulationShader.SetTexture(initKernel, "_WriteState", stateA);
-        simulationShader.SetTexture(initKernel, "_DisplayTex", displayTexture);
 
         var groupsX = Mathf.CeilToInt(gridWidth / (float)ThreadGroupSize);
         var groupsY = Mathf.CeilToInt(gridHeight / (float)ThreadGroupSize);
@@ -463,19 +424,9 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         nextMicroReseedTime = Time.timeSinceLevelLoad + microReseedStartDelaySeconds;
         microReseedIndex = 0;
-        pulseWriteIndex = 0;
-
-        for (var i = 0; i < MaxOverlayPulses; i++)
-        {
-            pulseCenters[i] = Vector4.zero;
-            pulseAges[i] = 0f;
-            pulseRadii[i] = 0f;
-            pulseStrengths[i] = 0f;
-        }
 
         if (displayMaterial != null)
         {
-            ApplyPaletteToMaterial();
             displayMaterial.SetTexture("_StateTex", stateA);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
         }
@@ -493,44 +444,11 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             simulationShader.SetFloat("_InjectStrength", microReseedStrength);
             simulationShader.Dispatch(injectKernel, groupsX, groupsY, 1);
 
-            AddOverlayPulse(center, microReseedRadius, microReseedStrength);
-
             var temp = read;
             read = write;
             write = temp;
             useStateAAsRead = !useStateAAsRead;
         }
-    }
-
-    private void AddOverlayPulse(Vector2 center, float radius, float strength)
-    {
-        pulseCenters[pulseWriteIndex] = new Vector4(center.x, center.y, 0f, 0f);
-        pulseAges[pulseWriteIndex] = 1f;
-        pulseRadii[pulseWriteIndex] = radius;
-        pulseStrengths[pulseWriteIndex] = strength;
-        pulseWriteIndex = (pulseWriteIndex + 1) % MaxOverlayPulses;
-    }
-
-    private void UpdatePulseAges(float frameDt)
-    {
-        var decay = frameDt / Mathf.Max(0.1f, overlayPulseLifetimeSeconds);
-        for (var i = 0; i < MaxOverlayPulses; i++)
-        {
-            pulseAges[i] = Mathf.Max(0f, pulseAges[i] - decay);
-        }
-    }
-
-    private void ApplyPaletteToMaterial()
-    {
-        if (displayMaterial == null)
-        {
-            return;
-        }
-
-        var palette = ReactionDiffusionPaletteCatalog.Get(palettePreset);
-        displayMaterial.SetColor("_BaseColor", palette.baseColor);
-        displayMaterial.SetColor("_ReseedColor", palette.reseedColor);
-        displayMaterial.SetColor("_HotspotColor", palette.hotspotColor);
     }
 
     private Vector2 GetMicroReseedCenter(int index)
@@ -554,22 +472,6 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     private static RenderTexture CreateStateTexture(int width, int height, string textureName)
     {
         var texture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
-        {
-            name = textureName,
-            enableRandomWrite = true,
-            useMipMap = false,
-            autoGenerateMips = false,
-            filterMode = FilterMode.Point,
-            wrapMode = TextureWrapMode.Clamp,
-            anisoLevel = 0
-        };
-        texture.Create();
-        return texture;
-    }
-
-    private static RenderTexture CreateDisplayTexture(int width, int height, string textureName)
-    {
-        var texture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Linear)
         {
             name = textureName,
             enableRandomWrite = true,

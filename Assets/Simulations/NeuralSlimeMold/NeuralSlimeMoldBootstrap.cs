@@ -33,7 +33,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Agent Motion")]
     [SerializeField] private float sensorAngleDegrees = 38f;
     [SerializeField] private float sensorDistance = 1.8f;
-    [SerializeField] private float speed = 6.2f;
+    [SerializeField] private float speed = 6.7f;
     [SerializeField] private float turnRateDegrees = 135f;
     [SerializeField, Min(0f)] private float depositAmount = 1.15f;
     [SerializeField, Min(0f)] private float explorationTurnNoise = 0.11f;
@@ -126,15 +126,21 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
     private void Awake()
     {
-        EnsureRuntimeReady();
+        runner = new NeuralSlimeMoldRunner();
+        rendererComponent = GetComponent<NeuralSlimeMoldRenderer>();
         if (rendererComponent == null)
         {
-            return;
+            rendererComponent = gameObject.AddComponent<NeuralSlimeMoldRenderer>();
         }
 
         ApplyRendererOverrides();
-        var perf = ResolvePerformanceProfile();
-        rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
+
+        if (rendererComponent != null)
+        {
+            var perf = ResolvePerformanceProfile();
+            rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
+        }
+
         ApplyCameraBackground();
     }
 
@@ -153,23 +159,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             return;
         }
 
-        if (!EnsureRuntimeReady())
-        {
-            return;
-        }
-
-        if (runner == null)
-        {
-            return;
-        }
-
         runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, foodStrength, explorationTurnNoise, activeFieldStepInterval);
-
-        if (runner.Field == null)
-        {
-            return;
-        }
-
         rendererComponent.Render(runner);
 
         if (autoFrameCamera && adaptiveCameraFraming)
@@ -181,11 +171,6 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [ContextMenu("Start / Reset Simulation")]
     public void StartSimulation()
     {
-        if (!EnsureRuntimeReady())
-        {
-            return;
-        }
-
         var turnRateRadians = turnRateDegrees * Mathf.Deg2Rad;
         var sensorAngleRadians = sensorAngleDegrees * Mathf.Deg2Rad;
 
@@ -283,7 +268,6 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     public void ApplyMoldPalettePreset()
     {
         backgroundColor = MoldBackgroundPreset;
-        EnsureRuntimeReady();
         ApplyRendererOverrides();
 
         if (rendererComponent != null)
@@ -293,25 +277,6 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         ApplyCameraBackground();
-    }
-
-    private bool EnsureRuntimeReady()
-    {
-        if (runner == null)
-        {
-            runner = new NeuralSlimeMoldRunner();
-        }
-
-        if (rendererComponent == null)
-        {
-            rendererComponent = GetComponent<NeuralSlimeMoldRenderer>();
-            if (rendererComponent == null)
-            {
-                rendererComponent = gameObject.AddComponent<NeuralSlimeMoldRenderer>();
-            }
-        }
-
-        return rendererComponent != null;
     }
 
     private void ApplyRendererOverrides()
@@ -347,7 +312,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private void FrameCameraImmediate()
     {
         var cam = Camera.main;
-        if (cam == null || !cam.orthographic || runner == null)
+        if (cam == null || !cam.orthographic)
         {
             return;
         }
@@ -367,7 +332,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private void UpdateAdaptiveCamera(float dt)
     {
         var cam = Camera.main;
-        if (cam == null || !cam.orthographic || runner == null)
+        if (cam == null || !cam.orthographic)
         {
             return;
         }
@@ -619,7 +584,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         minimumCameraSize = Mathf.Max(1f, minimumCameraSize);
         cameraDeadZoneRadius = Mathf.Max(0f, cameraDeadZoneRadius);
 
-        EnsureRuntimeReady();
+        if (rendererComponent == null)
+        {
+            rendererComponent = GetComponent<NeuralSlimeMoldRenderer>();
+        }
+
         ApplyRendererOverrides();
 
         if (rendererComponent != null)
