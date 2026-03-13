@@ -9,6 +9,15 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         High = 2
     }
 
+    public enum NeuralSlimeMoldArenaPreset
+    {
+        OpenPetriDish = 0,
+        CorridorRun = 1,
+        Crossroads = 2,
+        MazeLite = 3,
+        RingWorld = 4
+    }
+
     [Header("Simulation")]
     [SerializeField] private bool autoStart = true;
     [SerializeField] private int seed = 12345;
@@ -29,6 +38,10 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private bool useStressTestProfile;
     [SerializeField, Min(1)] private int stressAgentCount = 2000;
     [SerializeField] private Vector2Int stressTrailResolution = new(384, 384);
+
+    [Header("Arena Presets")]
+    [SerializeField] private bool useArenaPreset = true;
+    [SerializeField] private NeuralSlimeMoldArenaPreset selectedArenaPreset = NeuralSlimeMoldArenaPreset.OpenPetriDish;
 
     [Header("Agent Motion")]
     [SerializeField] private float sensorAngleDegrees = 35f;
@@ -182,17 +195,31 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         var perf = ResolvePerformanceProfile();
         activeFieldStepInterval = perf.fieldStepInterval;
 
+        ResolveArenaSetupForSimulation(
+            out var effectiveMapSize,
+            out var effectiveColonyHub,
+            out var effectiveColonyHubRadius,
+            out var effectiveManualFoodConfigs,
+            out var effectiveWorldObstacles,
+            out var effectiveCorridorBands,
+            out var effectiveUseWorldObstacles,
+            out var effectiveSpawnFromSeed);
+
+        var effectiveFoodNodeCount = effectiveSpawnFromSeed
+            ? foodNodeCount
+            : Mathf.Max(1, effectiveManualFoodConfigs != null ? effectiveManualFoodConfigs.Length : foodNodeCount);
+
         runner.ResetWithSeed(
             seed,
             activeAgentCount,
             activeTrailResolution,
-            mapSize,
+            effectiveMapSize,
             speed,
             turnRateRadians,
             sensorAngleRadians,
             sensorDistance,
             depositAmount,
-            foodNodeCount,
+            effectiveFoodNodeCount,
             foodStrength,
             foodCapacity,
             consumeRadius,
@@ -202,11 +229,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             foodRespawnDelay,
             foodRespawnDistanceBias,
             outerRingSpawnBias,
-            spawnFromSeed,
-            manualFoodConfigs,
+            effectiveSpawnFromSeed,
+            effectiveManualFoodConfigs,
             useColonyHub,
-            colonyHub,
-            colonyHubRadius,
+            effectiveColonyHub,
+            effectiveColonyHubRadius,
             returnToHubWeight,
             returnTrailBlend,
             returnDepositBoost,
@@ -229,9 +256,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             branchRetractionBoost,
             trunkStabilityBoost,
             duplicateTubeSuppressionRadius,
-            useWorldObstacles,
-            worldObstacles,
-            corridorBands,
+            effectiveUseWorldObstacles,
+            effectiveWorldObstacles,
+            effectiveCorridorBands,
             obstacleAvoidanceStrength,
             obstaclePadding);
 
@@ -264,6 +291,24 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         stressTrailResolution = new Vector2Int(Mathf.Max(stressTrailResolution.x, 384), Mathf.Max(stressTrailResolution.y, 384));
     }
 
+    [ContextMenu("Apply Arena Preset")]
+    public void ApplyArenaPreset()
+    {
+        if (!useArenaPreset)
+        {
+            return;
+        }
+
+        var setup = NeuralSlimeMoldArenaPresetBuilder.Build(
+            selectedArenaPreset,
+            foodStrength,
+            foodCapacity,
+            consumeRadius,
+            consumeRate);
+
+        ApplyArenaSetupToSerializedFields(setup);
+    }
+
     [ContextMenu("Apply Mold Palette Preset")]
     public void ApplyMoldPalettePreset()
     {
@@ -277,6 +322,62 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         ApplyCameraBackground();
+    }
+
+    private void ResolveArenaSetupForSimulation(
+        out Vector2 effectiveMapSize,
+        out Vector2 effectiveColonyHub,
+        out float effectiveColonyHubRadius,
+        out NeuralFoodNodeConfig[] effectiveManualFoodConfigs,
+        out NeuralObstacle[] effectiveWorldObstacles,
+        out NeuralCorridorBand[] effectiveCorridorBands,
+        out bool effectiveUseWorldObstacles,
+        out bool effectiveSpawnFromSeed)
+    {
+        effectiveMapSize = mapSize;
+        effectiveColonyHub = colonyHub;
+        effectiveColonyHubRadius = colonyHubRadius;
+        effectiveManualFoodConfigs = manualFoodConfigs;
+        effectiveWorldObstacles = worldObstacles;
+        effectiveCorridorBands = corridorBands;
+        effectiveUseWorldObstacles = useWorldObstacles;
+        effectiveSpawnFromSeed = spawnFromSeed;
+
+        if (!useArenaPreset)
+        {
+            return;
+        }
+
+        var setup = NeuralSlimeMoldArenaPresetBuilder.Build(
+            selectedArenaPreset,
+            foodStrength,
+            foodCapacity,
+            consumeRadius,
+            consumeRate);
+
+        effectiveMapSize = setup.mapSize;
+        effectiveColonyHub = setup.colonyHub;
+        effectiveColonyHubRadius = setup.colonyHubRadius;
+        effectiveManualFoodConfigs = setup.manualFoodConfigs;
+        effectiveWorldObstacles = setup.worldObstacles;
+        effectiveCorridorBands = setup.corridorBands;
+        effectiveUseWorldObstacles = setup.useWorldObstacles;
+        effectiveSpawnFromSeed = false;
+    }
+
+    private void ApplyArenaSetupToSerializedFields(NeuralSlimeMoldArenaSetup setup)
+    {
+        mapSize = setup.mapSize;
+        useColonyHub = true;
+        colonyHub = setup.colonyHub;
+        colonyHubRadius = Mathf.Max(0.25f, setup.colonyHubRadius);
+        manualFoodConfigs = setup.manualFoodConfigs;
+        worldObstacles = setup.worldObstacles;
+        corridorBands = setup.corridorBands;
+        useWorldObstacles = setup.useWorldObstacles;
+        spawnFromSeed = false;
+        foodNodeCount = Mathf.Max(1, manualFoodConfigs != null ? manualFoodConfigs.Length : foodNodeCount);
+        candidateFoodNodeCount = Mathf.Max(foodNodeCount, candidateFoodNodeCount);
     }
 
     private void ApplyRendererOverrides()
