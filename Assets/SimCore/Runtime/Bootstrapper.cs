@@ -24,7 +24,7 @@ public class Bootstrapper : MonoBehaviour
     [SerializeField] private ContentPack contentPackOverride;
 
     private const string SimulationRootName = "SimulationRoot";
-    private static readonly string[] KnownSimulationIds = { "AntColonies", "MarbleRace", "RaceCar", "FantasySport" };
+    private static readonly string[] KnownSimulationIds = { "AntColonies", "MarbleRace", "RaceCar", "FantasySport", "GranularFlow" };
 
     private GameObject simulationRoot;
     private GameObject activeRunnerObject;
@@ -1161,6 +1161,7 @@ public class Bootstrapper : MonoBehaviour
         {
             runnerObject = new GameObject($"{config.simulationId}RunnerPlaceholder");
             runnerObject.transform.SetParent(parent, false);
+            AttachKnownRunnerFallback(config.simulationId, runnerObject);
             Debug.LogWarning($"Bootstrapper: Missing prefab for {config.simulationId} at Resources/{SimulationRegistry.GetResourcePath(config.simulationId)}.prefab");
         }
 
@@ -1184,6 +1185,20 @@ public class Bootstrapper : MonoBehaviour
             simDriver?.SetRunner(null);
             replayDriver?.SetRunner(null);
             return false;
+        }
+    }
+
+    private static void AttachKnownRunnerFallback(string simulationId, GameObject runnerObject)
+    {
+        if (runnerObject == null || string.IsNullOrWhiteSpace(simulationId))
+        {
+            return;
+        }
+
+        if (string.Equals(simulationId, "GranularFlow", StringComparison.OrdinalIgnoreCase)
+            && runnerObject.GetComponent<GranularFlowRunner>() == null)
+        {
+            runnerObject.AddComponent<GranularFlowRunner>();
         }
     }
 

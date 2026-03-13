@@ -19,6 +19,7 @@ public class ScenarioConfig
     public FantasySportConfig fantasySport = new();
     public RaceCarConfig raceCar = new();
     public PredatorPreyDocuConfig predatorPreyDocu = new();
+    public GranularFlowConfig granularFlow = new();
 
     public void NormalizeAliases()
     {
@@ -39,11 +40,13 @@ public class ScenarioConfig
         fantasySport ??= new FantasySportConfig();
         raceCar ??= new RaceCarConfig();
         predatorPreyDocu ??= new PredatorPreyDocuConfig();
+        granularFlow ??= new GranularFlowConfig();
         antColonies.Normalize();
         marbleRace.Normalize();
         fantasySport.Normalize();
         raceCar.Normalize();
         predatorPreyDocu.Normalize();
+        granularFlow.Normalize();
     }
 }
 

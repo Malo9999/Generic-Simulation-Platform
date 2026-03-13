@@ -1,0 +1,30 @@
+{
+  "scenarioId": "granular_flow_pilot",
+  "simulation": "simulation_granular_flow.json",
+  "world": "world_granular_flow.json",
+  "director": "director_granular_flow.json",
+  "seed": 246810,
+  "run": {
+    "recordingEnabled": true,
+    "snapshotEveryNTicks": 30,
+    "eventsEnabled": true
+  },
+  "machine": {
+    "archetype": "SplitterTower",
+    "gate": { "moveSpeed": 4.6, "maxOpen": 1.0 },
+    "flap": { "moveSpeed": 12.0, "maxAngle": 34.0 }
+  },
+  "particleRecipe": {
+    "maxParticles": 12000,
+    "radius": 0.16,
+    "gravity": 18.0,
+    "damping": 0.994,
+    "palette": ["red", "green", "blue", "yellow"]
+  },
+  "ruleBrain": {
+    "type": "GranularFlowRuleBrain",
+    "upperFillTarget": 0.58,
+    "jamThreshold": 0.62,
+    "flapBiasStrength": 0.95
+  }
+}
