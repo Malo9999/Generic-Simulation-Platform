@@ -45,21 +45,21 @@ public sealed class NeuralSlimeMoldRunner
     private const float LoopCurvatureSampleRadius = 1.2f;
     private const float LoopPruneRadius = 1.0f;
 
-    private const float ExitHubDurationMin = 0.65f;
-    private const float ExitHubDurationMax = 1.35f;
-    private const float ExitHubSteerStrength = 1.75f;
-    private const float ExitHubSpeedMultiplier = 1.18f;
+    private const float ExitHubDurationMin = 0.85f;
+    private const float ExitHubDurationMax = 1.65f;
+    private const float ExitHubSteerStrength = 2.05f;
+    private const float ExitHubSpeedMultiplier = 1.22f;
     private const float ExitHubNoiseMultiplier = 0.22f;
     private const float HubRingScrubStrength = 0.22f;
-    private const float HubSeekDepositSuppression = 0.08f;
+    private const float HubSeekDepositSuppression = 0.04f;
     private const float ConnectorReinforceTrailThreshold = 0.035f;
     private const int HubOrbitSampleCount = 10;
     private const float BranchSpawnAngleMinDegrees = 24f;
     private const float BranchSpawnAngleMaxDegrees = 68f;
     private const float BranchSpawnFrontSampleDistance = 2.3f;
     private const float BranchSpawnSideSampleDistance = 2.1f;
-    private const float ExploratoryBranchDepositScale = 0.34f;
-    private const float PromotedBranchDepositScale = 0.82f;
+    private const float ExploratoryBranchDepositScale = 0.28f;
+    private const float PromotedBranchDepositScale = 0.92f;
 
     private const float ConnectorSoftCorridorOuterMultiplier = 2.4f;
     private const float ConnectorSoftProgressSlack = 1.45f;
@@ -68,8 +68,8 @@ public sealed class NeuralSlimeMoldRunner
     private const float FoodOrbitSteerStrength = 2.2f;
     private const float FoodOrbitTangentPenalty = 1.45f;
     private const float FoodNearZoneMultiplier = 1.18f;
-    private const float FoodNearDepositPenalty = 0.12f;
-    private const float FoodNearSpeedPenalty = 0.82f;
+    private const float FoodNearDepositPenalty = 0.08f;
+    private const float FoodNearSpeedPenalty = 0.78f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -133,6 +133,7 @@ public sealed class NeuralSlimeMoldRunner
     public NeuralFieldGrid Field { get; private set; }
     public NeuralSlimeMoldAgent[] Agents => agents;
     public NeuralFoodNodeState[] FoodNodes => foodNodes;
+    public int[] FoodConsumerCounts => foodConsumerCounts;
     public NeuralObstacle[] Obstacles => obstacles;
 
     public int Seed { get; private set; }
@@ -270,7 +271,7 @@ public sealed class NeuralSlimeMoldRunner
         {
             var radial = rng.InsideUnitCircle();
             var spawnRadius = useColonyHub
-                ? Mathf.Max(0.65f, this.colonyHubRadius * 0.55f)
+                ? Mathf.Max(0.35f, this.colonyHubRadius * 0.28f)
                 : Mathf.Min(this.mapSize.x, this.mapSize.y) * 0.2f;
             var spawnCenter = useColonyHub ? this.colonyHub : Vector2.zero;
             var pos = spawnCenter + new Vector2(radial.x * spawnRadius, radial.y * spawnRadius);
@@ -379,11 +380,13 @@ public sealed class NeuralSlimeMoldRunner
                         Field.ScrubAt(agent.position, ActiveFoodTrailScrub);
                     }
 
-                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier);
+                    var returnTrail = Field.SampleBilinear(agent.position);
+                    var returnTrunkBoost = Mathf.Lerp(1.15f, 1.95f, Mathf.Clamp01(returnTrail / Mathf.Max(StrongTrailHighwayThreshold, 0.001f)));
+                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier * returnTrunkBoost);
 
                     if (useColonyHub && IsInsideHub(agent.position))
                     {
-                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst * returnDepositMultiplier);
+                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.75f, successfulReturnDepositBurst * returnDepositMultiplier * 1.1f);
                         Field.ScrubDisc(agent.position, colonyHubRadius * 0.75f, HubRingScrubStrength);
 
                         mode = AgentMode.ExitHub;

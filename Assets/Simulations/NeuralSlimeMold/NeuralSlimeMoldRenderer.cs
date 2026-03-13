@@ -26,8 +26,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.15f;
     [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.4f;
     [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.62f;
-    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.62f;
-    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.24f;
+    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.56f;
+    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.3f;
 
     [Header("World Marker Visuals")]
     [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
@@ -36,8 +36,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
     [SerializeField] private Color colonyHubCoreColor = new(0.38f, 0.92f, 1f, 0.95f);
     [SerializeField] private Color colonyHubRingColor = new(0.24f, 0.64f, 0.94f, 0.85f);
-    [SerializeField, Min(0.2f)] private float colonyHubCoreScale = 1.2f;
-    [SerializeField, Min(0.2f)] private float colonyHubRingScale = 2.2f;
+    [SerializeField, Min(0.2f)] private float colonyHubCoreScale = 0.38f;
+    [SerializeField, Min(0.2f)] private float colonyHubRingScale = 0.95f;
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
@@ -51,7 +51,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0f, 0.5f)] private float lowFoodThreshold01 = 0.45f;
     [SerializeField, Range(0.5f, 1f)] private float recoveredFoodThreshold01 = 0.82f;
     [SerializeField] private Color foodDryingColor = new(0.62f, 0.38f, 0.14f, 0.96f);
-    [SerializeField, Range(0f, 0.3f)] private float activePulseAmplitude = 0.08f;
+    [SerializeField, Range(0f, 0.3f)] private float activePulseAmplitude = 0.12f;
     [SerializeField, Range(0f, 0.3f)] private float regrowPulseAmplitude = 0.12f;
     [SerializeField, Range(0.1f, 8f)] private float foodPulseSpeed = 2.2f;
 
@@ -72,6 +72,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     private readonly List<SpriteRenderer> foodGlowRenderers = new();
     private readonly List<SpriteRenderer> obstacleRenderers = new();
     private SpriteRenderer colonyHubRingRenderer;
+    private SpriteRenderer colonyHubAuraRenderer;
     private SpriteRenderer colonyHubCoreRenderer;
 
     private Texture2D fieldTexture;
@@ -158,7 +159,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             t.localRotation = Quaternion.Euler(0f, 0f, state.heading * Mathf.Rad2Deg);
         }
 
-        UpdateFoodNodes(runner.FoodNodes);
+        UpdateFoodNodes(runner.FoodNodes, runner.FoodConsumerCounts);
         UpdateColonyHub(runner.ColonyHub, runner.ColonyHubRadius);
         UpdateActivityFocus(runner.ActivityCenter, runner.ActivityRadius);
 
@@ -188,7 +189,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         activityFocusRenderer.color = activityFocusColor;
     }
 
-    private void UpdateFoodNodes(NeuralFoodNodeState[] foodNodes)
+    private void UpdateFoodNodes(NeuralFoodNodeState[] foodNodes, int[] foodConsumerCounts)
     {
         var time = UnityEngine.Application.isPlaying ? Time.time : 0f;
 
@@ -223,6 +224,9 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
             var perNodePhase = i * 0.73f;
             var pulse = Mathf.Sin((time * foodPulseSpeed) + perNodePhase) * 0.5f + 0.5f;
+            var consumerCount = (foodConsumerCounts != null && i < foodConsumerCounts.Length) ? foodConsumerCounts[i] : 0;
+            var harvestActive = consumerCount > 0;
+            var harvestBoost01 = harvestActive ? Mathf.Clamp01(consumerCount / 10f) : 0f;
 
             Color markerColor;
             float stateScale;
@@ -257,9 +261,9 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             else
             {
                 markerColor = foodActiveColor;
-                var ripePulse = 1f + (pulse * activePulseAmplitude);
-                stateScale = activeScaleBoost * ripePulse;
-                stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a);
+                var harvestPulse = 1f + (pulse * Mathf.Lerp(activePulseAmplitude, activePulseAmplitude * 2.6f, harvestBoost01));
+                stateScale = activeScaleBoost * harvestPulse * Mathf.Lerp(1f, 1.35f, harvestBoost01);
+                stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a) * Mathf.Lerp(1f, 1.2f, harvestBoost01);
             }
 
             sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;
@@ -269,7 +273,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             if (glow != null)
             {
                 var glowColor = markerColor;
-                glowColor.a *= isDepleted ? 0.20f : (isRegrowing ? 0.42f : 0.52f);
+                glowColor.a *= isDepleted ? 0.20f : (isRegrowing ? 0.42f : Mathf.Lerp(0.52f, 0.78f, harvestBoost01));
                 glow.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.9f);
                 glow.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale * (isDepleted ? 1.8f : 2.5f);
                 glow.color = glowColor;
@@ -294,11 +298,17 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         var hubGo = new GameObject("ColonyHub");
         hubGo.transform.SetParent(transform, false);
 
+        var auraGo = new GameObject("Aura");
+        auraGo.transform.SetParent(hubGo.transform, false);
+        colonyHubAuraRenderer = auraGo.AddComponent<SpriteRenderer>();
+        colonyHubAuraRenderer.sortingOrder = 29;
+        colonyHubAuraRenderer.sprite = glowSprite;
+
         var ringGo = new GameObject("Ring");
         ringGo.transform.SetParent(hubGo.transform, false);
         colonyHubRingRenderer = ringGo.AddComponent<SpriteRenderer>();
         colonyHubRingRenderer.sortingOrder = 30;
-        colonyHubRingRenderer.sprite = glowSprite;
+        colonyHubRingRenderer.sprite = markerSprite;
 
         var coreGo = new GameObject("Core");
         coreGo.transform.SetParent(hubGo.transform, false);
@@ -311,7 +321,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
 
     private void UpdateColonyHub(Vector2 hub, float hubRadius)
     {
-        if (colonyHubCoreRenderer == null || colonyHubRingRenderer == null)
+        if (colonyHubCoreRenderer == null || colonyHubRingRenderer == null || colonyHubAuraRenderer == null)
         {
             return;
         }
@@ -319,17 +329,23 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         var clamped = ClampNodeMarker(hub);
         colonyHubCoreRenderer.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.62f);
         colonyHubRingRenderer.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.64f);
+        colonyHubAuraRenderer.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.66f);
 
-        var diameter = Mathf.Max(1.2f, hubRadius * 2f);
+        var diameter = Mathf.Max(0.6f, hubRadius * 2f);
         colonyHubCoreRenderer.transform.localScale = Vector3.one * diameter * colonyHubCoreScale;
         colonyHubRingRenderer.transform.localScale = Vector3.one * diameter * colonyHubRingScale;
+        colonyHubAuraRenderer.transform.localScale = Vector3.one * diameter * 1.45f;
 
         colonyHubCoreRenderer.color = colonyHubCoreColor;
 
-        var pulsing = 0.92f + (Mathf.Sin(Time.time * 1.7f) * 0.08f + 0.08f);
+        var pulsing = 0.96f + (Mathf.Sin(Time.time * 1.5f) * 0.04f + 0.04f);
         var ring = colonyHubRingColor;
         ring.a *= pulsing;
         colonyHubRingRenderer.color = ring;
+
+        var aura = colonyHubRingColor;
+        aura.a *= 0.18f;
+        colonyHubAuraRenderer.color = aura;
     }
 
     private void BuildField(Vector2 size, int width, int height)
@@ -566,13 +582,13 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 var staleMask = Mathf.Clamp01(1f - trunkMask - branchMask) * Mathf.Clamp01(visible / Mathf.Max(0.0001f, branchThreshold01));
 
                 var readabilityExposure = Mathf.Lerp(1f, tubeExposure, trunkMask);
-                var branchExposure = showExplorationBranches ? Mathf.Lerp(0.72f, 1f, branchMask) : 0f;
-                var staleExposure = showExplorationBranches ? Mathf.Lerp(0.08f, staleTrailFade, staleMask) : 0f;
+                var branchExposure = showExplorationBranches ? Mathf.Lerp(0.55f, 0.86f, branchMask) : 0f;
+                var staleExposure = showExplorationBranches ? Mathf.Lerp(0.02f, staleTrailFade * 0.7f, staleMask) : 0f;
                 var visualStrength = (trunkMask * readabilityExposure) + (branchMask * branchExposure) + (staleMask * staleExposure);
                 visualStrength = Mathf.Clamp01(visualStrength);
 
                 var alpha = Mathf.Pow(visible, Mathf.Lerp(1.9f, 0.60f, fieldAlphaSoftness));
-                alpha *= Mathf.Lerp(branchAlphaBias, 1f, trunkMask);
+                alpha *= Mathf.Lerp(branchAlphaBias * 0.82f, 1f, trunkMask);
                 alpha *= Mathf.Lerp(staleTrailFade, 1f, trunkMask + (branchMask * 0.5f));
                 alpha *= showExplorationBranches ? 1f : (0.35f + (0.65f * trunkMask));
                 alpha = Mathf.Clamp01(alpha * visualStrength);
