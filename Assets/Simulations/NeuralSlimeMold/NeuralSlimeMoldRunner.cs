@@ -61,6 +61,13 @@ public sealed class NeuralSlimeMoldRunner
     private const float ExploratoryBranchDepositScale = 0.34f;
     private const float PromotedBranchDepositScale = 0.82f;
 
+    private const float FoodScentRangeMultiplier = 3.4f;
+    private const float MinFoodScentRange = 3.5f;
+    private const float FoodScentPulseSpeed = 2.2f;
+    private const float FoodScentHaloWeight = 0.45f;
+    private const float ConsumptionFlashDecay = 2.1f;
+    private const float DiscoveryFlashDecay = 1.8f;
+
     private const float ConnectorSoftCorridorOuterMultiplier = 2.4f;
     private const float ConnectorSoftProgressSlack = 1.45f;
     private const float NearHubReturnCrossBias = 0.95f;
@@ -774,20 +781,24 @@ public sealed class NeuralSlimeMoldRunner
             var distance = toNode.magnitude;
 
             var seekRange = Mathf.Max(node.consumeRadius * FoodSeekRangeMultiplier, MinFoodSeekRange);
-            if (distance >= seekRange)
+            var scentRange = Mathf.Max(node.consumeRadius * FoodScentRangeMultiplier, MinFoodScentRange);
+            if (distance >= scentRange)
             {
                 continue;
             }
 
-            var outer01 = 1f - Mathf.Clamp01(distance / seekRange);
-
-            var innerSuppression = Mathf.InverseLerp(node.consumeRadius * 0.55f, node.consumeRadius * 1.1f, distance);
-            innerSuppression = Mathf.Clamp01(innerSuppression);
+            var innerSeek = 1f - Mathf.Clamp01(distance / Mathf.Max(0.001f, seekRange));
+            var outerScent = 1f - Mathf.Clamp01(distance / scentRange);
+            var edgeBlend = Mathf.InverseLerp(node.consumeRadius * 0.35f, node.consumeRadius * 1.1f, distance);
+            edgeBlend = Mathf.Clamp01(edgeBlend);
 
             var crowdPenalty = ComputeFoodCrowdingPenalty(i);
             var crowdFactor = Mathf.Lerp(1f, 0.45f, crowdPenalty);
+            var pulse = 0.88f + ((Mathf.Sin((simulationTime * FoodScentPulseSpeed) + (i * 0.77f)) * 0.5f + 0.5f) * 0.24f);
+            var scentStrength = Mathf.Lerp(outerScent, Mathf.Max(innerSeek, outerScent), FoodScentHaloWeight);
+            scentStrength = Mathf.Max(scentStrength * 0.75f, innerSeek * edgeBlend);
 
-            total += effectiveStrength * outer01 * innerSuppression * crowdFactor;
+            total += effectiveStrength * scentStrength * crowdFactor * pulse * Mathf.Lerp(0.75f, 1.1f, node.scentIntensity01);
         }
 
         return Mathf.Clamp01(total);
@@ -916,7 +927,10 @@ public sealed class NeuralSlimeMoldRunner
 
             if (foodIsActive[i])
             {
-                consumed = node.consumeRate * foodConsumerCounts[i] * deltaTime;
+                var consumerPressure = foodConsumerCounts[i] <= 1
+                    ? foodConsumerCounts[i]
+                    : (Mathf.Pow(foodConsumerCounts[i], 0.78f) + (foodConsumerCounts[i] * 0.28f));
+                consumed = node.consumeRate * consumerPressure * deltaTime;
                 var previousCapacity = node.currentCapacity;
                 node.currentCapacity = Mathf.Clamp(node.currentCapacity - consumed, 0f, maxCapacity);
 
@@ -929,6 +943,7 @@ public sealed class NeuralSlimeMoldRunner
                     node.respawnTimer = foodRespawnDelaySeconds;
                     node.respawnDelay = foodRespawnDelaySeconds;
                     node.currentCapacity = 0f;
+                    node.discoveryFlash01 = 0f;
                     UnityEngine.Debug.Log($"[NeuralSlimeMold] Food node {i} depleted at t={simulationTime:F2}s.");
                 }
             }
@@ -945,20 +960,24 @@ public sealed class NeuralSlimeMoldRunner
             node.respawnTimer = foodRespawnTimers[i];
             node.respawnDelay = foodRespawnDelaySeconds;
 
-            var consumptionSignal = Mathf.Clamp01(consumed / Mathf.Max(0.0001f, maxCapacity * 0.025f));
-            node.recentConsumption01 = Mathf.Max(node.recentConsumption01 * Mathf.Exp(-deltaTime * 2.35f), consumptionSignal);
+            var consumptionSignal = Mathf.Clamp01(consumed / Mathf.Max(0.0001f, maxCapacity * 0.02f));
+            node.recentConsumption01 = Mathf.Max(node.recentConsumption01 * Mathf.Exp(-deltaTime * ConsumptionFlashDecay), consumptionSignal);
+            node.discoveryFlash01 = Mathf.Max(0f, node.discoveryFlash01 - (deltaTime * DiscoveryFlashDecay));
 
             if (node.isActive)
             {
                 var capacity01 = Mathf.Clamp01(node.currentCapacity / maxCapacity);
-                var targetEnergy = Mathf.Lerp(0.42f, 1f, capacity01) + (node.recentConsumption01 * 0.12f);
+                var pulse = 0.88f + ((Mathf.Sin((simulationTime * FoodScentPulseSpeed) + (i * 0.77f)) * 0.5f + 0.5f) * 0.24f);
+                var targetEnergy = Mathf.Lerp(0.42f, 1f, capacity01) + (node.recentConsumption01 * 0.12f) + (node.discoveryFlash01 * 0.15f);
                 node.visualEnergy01 = Mathf.Lerp(node.visualEnergy01, Mathf.Clamp01(targetEnergy), 1f - Mathf.Exp(-deltaTime * 5.5f));
+                node.scentIntensity01 = Mathf.Lerp(node.scentIntensity01, Mathf.Lerp(0.45f, 1f, capacity01) * pulse, 1f - Mathf.Exp(-deltaTime * 4.5f));
             }
             else
             {
                 var respawn01 = node.RespawnProgress01;
                 var targetEnergy = Mathf.Lerp(0.05f, 0.55f, respawn01);
                 node.visualEnergy01 = Mathf.Lerp(node.visualEnergy01, targetEnergy, 1f - Mathf.Exp(-deltaTime * 2.8f));
+                node.scentIntensity01 = Mathf.Lerp(node.scentIntensity01, Mathf.Lerp(0.04f, 0.35f, respawn01), 1f - Mathf.Exp(-deltaTime * 2.2f));
             }
 
             foodNodes[i] = node;

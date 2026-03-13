@@ -49,6 +49,8 @@ public struct NeuralFoodNodeState
     public float respawnDelay;
     public float recentConsumption01;
     public float visualEnergy01;
+    public float scentIntensity01;
+    public float discoveryFlash01;
 
     public float Capacity01 => capacity <= 0f ? 0f : Mathf.Clamp01(currentCapacity / capacity);
     public float EffectiveStrength => baseStrength * Capacity01;

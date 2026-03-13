@@ -15,8 +15,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(1)] private int agentCount = 600;
     [SerializeField] private Vector2 mapSize = new(64f, 64f);
     [SerializeField] private Vector2Int trailResolution = new(256, 256);
-    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.22f;
-    [SerializeField, Range(0f, 1f)] private float trailDiffusion = 0.30f;
+    [SerializeField, Min(0f)] private float trailDecayPerSecond = 0.20f;
+    [SerializeField, Range(0f, 1f)] private float trailDiffusion = 0.28f;
 
     [Header("Quality / Performance")]
     [SerializeField] private NeuralSlimeMoldQualityPreset qualityPreset = NeuralSlimeMoldQualityPreset.Medium;
@@ -33,7 +33,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Agent Motion")]
     [SerializeField] private float sensorAngleDegrees = 38f;
     [SerializeField] private float sensorDistance = 1.8f;
-    [SerializeField] private float speed = 6.7f;
+    [SerializeField] private float speed = 6.2f;
     [SerializeField] private float turnRateDegrees = 135f;
     [SerializeField, Min(0f)] private float depositAmount = 1.15f;
     [SerializeField, Min(0f)] private float explorationTurnNoise = 0.11f;
@@ -43,8 +43,8 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(1)] private int candidateFoodNodeCount = 12;
     [SerializeField, Min(1)] private int maxSimultaneousActiveFood = 2;
     [SerializeField, Min(0f)] private float foodRespawnDelay = 5f;
-    [SerializeField, Range(0f, 1f)] private float foodRespawnDistanceBias = 0.65f;
-    [SerializeField, Range(0f, 1f)] private float outerRingSpawnBias = 0.45f;
+    [SerializeField, Range(0f, 1f)] private float foodRespawnDistanceBias = 0.75f;
+    [SerializeField, Range(0f, 1f)] private float outerRingSpawnBias = 0.62f;
     [SerializeField, Min(0f)] private float foodStrength = 1.35f;
     [SerializeField, Min(0f)] private float foodCapacity = 220f;
     [SerializeField, Min(0f)] private float consumeRadius = 4.5f;
@@ -58,22 +58,22 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0.25f)] private float colonyHubRadius = 4.5f;
     [SerializeField, Min(0f)] private float returnToHubWeight = 1.2f;
     [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.42f;
-    [SerializeField, Min(0f)] private float returnDepositBoost = 1.4f;
-    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 2.2f;
-    [SerializeField, Min(0f)] private float hubInfluenceRadius = 9f;
+    [SerializeField, Min(0f)] private float returnDepositBoost = 1.8f;
+    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 3.0f;
+    [SerializeField, Min(0f)] private float hubInfluenceRadius = 7f;
 
     [Header("Loop Pruning")]
-    [SerializeField, Min(0f)] private float nonUsefulLoopPruneStrength = 0.14f;
-    [SerializeField, Min(0f)] private float nonUsefulLoopTrailThreshold = 0.13f;
-    [SerializeField, Min(0f)] private float nonUsefulLoopCurvatureThreshold = 0.085f;
+    [SerializeField, Min(0f)] private float nonUsefulLoopPruneStrength = 0.32f;
+    [SerializeField, Min(0f)] private float nonUsefulLoopTrailThreshold = 0.10f;
+    [SerializeField, Min(0f)] private float nonUsefulLoopCurvatureThreshold = 0.06f;
 
     [Header("Network Maintenance")]
     [SerializeField, Min(0f)] private float bridgeReinforcementWeight = 0.55f;
     [SerializeField, Min(0f)] private float hubOrbitSuppression = 2.4f;
     [SerializeField, Min(0f)] private float staleCorridorDecayBoost = 1.8f;
-    [SerializeField, Min(0.1f)] private float connectorSearchRadius = 6f;
+    [SerializeField, Min(0.1f)] private float connectorSearchRadius = 7.5f;
     [SerializeField, Min(0f)] private float connectorSteerWeight = 1.15f;
-    [SerializeField, Min(0f)] private float hubTangentialPenalty = 1.4f;
+    [SerializeField, Min(0f)] private float hubTangentialPenalty = 2.1f;
     [SerializeField, Min(0.25f)] private float connectorCorridorWidth = 2.1f;
     [SerializeField, Range(0f, 1f)] private float returnOrbitDepositPenalty = 0.08f;
 
@@ -126,21 +126,15 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
 
     private void Awake()
     {
-        runner = new NeuralSlimeMoldRunner();
-        rendererComponent = GetComponent<NeuralSlimeMoldRenderer>();
+        EnsureRuntimeReady();
         if (rendererComponent == null)
         {
-            rendererComponent = gameObject.AddComponent<NeuralSlimeMoldRenderer>();
+            return;
         }
 
         ApplyRendererOverrides();
-
-        if (rendererComponent != null)
-        {
-            var perf = ResolvePerformanceProfile();
-            rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
-        }
-
+        var perf = ResolvePerformanceProfile();
+        rendererComponent.SetPerformanceOptions(perf.fieldTextureRefreshInterval, perf.maxVisibleAgents);
         ApplyCameraBackground();
     }
 
@@ -159,7 +153,23 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             return;
         }
 
+        if (!EnsureRuntimeReady())
+        {
+            return;
+        }
+
+        if (runner == null)
+        {
+            return;
+        }
+
         runner.Tick(Time.deltaTime, trailDiffusion, trailDecayPerSecond, foodStrength, explorationTurnNoise, activeFieldStepInterval);
+
+        if (runner.Field == null)
+        {
+            return;
+        }
+
         rendererComponent.Render(runner);
 
         if (autoFrameCamera && adaptiveCameraFraming)
@@ -171,6 +181,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [ContextMenu("Start / Reset Simulation")]
     public void StartSimulation()
     {
+        if (!EnsureRuntimeReady())
+        {
+            return;
+        }
+
         var turnRateRadians = turnRateDegrees * Mathf.Deg2Rad;
         var sensorAngleRadians = sensorAngleDegrees * Mathf.Deg2Rad;
 
@@ -268,6 +283,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     public void ApplyMoldPalettePreset()
     {
         backgroundColor = MoldBackgroundPreset;
+        EnsureRuntimeReady();
         ApplyRendererOverrides();
 
         if (rendererComponent != null)
@@ -277,6 +293,25 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         }
 
         ApplyCameraBackground();
+    }
+
+    private bool EnsureRuntimeReady()
+    {
+        if (runner == null)
+        {
+            runner = new NeuralSlimeMoldRunner();
+        }
+
+        if (rendererComponent == null)
+        {
+            rendererComponent = GetComponent<NeuralSlimeMoldRenderer>();
+            if (rendererComponent == null)
+            {
+                rendererComponent = gameObject.AddComponent<NeuralSlimeMoldRenderer>();
+            }
+        }
+
+        return rendererComponent != null;
     }
 
     private void ApplyRendererOverrides()
@@ -312,7 +347,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private void FrameCameraImmediate()
     {
         var cam = Camera.main;
-        if (cam == null || !cam.orthographic)
+        if (cam == null || !cam.orthographic || runner == null)
         {
             return;
         }
@@ -332,7 +367,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     private void UpdateAdaptiveCamera(float dt)
     {
         var cam = Camera.main;
-        if (cam == null || !cam.orthographic)
+        if (cam == null || !cam.orthographic || runner == null)
         {
             return;
         }
@@ -584,11 +619,7 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         minimumCameraSize = Mathf.Max(1f, minimumCameraSize);
         cameraDeadZoneRadius = Mathf.Max(0f, cameraDeadZoneRadius);
 
-        if (rendererComponent == null)
-        {
-            rendererComponent = GetComponent<NeuralSlimeMoldRenderer>();
-        }
-
+        EnsureRuntimeReady();
         ApplyRendererOverrides();
 
         if (rendererComponent != null)
