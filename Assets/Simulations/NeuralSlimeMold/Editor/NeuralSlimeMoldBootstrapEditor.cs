@@ -36,6 +36,8 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
             "stressTrailResolution"
         });
 
+        DrawArenaPresetSection();
+
         DrawSection("Agent Motion", new[]
         {
             "sensorAngleDegrees",
@@ -147,6 +149,37 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
         DrawRuntimeButtons();
 
         serializedObject.ApplyModifiedProperties();
+    }
+
+    private void DrawArenaPresetSection()
+    {
+        EditorGUILayout.Space(6f);
+        EditorGUILayout.LabelField("Arena Presets", EditorStyles.boldLabel);
+
+        var usePresetProp = serializedObject.FindProperty("useArenaPreset");
+        var selectedPresetProp = serializedObject.FindProperty("selectedArenaPreset");
+
+        if (usePresetProp != null)
+        {
+            EditorGUILayout.PropertyField(usePresetProp);
+        }
+
+        if (selectedPresetProp != null)
+        {
+            EditorGUILayout.PropertyField(selectedPresetProp);
+        }
+
+        if (usePresetProp != null && usePresetProp.boolValue)
+        {
+            EditorGUILayout.HelpBox("Arena presets overwrite hub/food/obstacle layout for this bootstrap.", MessageType.Info);
+
+            var bootstrap = target as NeuralSlimeMoldBootstrap;
+            if (bootstrap != null && GUILayout.Button("Apply Arena Preset"))
+            {
+                bootstrap.ApplyArenaPreset();
+                EditorUtility.SetDirty(bootstrap);
+            }
+        }
     }
 
     private void DrawSection(string title, string[] propertyNames)
