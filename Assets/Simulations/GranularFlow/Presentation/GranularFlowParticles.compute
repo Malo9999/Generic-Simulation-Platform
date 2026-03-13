@@ -1,0 +1,97 @@
+#pragma kernel Simulate
+
+struct Particle
+{
+    float2 position;
+    float2 velocity;
+    uint colorId;
+    float radius;
+};
+
+RWStructuredBuffer<Particle> _Particles;
+
+int _ActiveCount;
+float _Dt;
+float _Gravity;
+float _Damping;
+float _Bounce;
+float _GateOpen;
+float _FlapState;
+
+[numthreads(128,1,1)]
+void Simulate (uint3 id : SV_DispatchThreadID)
+{
+    uint i = id.x;
+    if (i >= (uint)_ActiveCount)
+    {
+        return;
+    }
+
+    Particle p = _Particles[i];
+
+    p.velocity.y -= _Gravity * _Dt;
+    p.velocity *= _Damping;
+    p.position += p.velocity * _Dt;
+
+    float2 minW = float2(-9.8, -7.5);
+    float2 maxW = float2(9.8, 8.0);
+
+    if (p.position.x < minW.x + p.radius)
+    {
+        p.position.x = minW.x + p.radius;
+        p.velocity.x = abs(p.velocity.x) * _Bounce;
+    }
+    if (p.position.x > maxW.x - p.radius)
+    {
+        p.position.x = maxW.x - p.radius;
+        p.velocity.x = -abs(p.velocity.x) * _Bounce;
+    }
+    if (p.position.y < minW.y + p.radius)
+    {
+        p.position.y = minW.y + p.radius;
+        p.velocity.y = abs(p.velocity.y) * _Bounce;
+    }
+    if (p.position.y > maxW.y - p.radius)
+    {
+        p.position.y = maxW.y - p.radius;
+        p.velocity.y = -abs(p.velocity.y) * _Bounce;
+    }
+
+    if (p.position.y > 2.2)
+    {
+        float minX = -4.8 + p.radius;
+        float maxX = 4.8 - p.radius;
+        p.position.x = clamp(p.position.x, minX, maxX);
+    }
+
+    if (p.position.y <= 2.2 && p.position.y >= 1.1)
+    {
+        float throatHalf = lerp(0.15, 1.25, saturate(_GateOpen));
+        if (abs(p.position.x) > throatHalf)
+        {
+            p.position.x = sign(p.position.x) * throatHalf;
+            p.velocity.x = -p.velocity.x * _Bounce;
+            p.velocity.y = max(p.velocity.y, -0.8);
+        }
+    }
+
+    if (p.position.y < 1.1 && p.position.y > -2.8)
+    {
+        p.position.x = clamp(p.position.x, -5.5 + p.radius, 5.5 - p.radius);
+    }
+
+    if (abs(p.position.y + 0.45) < 0.35)
+    {
+        p.velocity.x += _FlapState * 22.0 * _Dt;
+        p.velocity.y += 1.5 * _Dt;
+    }
+
+    if (p.position.y < -2.8)
+    {
+        float laneDir = p.position.x >= 0 ? 1.0 : -1.0;
+        p.velocity.x += laneDir * 10.0 * _Dt;
+        p.velocity.y -= 2.0 * _Dt;
+    }
+
+    _Particles[i] = p;
+}

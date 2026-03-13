@@ -1,0 +1,6 @@
+{
+  "id": "GranularFlow",
+  "module": "Assets/Simulations/GranularFlow",
+  "machineArchetype": "SplitterTower",
+  "description": "Experimental top-down granular sorting vertical slice"
+}

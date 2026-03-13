@@ -1,0 +1,7 @@
+{
+  "arenaWidth": 80,
+  "arenaHeight": 80,
+  "walls": true,
+  "obstacleDensity": 0.0,
+  "theme": "dark_industrial"
+}
