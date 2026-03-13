@@ -3,7 +3,9 @@ Shader "GSP/ReactionDiffusion/Display"
     Properties
     {
         _StateTex("State Texture", 2D) = "black" {}
+        _PrevStateTex("Previous State Texture", 2D) = "black" {}
         _DisplayMode("Display Mode", Float) = 0
+        _ActivityGain("Activity Gain", Float) = 14.0
     }
 
     SubShader
@@ -21,8 +23,10 @@ Shader "GSP/ReactionDiffusion/Display"
             #include "UnityCG.cginc"
 
             sampler2D _StateTex;
+            sampler2D _PrevStateTex;
             float4 _StateTex_TexelSize;
             float _DisplayMode;
+            float _ActivityGain;
 
             struct appdata
             {
@@ -44,9 +48,9 @@ Shader "GSP/ReactionDiffusion/Display"
                 return o;
             }
 
-            float GetSignal(float2 uv)
+            float GetSignal(sampler2D tex, float2 uv)
             {
-                float2 ab = tex2D(_StateTex, uv).xy;
+                float2 ab = tex2D(tex, uv).xy;
                 return (_DisplayMode < 0.5) ? ab.y : abs(ab.x - ab.y);
             }
 
@@ -54,11 +58,11 @@ Shader "GSP/ReactionDiffusion/Display"
             {
                 float2 t = _StateTex_TexelSize.xy;
 
-                float c = GetSignal(i.uv);
-                float l = GetSignal(i.uv + float2(-t.x, 0.0));
-                float r = GetSignal(i.uv + float2( t.x, 0.0));
-                float d = GetSignal(i.uv + float2(0.0, -t.y));
-                float u = GetSignal(i.uv + float2(0.0,  t.y));
+                float c = GetSignal(_StateTex, i.uv);
+                float l = GetSignal(_StateTex, i.uv + float2(-t.x, 0.0));
+                float r = GetSignal(_StateTex, i.uv + float2( t.x, 0.0));
+                float d = GetSignal(_StateTex, i.uv + float2(0.0, -t.y));
+                float u = GetSignal(_StateTex, i.uv + float2(0.0,  t.y));
 
                 float edge = abs(r - l) + abs(u - d);
                 edge = saturate(edge * 8.0);
@@ -69,11 +73,18 @@ Shader "GSP/ReactionDiffusion/Display"
 
                 float ridge = saturate(max(edge, baseGlow));
 
+                float prev = GetSignal(_PrevStateTex, i.uv);
+                float activity = saturate(abs(c - prev) * _ActivityGain);
+                activity = smoothstep(0.004, 0.07, activity);
+
                 float3 background = float3(0.98, 0.98, 0.99);
                 float3 lineColor = float3(0.12, 0.12, 0.14);
+                float3 activityColor = float3(0.96, 0.74, 0.26);
 
                 float3 color = lerp(background, lineColor, ridge);
-                return float4(color, 1.0);
+                color = lerp(color, activityColor, activity * 0.70);
+
+                return float4(saturate(color), 1.0);
             }
             ENDCG
         }
