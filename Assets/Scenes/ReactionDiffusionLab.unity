@@ -398,19 +398,32 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   autoStart: 1
-  preset: 8
+  preset: 11
   gridWidth: 960
   gridHeight: 540
   diffuseA: 1
   diffuseB: 0.5
-  feed: 0.054
-  kill: 0.062
+  feed: 0.042
+  kill: 0.06
   dt: 1
   stepsPerFrame: 1
   wrapEdges: 1
-  seedMode: 2
+  seedMode: 1
   randomSeed: 1337
   useRandomSeed: 1
+  enableParameterDrift: 1
+  feedDriftAmplitude: 0.0012
+  killDriftAmplitude: 0.0008
+  feedDriftPeriodSeconds: 28
+  killDriftPeriodSeconds: 35.9
+  killDriftPhaseOffsetRadians: 1.7
+  enableMicroReseeding: 1
+  microReseedStartDelaySeconds: 6
+  microReseedIntervalSeconds: 10
+  microReseedCount: 1
+  microReseedRadius: 0.02
+  microReseedStrength: 0.35
+  microReseedBorderPadding: 0.08
   displayMode: 0
   simulationScale: 1
   fitMainCameraToDisplay: 1
