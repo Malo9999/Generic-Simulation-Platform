@@ -402,7 +402,7 @@ MonoBehaviour:
   gridWidth: 960
   gridHeight: 540
   diffuseA: 1
-  diffuseB: 0.52
+  diffuseB: 0.5
   feed: 0.042
   kill: 0.06
   dt: 1
@@ -440,6 +440,6 @@ MonoBehaviour:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
+  - {fileID: 910100002}
   - {fileID: 519420032}
   - {fileID: 619394802}
-  - {fileID: 910100002}
