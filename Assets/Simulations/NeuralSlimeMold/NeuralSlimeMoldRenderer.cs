@@ -26,8 +26,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.3f;
     [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.34f;
     [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.48f;
-    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.5f;
-    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.36f;
+    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.58f;
+    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.3f;
 
     [Header("World Marker Visuals")]
     [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
@@ -36,8 +36,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
     [SerializeField] private Color colonyHubCoreColor = new(0.46f, 0.98f, 1f, 0.98f);
     [SerializeField] private Color colonyHubRingColor = new(0.2f, 0.56f, 0.9f, 0.8f);
-    [SerializeField, Min(0.2f)] private float colonyHubCoreScale = 0.42f;
-    [SerializeField, Min(0.2f)] private float colonyHubRingScale = 1.12f;
+    [SerializeField, Min(0.2f)] private float colonyHubCoreScale = 0.5f;
+    [SerializeField, Min(0.2f)] private float colonyHubRingScale = 1.02f;
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
@@ -334,7 +334,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         var diameter = Mathf.Max(0.6f, hubRadius * 2f);
         colonyHubCoreRenderer.transform.localScale = Vector3.one * diameter * colonyHubCoreScale;
         colonyHubRingRenderer.transform.localScale = Vector3.one * diameter * colonyHubRingScale;
-        colonyHubAuraRenderer.transform.localScale = Vector3.one * diameter * 1.18f;
+        colonyHubAuraRenderer.transform.localScale = Vector3.one * diameter * 0.76f;
 
         colonyHubCoreRenderer.color = colonyHubCoreColor;
 
@@ -344,7 +344,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         colonyHubRingRenderer.color = ring;
 
         var aura = colonyHubRingColor;
-        aura.a *= 0.1f;
+        aura.a *= 0.055f;
         colonyHubAuraRenderer.color = aura;
     }
 
@@ -577,19 +577,19 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 glow = Mathf.Clamp01(glow);
 
                 var visible = Mathf.Clamp01(Mathf.Max(veinValue, glow * 0.9f));
-                var trunkMask = Mathf.SmoothStep(trunkThreshold01 - 0.18f, trunkThreshold01 + 0.1f, visible);
-                var branchMask = Mathf.SmoothStep(branchThreshold01, trunkThreshold01, visible) * (1f - trunkMask);
+                var trunkMask = Mathf.SmoothStep(trunkThreshold01 - 0.14f, trunkThreshold01 + 0.06f, visible);
+                var branchMask = Mathf.SmoothStep(branchThreshold01 + 0.02f, trunkThreshold01 - 0.04f, visible) * (1f - trunkMask);
                 var staleMask = Mathf.Clamp01(1f - trunkMask - branchMask) * Mathf.Clamp01(visible / Mathf.Max(0.0001f, branchThreshold01));
 
-                var readabilityExposure = Mathf.Lerp(1f, tubeExposure, trunkMask);
-                var branchExposure = showExplorationBranches ? Mathf.Lerp(0.55f, 0.86f, branchMask) : 0f;
-                var staleExposure = showExplorationBranches ? Mathf.Lerp(0.02f, staleTrailFade * 0.7f, staleMask) : 0f;
-                var visualStrength = (trunkMask * readabilityExposure) + (branchMask * branchExposure) + (staleMask * staleExposure);
+                var trunkExposure = Mathf.Lerp(1f, tubeExposure * 1.08f, trunkMask);
+                var branchExposure = showExplorationBranches ? Mathf.Lerp(0.24f, 0.62f, branchMask) : 0f;
+                var staleExposure = showExplorationBranches ? Mathf.Lerp(0.015f, staleTrailFade * 0.28f, staleMask) : 0f;
+                var visualStrength = (trunkMask * trunkExposure) + (branchMask * branchExposure) + (staleMask * staleExposure);
                 visualStrength = Mathf.Clamp01(visualStrength);
 
-                var alpha = Mathf.Pow(visible, Mathf.Lerp(1.9f, 0.60f, fieldAlphaSoftness));
-                alpha *= Mathf.Lerp(branchAlphaBias * 0.82f, 1f, trunkMask);
-                alpha *= Mathf.Lerp(staleTrailFade, 1f, trunkMask + (branchMask * 0.5f));
+                var alpha = Mathf.Pow(visible, Mathf.Lerp(2.2f, 0.62f, fieldAlphaSoftness));
+                alpha *= Mathf.Lerp(branchAlphaBias * 0.48f, 1f, trunkMask);
+                alpha *= Mathf.Lerp(staleTrailFade * 0.62f, 1f, trunkMask + (branchMask * 0.45f));
                 alpha *= showExplorationBranches ? 1f : (0.35f + (0.65f * trunkMask));
                 alpha = Mathf.Clamp01(alpha * visualStrength);
                 alpha = Mathf.Clamp01(alpha);

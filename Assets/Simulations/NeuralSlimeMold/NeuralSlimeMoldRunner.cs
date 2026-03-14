@@ -271,7 +271,7 @@ public sealed class NeuralSlimeMoldRunner
         {
             var radial = rng.InsideUnitCircle();
             var spawnRadius = useColonyHub
-                ? Mathf.Max(0.35f, this.colonyHubRadius * 0.28f)
+                ? Mathf.Max(0.2f, this.colonyHubRadius * 0.2f)
                 : Mathf.Min(this.mapSize.x, this.mapSize.y) * 0.2f;
             var spawnCenter = useColonyHub ? this.colonyHub : Vector2.zero;
             var pos = spawnCenter + new Vector2(radial.x * spawnRadius, radial.y * spawnRadius);
