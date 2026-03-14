@@ -398,7 +398,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   autoStart: 1
-  preset: 11
+  preset: 12
   gridWidth: 960
   gridHeight: 540
   diffuseA: 1
@@ -417,18 +417,33 @@ MonoBehaviour:
   feedDriftPeriodSeconds: 28
   killDriftPeriodSeconds: 35.9
   killDriftPhaseOffsetRadians: 1.7
-  enableRegimeMorph: 1
+  enableRegimeMorph: 0
   morphPresetA: 11
-  morphPresetB: 10
+  morphPresetB: 3
   morphCycleSeconds: 14
   morphStrength: 0.75
-  enableMicroReseeding: 1
+  maxMorphFeedDelta: 0.0008
+  maxMorphKillDelta: 0.0005
+  enableArchetypeDirector: 1
+  useArchetypeSeed: 1
+  startArchetype: 2
+  randomizeSequence: 1
+  archetypeHoldTime: 25
+  archetypeTransitionTime: 35
+  archetypeStrength: 0.75
+  archetypeScale: 0.42
+  archetypeJitter: 0.08
+  archetypeRotationDegrees: 0
+  randomizeArchetypePerRun: 1
+  enableMicroReseeding: 0
   microReseedStartDelaySeconds: 5
   microReseedIntervalSeconds: 8
   microReseedCount: 1
   microReseedRadius: 0.025
   microReseedStrength: 0.4
   microReseedBorderPadding: 0.08
+  microReseedRadiusJitter: 0.25
+  microReseedStrengthJitter: 0.2
   displayMode: 0
   simulationScale: 1
   fitMainCameraToDisplay: 1
