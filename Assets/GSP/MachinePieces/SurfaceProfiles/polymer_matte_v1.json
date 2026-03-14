@@ -1,0 +1,13 @@
+{
+  "id": "polymer_matte_v1",
+  "version": 1,
+  "displayName": "Polymer Matte",
+  "shaderKey": "Sprites/Default",
+  "textureKey": null,
+  "baseColor": { "r": 0.30, "g": 0.34, "b": 0.42, "a": 1.0 },
+  "accentColor": { "r": 0.70, "g": 0.76, "b": 0.86, "a": 1.0 },
+  "finish": "matte",
+  "overlayKeys": ["dust_soft"],
+  "surfaceType": "polymer",
+  "physicalHints": { "entries": [ { "key": "roughness", "value": "0.72" }, { "key": "restitution", "value": "0.08" } ] }
+}

@@ -1,0 +1,13 @@
+{
+  "id": "metal_brushed_v1",
+  "version": 1,
+  "displayName": "Metal Brushed",
+  "shaderKey": "Sprites/Default",
+  "textureKey": null,
+  "baseColor": { "r": 0.75, "g": 0.77, "b": 0.80, "a": 1.0 },
+  "accentColor": { "r": 0.35, "g": 0.38, "b": 0.45, "a": 1.0 },
+  "finish": "semi_gloss",
+  "overlayKeys": ["scratch_light"],
+  "surfaceType": "metal",
+  "physicalHints": { "entries": [ { "key": "roughness", "value": "0.45" }, { "key": "restitution", "value": "0.12" } ] }
+}

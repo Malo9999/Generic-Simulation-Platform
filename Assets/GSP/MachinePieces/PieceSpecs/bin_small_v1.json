@@ -1,0 +1,17 @@
+{
+  "id": "bin_small_v1",
+  "version": 1,
+  "pieceType": "Bin",
+  "displayName": "Bin Small",
+  "tags": ["collector", "capture"],
+  "shape": { "kind": "box", "size": { "x": 2.4, "y": 1.4 } },
+  "collision": { "enabled": true, "isTrigger": false, "mode": "solid", "payload": { "entries": [] } },
+  "anchors": [
+    { "id": "input", "position": { "x": 0.0, "y": 0.7 }, "angle": 90.0 },
+    { "id": "output", "position": { "x": 0.0, "y": -0.7 }, "angle": -90.0 }
+  ],
+  "surface": { "surfaceProfileId": "metal_brushed_v1" },
+  "defaultParams": { "entries": [ { "key": "capacity", "value": "50" } ] },
+  "paramConstraints": [ { "key": "capacity", "min": 1.0, "max": 1000.0 } ],
+  "mechanics": { "mode": "capture", "payload": { "entries": [ { "key": "captureRadius", "value": "0.8" } ] } }
+}
