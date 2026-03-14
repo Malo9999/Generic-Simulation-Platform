@@ -68,12 +68,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Colony Hub")]
     [SerializeField] private bool useColonyHub = true;
     [SerializeField] private Vector2 colonyHub = Vector2.zero;
-    [SerializeField, Min(0.25f)] private float colonyHubRadius = 2.1f;
+    [SerializeField, Min(0.25f)] private float colonyHubRadius = 1.6f;
     [SerializeField, Min(0f)] private float returnToHubWeight = 1.55f;
     [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.68f;
     [SerializeField, Min(0f)] private float returnDepositBoost = 2.35f;
-    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 3.6f;
-    [SerializeField, Min(0f)] private float hubInfluenceRadius = 3.0f;
+    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 5.8f;
+    [SerializeField, Min(0f)] private float hubInfluenceRadius = 1.9f;
 
     [Header("Loop Pruning")]
     [SerializeField, Min(0f)] private float nonUsefulLoopPruneStrength = 0.14f;
@@ -101,9 +101,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Colony Growth Read")]
     [SerializeField, Min(0f)] private float startupOutwardBiasStrength = 1.65f;
     [SerializeField, Min(0f)] private float startupOutwardBiasDuration = 5.5f;
-    [SerializeField, Min(0f)] private float returnTrafficReinforcement = 0.95f;
-    [SerializeField, Min(0f)] private float weakBranchDecayBoost = 1.35f;
-    [SerializeField, Min(0f)] private float foodContactFieldBoost = 2.25f;
+    [SerializeField, Min(0f)] private float returnTrafficReinforcement = 1.75f;
+    [SerializeField, Min(0f)] private float weakBranchDecayBoost = 2.35f;
+    [SerializeField, Min(0f)] private float foodContactFieldBoost = 3.6f;
 
     [Header("World Obstacles")]
     [SerializeField] private bool useWorldObstacles;
@@ -123,9 +123,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private bool showExplorationBranches = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField] private bool showActivityFocus = false;
-    [SerializeField, Min(0.1f)] private float tubeExposure = 1.3f;
-    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.34f;
-    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.48f;
+    [SerializeField, Min(0.1f)] private float tubeExposure = 1.7f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.16f;
+    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.28f;
 
     [Header("Camera Framing")]
     [SerializeField] private bool autoFrameCamera = true;

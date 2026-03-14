@@ -31,7 +31,7 @@ public sealed class NeuralSlimeMoldBootstrapEditor : Editor
     {
         EditorGUILayout.BeginVertical("box");
 
-        EditorGUILayout.LabelField("Arena Presets (Pass A)", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("Arena Presets (Readability Pass)", EditorStyles.boldLabel);
 
         EditorGUILayout.PropertyField(useArenaPreset, new GUIContent("Use Arena Preset"));
 
