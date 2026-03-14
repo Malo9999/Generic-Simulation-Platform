@@ -1,93 +1,110 @@
 {
-  "id": "splitter_machine_v1",
+  "id": "splitter_machine_compound_v1",
   "version": 1,
-  "displayName": "Splitter Machine V1",
+  "displayName": "Splitter Machine Compound V1",
   "machineType": "Splitter",
-  "bounds": { "width": 14, "height": 16 },
-
-  "pieces": [
-
+  "bounds": {
+    "width": 14.0,
+    "height": 16.0
+  },
+  "modules": [
     {
-      "instanceId": "hopper_left_wall",
-      "pieceId": "wall_straight_v1",
+      "instanceId": "hopper_01",
+      "compoundPieceId": "hopper_v1",
       "transform": {
-        "position": { "x": -4, "y": 7 },
-        "rotationDeg": 90,
-        "scale": { "x": 1, "y": 3 }
+        "position": { "x": 0.0, "y": 6.0 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {
+        "width": 6.0,
+        "height": 3.5,
+        "outletWidth": 1.2,
+        "wallThickness": 0.2,
+        "slopeAngle": 35.0
+      },
+      "surfaceOverride": null,
+      "stateDefaults": {}
+    },
+    {
+      "instanceId": "chamber_01",
+      "compoundPieceId": "chamber_box_v1",
+      "transform": {
+        "position": { "x": 0.0, "y": 1.5 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {
+        "width": 5.0,
+        "height": 2.5,
+        "wallThickness": 0.2
+      },
+      "surfaceOverride": null,
+      "stateDefaults": {}
+    },
+    {
+      "instanceId": "splitter_01",
+      "compoundPieceId": "splitter_v1",
+      "transform": {
+        "position": { "x": 0.0, "y": -2.0 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {
+        "width": 6.0,
+        "height": 3.0,
+        "outletSpacing": 4.0,
+        "wallThickness": 0.2,
+        "splitAngle": 30.0
+      },
+      "surfaceOverride": null,
+      "stateDefaults": {
+        "flapAngleDeg": 0.0
       }
     },
-
-    {
-      "instanceId": "hopper_right_wall",
-      "pieceId": "wall_straight_v1",
-      "transform": {
-        "position": { "x": 4, "y": 7 },
-        "rotationDeg": 90,
-        "scale": { "x": 1, "y": 3 }
-      }
-    },
-
-    {
-      "instanceId": "hopper_floor",
-      "pieceId": "slope_35deg_v1",
-      "transform": {
-        "position": { "x": -2, "y": 5 },
-        "rotationDeg": 0,
-        "scale": { "x": 1, "y": 1 }
-      }
-    },
-
-    {
-      "instanceId": "hopper_floor_right",
-      "pieceId": "slope_35deg_v1",
-      "transform": {
-        "position": { "x": 2, "y": 5 },
-        "rotationDeg": 180,
-        "scale": { "x": 1, "y": 1 }
-      }
-    },
-
-    {
-      "instanceId": "main_gate",
-      "pieceId": "gate_slide_center_v1",
-      "transform": {
-        "position": { "x": 0, "y": 3 },
-        "rotationDeg": 0,
-        "scale": { "x": 1, "y": 1 }
-      }
-    },
-
-    {
-      "instanceId": "control_flap",
-      "pieceId": "flap_standard_v1",
-      "transform": {
-        "position": { "x": 0, "y": 0 },
-        "rotationDeg": 0,
-        "scale": { "x": 1, "y": 1 }
-      }
-    },
-
     {
       "instanceId": "bin_left",
       "pieceId": "bin_small_v1",
       "transform": {
-        "position": { "x": -4, "y": -4 },
-        "rotationDeg": 0,
-        "scale": { "x": 1, "y": 1 }
-      }
+        "position": { "x": -4.5, "y": -5.5 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {}
     },
-
     {
       "instanceId": "bin_right",
       "pieceId": "bin_small_v1",
       "transform": {
-        "position": { "x": 4, "y": -4 },
-        "rotationDeg": 0,
-        "scale": { "x": 1, "y": 1 }
-      }
+        "position": { "x": 4.5, "y": -5.5 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {}
     }
-
   ],
-
-  "connections": []
+  "pieces": [],
+  "connections": [
+    {
+      "from": "hopper_01.out_bottom",
+      "to": "chamber_01.in_top"
+    },
+    {
+      "from": "chamber_01.out_bottom",
+      "to": "splitter_01.in_top"
+    }
+  ],
+  "runtimeDefaults": {
+    "spawnZone": {
+      "center": { "x": 0.0, "y": 8.25 },
+      "size": { "x": 1.0, "y": 0.5 }
+    }
+  },
+  "metadata": {
+    "notes": "First compound-based sample machine for PieceTestSim."
+  }
 }
