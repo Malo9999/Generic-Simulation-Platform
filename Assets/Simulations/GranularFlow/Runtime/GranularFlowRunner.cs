@@ -37,6 +37,9 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
     private int leftBinCount;
     private int rightBinCount;
 
+    private GranularFlowSensors lastSensors;
+    private GranularFlowBrainDecision lastDecision;
+
     private const int Threads = 128;
 
     public void Initialize(ScenarioConfig config)
@@ -109,6 +112,9 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
             cam.backgroundColor = new Color(0.03f, 0.03f, 0.04f);
         }
 
+        lastSensors = default;
+        lastDecision = default;
+
         EventBusService.Global?.Publish("granular_flow.init", new
         {
             simulationId = activeConfig.simulationId,
@@ -132,6 +138,9 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
         var sensors = BuildSensors(dt);
         var decision = brain.Decide(new GranularFlowBrainContext(sensors, gfConfig.ruleBrain, machine.GateOpen, machine.FlapState, elapsed), dt);
         machine.ApplyActuators(decision.GateTargetOpen, decision.FlapTarget, gfConfig.machine, dt);
+        machine.UpdateIndicators(sensors);
+        lastSensors = sensors;
+        lastDecision = decision;
 
         DispatchSimulation(dt, machine.GateOpen, machine.FlapState);
 
@@ -150,6 +159,25 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
                 sensors.throatJamEstimate
             });
         }
+    }
+
+
+    private void OnGUI()
+    {
+        if (machine == null || gfConfig == null)
+        {
+            return;
+        }
+
+        GUI.color = new Color(0.92f, 0.94f, 1f, 0.98f);
+        var text =
+            $"GranularFlow v1 Vertical Slice\n" +
+            $"Upper Fill: {lastSensors.upperChamberFill:0.00}   Throat Jam: {lastSensors.throatJamEstimate:0.00}   Throughput: {lastSensors.recentThroughputEstimate:0}\n" +
+            $"Bins L/R: {leftBinCount} / {rightBinCount}   Fill L/R: {lastSensors.leftBinFill:0.00} / {lastSensors.rightBinFill:0.00}\n" +
+            $"RuleBrain -> Gate target: {lastDecision.GateTargetOpen:0.00}, Flap target: {lastDecision.FlapTarget:0.00}\n" +
+            $"Actuators -> Gate open: {machine.GateOpen:0.00}, Flap state: {machine.FlapState:0.00}";
+
+        GUI.Label(new Rect(14f, 12f, 950f, 110f), text);
     }
 
     public void Shutdown()
