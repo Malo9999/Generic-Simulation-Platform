@@ -43,11 +43,40 @@ public sealed class PieceTestSimBootstrap : MonoBehaviour
         var builder = new MachineBuilder();
         built = builder.BuildMachineOrThrow("PieceTestMachine", recipe, library, transform, true);
 
+        WireMainCameraControls();
+
         var gravityY = environmentPreset == EnvironmentPreset.EarthLight ? -9.81f : -2.5f;
         Physics2D.gravity = new Vector2(0f, gravityY);
 
         SpawnProbe(new Vector2(0f, 5f));
         RunMechanicsSanity();
+    }
+
+    private static void WireMainCameraControls()
+    {
+        var arenaBoundsObject = GameObject.Find("ArenaBounds");
+        var arenaBoundsCollider = arenaBoundsObject != null ? arenaBoundsObject.GetComponent<Collider2D>() : null;
+        var arenaCameraPolicy = MainCameraRuntimeSetup.EnsureArenaCameraRig();
+
+        if (arenaCameraPolicy != null)
+        {
+            arenaCameraPolicy.ApplySimCameraProfile("PieceTestSim");
+
+            if (arenaBoundsCollider != null)
+            {
+                arenaCameraPolicy.BindArenaBounds(arenaBoundsCollider, fitToBounds: true);
+            }
+            else
+            {
+                arenaCameraPolicy.FitToBounds();
+            }
+        }
+
+        var followController = FindAnyObjectByType<CameraFollowController>();
+        if (followController != null)
+        {
+            followController.arenaCameraPolicy = arenaCameraPolicy;
+        }
     }
 
     [ContextMenu("Switch Environment")]

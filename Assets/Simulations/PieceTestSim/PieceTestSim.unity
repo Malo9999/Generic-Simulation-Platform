@@ -150,7 +150,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PieceTestSimBootstrap
   pieceSpecs: []
   surfaceProfiles: []
-  machineRecipe: {fileID: 0}
+  includeSharedMachinePieceAssets: 1
+  machineRecipe: {fileID: 4900000, guid: 1a2e4994b1c0ac840806c169015b2a6b, type: 3}
   autoStart: 1
   environmentPreset: 0
 --- !u!4 &1791456493
