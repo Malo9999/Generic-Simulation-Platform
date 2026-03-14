@@ -364,6 +364,8 @@ public static class MachinePieceValidation
             .Where(m => m != null && !string.IsNullOrWhiteSpace(m.instanceId))
             .ToDictionary(m => m.instanceId, StringComparer.Ordinal);
 
+        var incomingByTarget = new Dictionary<string, List<MachineModuleConnection>>(StringComparer.Ordinal);
+
         foreach (var c in recipe.moduleConnections ?? Array.Empty<MachineModuleConnection>())
         {
             if (c == null)
@@ -372,33 +374,142 @@ public static class MachinePieceValidation
                 continue;
             }
 
-            if (!moduleById.TryGetValue(c.fromModuleId ?? string.Empty, out var fromModule) ||
-                !moduleById.TryGetValue(c.toModuleId ?? string.Empty, out var toModule))
+            if (!moduleById.TryGetValue(c.fromModuleId ?? string.Empty, out var fromModule))
             {
-                errors.Add($"Bad module-to-module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}' references unknown module.");
+                errors.Add($"Unknown source module id '{c.fromModuleId}' in module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}'.");
                 continue;
             }
 
-            if (!lib.CompoundPieceSpecs.TryGetValue(fromModule.compoundPieceId ?? string.Empty, out var fromSpec) ||
-                !lib.CompoundPieceSpecs.TryGetValue(toModule.compoundPieceId ?? string.Empty, out var toSpec))
+            if (!moduleById.TryGetValue(c.toModuleId ?? string.Empty, out var toModule))
             {
-                errors.Add($"Bad module-to-module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}' references unknown compound ids.");
+                errors.Add($"Unknown target module id '{c.toModuleId}' in module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}'.");
                 continue;
             }
 
-            if (!HasPort(fromSpec, c.fromPortId)) errors.Add($"Bad module-to-module connection missing from-port '{c.fromPortId}' on '{c.fromModuleId}'.");
-            if (!HasPort(toSpec, c.toPortId)) errors.Add($"Bad module-to-module connection missing to-port '{c.toPortId}' on '{c.toModuleId}'.");
+            if (!lib.CompoundPieceSpecs.TryGetValue(fromModule.compoundPieceId ?? string.Empty, out var fromSpec))
+            {
+                errors.Add($"Bad module connection source '{c.fromModuleId}' references unknown compound id '{fromModule.compoundPieceId}'.");
+                continue;
+            }
+
+            if (!lib.CompoundPieceSpecs.TryGetValue(toModule.compoundPieceId ?? string.Empty, out var toSpec))
+            {
+                errors.Add($"Bad module connection target '{c.toModuleId}' references unknown compound id '{toModule.compoundPieceId}'.");
+                continue;
+            }
+
+            var fromPort = (fromSpec.ports ?? Array.Empty<CompoundPort>()).FirstOrDefault(p => p != null && string.Equals(p.id, c.fromPortId, StringComparison.Ordinal));
+            if (fromPort == null)
+            {
+                errors.Add($"Unknown source port id '{c.fromPortId}' on module '{c.fromModuleId}'.");
+                continue;
+            }
+
+            var toPort = (toSpec.ports ?? Array.Empty<CompoundPort>()).FirstOrDefault(p => p != null && string.Equals(p.id, c.toPortId, StringComparison.Ordinal));
+            if (toPort == null)
+            {
+                errors.Add($"Unknown target port id '{c.toPortId}' on module '{c.toModuleId}'.");
+                continue;
+            }
+
+            if (!AreCompatiblePortKinds(fromPort.kind, toPort.kind))
+            {
+                errors.Add($"Incompatible port kinds for module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}' ({fromPort.kind} -> {toPort.kind}).");
+            }
+
+            if (!string.Equals(fromPort.profile?.shape, toPort.profile?.shape, StringComparison.Ordinal))
+            {
+                errors.Add($"Incompatible port profiles for module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}' (shape '{fromPort.profile?.shape}' vs '{toPort.profile?.shape}').");
+            }
+            else if (!IsProfileSizeCompatible(fromPort.profile, toPort.profile))
+            {
+                errors.Add($"Incompatible port profile sizes for module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}'.");
+            }
+
+            var fromSemantics = fromPort.semantics ?? string.Empty;
+            var toSemantics = toPort.semantics ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(fromSemantics) && !string.IsNullOrWhiteSpace(toSemantics) &&
+                !string.Equals(fromSemantics, toSemantics, StringComparison.Ordinal))
+            {
+                errors.Add($"Incompatible port semantics for module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}' ({fromSemantics} vs {toSemantics}).");
+            }
+
+            if (!incomingByTarget.TryGetValue(c.toModuleId, out var incoming))
+            {
+                incoming = new List<MachineModuleConnection>();
+                incomingByTarget[c.toModuleId] = incoming;
+            }
+
+            incoming.Add(c);
         }
+
+        foreach (var kv in incomingByTarget)
+        {
+            var targetId = kv.Key;
+            var incoming = kv.Value;
+            if (incoming.Count <= 1)
+            {
+                continue;
+            }
+
+            var uniqueSources = incoming
+                .Select(x => $"{x.fromModuleId}:{x.fromPortId}->{x.toPortId}")
+                .Distinct(StringComparer.Ordinal)
+                .Count();
+            if (uniqueSources > 1)
+            {
+                errors.Add($"Multiple conflicting incoming snaps for module '{targetId}'.");
+            }
+        }
+    }
+
+    private static bool AreCompatiblePortKinds(string fromKind, string toKind)
+    {
+        var source = fromKind ?? string.Empty;
+        var target = toKind ?? string.Empty;
+
+        if (string.Equals(source, "flow_out", StringComparison.Ordinal) && string.Equals(target, "flow_in", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (string.Equals(source, "material_out", StringComparison.Ordinal) && string.Equals(target, "material_in", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!source.EndsWith("_out", StringComparison.Ordinal) || !target.EndsWith("_in", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var sourcePrefix = source.Substring(0, source.Length - 4);
+        var targetPrefix = target.Substring(0, target.Length - 3);
+        return string.Equals(sourcePrefix, targetPrefix, StringComparison.Ordinal);
+    }
+
+    private static bool IsProfileSizeCompatible(CompoundPortProfile from, CompoundPortProfile to)
+    {
+        if (from == null || to == null)
+        {
+            return false;
+        }
+
+        if (string.Equals(from.shape, "circle", StringComparison.Ordinal) || string.Equals(from.shape, "tube", StringComparison.Ordinal))
+        {
+            var tolerance = Mathf.Max(0.001f, from.radius * 0.15f);
+            return Mathf.Abs(from.radius - to.radius) <= tolerance;
+        }
+
+        var widthTolerance = Mathf.Max(0.001f, from.width * 0.2f);
+        var heightTolerance = Mathf.Max(0.001f, from.height * 0.2f);
+        return Mathf.Abs(from.width - to.width) <= widthTolerance &&
+               Mathf.Abs(from.height - to.height) <= heightTolerance;
     }
 
     private static bool HasAnchor(PieceSpec spec, string anchorId)
     {
         return (spec.anchors ?? Array.Empty<PieceAnchor>()).Any(a => string.Equals(a.id, anchorId, StringComparison.Ordinal));
-    }
-
-    private static bool HasPort(CompoundPieceSpec spec, string portId)
-    {
-        return (spec.ports ?? Array.Empty<CompoundPort>()).Any(p => string.Equals(p.id, portId, StringComparison.Ordinal));
     }
 
     private static void ValidateDimensions(CompoundPieceSpec spec, List<string> errors)
