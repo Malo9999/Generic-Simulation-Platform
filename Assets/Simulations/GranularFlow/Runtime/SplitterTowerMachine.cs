@@ -2,7 +2,15 @@ using UnityEngine;
 
 public sealed class SplitterTowerMachine
 {
-    private const int CollisionSegmentCapacity = 48;
+    private const int CollisionSegmentCapacity = 64;
+
+    private static readonly Vector2 HopperApex = new(0f, 2.25f);
+    private static readonly Vector2 HopperLeftSlopeStart = new(-4.1f, 5.95f);
+    private static readonly Vector2 HopperRightSlopeStart = new(4.1f, 5.95f);
+    private static readonly Vector2 GateCenter = new(0f, 2.02f);
+    private static readonly float GateHalfWidth = 0.58f;
+    private static readonly Vector2 FlapCenter = new(0f, -0.72f);
+    private const float FlapHalfWidth = 1.7f;
 
     private readonly Transform root;
     private readonly Transform gateVisual;
@@ -26,19 +34,19 @@ public sealed class SplitterTowerMachine
         root = new GameObject("SplitterTower").transform;
         root.SetParent(parent, false);
 
-        UpperChamber = new Rect(-4.8f, 2.2f, 9.6f, 5.0f);
-        Throat = new Rect(-1.3f, 1.1f, 2.6f, 1.0f);
-        LowerChamber = new Rect(-5.5f, -2.8f, 11.0f, 3.9f);
-        LeftBin = new Rect(-8.8f, -6.8f, 4.0f, 2.5f);
-        RightBin = new Rect(4.8f, -6.8f, 4.0f, 2.5f);
+        UpperChamber = new Rect(-4.8f, 2.2f, 9.6f, 4.8f);
+        Throat = new Rect(-0.72f, 1.45f, 1.44f, 0.9f);
+        LowerChamber = new Rect(-4.9f, -2.6f, 9.8f, 3.7f);
+        LeftBin = new Rect(-8.95f, -6.8f, 3.5f, 2.5f);
+        RightBin = new Rect(5.45f, -6.8f, 3.5f, 2.5f);
 
         CreateBody();
-        upperFillVisual = CreateRect("UpperAccumulation", new Vector2(0f, 2.35f), new Vector2(8.9f, 0.05f), new Color(0.95f, 0.74f, 0.2f, 0.92f));
-        gateApertureVisual = CreateRect("GateAperture", new Vector2(0f, 1.7f), new Vector2(0.3f, 0.22f), new Color(0.22f, 0.88f, 0.4f, 0.95f));
-        gateVisual = CreateRect("SlidingGate", new Vector2(0f, 1.8f), new Vector2(2.8f, 0.45f), new Color(0.22f, 0.24f, 0.28f));
-        flapVisual = CreateRect("DiverterFlap", new Vector2(0f, -0.45f), new Vector2(3.2f, 0.28f), new Color(0.35f, 0.37f, 0.41f));
-        leftBinFillVisual = CreateRect("BinLeftFill", new Vector2(LeftBin.center.x, LeftBin.yMin), new Vector2(3.5f, 0.05f), new Color(0.22f, 0.76f, 0.98f, 0.92f));
-        rightBinFillVisual = CreateRect("BinRightFill", new Vector2(RightBin.center.x, RightBin.yMin), new Vector2(3.5f, 0.05f), new Color(0.97f, 0.47f, 0.22f, 0.92f));
+        upperFillVisual = CreateRect("UpperAccumulation", new Vector2(0f, UpperChamber.yMin), new Vector2(8.5f, 0.05f), new Color(0.95f, 0.74f, 0.2f, 0.92f));
+        gateApertureVisual = CreateRect("GateAperture", new Vector2(GateCenter.x, Throat.center.y), new Vector2(0.22f, 0.22f), new Color(0.22f, 0.88f, 0.4f, 0.95f));
+        gateVisual = CreateRect("SlidingGate", GateCenter, new Vector2(1.5f, 0.36f), new Color(0.22f, 0.24f, 0.28f));
+        flapVisual = CreateRect("DiverterFlap", FlapCenter, new Vector2(FlapHalfWidth * 2f, 0.28f), new Color(0.35f, 0.37f, 0.41f));
+        leftBinFillVisual = CreateRect("BinLeftFill", new Vector2(LeftBin.center.x, LeftBin.yMin), new Vector2(LeftBin.width - 0.5f, 0.05f), new Color(0.22f, 0.76f, 0.98f, 0.92f));
+        rightBinFillVisual = CreateRect("BinRightFill", new Vector2(RightBin.center.x, RightBin.yMin), new Vector2(RightBin.width - 0.5f, 0.05f), new Color(0.97f, 0.47f, 0.22f, 0.92f));
 
         if (leftBinFillVisual != null)
         {
@@ -58,12 +66,12 @@ public sealed class SplitterTowerMachine
 
         if (gateVisual != null)
         {
-            gateVisual.localPosition = new Vector3(0f, 1.8f + GateOpen * 0.55f, 0f);
+            gateVisual.localPosition = new Vector3(GateCenter.x, GateCenter.y + GateOpen * 0.5f, 0f);
         }
 
         if (gateApertureVisual != null)
         {
-            gateApertureVisual.localScale = new Vector3(Mathf.Lerp(0.3f, 2.5f, GateOpen), gateApertureVisual.localScale.y, 1f);
+            gateApertureVisual.localScale = new Vector3(Mathf.Lerp(0.2f, 1.4f, GateOpen), gateApertureVisual.localScale.y, 1f);
         }
 
         if (flapVisual != null)
@@ -77,7 +85,7 @@ public sealed class SplitterTowerMachine
         if (upperFillVisual != null)
         {
             var h = Mathf.Lerp(0.05f, UpperChamber.height - 0.3f, sensors.upperChamberFill);
-            upperFillVisual.localScale = new Vector3(8.9f, h, 1f);
+            upperFillVisual.localScale = new Vector3(8.5f, h, 1f);
             upperFillVisual.localPosition = new Vector3(0f, UpperChamber.yMin + h * 0.5f, 0f);
         }
 
@@ -94,33 +102,40 @@ public sealed class SplitterTowerMachine
 
         var count = 0;
 
-        // Upper chamber walls.
+        // Top hopper enclosure + funnel slopes into a single center throat.
         AddSegment(ref count, output, new Vector2(UpperChamber.xMin, UpperChamber.yMax), new Vector2(UpperChamber.xMax, UpperChamber.yMax));
-        AddSegment(ref count, output, new Vector2(UpperChamber.xMin, UpperChamber.yMax), new Vector2(UpperChamber.xMin, UpperChamber.yMin));
-        AddSegment(ref count, output, new Vector2(UpperChamber.xMax, UpperChamber.yMax), new Vector2(UpperChamber.xMax, UpperChamber.yMin));
+        AddSegment(ref count, output, new Vector2(UpperChamber.xMin, UpperChamber.yMax), new Vector2(UpperChamber.xMin, 5.65f));
+        AddSegment(ref count, output, new Vector2(UpperChamber.xMax, UpperChamber.yMax), new Vector2(UpperChamber.xMax, 5.65f));
+        AddSegment(ref count, output, HopperLeftSlopeStart, HopperApex);
+        AddSegment(ref count, output, HopperRightSlopeStart, HopperApex);
 
         // Gate segment (moving actuator).
-        var gateY = 1.8f + (GateOpen * 0.55f);
-        AddSegment(ref count, output, new Vector2(-1.4f, gateY), new Vector2(1.4f, gateY));
+        var gateY = GateCenter.y + (GateOpen * 0.5f);
+        AddSegment(ref count, output, new Vector2(-GateHalfWidth, gateY), new Vector2(GateHalfWidth, gateY));
 
-        // Lower chamber walls.
-        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, LowerChamber.yMax), new Vector2(LowerChamber.xMin, LowerChamber.yMin));
-        AddSegment(ref count, output, new Vector2(LowerChamber.xMax, LowerChamber.yMax), new Vector2(LowerChamber.xMax, LowerChamber.yMin));
+        // Throat side walls (funnel neck).
+        AddSegment(ref count, output, new Vector2(-0.72f, HopperApex.y), new Vector2(-0.72f, LowerChamber.yMax));
+        AddSegment(ref count, output, new Vector2(0.72f, HopperApex.y), new Vector2(0.72f, LowerChamber.yMax));
 
-        // Lower chamber floor has an outlet into the splitter ramps.
-        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, LowerChamber.yMin), new Vector2(-2.45f, LowerChamber.yMin));
-        AddSegment(ref count, output, new Vector2(2.45f, LowerChamber.yMin), new Vector2(LowerChamber.xMax, LowerChamber.yMin));
+        // Lower control chamber enclosure, with lower side exits.
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, LowerChamber.yMax), new Vector2(LowerChamber.xMax, LowerChamber.yMax));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, LowerChamber.yMax), new Vector2(LowerChamber.xMin, -1.25f));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, -2.1f), new Vector2(LowerChamber.xMin, LowerChamber.yMin));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMax, LowerChamber.yMax), new Vector2(LowerChamber.xMax, -1.25f));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMax, -2.1f), new Vector2(LowerChamber.xMax, LowerChamber.yMin));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, LowerChamber.yMin), new Vector2(-4.15f, LowerChamber.yMin));
+        AddSegment(ref count, output, new Vector2(4.15f, LowerChamber.yMin), new Vector2(LowerChamber.xMax, LowerChamber.yMin));
 
         // Diverter flap (moving actuator).
-        var flapCenter = new Vector2(0f, -0.45f);
-        var halfFlap = 1.6f;
         var flapRot = Quaternion.Euler(0f, 0f, -FlapState * cfg.flapMaxAngle);
         var flapDir = flapRot * Vector3.right;
-        AddSegment(ref count, output, flapCenter - ((Vector2)flapDir * halfFlap), flapCenter + ((Vector2)flapDir * halfFlap));
+        AddSegment(ref count, output, FlapCenter - ((Vector2)flapDir * FlapHalfWidth), FlapCenter + ((Vector2)flapDir * FlapHalfWidth));
 
-        // Splitter ramps.
-        AddOrientedSegment(ref count, output, new Vector2(-5.9f, -3.9f), 4f, 28f);
-        AddOrientedSegment(ref count, output, new Vector2(5.9f, -3.9f), 4f, -28f);
+        // Lower side exits and chutes to bins.
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, -1.25f), new Vector2(-6.05f, -3.25f));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, -2.1f), new Vector2(-6.65f, -4.0f));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMax, -1.25f), new Vector2(6.05f, -3.25f));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMax, -2.1f), new Vector2(6.65f, -4.0f));
 
         // Bin walls.
         AddRectWalls(ref count, output, LeftBin);
@@ -139,13 +154,6 @@ public sealed class SplitterTowerMachine
         AddSegment(ref count, output, new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMin, rect.yMax));
         AddSegment(ref count, output, new Vector2(rect.xMax, rect.yMin), new Vector2(rect.xMax, rect.yMax));
         AddSegment(ref count, output, new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMax, rect.yMin));
-    }
-
-    private static void AddOrientedSegment(ref int count, Vector4[] output, Vector2 center, float length, float angleDeg)
-    {
-        var dir = Quaternion.Euler(0f, 0f, angleDeg) * Vector3.right;
-        var half = (Vector2)dir * (length * 0.5f);
-        AddSegment(ref count, output, center - half, center + half);
     }
 
     private static void AddSegment(ref int count, Vector4[] output, Vector2 a, Vector2 b)
@@ -172,13 +180,48 @@ public sealed class SplitterTowerMachine
 
     private void CreateBody()
     {
-        CreateRect("UpperFrame", new Vector2(0f, 4.7f), new Vector2(10f, 5.6f), new Color(0.1f, 0.11f, 0.13f));
-        CreateRect("LowerFrame", new Vector2(0f, -0.9f), new Vector2(12.0f, 4.9f), new Color(0.09f, 0.1f, 0.12f));
+        var frame = new Color(0.09f, 0.1f, 0.12f);
+        var wall = new Color(0.16f, 0.17f, 0.19f);
+
+        CreateRect("UpperShell", new Vector2(0f, 4.65f), new Vector2(10.4f, 5.2f), frame);
+        CreateRect("LowerShell", new Vector2(0f, -0.75f), new Vector2(10.8f, 4.9f), frame);
         CreateRect("Feeder", new Vector2(0f, 7.4f), new Vector2(1.8f, 1.4f), new Color(0.22f, 0.23f, 0.24f));
-        CreateRect("LaneLeft", new Vector2(-5.9f, -3.9f), new Vector2(4.0f, 0.8f), new Color(0.18f, 0.19f, 0.2f), 28f);
-        CreateRect("LaneRight", new Vector2(5.9f, -3.9f), new Vector2(4.0f, 0.8f), new Color(0.18f, 0.19f, 0.2f), -28f);
+
+        // Hopper walls.
+        CreateSegmentVisual("HopperRoof", new Vector2(UpperChamber.xMin, UpperChamber.yMax), new Vector2(UpperChamber.xMax, UpperChamber.yMax), 0.22f, wall);
+        CreateSegmentVisual("HopperWallL", new Vector2(UpperChamber.xMin, UpperChamber.yMax), new Vector2(UpperChamber.xMin, 5.65f), 0.22f, wall);
+        CreateSegmentVisual("HopperWallR", new Vector2(UpperChamber.xMax, UpperChamber.yMax), new Vector2(UpperChamber.xMax, 5.65f), 0.22f, wall);
+        CreateSegmentVisual("HopperSlopeL", HopperLeftSlopeStart, HopperApex, 0.24f, wall);
+        CreateSegmentVisual("HopperSlopeR", HopperRightSlopeStart, HopperApex, 0.24f, wall);
+        CreateSegmentVisual("ThroatWallL", new Vector2(-0.72f, HopperApex.y), new Vector2(-0.72f, LowerChamber.yMax), 0.2f, wall);
+        CreateSegmentVisual("ThroatWallR", new Vector2(0.72f, HopperApex.y), new Vector2(0.72f, LowerChamber.yMax), 0.2f, wall);
+
+        // Lower chamber walls and side exits.
+        CreateSegmentVisual("LowerTop", new Vector2(LowerChamber.xMin, LowerChamber.yMax), new Vector2(LowerChamber.xMax, LowerChamber.yMax), 0.22f, wall);
+        CreateSegmentVisual("LowerWallLT", new Vector2(LowerChamber.xMin, LowerChamber.yMax), new Vector2(LowerChamber.xMin, -1.25f), 0.22f, wall);
+        CreateSegmentVisual("LowerWallLB", new Vector2(LowerChamber.xMin, -2.1f), new Vector2(LowerChamber.xMin, LowerChamber.yMin), 0.22f, wall);
+        CreateSegmentVisual("LowerWallRT", new Vector2(LowerChamber.xMax, LowerChamber.yMax), new Vector2(LowerChamber.xMax, -1.25f), 0.22f, wall);
+        CreateSegmentVisual("LowerWallRB", new Vector2(LowerChamber.xMax, -2.1f), new Vector2(LowerChamber.xMax, LowerChamber.yMin), 0.22f, wall);
+        CreateSegmentVisual("LowerFloorL", new Vector2(LowerChamber.xMin, LowerChamber.yMin), new Vector2(-4.15f, LowerChamber.yMin), 0.22f, wall);
+        CreateSegmentVisual("LowerFloorR", new Vector2(4.15f, LowerChamber.yMin), new Vector2(LowerChamber.xMax, LowerChamber.yMin), 0.22f, wall);
+
+        // Exit chutes.
+        CreateSegmentVisual("ExitLUpper", new Vector2(LowerChamber.xMin, -1.25f), new Vector2(-6.05f, -3.25f), 0.22f, wall);
+        CreateSegmentVisual("ExitLLower", new Vector2(LowerChamber.xMin, -2.1f), new Vector2(-6.65f, -4.0f), 0.22f, wall);
+        CreateSegmentVisual("ExitRUpper", new Vector2(LowerChamber.xMax, -1.25f), new Vector2(6.05f, -3.25f), 0.22f, wall);
+        CreateSegmentVisual("ExitRLower", new Vector2(LowerChamber.xMax, -2.1f), new Vector2(6.65f, -4.0f), 0.22f, wall);
+
         CreateRect("BinLeft", LeftBin.center, LeftBin.size, new Color(0.15f, 0.16f, 0.17f));
         CreateRect("BinRight", RightBin.center, RightBin.size, new Color(0.15f, 0.16f, 0.17f));
+    }
+
+    private Transform CreateSegmentVisual(string name, Vector2 a, Vector2 b, float thickness, Color color)
+    {
+        var center = (a + b) * 0.5f;
+        var dir = b - a;
+        var length = dir.magnitude;
+        var angle = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+        return CreateRect(name, center, new Vector2(length, thickness), color, angle);
     }
 
     private Transform CreateRect(string name, Vector2 center, Vector2 size, Color color, float angle = 0f)
