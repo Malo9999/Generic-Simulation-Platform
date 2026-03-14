@@ -32,7 +32,7 @@ public sealed class MachinePiecesLabBootstrap : MonoBehaviour
         var lib = MachinePieceJsonLoader.BuildLibraryOrThrow(
             pieceSpecs ?? Array.Empty<TextAsset>(),
             surfaceProfiles ?? Array.Empty<TextAsset>(),
-            includeSharedMachinePieceAssets,
+            includeSharedAssets: includeSharedMachinePieceAssets,
             diagnosticsPrefix: "MachinePiecesLab");
         var recipe = MachinePieceJsonLoader.LoadFromTextAssetOrThrow<MachineRecipe>(machineRecipe, "MachinePiecesLab recipe");
 

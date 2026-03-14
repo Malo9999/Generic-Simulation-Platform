@@ -36,7 +36,7 @@ public sealed class PieceTestSimBootstrap : MonoBehaviour
         library = MachinePieceJsonLoader.BuildLibraryOrThrow(
             pieceSpecs ?? Array.Empty<TextAsset>(),
             surfaceProfiles ?? Array.Empty<TextAsset>(),
-            includeSharedMachinePieceAssets,
+            includeSharedAssets: includeSharedMachinePieceAssets,
             diagnosticsPrefix: "PieceTestSim");
         var recipe = MachinePieceJsonLoader.LoadFromTextAssetOrThrow<MachineRecipe>(machineRecipe, "PieceTestSim recipe");
 
