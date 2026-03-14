@@ -5,7 +5,7 @@ Shader "GSP/ReactionDiffusion/Display"
         _StateTex("State Texture", 2D) = "black" {}
         _PrevStateTex("Previous State Texture", 2D) = "black" {}
         _DisplayMode("Display Mode", Float) = 0
-        _ActivityGain("Activity Gain", Float) = 14.0
+        _ActivityGain("Activity Gain", Float) = 12.0
     }
 
     SubShader
@@ -69,20 +69,20 @@ Shader "GSP/ReactionDiffusion/Display"
                 edge = pow(edge, 0.85);
 
                 float baseGlow = saturate(c * 1.1);
-                baseGlow = pow(baseGlow, 1.8) * 0.18;
+                baseGlow = pow(baseGlow, 1.8) * 0.16;
 
                 float ridge = saturate(max(edge, baseGlow));
 
                 float prev = GetSignal(_PrevStateTex, i.uv);
                 float activity = saturate(abs(c - prev) * _ActivityGain);
-                activity = smoothstep(0.005, 0.08, activity);
+                activity = smoothstep(0.006, 0.09, activity);
 
                 float3 background = float3(0.98, 0.98, 0.99);
                 float3 lineColor = float3(0.12, 0.12, 0.14);
-                float3 activityColor = float3(0.94, 0.74, 0.28);
+                float3 activityColor = float3(0.92, 0.72, 0.30);
 
                 float3 color = lerp(background, lineColor, ridge);
-                color = lerp(color, activityColor, activity * 0.55);
+                color = lerp(color, activityColor, activity * 0.45);
 
                 return float4(saturate(color), 1.0);
             }

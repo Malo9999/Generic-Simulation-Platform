@@ -28,36 +28,38 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     [Header("Parameter Drift")]
     [SerializeField] private bool enableParameterDrift = true;
-    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.00025f;
-    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.00015f;
-    [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 36f;
-    [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 52f;
+    [SerializeField, Min(0f)] private float feedDriftAmplitude = 0.00020f;
+    [SerializeField, Min(0f)] private float killDriftAmplitude = 0.00012f;
+    [SerializeField, Min(1f)] private float feedDriftPeriodSeconds = 42f;
+    [SerializeField, Min(1f)] private float killDriftPeriodSeconds = 58f;
     [SerializeField] private float killDriftPhaseOffsetRadians = 1.7f;
 
     [Header("Regime Morph")]
-    [SerializeField] private bool enableRegimeMorph = true;
+    [SerializeField] private bool enableRegimeMorph = false;
     [SerializeField] private ReactionDiffusionPreset morphPresetA = ReactionDiffusionPreset.Chaos;
     [SerializeField] private ReactionDiffusionPreset morphPresetB = ReactionDiffusionPreset.Mazes;
-    [SerializeField, Min(2f)] private float morphCycleSeconds = 90f;
-    [SerializeField, Range(0f, 1f)] private float morphStrength = 0.12f;
-    [SerializeField, Min(0f)] private float maxMorphFeedDelta = 0.0015f;
-    [SerializeField, Min(0f)] private float maxMorphKillDelta = 0.0010f;
+    [SerializeField, Min(2f)] private float morphCycleSeconds = 120f;
+    [SerializeField, Range(0f, 1f)] private float morphStrength = 0.08f;
+    [SerializeField, Min(0f)] private float maxMorphFeedDelta = 0.0008f;
+    [SerializeField, Min(0f)] private float maxMorphKillDelta = 0.0005f;
 
-    [Header("Micro Reseeding")]
+    [Header("Local Events (Colony Seed)")]
     [SerializeField] private bool enableMicroReseeding = true;
-    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 8f;
-    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 12f;
+    [SerializeField, Min(0f)] private float microReseedStartDelaySeconds = 6f;
+    [SerializeField, Min(0.25f)] private float microReseedIntervalSeconds = 9f;
     [SerializeField, Range(1, 8)] private int microReseedCount = 1;
-    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.018f;
-    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.22f;
+    [SerializeField, Range(0.002f, 0.08f)] private float microReseedRadius = 0.024f;
+    [SerializeField, Range(0f, 1f)] private float microReseedStrength = 0.33f;
     [SerializeField, Range(0f, 0.45f)] private float microReseedBorderPadding = 0.08f;
+    [SerializeField, Range(0f, 1f)] private float microReseedRadiusJitter = 0.25f;
+    [SerializeField, Range(0f, 1f)] private float microReseedStrengthJitter = 0.20f;
 
     [Header("Display")]
     [SerializeField] private ReactionDiffusionDisplayMode displayMode = ReactionDiffusionDisplayMode.ChemicalB;
     [SerializeField, Min(0.1f)] private float simulationScale = 1f;
     [SerializeField] private bool fitMainCameraToDisplay = true;
     [SerializeField, Min(0f)] private float cameraPadding = 0f;
-    [SerializeField, Min(0f)] private float activityGain = 10f;
+    [SerializeField, Min(0f)] private float activityGain = 12f;
     [SerializeField] private ComputeShader simulationShader;
     [SerializeField] private Shader displayShader;
 
@@ -81,6 +83,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     private float nextMicroReseedTime;
     private int microReseedIndex;
+    private uint eventHashSeed = 1337u;
 
     private void Reset()
     {
@@ -107,33 +110,35 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         useRandomSeed = true;
 
         enableParameterDrift = true;
-        feedDriftAmplitude = 0.00025f;
-        killDriftAmplitude = 0.00015f;
-        feedDriftPeriodSeconds = 36f;
-        killDriftPeriodSeconds = 52f;
+        feedDriftAmplitude = 0.00020f;
+        killDriftAmplitude = 0.00012f;
+        feedDriftPeriodSeconds = 42f;
+        killDriftPeriodSeconds = 58f;
         killDriftPhaseOffsetRadians = 1.7f;
 
-        enableRegimeMorph = true;
+        enableRegimeMorph = false;
         morphPresetA = ReactionDiffusionPreset.Chaos;
         morphPresetB = ReactionDiffusionPreset.Mazes;
-        morphCycleSeconds = 90f;
-        morphStrength = 0.12f;
-        maxMorphFeedDelta = 0.0015f;
-        maxMorphKillDelta = 0.0010f;
+        morphCycleSeconds = 120f;
+        morphStrength = 0.08f;
+        maxMorphFeedDelta = 0.0008f;
+        maxMorphKillDelta = 0.0005f;
 
         enableMicroReseeding = true;
-        microReseedStartDelaySeconds = 8f;
-        microReseedIntervalSeconds = 12f;
+        microReseedStartDelaySeconds = 6f;
+        microReseedIntervalSeconds = 9f;
         microReseedCount = 1;
-        microReseedRadius = 0.018f;
-        microReseedStrength = 0.22f;
+        microReseedRadius = 0.024f;
+        microReseedStrength = 0.33f;
         microReseedBorderPadding = 0.08f;
+        microReseedRadiusJitter = 0.25f;
+        microReseedStrengthJitter = 0.20f;
 
         displayMode = ReactionDiffusionDisplayMode.ChemicalB;
         simulationScale = 1f;
         fitMainCameraToDisplay = true;
         cameraPadding = 0f;
-        activityGain = 10f;
+        activityGain = 12f;
 
         lastAppliedPreset = preset;
         OnValidate();
@@ -165,6 +170,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         microReseedRadius = Mathf.Clamp(microReseedRadius, 0.002f, 0.08f);
         microReseedStrength = Mathf.Clamp01(microReseedStrength);
         microReseedBorderPadding = Mathf.Clamp(microReseedBorderPadding, 0f, 0.45f);
+        microReseedRadiusJitter = Mathf.Clamp01(microReseedRadiusJitter);
+        microReseedStrengthJitter = Mathf.Clamp01(microReseedStrengthJitter);
 
         if (preset != ReactionDiffusionPreset.Custom && preset != lastAppliedPreset)
         {
@@ -495,6 +502,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
         var activeSeed = useRandomSeed ? (randomSeed ^ System.Environment.TickCount) : randomSeed;
         randomSeed = activeSeed;
+        eventHashSeed = (uint)activeSeed;
 
         simulationShader.SetInt("_Width", gridWidth);
         simulationShader.SetInt("_Height", gridHeight);
@@ -527,11 +535,17 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         for (var i = 0; i < microReseedCount; i++)
         {
             var center = GetMicroReseedCenter(microReseedIndex++);
+            var radius = microReseedRadius * (1f + SignedHash01(microReseedIndex * 13) * microReseedRadiusJitter);
+            var strength = microReseedStrength * (1f + SignedHash01(microReseedIndex * 29) * microReseedStrengthJitter);
+
+            radius = Mathf.Clamp(radius, 0.002f, 0.08f);
+            strength = Mathf.Clamp01(strength);
+
             simulationShader.SetTexture(injectKernel, "_ReadState", read);
             simulationShader.SetTexture(injectKernel, "_WriteState", write);
             simulationShader.SetVector("_InjectCenter", new Vector4(center.x, center.y, 0f, 0f));
-            simulationShader.SetFloat("_InjectRadius", microReseedRadius);
-            simulationShader.SetFloat("_InjectStrength", microReseedStrength);
+            simulationShader.SetFloat("_InjectRadius", radius);
+            simulationShader.SetFloat("_InjectStrength", strength);
             simulationShader.Dispatch(injectKernel, groupsX, groupsY, 1);
 
             var temp = read;
@@ -539,6 +553,17 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             write = temp;
             useStateAAsRead = !useStateAAsRead;
         }
+    }
+
+    private float SignedHash01(int salt)
+    {
+        uint x = eventHashSeed ^ (uint)(salt * 747796405);
+        x ^= x >> 16;
+        x *= 2246822519u;
+        x ^= x >> 13;
+        x *= 3266489917u;
+        x ^= x >> 16;
+        return ((x & 0x00ffffffu) / 16777215f) * 2f - 1f;
     }
 
     private Vector2 GetMicroReseedCenter(int index)
