@@ -1,0 +1,96 @@
+{
+  "id": "splitter_tower_01",
+  "version": 1,
+  "displayName": "Splitter Tower 01",
+  "machineType": "SplitterTower",
+  "bounds": {
+    "width": 12.0,
+    "height": 16.0
+  },
+  "pieces": [
+    {
+      "instanceId": "hopper_left",
+      "pieceId": "slope_35deg_v1",
+      "transform": {
+        "position": { "x": -2.5, "y": 7.0 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {}
+    },
+    {
+      "instanceId": "hopper_right",
+      "pieceId": "slope_35deg_v1",
+      "transform": {
+        "position": { "x": 2.5, "y": 7.0 },
+        "rotationDeg": 180.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {}
+    },
+    {
+      "instanceId": "main_gate",
+      "pieceId": "gate_slide_center_v1",
+      "transform": {
+        "position": { "x": 0.0, "y": 4.0 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {
+        "open": 0.0
+      }
+    },
+    {
+      "instanceId": "control_flap",
+      "pieceId": "flap_standard_v1",
+      "transform": {
+        "position": { "x": 0.0, "y": 1.5 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {
+        "angleDeg": 0.0
+      }
+    },
+    {
+      "instanceId": "bin_left",
+      "pieceId": "bin_small_v1",
+      "transform": {
+        "position": { "x": -4.0, "y": -3.5 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {}
+    },
+    {
+      "instanceId": "bin_right",
+      "pieceId": "bin_small_v1",
+      "transform": {
+        "position": { "x": 4.0, "y": -3.5 },
+        "rotationDeg": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {},
+      "surfaceOverride": null,
+      "stateDefaults": {}
+    }
+  ],
+  "connections": [],
+  "runtimeDefaults": {
+    "spawnZone": {
+      "center": { "x": 0.0, "y": 9.0 },
+      "size": { "x": 1.0, "y": 0.5 }
+    }
+  },
+  "metadata": {}
+}
