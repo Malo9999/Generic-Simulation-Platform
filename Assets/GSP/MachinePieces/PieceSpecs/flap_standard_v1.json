@@ -1,0 +1,17 @@
+{
+  "id": "flap_standard_v1",
+  "version": 1,
+  "pieceType": "Flap",
+  "displayName": "Flap Standard",
+  "tags": ["moving", "flap"],
+  "shape": { "kind": "box", "size": { "x": 1.6, "y": 0.25 } },
+  "collision": { "enabled": true, "isTrigger": false, "mode": "solid", "payload": { "entries": [] } },
+  "anchors": [
+    { "id": "hinge", "position": { "x": -0.8, "y": 0.0 }, "angle": 180.0 },
+    { "id": "tip", "position": { "x": 0.8, "y": 0.0 }, "angle": 0.0 }
+  ],
+  "surface": { "surfaceProfileId": "polymer_matte_v1" },
+  "defaultParams": { "entries": [ { "key": "maxAngle", "value": "35" } ] },
+  "paramConstraints": [ { "key": "maxAngle", "min": 5.0, "max": 80.0 } ],
+  "mechanics": { "mode": "hinge", "payload": { "entries": [ { "key": "axis", "value": "z" } ] } }
+}
