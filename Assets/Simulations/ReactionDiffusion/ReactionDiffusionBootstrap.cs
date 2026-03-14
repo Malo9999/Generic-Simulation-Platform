@@ -1,6 +1,16 @@
 using UnityEngine;
 using UnityEngine.Rendering;
 
+public enum ReactionDiffusionArchetype
+{
+    None = 0,
+    Mask = 1,
+    Jellyfish = 2,
+    Butterfly = 3,
+    Flower = 4,
+    Skull = 5
+}
+
 [GspBootstrap(GspBootstrapKind.Simulation, "Reaction-diffusion simulation bootstrap")]
 public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 {
@@ -42,6 +52,19 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float morphStrength = 0.08f;
     [SerializeField, Min(0f)] private float maxMorphFeedDelta = 0.0008f;
     [SerializeField, Min(0f)] private float maxMorphKillDelta = 0.0005f;
+
+    [Header("Archetype Director")]
+    [SerializeField] private bool enableArchetypeDirector = true;
+    [SerializeField] private bool useArchetypeSeed = true;
+    [SerializeField] private ReactionDiffusionArchetype startArchetype = ReactionDiffusionArchetype.Mask;
+    [SerializeField] private bool randomizeSequence = true;
+    [SerializeField, Min(1f)] private float archetypeHoldTime = 25f;
+    [SerializeField, Min(1f)] private float archetypeTransitionTime = 35f;
+    [SerializeField, Range(0f, 1f)] private float archetypeStrength = 0.75f;
+    [SerializeField, Range(0.10f, 1.20f)] private float archetypeScale = 0.42f;
+    [SerializeField, Range(0f, 0.35f)] private float archetypeJitter = 0.08f;
+    [SerializeField, Range(-180f, 180f)] private float archetypeRotationDegrees = 0f;
+    [SerializeField] private bool randomizeArchetypePerRun = false;
 
     [Header("Local Events (Colony Seed)")]
     [SerializeField] private bool enableMicroReseeding = true;
@@ -85,6 +108,12 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     private int microReseedIndex;
     private uint eventHashSeed = 1337u;
 
+    private ReactionDiffusionArchetype currentArchetype;
+    private ReactionDiffusionArchetype nextArchetype;
+    private float archetypeTimer;
+    private float archetypeBlend;
+    private bool archetypeTransitioning;
+
     private void Reset()
     {
         ApplyRecommendedLivingDefaults();
@@ -123,6 +152,18 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         morphStrength = 0.08f;
         maxMorphFeedDelta = 0.0008f;
         maxMorphKillDelta = 0.0005f;
+
+        enableArchetypeDirector = true;
+        useArchetypeSeed = true;
+        startArchetype = ReactionDiffusionArchetype.Mask;
+        randomizeSequence = true;
+        archetypeHoldTime = 25f;
+        archetypeTransitionTime = 35f;
+        archetypeStrength = 0.75f;
+        archetypeScale = 0.42f;
+        archetypeJitter = 0.08f;
+        archetypeRotationDegrees = 0f;
+        randomizeArchetypePerRun = false;
 
         enableMicroReseeding = true;
         microReseedStartDelaySeconds = 6f;
@@ -163,6 +204,13 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         morphStrength = Mathf.Clamp01(morphStrength);
         maxMorphFeedDelta = Mathf.Max(0f, maxMorphFeedDelta);
         maxMorphKillDelta = Mathf.Max(0f, maxMorphKillDelta);
+
+        archetypeHoldTime = Mathf.Max(1f, archetypeHoldTime);
+        archetypeTransitionTime = Mathf.Max(1f, archetypeTransitionTime);
+        archetypeStrength = Mathf.Clamp01(archetypeStrength);
+        archetypeScale = Mathf.Clamp(archetypeScale, 0.10f, 1.20f);
+        archetypeJitter = Mathf.Clamp(archetypeJitter, 0f, 0.35f);
+        archetypeRotationDegrees = Mathf.Clamp(archetypeRotationDegrees, -180f, 180f);
 
         microReseedStartDelaySeconds = Mathf.Max(0f, microReseedStartDelaySeconds);
         microReseedIntervalSeconds = Mathf.Max(0.25f, microReseedIntervalSeconds);
@@ -221,6 +269,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         {
             return;
         }
+
+        UpdateArchetypeDirector(frameDt);
 
         var read = useStateAAsRead ? stateA : stateB;
         var write = useStateAAsRead ? stateB : stateA;
@@ -288,6 +338,41 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             displayMaterial.SetTexture("_PrevStateTex", previousState);
             displayMaterial.SetFloat("_DisplayMode", (float)displayMode);
             displayMaterial.SetFloat("_ActivityGain", activityGain);
+        }
+    }
+
+    private void UpdateArchetypeDirector(float deltaTime)
+    {
+        if (!enableArchetypeDirector)
+        {
+            archetypeBlend = 0f;
+            archetypeTransitioning = false;
+            return;
+        }
+
+        archetypeTimer += deltaTime;
+
+        if (!archetypeTransitioning)
+        {
+            if (archetypeTimer >= archetypeHoldTime)
+            {
+                archetypeTransitioning = true;
+                archetypeTimer = 0f;
+            }
+
+            archetypeBlend = 0f;
+            return;
+        }
+
+        archetypeBlend = Mathf.Clamp01(archetypeTimer / archetypeTransitionTime);
+
+        if (archetypeBlend >= 1f)
+        {
+            currentArchetype = nextArchetype;
+            nextArchetype = PickNextArchetype(currentArchetype);
+            archetypeTransitioning = false;
+            archetypeTimer = 0f;
+            archetypeBlend = 0f;
         }
     }
 
@@ -504,10 +589,24 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         randomSeed = activeSeed;
         eventHashSeed = (uint)activeSeed;
 
+        currentArchetype = ResolveStartArchetype();
+        nextArchetype = PickNextArchetype(currentArchetype);
+        archetypeTimer = 0f;
+        archetypeBlend = 0f;
+        archetypeTransitioning = false;
+
         simulationShader.SetInt("_Width", gridWidth);
         simulationShader.SetInt("_Height", gridHeight);
         simulationShader.SetInt("_SeedMode", (int)seedMode);
         simulationShader.SetInt("_Seed", activeSeed);
+        simulationShader.SetInt("_UseArchetypeSeed", useArchetypeSeed && enableArchetypeDirector ? 1 : 0);
+        simulationShader.SetInt("_CurrentArchetype", (int)currentArchetype);
+        simulationShader.SetInt("_NextArchetype", (int)nextArchetype);
+        simulationShader.SetFloat("_ArchetypeBlend", 0f);
+        simulationShader.SetFloat("_ArchetypeStrength", archetypeStrength);
+        simulationShader.SetFloat("_ArchetypeScale", archetypeScale);
+        simulationShader.SetFloat("_ArchetypeJitter", archetypeJitter);
+        simulationShader.SetFloat("_ArchetypeRotationDegrees", archetypeRotationDegrees);
         simulationShader.SetTexture(initKernel, "_WriteState", stateA);
 
         var groupsX = Mathf.CeilToInt(gridWidth / (float)ThreadGroupSize);
@@ -530,6 +629,54 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         }
     }
 
+    private ReactionDiffusionArchetype ResolveStartArchetype()
+    {
+        if (!enableArchetypeDirector)
+        {
+            return ReactionDiffusionArchetype.None;
+        }
+
+        if (!randomizeArchetypePerRun)
+        {
+            return startArchetype;
+        }
+
+        return PickNextArchetype(ReactionDiffusionArchetype.None);
+    }
+
+    private ReactionDiffusionArchetype PickNextArchetype(ReactionDiffusionArchetype current)
+    {
+        if (!randomizeSequence)
+        {
+            return startArchetype == current ? ReactionDiffusionArchetype.Jellyfish : startArchetype;
+        }
+
+        ReactionDiffusionArchetype[] pool =
+        {
+            ReactionDiffusionArchetype.Mask,
+            ReactionDiffusionArchetype.Jellyfish,
+            ReactionDiffusionArchetype.Butterfly,
+            ReactionDiffusionArchetype.Flower,
+            ReactionDiffusionArchetype.Skull
+        };
+
+        var attempts = 0;
+        var candidate = current;
+
+        while (attempts < 16)
+        {
+            candidate = pool[Mathf.Abs((int)(SignedHash01(microReseedIndex + attempts + 101) * 100000f)) % pool.Length];
+            if (candidate != current)
+            {
+                return candidate;
+            }
+
+            attempts++;
+        }
+
+        return pool[0];
+    }
+
     private void PerformMicroReseed(int groupsX, int groupsY, ref RenderTexture read, ref RenderTexture write)
     {
         for (var i = 0; i < microReseedCount; i++)
@@ -546,6 +693,13 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             simulationShader.SetVector("_InjectCenter", new Vector4(center.x, center.y, 0f, 0f));
             simulationShader.SetFloat("_InjectRadius", radius);
             simulationShader.SetFloat("_InjectStrength", strength);
+            simulationShader.SetInt("_CurrentArchetype", (int)currentArchetype);
+            simulationShader.SetInt("_NextArchetype", (int)nextArchetype);
+            simulationShader.SetFloat("_ArchetypeBlend", archetypeBlend);
+            simulationShader.SetFloat("_ArchetypeStrength", archetypeStrength);
+            simulationShader.SetFloat("_ArchetypeScale", archetypeScale);
+            simulationShader.SetFloat("_ArchetypeJitter", archetypeJitter);
+            simulationShader.SetFloat("_ArchetypeRotationDegrees", archetypeRotationDegrees);
             simulationShader.Dispatch(injectKernel, groupsX, groupsY, 1);
 
             var temp = read;

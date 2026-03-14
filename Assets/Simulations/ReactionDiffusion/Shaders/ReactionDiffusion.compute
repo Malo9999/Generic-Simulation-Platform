@@ -20,6 +20,15 @@ float2 _InjectCenter;
 float _InjectRadius;
 float _InjectStrength;
 
+int _UseArchetypeSeed;
+int _CurrentArchetype;
+int _NextArchetype;
+float _ArchetypeBlend;
+float _ArchetypeStrength;
+float _ArchetypeScale;
+float _ArchetypeJitter;
+float _ArchetypeRotationDegrees;
+
 uint Hash(uint x)
 {
     x ^= x >> 16;
@@ -34,6 +43,113 @@ float Random01(uint2 p, uint seed)
 {
     uint h = Hash((p.x * 73856093u) ^ (p.y * 19349663u) ^ seed);
     return (h & 0x00ffffffu) / 16777215.0;
+}
+
+float2 Rotate2D(float2 p, float radians)
+{
+    float s = sin(radians);
+    float c = cos(radians);
+    return float2(c * p.x - s * p.y, s * p.x + c * p.y);
+}
+
+float SoftCircle(float2 p, float2 center, float radius, float softness)
+{
+    float d = distance(p, center);
+    return 1.0 - smoothstep(radius, radius + softness, d);
+}
+
+float SoftEllipse(float2 p, float2 center, float2 radius, float softness)
+{
+    float2 q = (p - center) / max(radius, float2(1e-5, 1e-5));
+    float d = length(q);
+    return 1.0 - smoothstep(1.0, 1.0 + softness, d);
+}
+
+float SoftBox(float2 p, float2 center, float2 halfSize, float softness)
+{
+    float2 d = abs(p - center) - halfSize;
+    float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+    return 1.0 - smoothstep(0.0, softness, dist);
+}
+
+float GetArchetypeMaskSingle(int archetype, float2 uv, float scale, float jitter, float rotationDeg)
+{
+    float2 p = uv - 0.5;
+    float radians = radians(rotationDeg);
+    p = Rotate2D(p, radians);
+    p /= max(scale, 0.01);
+
+    float softness = 0.08;
+    float j = jitter;
+
+    if (archetype == 1) // Mask
+    {
+        float head = SoftEllipse(p, float2(0.0, 0.02), float2(0.42, 0.55), softness);
+        float jaw = SoftEllipse(p, float2(0.0, -0.28), float2(0.24, 0.22), softness);
+        float face = max(head, jaw);
+
+        float eyeL = SoftCircle(p, float2(-0.16 - j * 0.10, 0.04), 0.12, softness);
+        float eyeR = SoftCircle(p, float2( 0.16 + j * 0.10, 0.04), 0.12, softness);
+        float nose = SoftEllipse(p, float2(0.0, -0.10), float2(0.06, 0.10), softness);
+
+        return saturate(face - eyeL * 0.9 - eyeR * 0.9 - nose * 0.55);
+    }
+
+    if (archetype == 2) // Jellyfish
+    {
+        float cap = SoftEllipse(p, float2(0.0, 0.10), float2(0.36, 0.24), softness);
+        float tentacle1 = SoftBox(p, float2(-0.18, -0.20), float2(0.03, 0.26), 0.06);
+        float tentacle2 = SoftBox(p, float2(-0.06, -0.18), float2(0.03, 0.30), 0.06);
+        float tentacle3 = SoftBox(p, float2( 0.06, -0.18), float2(0.03, 0.30), 0.06);
+        float tentacle4 = SoftBox(p, float2( 0.18, -0.20), float2(0.03, 0.26), 0.06);
+        return saturate(max(cap, max(max(tentacle1, tentacle2), max(tentacle3, tentacle4))));
+    }
+
+    if (archetype == 3) // Butterfly
+    {
+        float wingTL = SoftEllipse(p, float2(-0.20, 0.10), float2(0.24, 0.20), softness);
+        float wingTR = SoftEllipse(p, float2( 0.20, 0.10), float2(0.24, 0.20), softness);
+        float wingBL = SoftEllipse(p, float2(-0.16, -0.14), float2(0.16, 0.14), softness);
+        float wingBR = SoftEllipse(p, float2( 0.16, -0.14), float2(0.16, 0.14), softness);
+        float body = SoftBox(p, float2(0.0, -0.02), float2(0.03, 0.32), 0.05);
+        return saturate(max(max(wingTL, wingTR), max(max(wingBL, wingBR), body)));
+    }
+
+    if (archetype == 4) // Flower
+    {
+        float core = SoftCircle(p, float2(0.0, 0.0), 0.12, softness);
+        float petals = 0.0;
+        [unroll]
+        for (int i = 0; i < 6; i++)
+        {
+            float a = (6.2831853 / 6.0) * i;
+            float2 c = float2(cos(a), sin(a)) * 0.23;
+            petals = max(petals, SoftEllipse(p, c, float2(0.12, 0.16), softness));
+        }
+        return saturate(max(core, petals));
+    }
+
+    if (archetype == 5) // Skull
+    {
+        float cranium = SoftEllipse(p, float2(0.0, 0.10), float2(0.38, 0.32), softness);
+        float jaw = SoftBox(p, float2(0.0, -0.20), float2(0.20, 0.14), 0.07);
+        float face = max(cranium, jaw);
+
+        float eyeL = SoftCircle(p, float2(-0.12, 0.05), 0.10, softness);
+        float eyeR = SoftCircle(p, float2( 0.12, 0.05), 0.10, softness);
+        float nose = SoftEllipse(p, float2(0.0, -0.06), float2(0.05, 0.08), softness);
+
+        return saturate(face - eyeL * 0.85 - eyeR * 0.85 - nose * 0.55);
+    }
+
+    return 0.0;
+}
+
+float GetBlendedArchetypeMask(float2 uv)
+{
+    float currentMask = GetArchetypeMaskSingle(_CurrentArchetype, uv, _ArchetypeScale, _ArchetypeJitter, _ArchetypeRotationDegrees);
+    float nextMask = GetArchetypeMaskSingle(_NextArchetype, uv, _ArchetypeScale, _ArchetypeJitter, _ArchetypeRotationDegrees);
+    return lerp(currentMask, nextMask, saturate(_ArchetypeBlend));
 }
 
 uint2 ResolveCoord(int2 c)
@@ -108,6 +224,14 @@ void Init(uint3 id : SV_DispatchThreadID)
         }
     }
 
+    if (_UseArchetypeSeed == 1)
+    {
+        float mask = GetBlendedArchetypeMask(uv);
+        float archetypeB = saturate(mask * _ArchetypeStrength);
+        B = max(B, archetypeB);
+        A = lerp(A, 0.0, archetypeB * 0.5);
+    }
+
     _WriteState[id.xy] = float4(A, B, 0.0, 1.0);
 }
 
@@ -158,8 +282,12 @@ void Inject(uint3 id : SV_DispatchThreadID)
     float4 state = _ReadState[id.xy];
 
     float dist = distance(uv, _InjectCenter);
-    float pulse = 1.0 - smoothstep(0.0, _InjectRadius, dist);
-    pulse *= _InjectStrength;
+    float localPulse = 1.0 - smoothstep(0.0, _InjectRadius, dist);
+    localPulse *= _InjectStrength;
+
+    float2 localUv = (uv - _InjectCenter) / max(_InjectRadius * 3.2, 0.001) + 0.5;
+    float archetypeMask = saturate(GetBlendedArchetypeMask(localUv) * _ArchetypeStrength);
+    float pulse = saturate(max(localPulse, localPulse * archetypeMask));
 
     float A = lerp(state.x, 0.18, pulse * 0.42);
     float B = lerp(state.y, 0.82, pulse * 0.42);
