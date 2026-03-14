@@ -8,15 +8,68 @@ struct Particle
     float radius;
 };
 
+struct CollisionSegment
+{
+    float2 a;
+    float2 b;
+};
+
 RWStructuredBuffer<Particle> _Particles;
+StructuredBuffer<CollisionSegment> _CollisionSegments;
 
 int _ActiveCount;
+int _CollisionSegmentCount;
 float _Dt;
 float _Gravity;
 float _Damping;
 float _Bounce;
 float _GateOpen;
 float _FlapState;
+
+float2 ClosestPointOnSegment(float2 p, float2 a, float2 b)
+{
+    float2 ab = b - a;
+    float denom = max(dot(ab, ab), 1e-5);
+    float t = saturate(dot(p - a, ab) / denom);
+    return a + ab * t;
+}
+
+void ResolveSegmentCollision(inout Particle p, CollisionSegment seg)
+{
+    float2 closest = ClosestPointOnSegment(p.position, seg.a, seg.b);
+    float2 delta = p.position - closest;
+    float distSq = dot(delta, delta);
+    float radiusSq = p.radius * p.radius;
+    if (distSq > radiusSq)
+    {
+        return;
+    }
+
+    float2 segDir = normalize(seg.b - seg.a);
+    float2 normal = float2(-segDir.y, segDir.x);
+    float side = dot(p.position - seg.a, normal);
+    if (side < 0.0)
+    {
+        normal = -normal;
+    }
+
+    float dist = sqrt(max(distSq, 1e-8));
+    float penetration = p.radius - dist;
+    p.position += normal * penetration;
+
+    float vn = dot(p.velocity, normal);
+    float2 vt = p.velocity - (normal * vn);
+    if (vn < 0.0)
+    {
+        p.velocity = vt - (normal * vn * _Bounce);
+    }
+    else
+    {
+        p.velocity = vt;
+    }
+
+    p.velocity = lerp(p.velocity, vt, 0.15);
+}
 
 [numthreads(128,1,1)]
 void Simulate (uint3 id : SV_DispatchThreadID)
@@ -32,6 +85,16 @@ void Simulate (uint3 id : SV_DispatchThreadID)
     p.velocity.y -= _Gravity * _Dt;
     p.velocity *= _Damping;
     p.position += p.velocity * _Dt;
+
+    [loop]
+    for (int iteration = 0; iteration < 2; iteration++)
+    {
+        [loop]
+        for (int segIndex = 0; segIndex < _CollisionSegmentCount; segIndex++)
+        {
+            ResolveSegmentCollision(p, _CollisionSegments[segIndex]);
+        }
+    }
 
     float2 minW = float2(-9.8, -7.5);
     float2 maxW = float2(9.8, 8.0);
@@ -55,52 +118,6 @@ void Simulate (uint3 id : SV_DispatchThreadID)
     {
         p.position.y = maxW.y - p.radius;
         p.velocity.y = -abs(p.velocity.y) * _Bounce;
-    }
-
-    if (p.position.y > 2.2)
-    {
-        float minX = -4.8 + p.radius;
-        float maxX = 4.8 - p.radius;
-        p.position.x = clamp(p.position.x, minX, maxX);
-    }
-
-    if (p.position.y <= 2.2 && p.position.y >= 1.1)
-    {
-        float throatHalf = lerp(0.15, 1.25, saturate(_GateOpen));
-        if (abs(p.position.x) > throatHalf)
-        {
-            p.position.x = sign(p.position.x) * throatHalf;
-            p.velocity.x = -p.velocity.x * _Bounce;
-            p.velocity.y = max(p.velocity.y, -0.8);
-        }
-    }
-
-    if (p.position.y < 1.1 && p.position.y > -2.8)
-    {
-        p.position.x = clamp(p.position.x, -5.5 + p.radius, 5.5 - p.radius);
-    }
-
-    if (p.position.y < 0.4 && p.position.y > -1.5)
-    {
-        float steer = _FlapState * 30.0;
-        p.velocity.x += steer * _Dt;
-        p.velocity.y += 1.0 * _Dt;
-
-        if (_FlapState > 0.2 && p.position.x < 0.0)
-        {
-            p.velocity.x += 14.0 * _Dt;
-        }
-        else if (_FlapState < -0.2 && p.position.x > 0.0)
-        {
-            p.velocity.x -= 14.0 * _Dt;
-        }
-    }
-
-    if (p.position.y < -2.8)
-    {
-        float laneDir = p.position.x >= 0 ? 1.0 : -1.0;
-        p.velocity.x += laneDir * 14.0 * _Dt;
-        p.velocity.y -= 2.5 * _Dt;
     }
 
     _Particles[i] = p;

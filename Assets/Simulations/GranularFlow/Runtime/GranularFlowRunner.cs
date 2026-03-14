@@ -12,6 +12,12 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
         public float radius;
     }
 
+    private struct GpuCollisionSegment
+    {
+        public Vector2 a;
+        public Vector2 b;
+    }
+
     [SerializeField] private ComputeShader particleCompute;
     [SerializeField] private Shader particleRenderShader;
 
@@ -21,7 +27,10 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
     private IGranularFlowBrain brain;
 
     private ComputeBuffer particleBuffer;
+    private ComputeBuffer collisionSegmentBuffer;
     private GpuParticle[] particleCpu;
+    private GpuCollisionSegment[] collisionSegmentsCpu;
+    private Vector4[] machineCollisionScratch;
     private Vector4[] palette;
 
     private Material particleMaterial;
@@ -33,6 +42,7 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
     private float spawnAccumulator;
     private float elapsed;
     private int throughputWindow;
+    private int collisionSegmentCount;
     private int throughputWindowTicks;
     private int leftBinCount;
     private int rightBinCount;
@@ -85,6 +95,10 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
 
         particleBuffer = new ComputeBuffer(gfConfig.particles.maxParticles, sizeof(float) * 6);
         particleBuffer.SetData(particleCpu);
+
+        machineCollisionScratch = new Vector4[machine.GetCollisionSegmentCapacity()];
+        collisionSegmentsCpu = new GpuCollisionSegment[machine.GetCollisionSegmentCapacity()];
+        collisionSegmentBuffer = new ComputeBuffer(machineCollisionScratch.Length, sizeof(float) * 4);
 
         simulateKernel = particleCompute != null ? particleCompute.FindKernel("Simulate") : -1;
 
@@ -142,6 +156,7 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
         lastSensors = sensors;
         lastDecision = decision;
 
+        UploadMachineCollisionSegments();
         DispatchSimulation(dt, machine.GateOpen, machine.FlapState);
 
         Graphics.DrawMeshInstancedProcedural(particleMesh, 0, particleMaterial, particleBounds, Mathf.Max(1, activeCount));
@@ -186,6 +201,12 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
         {
             particleBuffer.Release();
             particleBuffer = null;
+        }
+
+        if (collisionSegmentBuffer != null)
+        {
+            collisionSegmentBuffer.Release();
+            collisionSegmentBuffer = null;
         }
 
         if (particleMaterial != null)
@@ -254,13 +275,29 @@ public sealed class GranularFlowRunner : MonoBehaviour, ITickableSimulationRunne
         particleCompute.SetFloat("_Bounce", gfConfig.particles.collisionBounce);
         particleCompute.SetFloat("_GateOpen", gateOpen * gfConfig.machine.gateMaxOpen);
         particleCompute.SetFloat("_FlapState", flapState);
+        particleCompute.SetInt("_CollisionSegmentCount", collisionSegmentCount);
         particleCompute.SetBuffer(simulateKernel, "_Particles", particleBuffer);
+        particleCompute.SetBuffer(simulateKernel, "_CollisionSegments", collisionSegmentBuffer);
 
         var groups = Mathf.CeilToInt(activeCount / (float)Threads);
         if (groups > 0)
         {
             particleCompute.Dispatch(simulateKernel, groups, 1, 1);
         }
+    }
+
+    private void UploadMachineCollisionSegments()
+    {
+        collisionSegmentCount = machine.WriteCollisionSegments(gfConfig.machine, machineCollisionScratch);
+        var count = collisionSegmentCount;
+        for (var i = 0; i < count; i++)
+        {
+            var seg = machineCollisionScratch[i];
+            collisionSegmentsCpu[i].a = new Vector2(seg.x, seg.y);
+            collisionSegmentsCpu[i].b = new Vector2(seg.z, seg.w);
+        }
+
+        collisionSegmentBuffer.SetData(collisionSegmentsCpu);
     }
 
     private GranularFlowSensors BuildSensors(float dt)
