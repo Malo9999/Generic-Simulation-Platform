@@ -4,40 +4,110 @@
   "displayName": "Splitter V1",
   "compoundType": "Splitter",
   "dimensions": {
-    "width": { "min": 5.0, "max": 18.0, "defaultValue": 9.0 },
-    "height": { "min": 4.0, "max": 12.0, "defaultValue": 6.0 }
+    "width": {
+      "min": 5.0,
+      "max": 18.0,
+      "defaultValue": 9.0
+    },
+    "height": {
+      "min": 4.0,
+      "max": 12.0,
+      "defaultValue": 6.0
+    }
   },
   "defaultParams": {
     "entries": [
-      { "key": "width", "value": "9.0" },
-      { "key": "height", "value": "6.0" }
+      {
+        "key": "width",
+        "value": "9.0"
+      },
+      {
+        "key": "height",
+        "value": "6.0"
+      }
     ]
   },
   "paramConstraints": [
-    { "key": "width", "min": 5.0, "max": 18.0 },
-    { "key": "height", "min": 4.0, "max": 12.0 }
+    {
+      "key": "width",
+      "min": 5.0,
+      "max": 18.0
+    },
+    {
+      "key": "height",
+      "min": 4.0,
+      "max": 12.0
+    }
   ],
   "ports": [
     {
       "id": "entry",
       "kind": "material_in",
-      "position": { "normalized": { "x": 0.0, "y": 0.5 }, "offset": { "x": 0.0, "y": 0.0 } },
-      "direction": { "x": 0.0, "y": -1.0 },
-      "profile": { "shape": "funnel", "width": 0.36, "height": 0.2 }
+      "position": {
+        "normalized": {
+          "x": 0.0,
+          "y": 0.5
+        },
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      "direction": {
+        "x": 0.0,
+        "y": -1.0
+      },
+      "profile": {
+        "shape": "slot",
+        "width": 0.22,
+        "height": 0.1
+      }
     },
     {
       "id": "exit_left",
       "kind": "material_out",
-      "position": { "normalized": { "x": -0.35, "y": -0.5 }, "offset": { "x": 0.0, "y": 0.0 } },
-      "direction": { "x": -0.6, "y": -0.8 },
-      "profile": { "shape": "slot", "width": 0.2, "height": 0.1 }
+      "position": {
+        "normalized": {
+          "x": -0.35,
+          "y": -0.5
+        },
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      "direction": {
+        "x": -0.6,
+        "y": -0.8
+      },
+      "profile": {
+        "shape": "slot",
+        "width": 0.2,
+        "height": 0.1
+      }
     },
     {
       "id": "exit_right",
       "kind": "material_out",
-      "position": { "normalized": { "x": 0.35, "y": -0.5 }, "offset": { "x": 0.0, "y": 0.0 } },
-      "direction": { "x": 0.6, "y": -0.8 },
-      "profile": { "shape": "slot", "width": 0.2, "height": 0.1 }
+      "position": {
+        "normalized": {
+          "x": 0.35,
+          "y": -0.5
+        },
+        "offset": {
+          "x": 0.0,
+          "y": 0.0
+        }
+      },
+      "direction": {
+        "x": 0.6,
+        "y": -0.8
+      },
+      "profile": {
+        "shape": "slot",
+        "width": 0.2,
+        "height": 0.1
+      }
     }
   ],
   "buildTemplate": {
@@ -45,59 +115,145 @@
       {
         "instanceId": "left_wall",
         "pieceId": "wall_straight_v1",
-        "positionNormalized": { "x": -0.5, "y": 0.0 },
-        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "positionNormalized": {
+          "x": -0.5,
+          "y": 0.0
+        },
+        "positionOffset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "rotation": 90.0,
-        "scaleNormalized": { "x": 0.111, "y": 0.167 },
-        "scaleOffset": { "x": 0.0, "y": 0.0 }
+        "scaleNormalized": {
+          "x": 0.111,
+          "y": 0.167
+        },
+        "scaleOffset": {
+          "x": 0.0,
+          "y": 0.0
+        }
       },
       {
         "instanceId": "right_wall",
         "pieceId": "wall_straight_v1",
-        "positionNormalized": { "x": 0.5, "y": 0.0 },
-        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "positionNormalized": {
+          "x": 0.5,
+          "y": 0.0
+        },
+        "positionOffset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "rotation": 90.0,
-        "scaleNormalized": { "x": 0.111, "y": 0.167 },
-        "scaleOffset": { "x": 0.0, "y": 0.0 }
+        "scaleNormalized": {
+          "x": 0.111,
+          "y": 0.167
+        },
+        "scaleOffset": {
+          "x": 0.0,
+          "y": 0.0
+        }
       },
       {
         "instanceId": "gate",
         "pieceId": "gate_slide_center_v1",
-        "positionNormalized": { "x": 0.0, "y": -0.1 },
-        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "positionNormalized": {
+          "x": 0.0,
+          "y": -0.1
+        },
+        "positionOffset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "rotation": 0.0,
-        "scaleNormalized": { "x": 0.18, "y": 0.11 },
-        "scaleOffset": { "x": 0.0, "y": 0.0 }
+        "scaleNormalized": {
+          "x": 0.18,
+          "y": 0.11
+        },
+        "scaleOffset": {
+          "x": 0.0,
+          "y": 0.0
+        }
       },
       {
         "instanceId": "flap",
         "pieceId": "flap_standard_v1",
-        "positionNormalized": { "x": 0.0, "y": -0.32 },
-        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "positionNormalized": {
+          "x": 0.0,
+          "y": -0.32
+        },
+        "positionOffset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "rotation": 0.0,
-        "scaleNormalized": { "x": 0.2, "y": 0.12 },
-        "scaleOffset": { "x": 0.0, "y": 0.0 }
+        "scaleNormalized": {
+          "x": 0.2,
+          "y": 0.12
+        },
+        "scaleOffset": {
+          "x": 0.0,
+          "y": 0.0
+        }
       },
       {
         "instanceId": "left_bin",
         "pieceId": "bin_small_v1",
-        "positionNormalized": { "x": -0.32, "y": -0.68 },
-        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "positionNormalized": {
+          "x": -0.32,
+          "y": -0.68
+        },
+        "positionOffset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "rotation": 0.0,
-        "scaleNormalized": { "x": 0.16, "y": 0.16 },
-        "scaleOffset": { "x": 0.0, "y": 0.0 }
+        "scaleNormalized": {
+          "x": 0.16,
+          "y": 0.16
+        },
+        "scaleOffset": {
+          "x": 0.0,
+          "y": 0.0
+        }
       },
       {
         "instanceId": "right_bin",
         "pieceId": "bin_small_v1",
-        "positionNormalized": { "x": 0.32, "y": -0.68 },
-        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "positionNormalized": {
+          "x": 0.32,
+          "y": -0.68
+        },
+        "positionOffset": {
+          "x": 0.0,
+          "y": 0.0
+        },
         "rotation": 0.0,
-        "scaleNormalized": { "x": 0.16, "y": 0.16 },
-        "scaleOffset": { "x": 0.0, "y": 0.0 }
+        "scaleNormalized": {
+          "x": 0.16,
+          "y": 0.16
+        },
+        "scaleOffset": {
+          "x": 0.0,
+          "y": 0.0
+        }
       }
     ]
   },
-  "surfaceDefaults": { "entries": [ { "key": "primary", "value": "metal_brushed_v1" } ] },
-  "metadata": { "entries": [ { "key": "authoring", "value": "starter" } ] }
+  "surfaceDefaults": {
+    "entries": [
+      {
+        "key": "primary",
+        "value": "metal_brushed_v1"
+      }
+    ]
+  },
+  "metadata": {
+    "entries": [
+      {
+        "key": "authoring",
+        "value": "starter"
+      }
+    ]
+  }
 }
