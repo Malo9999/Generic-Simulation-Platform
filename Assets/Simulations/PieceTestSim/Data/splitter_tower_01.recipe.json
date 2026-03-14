@@ -1,20 +1,42 @@
 {
   "id": "splitter_tower_01",
-  "version": 1,
+  "version": 2,
   "displayName": "Splitter Tower 01",
   "machineType": "test_rig",
   "bounds": { "min": { "x": -10, "y": -2 }, "max": { "x": 10, "y": 10 } },
   "pieces": [
-    { "instanceId": "wall_floor", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 0, "y": -1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
-    { "instanceId": "slope_left", "pieceId": "slope_35deg_v1", "transform": { "position": { "x": -2.5, "y": 0.2 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "base_floor", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 0, "y": -1.4 }, "rotation": 0, "scale": { "x": 3.0, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+
+    { "instanceId": "chamber_wall_left", "pieceId": "wall_straight_v1", "transform": { "position": { "x": -5.4, "y": 1.2 }, "rotation": 90, "scale": { "x": 1.8, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "chamber_wall_right", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 5.4, "y": 1.2 }, "rotation": 90, "scale": { "x": 1.8, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+
+    { "instanceId": "hopper_wall_left", "pieceId": "wall_straight_v1", "transform": { "position": { "x": -3.1, "y": 4.9 }, "rotation": 90, "scale": { "x": 1.4, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "hopper_wall_right", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 3.1, "y": 4.9 }, "rotation": 90, "scale": { "x": 1.4, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "hopper_top", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 0, "y": 7.6 }, "rotation": 0, "scale": { "x": 1.8, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+
+    { "instanceId": "slope_left", "pieceId": "slope_35deg_v1", "transform": { "position": { "x": -2.4, "y": 3.2 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "slope_right", "pieceId": "slope_35deg_v1", "transform": { "position": { "x": 2.4, "y": 3.2 }, "rotation": 180, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+
     { "instanceId": "gate_center", "pieceId": "gate_slide_center_v1", "transform": { "position": { "x": 0, "y": 2.2 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [ { "key": "travel", "value": "1.2" } ] }, "surfaceOverride": null, "stateDefaults": { "entries": [ { "key": "open01", "value": "0.0" } ] } },
-    { "instanceId": "flap_right", "pieceId": "flap_standard_v1", "transform": { "position": { "x": 2.8, "y": 1.2 }, "rotation": -10, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [ { "key": "angle", "value": "0" } ] } },
-    { "instanceId": "bin_bottom", "pieceId": "bin_small_v1", "transform": { "position": { "x": 0, "y": -0.1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [ { "key": "capacity", "value": "120" } ] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } }
+
+    { "instanceId": "control_wall_left", "pieceId": "wall_straight_v1", "transform": { "position": { "x": -1.9, "y": 1.0 }, "rotation": 90, "scale": { "x": 0.9, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "control_wall_right", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 1.9, "y": 1.0 }, "rotation": 90, "scale": { "x": 0.9, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "control_floor", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 0, "y": 0.2 }, "rotation": 0, "scale": { "x": 1.1, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+
+    { "instanceId": "lane_outer_left", "pieceId": "wall_straight_v1", "transform": { "position": { "x": -4.1, "y": -0.2 }, "rotation": 90, "scale": { "x": 0.9, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "lane_outer_right", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 4.1, "y": -0.2 }, "rotation": 90, "scale": { "x": 0.9, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "lane_divider", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 0, "y": -0.2 }, "rotation": 90, "scale": { "x": 0.9, "y": 1.0 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+
+    { "instanceId": "flap_right", "pieceId": "flap_standard_v1", "transform": { "position": { "x": 1.1, "y": 0.9 }, "rotation": -18, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [ { "key": "angle", "value": "0" } ] } },
+
+    { "instanceId": "bin_left", "pieceId": "bin_small_v1", "transform": { "position": { "x": -2.6, "y": -0.7 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [ { "key": "capacity", "value": "120" } ] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "bin_right", "pieceId": "bin_small_v1", "transform": { "position": { "x": 2.6, "y": -0.7 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [ { "key": "capacity", "value": "120" } ] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } }
   ],
   "connections": [
     { "fromInstanceId": "slope_left", "fromAnchorId": "top", "toInstanceId": "gate_center", "toAnchorId": "rail_left" },
+    { "fromInstanceId": "slope_right", "fromAnchorId": "top", "toInstanceId": "gate_center", "toAnchorId": "rail_right" },
     { "fromInstanceId": "gate_center", "fromAnchorId": "rail_right", "toInstanceId": "flap_right", "toAnchorId": "hinge" },
-    { "fromInstanceId": "flap_right", "fromAnchorId": "tip", "toInstanceId": "bin_bottom", "toAnchorId": "input" }
+    { "fromInstanceId": "flap_right", "fromAnchorId": "tip", "toInstanceId": "bin_right", "toAnchorId": "input" }
   ],
   "runtimeDefaults": { "entries": [ { "key": "tickHz", "value": "60" } ] },
   "metadata": { "entries": [ { "key": "author", "value": "bootstrap" } ] }
