@@ -96,6 +96,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
     private int stepKernel = -1;
     private int injectKernel = -1;
 
+    private bool kernelsValid;
     private bool initialized;
     private bool running;
     private bool externallyDriven;
@@ -265,7 +266,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     public void Tick(float frameDt)
     {
-        if (!running || !initialized)
+        if (!running || !initialized || !kernelsValid)
         {
             return;
         }
@@ -434,6 +435,12 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             return;
         }
 
+        if (!kernelsValid)
+        {
+            running = false;
+            return;
+        }
+
         if (!initialized || allocatedWidth != gridWidth || allocatedHeight != gridHeight)
         {
             AllocateTextures();
@@ -442,7 +449,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
         }
 
         ResetSimulationState();
-        running = true;
+        running = kernelsValid;
     }
 
     [ContextMenu("Reseed")]
@@ -459,6 +466,8 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     private bool EnsureResources()
     {
+        kernelsValid = false;
+
         if (simulationShader == null)
         {
             simulationShader = Resources.Load<ComputeShader>("Simulations/ReactionDiffusion/Shaders/ReactionDiffusion");
@@ -475,19 +484,15 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
             return false;
         }
 
-        if (initKernel < 0)
-        {
-            initKernel = simulationShader.FindKernel("Init");
-        }
+        initKernel = simulationShader.FindKernel("Init");
+        stepKernel = simulationShader.FindKernel("Step");
+        injectKernel = simulationShader.FindKernel("Inject");
 
-        if (stepKernel < 0)
+        kernelsValid = initKernel >= 0 && stepKernel >= 0 && injectKernel >= 0;
+        if (!kernelsValid)
         {
-            stepKernel = simulationShader.FindKernel("Step");
-        }
-
-        if (injectKernel < 0)
-        {
-            injectKernel = simulationShader.FindKernel("Inject");
+            UnityEngine.Debug.LogError("[ReactionDiffusion] One or more compute kernels were not found. Check the compute shader for compile errors.");
+            return false;
         }
 
         return true;
@@ -567,7 +572,7 @@ public sealed class ReactionDiffusionBootstrap : MonoBehaviour
 
     private void ResetSimulationState()
     {
-        if (!initialized)
+        if (!initialized || !kernelsValid)
         {
             return;
         }

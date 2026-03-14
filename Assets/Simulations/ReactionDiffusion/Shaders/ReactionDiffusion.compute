@@ -45,10 +45,10 @@ float Random01(uint2 p, uint seed)
     return (h & 0x00ffffffu) / 16777215.0;
 }
 
-float2 Rotate2D(float2 p, float radians)
+float2 Rotate2D(float2 p, float radiansValue)
 {
-    float s = sin(radians);
-    float c = cos(radians);
+    float s = sin(radiansValue);
+    float c = cos(radiansValue);
     return float2(c * p.x - s * p.y, s * p.x + c * p.y);
 }
 
@@ -60,23 +60,24 @@ float SoftCircle(float2 p, float2 center, float radius, float softness)
 
 float SoftEllipse(float2 p, float2 center, float2 radius, float softness)
 {
-    float2 q = (p - center) / max(radius, float2(1e-5, 1e-5));
+    float2 q = (p - center) / radius;
     float d = length(q);
     return 1.0 - smoothstep(1.0, 1.0 + softness, d);
 }
 
 float SoftBox(float2 p, float2 center, float2 halfSize, float softness)
 {
-    float2 d = abs(p - center) - halfSize;
-    float dist = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+    float2 q = abs(p - center) - halfSize;
+    float outside = length(max(q, 0.0));
+    float inside = min(max(q.x, q.y), 0.0);
+    float dist = outside + inside;
     return 1.0 - smoothstep(0.0, softness, dist);
 }
 
 float GetArchetypeMaskSingle(int archetype, float2 uv, float scale, float jitter, float rotationDeg)
 {
-    float2 p = uv - 0.5;
-    float radians = radians(rotationDeg);
-    p = Rotate2D(p, radians);
+    float2 p = uv - float2(0.5, 0.5);
+    p = Rotate2D(p, radians(rotationDeg));
     p /= max(scale, 0.01);
 
     float softness = 0.08;
@@ -98,11 +99,11 @@ float GetArchetypeMaskSingle(int archetype, float2 uv, float scale, float jitter
     if (archetype == 2) // Jellyfish
     {
         float cap = SoftEllipse(p, float2(0.0, 0.10), float2(0.36, 0.24), softness);
-        float tentacle1 = SoftBox(p, float2(-0.18, -0.20), float2(0.03, 0.26), 0.06);
-        float tentacle2 = SoftBox(p, float2(-0.06, -0.18), float2(0.03, 0.30), 0.06);
-        float tentacle3 = SoftBox(p, float2( 0.06, -0.18), float2(0.03, 0.30), 0.06);
-        float tentacle4 = SoftBox(p, float2( 0.18, -0.20), float2(0.03, 0.26), 0.06);
-        return saturate(max(cap, max(max(tentacle1, tentacle2), max(tentacle3, tentacle4))));
+        float t1 = SoftBox(p, float2(-0.18, -0.20), float2(0.03, 0.26), 0.06);
+        float t2 = SoftBox(p, float2(-0.06, -0.18), float2(0.03, 0.30), 0.06);
+        float t3 = SoftBox(p, float2( 0.06, -0.18), float2(0.03, 0.30), 0.06);
+        float t4 = SoftBox(p, float2( 0.18, -0.20), float2(0.03, 0.26), 0.06);
+        return saturate(max(cap, max(max(t1, t2), max(t3, t4))));
     }
 
     if (archetype == 3) // Butterfly
@@ -119,6 +120,7 @@ float GetArchetypeMaskSingle(int archetype, float2 uv, float scale, float jitter
     {
         float core = SoftCircle(p, float2(0.0, 0.0), 0.12, softness);
         float petals = 0.0;
+
         [unroll]
         for (int i = 0; i < 6; i++)
         {
@@ -126,6 +128,7 @@ float GetArchetypeMaskSingle(int archetype, float2 uv, float scale, float jitter
             float2 c = float2(cos(a), sin(a)) * 0.23;
             petals = max(petals, SoftEllipse(p, c, float2(0.12, 0.16), softness));
         }
+
         return saturate(max(core, petals));
     }
 
@@ -285,7 +288,7 @@ void Inject(uint3 id : SV_DispatchThreadID)
     float localPulse = 1.0 - smoothstep(0.0, _InjectRadius, dist);
     localPulse *= _InjectStrength;
 
-    float2 localUv = (uv - _InjectCenter) / max(_InjectRadius * 3.2, 0.001) + 0.5;
+    float2 localUv = ((uv - _InjectCenter) / (_InjectRadius * 3.2)) + float2(0.5, 0.5);
     float archetypeMask = saturate(GetBlendedArchetypeMask(localUv) * _ArchetypeStrength);
     float pulse = saturate(max(localPulse, localPulse * archetypeMask));
 
