@@ -80,17 +80,27 @@ void Simulate (uint3 id : SV_DispatchThreadID)
         p.position.x = clamp(p.position.x, -5.5 + p.radius, 5.5 - p.radius);
     }
 
-    if (abs(p.position.y + 0.45) < 0.35)
+    if (p.position.y < 0.4 && p.position.y > -1.5)
     {
-        p.velocity.x += _FlapState * 22.0 * _Dt;
-        p.velocity.y += 1.5 * _Dt;
+        float steer = _FlapState * 30.0;
+        p.velocity.x += steer * _Dt;
+        p.velocity.y += 1.0 * _Dt;
+
+        if (_FlapState > 0.2 && p.position.x < 0.0)
+        {
+            p.velocity.x += 14.0 * _Dt;
+        }
+        else if (_FlapState < -0.2 && p.position.x > 0.0)
+        {
+            p.velocity.x -= 14.0 * _Dt;
+        }
     }
 
     if (p.position.y < -2.8)
     {
         float laneDir = p.position.x >= 0 ? 1.0 : -1.0;
-        p.velocity.x += laneDir * 10.0 * _Dt;
-        p.velocity.y -= 2.0 * _Dt;
+        p.velocity.x += laneDir * 14.0 * _Dt;
+        p.velocity.y -= 2.5 * _Dt;
     }
 
     _Particles[i] = p;
