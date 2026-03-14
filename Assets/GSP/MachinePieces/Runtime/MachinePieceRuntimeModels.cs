@@ -5,6 +5,7 @@ public sealed class MachinePieceLibrary
 {
     public readonly Dictionary<string, PieceSpec> PieceSpecs = new(System.StringComparer.Ordinal);
     public readonly Dictionary<string, SurfaceProfile> SurfaceProfiles = new(System.StringComparer.Ordinal);
+    public readonly Dictionary<string, CompoundPieceSpec> CompoundPieceSpecs = new(System.StringComparer.Ordinal);
 }
 
 public sealed class BuiltPieceRuntime

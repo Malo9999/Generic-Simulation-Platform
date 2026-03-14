@@ -11,6 +11,7 @@ public static class MachinePieceJsonLoader
 {
     public const string SharedPieceSpecsFolder = "Assets/GSP/MachinePieces/PieceSpecs";
     public const string SharedSurfaceProfilesFolder = "Assets/GSP/MachinePieces/SurfaceProfiles";
+    public const string SharedCompoundPiecesFolder = "Assets/GSP/MachinePieces/CompoundPieces";
 
     public static T LoadFromTextAssetOrThrow<T>(TextAsset asset, string label)
     {
@@ -38,6 +39,7 @@ public static class MachinePieceJsonLoader
     public static MachinePieceLibrary BuildLibraryOrThrow(
         IEnumerable<TextAsset> pieceSpecAssets,
         IEnumerable<TextAsset> surfaceProfileAssets,
+        IEnumerable<TextAsset> compoundPieceAssets = null,
         bool includeSharedAssets = true,
         string diagnosticsPrefix = "MachinePieces")
     {
@@ -47,9 +49,11 @@ public static class MachinePieceJsonLoader
 
         var discoveredPieceSpecs = CollectAssets(pieceSpecAssets, includeSharedAssets, SharedPieceSpecsFolder, diagnostics, "piece spec");
         var discoveredSurfaceProfiles = CollectAssets(surfaceProfileAssets, includeSharedAssets, SharedSurfaceProfilesFolder, diagnostics, "surface profile");
+        var discoveredCompoundPieces = CollectAssets(compoundPieceAssets, includeSharedAssets, SharedCompoundPiecesFolder, diagnostics, "compound piece");
 
         diagnostics.Add($"Discovered {discoveredPieceSpecs.Count} piece spec assets.");
         diagnostics.Add($"Discovered {discoveredSurfaceProfiles.Count} surface profile assets.");
+        diagnostics.Add($"Discovered {discoveredCompoundPieces.Count} compound piece assets.");
 
         foreach (var asset in discoveredPieceSpecs)
         {
@@ -113,6 +117,38 @@ public static class MachinePieceJsonLoader
 
             lib.SurfaceProfiles[profile.id] = profile;
             diagnostics.Add($"Loaded surface profile '{profile.id}' from '{asset.name}'.");
+        }
+
+        foreach (var asset in discoveredCompoundPieces)
+        {
+            CompoundPieceSpec spec;
+            try
+            {
+                spec = LoadFromTextAssetOrThrow<CompoundPieceSpec>(asset, $"CompoundPieceSpec '{asset.name}'");
+            }
+            catch (Exception ex)
+            {
+                var reason = $"Rejected compound piece asset '{asset.name}': {ex.Message}";
+                errors.Add(reason);
+                diagnostics.Add(reason);
+                continue;
+            }
+
+            var validation = MachinePieceValidation.ValidateCompoundPieceSpec(spec);
+            if (validation.Count > 0)
+            {
+                foreach (var validationError in validation)
+                {
+                    var reason = $"Rejected compound piece '{spec.id}' from '{asset.name}': {validationError}";
+                    errors.Add(reason);
+                    diagnostics.Add(reason);
+                }
+
+                continue;
+            }
+
+            lib.CompoundPieceSpecs[spec.id] = spec;
+            diagnostics.Add($"Loaded compound piece '{spec.id}' from '{asset.name}'.");
         }
 
         if (diagnostics.Count > 0)

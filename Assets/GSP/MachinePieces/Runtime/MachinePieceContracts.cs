@@ -55,9 +55,111 @@ public sealed class MachineRecipe
     public string machineType;
     public RecipeBounds bounds;
     public PieceInstance[] pieces;
+    public CompoundModuleInstance[] modules;
+    public MachineModuleConnection[] moduleConnections;
     public MachineConnection[] connections;
     public SerializableDictionary runtimeDefaults;
     public SerializableDictionary metadata;
+}
+
+
+[Serializable]
+public sealed class CompoundPieceSpec
+{
+    public string id;
+    public int version;
+    public string displayName;
+    public string compoundType;
+    public CompoundDimensions dimensions;
+    public SerializableDictionary defaultParams;
+    public ParamConstraint[] paramConstraints;
+    public CompoundPort[] ports;
+    public CompoundBuildTemplate buildTemplate;
+    public SerializableDictionary surfaceDefaults;
+    public SerializableDictionary metadata;
+}
+
+[Serializable]
+public sealed class CompoundModuleInstance
+{
+    public string instanceId;
+    public string compoundPieceId;
+    public PieceTransform transform;
+    public SerializableDictionary paramOverrides;
+    public string surfaceOverride;
+    public SerializableDictionary metadata;
+}
+
+[Serializable]
+public sealed class MachineModuleConnection
+{
+    public string fromModuleId;
+    public string fromPortId;
+    public string toModuleId;
+    public string toPortId;
+}
+
+[Serializable]
+public sealed class CompoundDimensions
+{
+    public DimensionConstraint width;
+    public DimensionConstraint height;
+}
+
+[Serializable]
+public sealed class DimensionConstraint
+{
+    public float min;
+    public float max;
+    public float defaultValue;
+}
+
+[Serializable]
+public sealed class CompoundPort
+{
+    public string id;
+    public string kind;
+    public CompoundPortVector position;
+    public SerializableVector2 direction;
+    public CompoundPortProfile profile;
+    public string semantics;
+}
+
+[Serializable]
+public sealed class CompoundPortVector
+{
+    public SerializableVector2 normalized;
+    public SerializableVector2 offset;
+}
+
+[Serializable]
+public sealed class CompoundPortProfile
+{
+    public string shape;
+    public float width;
+    public float height;
+    public float radius;
+}
+
+[Serializable]
+public sealed class CompoundBuildTemplate
+{
+    public CompoundTemplatePiece[] pieces;
+}
+
+[Serializable]
+public sealed class CompoundTemplatePiece
+{
+    public string instanceId;
+    public string pieceId;
+    public SerializableVector2 positionNormalized;
+    public SerializableVector2 positionOffset;
+    public float rotation;
+    public SerializableVector2 scaleNormalized;
+    public SerializableVector2 scaleOffset;
+    public string surfaceOverride;
+    public SerializableDictionary paramOverrides;
+    public SerializableDictionary stateDefaults;
 }
 
 [Serializable]
