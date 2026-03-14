@@ -1,0 +1,17 @@
+{
+  "id": "gate_slide_center_v1",
+  "version": 1,
+  "pieceType": "Gate",
+  "displayName": "Gate Slide Center",
+  "tags": ["moving", "gate"],
+  "shape": { "kind": "box", "size": { "x": 1.4, "y": 0.4 } },
+  "collision": { "enabled": true, "isTrigger": false, "mode": "solid", "payload": { "entries": [] } },
+  "anchors": [
+    { "id": "rail_left", "position": { "x": -0.7, "y": 0.0 }, "angle": 180.0 },
+    { "id": "rail_right", "position": { "x": 0.7, "y": 0.0 }, "angle": 0.0 }
+  ],
+  "surface": { "surfaceProfileId": "metal_brushed_v1" },
+  "defaultParams": { "entries": [ { "key": "travel", "value": "1.0" } ] },
+  "paramConstraints": [ { "key": "travel", "min": 0.2, "max": 2.0 } ],
+  "mechanics": { "mode": "slide", "payload": { "entries": [ { "key": "axis", "value": "x" } ] } }
+}

@@ -1,0 +1,14 @@
+{
+  "id": "splitter_tower_generator_scaffold",
+  "version": 1,
+  "displayName": "Splitter Tower Generator Scaffold",
+  "machineType": "test_rig",
+  "allowedPieceIds": ["wall_straight_v1", "slope_35deg_v1", "gate_slide_center_v1", "flap_standard_v1", "bin_small_v1"],
+  "requiredTopology": { "entries": [ { "key": "mustContain", "value": "gate+flap+bin" } ] },
+  "generationRules": { "entries": [ { "key": "mode", "value": "scaffold_only" } ] },
+  "paramRanges": [
+    { "key": "travel", "min": 0.2, "max": 2.0 },
+    { "key": "maxAngle", "min": 5.0, "max": 80.0 }
+  ],
+  "validationRules": { "entries": [ { "key": "requireAnchors", "value": "true" } ] }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "splitter_tower_01",
+  "version": 1,
+  "displayName": "Splitter Tower 01",
+  "machineType": "test_rig",
+  "bounds": { "min": { "x": -10, "y": -2 }, "max": { "x": 10, "y": 10 } },
+  "pieces": [
+    { "instanceId": "wall_floor", "pieceId": "wall_straight_v1", "transform": { "position": { "x": 0, "y": -1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "slope_left", "pieceId": "slope_35deg_v1", "transform": { "position": { "x": -2.5, "y": 0.2 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } },
+    { "instanceId": "gate_center", "pieceId": "gate_slide_center_v1", "transform": { "position": { "x": 0, "y": 2.2 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [ { "key": "travel", "value": "1.2" } ] }, "surfaceOverride": null, "stateDefaults": { "entries": [ { "key": "open01", "value": "0.0" } ] } },
+    { "instanceId": "flap_right", "pieceId": "flap_standard_v1", "transform": { "position": { "x": 2.8, "y": 1.2 }, "rotation": -10, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [] }, "surfaceOverride": null, "stateDefaults": { "entries": [ { "key": "angle", "value": "0" } ] } },
+    { "instanceId": "bin_bottom", "pieceId": "bin_small_v1", "transform": { "position": { "x": 0, "y": -0.1 }, "rotation": 0, "scale": { "x": 1, "y": 1 } }, "paramOverrides": { "entries": [ { "key": "capacity", "value": "120" } ] }, "surfaceOverride": null, "stateDefaults": { "entries": [] } }
+  ],
+  "connections": [
+    { "fromInstanceId": "slope_left", "fromAnchorId": "top", "toInstanceId": "gate_center", "toAnchorId": "rail_left" },
+    { "fromInstanceId": "gate_center", "fromAnchorId": "rail_right", "toInstanceId": "flap_right", "toAnchorId": "hinge" },
+    { "fromInstanceId": "flap_right", "fromAnchorId": "tip", "toInstanceId": "bin_bottom", "toAnchorId": "input" }
+  ],
+  "runtimeDefaults": { "entries": [ { "key": "tickHz", "value": "60" } ] },
+  "metadata": { "entries": [ { "key": "author", "value": "bootstrap" } ] }
+}

@@ -1,0 +1,17 @@
+{
+  "id": "wall_straight_v1",
+  "version": 1,
+  "pieceType": "Wall",
+  "displayName": "Wall Straight",
+  "tags": ["static", "barrier"],
+  "shape": { "kind": "box", "size": { "x": 4.0, "y": 0.5 } },
+  "collision": { "enabled": true, "isTrigger": false, "mode": "solid", "payload": { "entries": [] } },
+  "anchors": [
+    { "id": "left", "position": { "x": -2.0, "y": 0.0 }, "angle": 180.0 },
+    { "id": "right", "position": { "x": 2.0, "y": 0.0 }, "angle": 0.0 }
+  ],
+  "surface": { "surfaceProfileId": "metal_brushed_v1" },
+  "defaultParams": { "entries": [] },
+  "paramConstraints": [],
+  "mechanics": { "mode": "static", "payload": { "entries": [] } }
+}

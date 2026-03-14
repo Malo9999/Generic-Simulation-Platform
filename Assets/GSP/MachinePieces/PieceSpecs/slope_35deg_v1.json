@@ -1,0 +1,24 @@
+{
+  "id": "slope_35deg_v1",
+  "version": 1,
+  "pieceType": "Slope",
+  "displayName": "Slope 35 Deg",
+  "tags": ["static", "ramp"],
+  "shape": {
+    "kind": "polygon",
+    "points": [
+      { "x": -2.0, "y": -0.2 },
+      { "x": 2.0, "y": -0.2 },
+      { "x": 2.0, "y": 1.4 }
+    ]
+  },
+  "collision": { "enabled": true, "isTrigger": false, "mode": "solid", "payload": { "entries": [] } },
+  "anchors": [
+    { "id": "bottom", "position": { "x": -2.0, "y": -0.2 }, "angle": 180.0 },
+    { "id": "top", "position": { "x": 2.0, "y": 1.4 }, "angle": 45.0 }
+  ],
+  "surface": { "surfaceProfileId": "polymer_matte_v1" },
+  "defaultParams": { "entries": [] },
+  "paramConstraints": [],
+  "mechanics": { "mode": "static", "payload": { "entries": [] } }
+}
