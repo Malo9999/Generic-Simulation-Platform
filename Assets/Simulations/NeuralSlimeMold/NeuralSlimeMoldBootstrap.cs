@@ -98,6 +98,13 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.56f;
     [SerializeField, Min(0f)] private float duplicateTubeSuppressionRadius = 1.35f;
 
+    [Header("Colony Growth Read")]
+    [SerializeField, Min(0f)] private float startupOutwardBiasStrength = 1.65f;
+    [SerializeField, Min(0f)] private float startupOutwardBiasDuration = 5.5f;
+    [SerializeField, Min(0f)] private float returnTrafficReinforcement = 0.95f;
+    [SerializeField, Min(0f)] private float weakBranchDecayBoost = 1.35f;
+    [SerializeField, Min(0f)] private float foodContactFieldBoost = 2.25f;
+
     [Header("World Obstacles")]
     [SerializeField] private bool useWorldObstacles;
     [SerializeField] private NeuralObstacle[] worldObstacles;
@@ -260,6 +267,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
             branchRetractionBoost,
             trunkStabilityBoost,
             duplicateTubeSuppressionRadius,
+            startupOutwardBiasStrength,
+            startupOutwardBiasDuration,
+            returnTrafficReinforcement,
+            weakBranchDecayBoost,
+            foodContactFieldBoost,
             effectiveUseWorldObstacles,
             effectiveWorldObstacles,
             effectiveCorridorBands,
@@ -676,6 +688,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
         branchRetractionBoost = Mathf.Max(0f, branchRetractionBoost);
         trunkStabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
         duplicateTubeSuppressionRadius = Mathf.Max(0f, duplicateTubeSuppressionRadius);
+        startupOutwardBiasStrength = Mathf.Max(0f, startupOutwardBiasStrength);
+        startupOutwardBiasDuration = Mathf.Max(0f, startupOutwardBiasDuration);
+        returnTrafficReinforcement = Mathf.Max(0f, returnTrafficReinforcement);
+        weakBranchDecayBoost = Mathf.Max(0f, weakBranchDecayBoost);
+        foodContactFieldBoost = Mathf.Max(0f, foodContactFieldBoost);
 
         obstacleAvoidanceStrength = Mathf.Max(0f, obstacleAvoidanceStrength);
         obstaclePadding = Mathf.Max(0f, obstaclePadding);

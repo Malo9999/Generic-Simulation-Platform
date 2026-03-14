@@ -70,6 +70,13 @@ public sealed class NeuralSlimeMoldRunner
     private const float FoodNearZoneMultiplier = 1.18f;
     private const float FoodNearDepositPenalty = 0.08f;
     private const float FoodNearSpeedPenalty = 0.78f;
+    private const float StartupOutwardMaxDuration = 7.5f;
+    private const float StartupFoodCommitmentFade = 0.8f;
+    private const float TrafficReinforcementDecayPerSecond = 0.24f;
+    private const float TrafficReinforcementDepositRadius = 0.75f;
+    private const float TrafficReinforcementMax = 5.5f;
+    private const float TrafficWeakBranchScrubScale = 0.10f;
+    private const float FoodContactPulseScale = 0.24f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -77,6 +84,7 @@ public sealed class NeuralSlimeMoldRunner
     private bool[] foodDepletionLogged = Array.Empty<bool>();
     private bool[] foodIsActive = Array.Empty<bool>();
     private float[] foodRespawnTimers = Array.Empty<float>();
+    private float[] routeTraffic = Array.Empty<float>();
 
     private float[] agentTrailConfidence = Array.Empty<float>();
     private float[] agentFoodCommitment = Array.Empty<float>();
@@ -122,6 +130,11 @@ public sealed class NeuralSlimeMoldRunner
     private float branchRetractionBoost;
     private float trunkStabilityBoost;
     private float duplicateTubeSuppressionRadius;
+    private float startupOutwardBiasStrength;
+    private float startupOutwardBiasDuration;
+    private float returnTrafficReinforcement;
+    private float weakBranchDecayBoost;
+    private float foodContactFieldBoost;
 
     private bool useWorldObstacles;
     private float obstacleAvoidanceStrength;
@@ -193,6 +206,11 @@ public sealed class NeuralSlimeMoldRunner
         float branchRetractionBoost,
         float trunkStabilityBoost,
         float duplicateTubeSuppressionRadius,
+        float startupOutwardBiasStrength,
+        float startupOutwardBiasDuration,
+        float returnTrafficReinforcement,
+        float weakBranchDecayBoost,
+        float foodContactFieldBoost,
         bool useWorldObstacles,
         NeuralObstacle[] obstacles,
         NeuralCorridorBand[] corridorBands,
@@ -234,6 +252,11 @@ public sealed class NeuralSlimeMoldRunner
         this.branchRetractionBoost = Mathf.Max(0f, branchRetractionBoost);
         this.trunkStabilityBoost = Mathf.Max(0f, trunkStabilityBoost);
         this.duplicateTubeSuppressionRadius = Mathf.Max(0f, duplicateTubeSuppressionRadius);
+        this.startupOutwardBiasStrength = Mathf.Max(0f, startupOutwardBiasStrength);
+        this.startupOutwardBiasDuration = Mathf.Clamp(startupOutwardBiasDuration, 0f, StartupOutwardMaxDuration);
+        this.returnTrafficReinforcement = Mathf.Max(0f, returnTrafficReinforcement);
+        this.weakBranchDecayBoost = Mathf.Max(0f, weakBranchDecayBoost);
+        this.foodContactFieldBoost = Mathf.Max(0f, foodContactFieldBoost);
         this.useWorldObstacles = useWorldObstacles;
         this.obstacleAvoidanceStrength = Mathf.Max(0f, obstacleAvoidanceStrength);
         this.obstaclePadding = Mathf.Max(0f, obstaclePadding);
@@ -242,6 +265,7 @@ public sealed class NeuralSlimeMoldRunner
 
         Field = new NeuralFieldGrid(trailResolution.x, trailResolution.y, this.mapSize, false);
         BuildBlockedFieldMask();
+        routeTraffic = new float[Mathf.Max(1, Field.Width * Field.Height)];
 
         agents = new NeuralSlimeMoldAgent[Mathf.Max(1, agentCount)];
         agentTrailConfidence = new float[agents.Length];
@@ -271,7 +295,7 @@ public sealed class NeuralSlimeMoldRunner
         {
             var radial = rng.InsideUnitCircle();
             var spawnRadius = useColonyHub
-                ? Mathf.Max(0.2f, this.colonyHubRadius * 0.2f)
+                ? Mathf.Max(0.15f, this.colonyHubRadius * 0.14f)
                 : Mathf.Min(this.mapSize.x, this.mapSize.y) * 0.2f;
             var spawnCenter = useColonyHub ? this.colonyHub : Vector2.zero;
             var pos = spawnCenter + new Vector2(radial.x * spawnRadius, radial.y * spawnRadius);
@@ -382,10 +406,17 @@ public sealed class NeuralSlimeMoldRunner
 
                     var returnTrail = Field.SampleBilinear(agent.position);
                     var returnTrunkBoost = Mathf.Lerp(1.25f, 2.35f, Mathf.Clamp01(returnTrail / Mathf.Max(StrongTrailHighwayThreshold, 0.001f)));
-                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier * returnTrunkBoost);
+                    var trafficReinforcement = Mathf.Lerp(1f, 1f + returnTrafficReinforcement, SampleRouteTraffic01(agent.position));
+                    DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier * returnTrunkBoost * trafficReinforcement);
 
                     if (useColonyHub && IsInsideHub(agent.position))
                     {
+                        ReinforceRouteTraffic(agent.position, successfulReturnDepositBurst * 0.75f);
+                        if (lastFoodIndex >= 0 && lastFoodIndex < foodNodes.Length)
+                        {
+                            ReinforceRouteTraffic(foodNodes[lastFoodIndex].position, successfulReturnDepositBurst * 0.45f);
+                        }
+
                         DepositDiscIfOpen(agent.position, colonyHubRadius * 0.75f, successfulReturnDepositBurst * returnDepositMultiplier * 1.1f);
                         Field.ScrubDisc(agent.position, colonyHubRadius * 0.75f, HubRingScrubStrength);
 
@@ -451,6 +482,7 @@ public sealed class NeuralSlimeMoldRunner
 
         ConsumeFood(dt);
         ApplyNetworkMaintenance(dt);
+        DecayRouteTraffic(dt);
         LogOccupiedFoodLevels();
         tickCounter++;
 
@@ -533,6 +565,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         var nutrientStrength = Mathf.Clamp01(Mathf.Max(leftNutrient, Mathf.Max(centerNutrient, rightNutrient)));
+        var startupBias01 = ComputeStartupOutwardBias01(nutrientStrength, connectorStrength);
         var steer = topologySteer;
 
         if (nutrientStrength > 0.0001f)
@@ -573,6 +606,13 @@ public sealed class NeuralSlimeMoldRunner
                 steer += outwardSteer * hubTangentialPenalty;
                 steer -= tangentDot * hubTangentialPenalty * 0.65f;
             }
+        }
+
+        if (useColonyHub && startupBias01 > 0.0001f)
+        {
+            var outwardSteer = ComputeSteerAwayFromPoint(agent.position, agent.heading, colonyHub);
+            steer += outwardSteer * startupOutwardBiasStrength * startupBias01;
+            steer = Mathf.Lerp(steer, outwardSteer, startupBias01 * 0.35f);
         }
 
         steer += ComputeBoundaryAvoidanceTurn(agent.position, agent.heading);
@@ -700,7 +740,9 @@ public sealed class NeuralSlimeMoldRunner
         var signedNoise = (rng.NextFloat01() * 2f) - 1f;
         var randomTurn = signedNoise * explorationTurnNoise * ReturnNoiseMultiplier;
 
+        var trafficStrength = SampleRouteTraffic01(agent.position);
         var steer = (hubSteer * 0.9f) + awayFoodSteer + (trailSteer * (1f - returnTrailBlend));
+        steer = Mathf.Lerp(steer, hubSteer + awayFoodSteer, trafficStrength * 0.35f);
 
         if (connectorStrength > 0.0001f)
         {
@@ -740,6 +782,7 @@ public sealed class NeuralSlimeMoldRunner
         agent.heading = Mathf.Repeat(agent.heading + turnStep, Mathf.PI * 2f);
 
         var speedMod = 1.10f;
+        speedMod *= Mathf.Lerp(1f, 1.12f, trafficStrength);
         if (centerTrail >= StrongTrailHighwayThreshold)
         {
             speedMod *= 1.10f;
@@ -750,6 +793,7 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         MoveWithObstacleCollision(ref agent, agent.speed * speedMod * dt);
+        ReinforceRouteTraffic(agent.position, dt * returnTrafficReinforcement * 0.85f);
     }
 
     private void HandleExitHubMode(ref NeuralSlimeMoldAgent agent, float dt, float explorationTurnNoise)
@@ -1015,6 +1059,13 @@ public sealed class NeuralSlimeMoldRunner
                 var consumed = node.consumeRate * foodConsumerCounts[i] * deltaTime;
                 var previousCapacity = node.currentCapacity;
                 node.currentCapacity = Mathf.Clamp(node.currentCapacity - consumed, 0f, maxCapacity);
+
+                if (foodConsumerCounts[i] > 0)
+                {
+                    var contactBoost = foodContactFieldBoost * Mathf.Clamp01(foodConsumerCounts[i] / 6f);
+                    DepositDiscIfOpen(node.position, Mathf.Max(0.4f, node.consumeRadius * 0.85f), contactBoost * FoodContactPulseScale);
+                    ReinforceRouteTraffic(node.position, contactBoost * deltaTime);
+                }
 
                 if (!foodDepletionLogged[i] && previousCapacity > 0f && node.currentCapacity <= 0f)
                 {
@@ -1437,6 +1488,11 @@ public sealed class NeuralSlimeMoldRunner
                 var scrub = staleCorridorDecayBoost * step;
                 Field.ScrubDisc(node.position, Mathf.Max(0.45f, node.consumeRadius * 1.05f), scrub);
             }
+        }
+
+        if (weakBranchDecayBoost > 0f)
+        {
+            ApplyWeakBranchSuppression(step);
         }
 
         if (bridgeReinforcementWeight > 0f)
@@ -2244,6 +2300,132 @@ public sealed class NeuralSlimeMoldRunner
         }
 
         Field.DepositDisc(position, radius, amount);
+    }
+
+    private float ComputeStartupOutwardBias01(float nutrientStrength, float connectorStrength)
+    {
+        if (!useColonyHub || startupOutwardBiasStrength <= 0f || startupOutwardBiasDuration <= 0f)
+        {
+            return 0f;
+        }
+
+        var timeFade = 1f - Mathf.Clamp01(simulationTime / Mathf.Max(0.001f, startupOutwardBiasDuration));
+        var attractorSuppression = Mathf.Clamp01((nutrientStrength * StartupFoodCommitmentFade) + (Mathf.Clamp01(connectorStrength) * 0.55f));
+        return Mathf.Clamp01(timeFade * (1f - attractorSuppression));
+    }
+
+    private void ReinforceRouteTraffic(Vector2 position, float amount)
+    {
+        if (amount <= 0f || routeTraffic == null || routeTraffic.Length == 0)
+        {
+            return;
+        }
+
+        var halfX = mapSize.x * 0.5f;
+        var halfY = mapSize.y * 0.5f;
+        var u = Mathf.InverseLerp(-halfX, halfX, position.x);
+        var v = Mathf.InverseLerp(-halfY, halfY, position.y);
+        var centerX = Mathf.Clamp(Mathf.RoundToInt(u * (Field.Width - 1)), 0, Field.Width - 1);
+        var centerY = Mathf.Clamp(Mathf.RoundToInt(v * (Field.Height - 1)), 0, Field.Height - 1);
+
+        var radiusX = Mathf.Max(1, Mathf.CeilToInt((TrafficReinforcementDepositRadius / mapSize.x) * Field.Width));
+        var radiusY = Mathf.Max(1, Mathf.CeilToInt((TrafficReinforcementDepositRadius / mapSize.y) * Field.Height));
+
+        for (var y = centerY - radiusY; y <= centerY + radiusY; y++)
+        {
+            if (y < 0 || y >= Field.Height)
+            {
+                continue;
+            }
+
+            for (var x = centerX - radiusX; x <= centerX + radiusX; x++)
+            {
+                if (x < 0 || x >= Field.Width)
+                {
+                    continue;
+                }
+
+                var dx = (x - centerX) / Mathf.Max(1f, radiusX);
+                var dy = (y - centerY) / Mathf.Max(1f, radiusY);
+                var distance01 = Mathf.Clamp01(1f - ((dx * dx) + (dy * dy)));
+                if (distance01 <= 0f)
+                {
+                    continue;
+                }
+
+                var idx = (y * Field.Width) + x;
+                routeTraffic[idx] = Mathf.Min(TrafficReinforcementMax, routeTraffic[idx] + (amount * distance01));
+            }
+        }
+    }
+
+    private float SampleRouteTraffic01(Vector2 position)
+    {
+        if (routeTraffic == null || routeTraffic.Length == 0)
+        {
+            return 0f;
+        }
+
+        var halfX = mapSize.x * 0.5f;
+        var halfY = mapSize.y * 0.5f;
+        var u = Mathf.InverseLerp(-halfX, halfX, position.x);
+        var v = Mathf.InverseLerp(-halfY, halfY, position.y);
+        var x = Mathf.Clamp(Mathf.RoundToInt(u * (Field.Width - 1)), 0, Field.Width - 1);
+        var y = Mathf.Clamp(Mathf.RoundToInt(v * (Field.Height - 1)), 0, Field.Height - 1);
+        return Mathf.Clamp01(routeTraffic[(y * Field.Width) + x] / TrafficReinforcementMax);
+    }
+
+    private void DecayRouteTraffic(float dt)
+    {
+        if (routeTraffic == null || routeTraffic.Length == 0 || dt <= 0f)
+        {
+            return;
+        }
+
+        var decayFactor = Mathf.Clamp01(1f - (TrafficReinforcementDecayPerSecond * dt));
+        for (var i = 0; i < routeTraffic.Length; i++)
+        {
+            routeTraffic[i] *= decayFactor;
+        }
+    }
+
+    private void ApplyWeakBranchSuppression(float dt)
+    {
+        if (routeTraffic == null || routeTraffic.Length == 0 || dt <= 0f)
+        {
+            return;
+        }
+
+        var raw = Field.Raw;
+        for (var y = 0; y < Field.Height; y++)
+        {
+            for (var x = 0; x < Field.Width; x++)
+            {
+                var idx = (y * Field.Width) + x;
+                var intensity = raw[idx];
+                if (intensity <= 0.0001f)
+                {
+                    continue;
+                }
+
+                var traffic01 = Mathf.Clamp01(routeTraffic[idx] / TrafficReinforcementMax);
+                if (traffic01 >= 0.5f)
+                {
+                    continue;
+                }
+
+                var lowTrafficPressure = 1f - traffic01;
+                var weakIntensity = Mathf.Clamp01(1f - (intensity / Mathf.Max(0.001f, branchPromotionThreshold)));
+                var scrub = weakBranchDecayBoost * dt * lowTrafficPressure * weakIntensity * TrafficWeakBranchScrubScale;
+                if (scrub <= 0f)
+                {
+                    continue;
+                }
+
+                var world = Field.GridToWorld(x, y);
+                Field.ScrubDisc(world, 0.45f, scrub);
+            }
+        }
     }
 
     private Vector2 SampleOpenFoodPosition(SeededRng placementRng)
