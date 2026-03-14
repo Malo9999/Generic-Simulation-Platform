@@ -1,0 +1,69 @@
+{
+  "id": "compound_splitter_machine_v1",
+  "version": 1,
+  "displayName": "Compound Splitter Machine V1",
+  "machineType": "CompoundSplitter",
+  "pieces": [],
+  "modules": [
+    {
+      "instanceId": "feed_hopper",
+      "compoundPieceId": "hopper_v1",
+      "transform": {
+        "position": { "x": 0.0, "y": 8.0 },
+        "rotation": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {
+        "entries": [
+          { "key": "width", "value": "8.0" },
+          { "key": "height", "value": "6.0" }
+        ]
+      }
+    },
+    {
+      "instanceId": "mix_chamber",
+      "compoundPieceId": "chamber_box_v1",
+      "transform": {
+        "position": { "x": 0.0, "y": 2.0 },
+        "rotation": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {
+        "entries": [
+          { "key": "width", "value": "7.0" },
+          { "key": "height", "value": "5.0" }
+        ]
+      }
+    },
+    {
+      "instanceId": "final_splitter",
+      "compoundPieceId": "splitter_v1",
+      "transform": {
+        "position": { "x": 0.0, "y": -4.0 },
+        "rotation": 0.0,
+        "scale": { "x": 1.0, "y": 1.0 }
+      },
+      "paramOverrides": {
+        "entries": [
+          { "key": "width", "value": "9.0" },
+          { "key": "height", "value": "6.0" }
+        ]
+      }
+    }
+  ],
+  "moduleConnections": [
+    {
+      "fromModuleId": "feed_hopper",
+      "fromPortId": "exit_bottom",
+      "toModuleId": "mix_chamber",
+      "toPortId": "entry_top"
+    },
+    {
+      "fromModuleId": "mix_chamber",
+      "fromPortId": "exit_bottom",
+      "toModuleId": "final_splitter",
+      "toPortId": "entry"
+    }
+  ],
+  "connections": []
+}

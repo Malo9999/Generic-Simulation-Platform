@@ -1,0 +1,78 @@
+{
+  "id": "chamber_box_v1",
+  "version": 1,
+  "displayName": "Chamber Box V1",
+  "compoundType": "Chamber",
+  "dimensions": {
+    "width": { "min": 4.0, "max": 16.0, "defaultValue": 8.0 },
+    "height": { "min": 4.0, "max": 14.0, "defaultValue": 6.0 }
+  },
+  "defaultParams": {
+    "entries": [
+      { "key": "width", "value": "8.0" },
+      { "key": "height", "value": "6.0" }
+    ]
+  },
+  "paramConstraints": [
+    { "key": "width", "min": 4.0, "max": 16.0 },
+    { "key": "height", "min": 4.0, "max": 14.0 }
+  ],
+  "ports": [
+    {
+      "id": "entry_top",
+      "kind": "material_in",
+      "position": { "normalized": { "x": 0.0, "y": 0.5 }, "offset": { "x": 0.0, "y": 0.0 } },
+      "direction": { "x": 0.0, "y": -1.0 },
+      "profile": { "shape": "rect", "width": 0.35, "height": 0.2 }
+    },
+    {
+      "id": "exit_bottom",
+      "kind": "material_out",
+      "position": { "normalized": { "x": 0.0, "y": -0.5 }, "offset": { "x": 0.0, "y": 0.0 } },
+      "direction": { "x": 0.0, "y": -1.0 },
+      "profile": { "shape": "slot", "width": 0.22, "height": 0.1 }
+    }
+  ],
+  "buildTemplate": {
+    "pieces": [
+      {
+        "instanceId": "left_wall",
+        "pieceId": "wall_straight_v1",
+        "positionNormalized": { "x": -0.5, "y": 0.0 },
+        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "rotation": 90.0,
+        "scaleNormalized": { "x": 0.125, "y": 0.167 },
+        "scaleOffset": { "x": 0.0, "y": 0.0 }
+      },
+      {
+        "instanceId": "right_wall",
+        "pieceId": "wall_straight_v1",
+        "positionNormalized": { "x": 0.5, "y": 0.0 },
+        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "rotation": 90.0,
+        "scaleNormalized": { "x": 0.125, "y": 0.167 },
+        "scaleOffset": { "x": 0.0, "y": 0.0 }
+      },
+      {
+        "instanceId": "floor",
+        "pieceId": "wall_straight_v1",
+        "positionNormalized": { "x": 0.0, "y": -0.5 },
+        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "rotation": 0.0,
+        "scaleNormalized": { "x": 0.25, "y": 0.1 },
+        "scaleOffset": { "x": 0.0, "y": 0.0 }
+      },
+      {
+        "instanceId": "ceiling",
+        "pieceId": "wall_straight_v1",
+        "positionNormalized": { "x": 0.0, "y": 0.5 },
+        "positionOffset": { "x": 0.0, "y": 0.0 },
+        "rotation": 0.0,
+        "scaleNormalized": { "x": 0.25, "y": 0.1 },
+        "scaleOffset": { "x": 0.0, "y": 0.0 }
+      }
+    ]
+  },
+  "surfaceDefaults": { "entries": [ { "key": "primary", "value": "polymer_matte_v1" } ] },
+  "metadata": { "entries": [ { "key": "authoring", "value": "starter" } ] }
+}
