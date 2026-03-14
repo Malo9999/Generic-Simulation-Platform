@@ -13,6 +13,7 @@ public sealed class PieceTestSimBootstrap : MonoBehaviour
 
     [SerializeField] private TextAsset[] pieceSpecs;
     [SerializeField] private TextAsset[] surfaceProfiles;
+    [SerializeField] private bool includeSharedMachinePieceAssets = true;
     [SerializeField] private TextAsset machineRecipe;
     [SerializeField] private bool autoStart = true;
     [SerializeField] private EnvironmentPreset environmentPreset = EnvironmentPreset.EarthLight;
@@ -32,7 +33,11 @@ public sealed class PieceTestSimBootstrap : MonoBehaviour
     public void BuildAndRun()
     {
         Cleanup();
-        library = MachinePieceJsonLoader.BuildLibraryOrThrow(pieceSpecs ?? Array.Empty<TextAsset>(), surfaceProfiles ?? Array.Empty<TextAsset>());
+        library = MachinePieceJsonLoader.BuildLibraryOrThrow(
+            pieceSpecs ?? Array.Empty<TextAsset>(),
+            surfaceProfiles ?? Array.Empty<TextAsset>(),
+            includeSharedMachinePieceAssets,
+            diagnosticsPrefix: "PieceTestSim");
         var recipe = MachinePieceJsonLoader.LoadFromTextAssetOrThrow<MachineRecipe>(machineRecipe, "PieceTestSim recipe");
 
         var builder = new MachineBuilder();

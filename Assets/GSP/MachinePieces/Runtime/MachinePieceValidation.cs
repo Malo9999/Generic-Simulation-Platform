@@ -179,8 +179,18 @@ public static class MachinePieceValidation
                 continue;
             }
 
-            var fromSpec = lib.PieceSpecs[fromInstance.pieceId];
-            var toSpec = lib.PieceSpecs[toInstance.pieceId];
+            if (!lib.PieceSpecs.TryGetValue(fromInstance.pieceId ?? string.Empty, out var fromSpec))
+            {
+                errors.Add($"Bad machine connection '{c.fromInstanceId}:{c.fromAnchorId}' -> '{c.toInstanceId}:{c.toAnchorId}' references unknown piece id '{fromInstance.pieceId}' on instance '{fromInstance.instanceId}'.");
+                continue;
+            }
+
+            if (!lib.PieceSpecs.TryGetValue(toInstance.pieceId ?? string.Empty, out var toSpec))
+            {
+                errors.Add($"Bad machine connection '{c.fromInstanceId}:{c.fromAnchorId}' -> '{c.toInstanceId}:{c.toAnchorId}' references unknown piece id '{toInstance.pieceId}' on instance '{toInstance.instanceId}'.");
+                continue;
+            }
+
             if (!HasAnchor(fromSpec, c.fromAnchorId)) errors.Add($"Bad machine connection missing from-anchor '{c.fromAnchorId}' on '{c.fromInstanceId}'.");
             if (!HasAnchor(toSpec, c.toAnchorId)) errors.Add($"Bad machine connection missing to-anchor '{c.toAnchorId}' on '{c.toInstanceId}'.");
         }

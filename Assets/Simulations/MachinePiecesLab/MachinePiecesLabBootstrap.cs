@@ -7,6 +7,7 @@ public sealed class MachinePiecesLabBootstrap : MonoBehaviour
     [Header("Data")]
     [SerializeField] private TextAsset[] pieceSpecs;
     [SerializeField] private TextAsset[] surfaceProfiles;
+    [SerializeField] private bool includeSharedMachinePieceAssets = true;
     [SerializeField] private TextAsset machineRecipe;
 
     [Header("Debug")]
@@ -28,7 +29,11 @@ public sealed class MachinePiecesLabBootstrap : MonoBehaviour
     {
         Teardown();
 
-        var lib = MachinePieceJsonLoader.BuildLibraryOrThrow(pieceSpecs ?? Array.Empty<TextAsset>(), surfaceProfiles ?? Array.Empty<TextAsset>());
+        var lib = MachinePieceJsonLoader.BuildLibraryOrThrow(
+            pieceSpecs ?? Array.Empty<TextAsset>(),
+            surfaceProfiles ?? Array.Empty<TextAsset>(),
+            includeSharedMachinePieceAssets,
+            diagnosticsPrefix: "MachinePiecesLab");
         var recipe = MachinePieceJsonLoader.LoadFromTextAssetOrThrow<MachineRecipe>(machineRecipe, "MachinePiecesLab recipe");
 
         var builder = new MachineBuilder();
