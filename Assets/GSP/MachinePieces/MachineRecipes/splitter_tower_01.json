@@ -1,96 +1,93 @@
 {
-  "id": "splitter_tower_01",
+  "id": "splitter_machine_v1",
   "version": 1,
-  "displayName": "Splitter Tower 01",
-  "machineType": "SplitterTower",
-  "bounds": {
-    "width": 12.0,
-    "height": 16.0
-  },
+  "displayName": "Splitter Machine V1",
+  "machineType": "Splitter",
+  "bounds": { "width": 14, "height": 16 },
+
   "pieces": [
+
     {
-      "instanceId": "hopper_left",
+      "instanceId": "hopper_left_wall",
+      "pieceId": "wall_straight_v1",
+      "transform": {
+        "position": { "x": -4, "y": 7 },
+        "rotationDeg": 90,
+        "scale": { "x": 1, "y": 3 }
+      }
+    },
+
+    {
+      "instanceId": "hopper_right_wall",
+      "pieceId": "wall_straight_v1",
+      "transform": {
+        "position": { "x": 4, "y": 7 },
+        "rotationDeg": 90,
+        "scale": { "x": 1, "y": 3 }
+      }
+    },
+
+    {
+      "instanceId": "hopper_floor",
       "pieceId": "slope_35deg_v1",
       "transform": {
-        "position": { "x": -2.5, "y": 7.0 },
-        "rotationDeg": 0.0,
-        "scale": { "x": 1.0, "y": 1.0 }
-      },
-      "paramOverrides": {},
-      "surfaceOverride": null,
-      "stateDefaults": {}
+        "position": { "x": -2, "y": 5 },
+        "rotationDeg": 0,
+        "scale": { "x": 1, "y": 1 }
+      }
     },
+
     {
-      "instanceId": "hopper_right",
+      "instanceId": "hopper_floor_right",
       "pieceId": "slope_35deg_v1",
       "transform": {
-        "position": { "x": 2.5, "y": 7.0 },
-        "rotationDeg": 180.0,
-        "scale": { "x": 1.0, "y": 1.0 }
-      },
-      "paramOverrides": {},
-      "surfaceOverride": null,
-      "stateDefaults": {}
+        "position": { "x": 2, "y": 5 },
+        "rotationDeg": 180,
+        "scale": { "x": 1, "y": 1 }
+      }
     },
+
     {
       "instanceId": "main_gate",
       "pieceId": "gate_slide_center_v1",
       "transform": {
-        "position": { "x": 0.0, "y": 4.0 },
-        "rotationDeg": 0.0,
-        "scale": { "x": 1.0, "y": 1.0 }
-      },
-      "paramOverrides": {},
-      "surfaceOverride": null,
-      "stateDefaults": {
-        "open": 0.0
+        "position": { "x": 0, "y": 3 },
+        "rotationDeg": 0,
+        "scale": { "x": 1, "y": 1 }
       }
     },
+
     {
       "instanceId": "control_flap",
       "pieceId": "flap_standard_v1",
       "transform": {
-        "position": { "x": 0.0, "y": 1.5 },
-        "rotationDeg": 0.0,
-        "scale": { "x": 1.0, "y": 1.0 }
-      },
-      "paramOverrides": {},
-      "surfaceOverride": null,
-      "stateDefaults": {
-        "angleDeg": 0.0
+        "position": { "x": 0, "y": 0 },
+        "rotationDeg": 0,
+        "scale": { "x": 1, "y": 1 }
       }
     },
+
     {
       "instanceId": "bin_left",
       "pieceId": "bin_small_v1",
       "transform": {
-        "position": { "x": -4.0, "y": -3.5 },
-        "rotationDeg": 0.0,
-        "scale": { "x": 1.0, "y": 1.0 }
-      },
-      "paramOverrides": {},
-      "surfaceOverride": null,
-      "stateDefaults": {}
+        "position": { "x": -4, "y": -4 },
+        "rotationDeg": 0,
+        "scale": { "x": 1, "y": 1 }
+      }
     },
+
     {
       "instanceId": "bin_right",
       "pieceId": "bin_small_v1",
       "transform": {
-        "position": { "x": 4.0, "y": -3.5 },
-        "rotationDeg": 0.0,
-        "scale": { "x": 1.0, "y": 1.0 }
-      },
-      "paramOverrides": {},
-      "surfaceOverride": null,
-      "stateDefaults": {}
+        "position": { "x": 4, "y": -4 },
+        "rotationDeg": 0,
+        "scale": { "x": 1, "y": 1 }
+      }
     }
+
   ],
-  "connections": [],
-  "runtimeDefaults": {
-    "spawnZone": {
-      "center": { "x": 0.0, "y": 9.0 },
-      "size": { "x": 1.0, "y": 0.5 }
-    }
-  },
-  "metadata": {}
+
+  "connections": []
 }
