@@ -17,27 +17,27 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [Header("Field Network Styling")]
     [SerializeField, Range(0.1f, 4f)] private float veinContrast = 1.8f;
     [SerializeField, Range(0f, 1f)] private float veinFloor = 0.08f;
-    [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.35f;
-    [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.3f;
+    [SerializeField, Range(0.1f, 3f)] private float veinThicknessBoost = 1.45f;
+    [SerializeField, Range(0f, 3f)] private float trafficGlowStrength = 1.45f;
     [SerializeField, Range(0f, 1f)] private float fieldAlphaSoftness = 0.88f;
     //[SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
     [SerializeField] private bool emphasizePrimaryTubes = true;
     [SerializeField] private bool showExplorationBranches = true;
-    [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.15f;
-    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.4f;
-    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.62f;
-    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.56f;
-    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.3f;
+    [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.3f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.34f;
+    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.48f;
+    [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.5f;
+    [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.36f;
 
     [Header("World Marker Visuals")]
     [SerializeField] private Color foodActiveColor = new(0.92f, 0.86f, 0.24f, 1f);
     [SerializeField] private Color foodDepletedColor = new(0.38f, 0.25f, 0.12f, 0.95f);
     [SerializeField] private Color foodRegrowingColor = new(0.76f, 0.56f, 0.22f, 0.98f);
     [SerializeField] private Color obstacleColor = new(0.28f, 0.24f, 0.20f, 0.92f);
-    [SerializeField] private Color colonyHubCoreColor = new(0.38f, 0.92f, 1f, 0.95f);
-    [SerializeField] private Color colonyHubRingColor = new(0.24f, 0.64f, 0.94f, 0.85f);
-    [SerializeField, Min(0.2f)] private float colonyHubCoreScale = 0.38f;
-    [SerializeField, Min(0.2f)] private float colonyHubRingScale = 0.95f;
+    [SerializeField] private Color colonyHubCoreColor = new(0.46f, 0.98f, 1f, 0.98f);
+    [SerializeField] private Color colonyHubRingColor = new(0.2f, 0.56f, 0.9f, 0.8f);
+    [SerializeField, Min(0.2f)] private float colonyHubCoreScale = 0.42f;
+    [SerializeField, Min(0.2f)] private float colonyHubRingScale = 1.12f;
     [SerializeField] private bool showFoodMarkers = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField, Min(0.1f)] private float foodMarkerScale = 0.42f;
@@ -51,7 +51,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [SerializeField, Range(0f, 0.5f)] private float lowFoodThreshold01 = 0.45f;
     [SerializeField, Range(0.5f, 1f)] private float recoveredFoodThreshold01 = 0.82f;
     [SerializeField] private Color foodDryingColor = new(0.62f, 0.38f, 0.14f, 0.96f);
-    [SerializeField, Range(0f, 0.3f)] private float activePulseAmplitude = 0.12f;
+    [SerializeField, Range(0f, 0.3f)] private float activePulseAmplitude = 0.16f;
     [SerializeField, Range(0f, 0.3f)] private float regrowPulseAmplitude = 0.12f;
     [SerializeField, Range(0.1f, 8f)] private float foodPulseSpeed = 2.2f;
 
@@ -226,7 +226,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             var pulse = Mathf.Sin((time * foodPulseSpeed) + perNodePhase) * 0.5f + 0.5f;
             var consumerCount = (foodConsumerCounts != null && i < foodConsumerCounts.Length) ? foodConsumerCounts[i] : 0;
             var harvestActive = consumerCount > 0;
-            var harvestBoost01 = harvestActive ? Mathf.Clamp01(consumerCount / 10f) : 0f;
+            var harvestBoost01 = harvestActive ? Mathf.Clamp01(consumerCount / 6f) : 0f;
 
             Color markerColor;
             float stateScale;
@@ -262,8 +262,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             {
                 markerColor = foodActiveColor;
                 var harvestPulse = 1f + (pulse * Mathf.Lerp(activePulseAmplitude, activePulseAmplitude * 2.6f, harvestBoost01));
-                stateScale = activeScaleBoost * harvestPulse * Mathf.Lerp(1f, 1.35f, harvestBoost01);
-                stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a) * Mathf.Lerp(1f, 1.2f, harvestBoost01);
+                stateScale = activeScaleBoost * harvestPulse * Mathf.Lerp(1.05f, 1.55f, harvestBoost01);
+                stateAlpha = Mathf.Max(foodMarkerMinAlpha, foodActiveColor.a) * Mathf.Lerp(1.05f, 1.28f, harvestBoost01);
             }
 
             sr.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale;
@@ -273,7 +273,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
             if (glow != null)
             {
                 var glowColor = markerColor;
-                glowColor.a *= isDepleted ? 0.20f : (isRegrowing ? 0.42f : Mathf.Lerp(0.52f, 0.78f, harvestBoost01));
+                glowColor.a *= isDepleted ? 0.20f : (isRegrowing ? 0.42f : Mathf.Lerp(0.58f, 0.9f, harvestBoost01));
                 glow.transform.localPosition = new Vector3(clamped.x, clamped.y, -0.9f);
                 glow.transform.localScale = Vector3.one * foodMarkerScale * markerScaleBoost * markerRadius * stateScale * (isDepleted ? 1.8f : 2.5f);
                 glow.color = glowColor;
@@ -334,17 +334,17 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
         var diameter = Mathf.Max(0.6f, hubRadius * 2f);
         colonyHubCoreRenderer.transform.localScale = Vector3.one * diameter * colonyHubCoreScale;
         colonyHubRingRenderer.transform.localScale = Vector3.one * diameter * colonyHubRingScale;
-        colonyHubAuraRenderer.transform.localScale = Vector3.one * diameter * 1.45f;
+        colonyHubAuraRenderer.transform.localScale = Vector3.one * diameter * 1.18f;
 
         colonyHubCoreRenderer.color = colonyHubCoreColor;
 
-        var pulsing = 0.96f + (Mathf.Sin(Time.time * 1.5f) * 0.04f + 0.04f);
+        var pulsing = 0.98f + (Mathf.Sin(Time.time * 1.8f) * 0.03f + 0.03f);
         var ring = colonyHubRingColor;
         ring.a *= pulsing;
         colonyHubRingRenderer.color = ring;
 
         var aura = colonyHubRingColor;
-        aura.a *= 0.18f;
+        aura.a *= 0.1f;
         colonyHubAuraRenderer.color = aura;
     }
 
