@@ -19,8 +19,8 @@ public sealed class NeuralSlimeMoldRunner
 
     private const float MinTrailForHighway = 0.02f;
     private const float StrongTrailHighwayThreshold = 0.12f;
-    private const float MaxHighwayDepositBoost = 1.9f;
-    private const float WeakTrailDepositPenalty = 0.72f;
+    private const float MaxHighwayDepositBoost = 1.7f;
+    private const float WeakTrailDepositPenalty = 0.58f;
 
     private const float ActivitySmoothing = 0.08f;
     private const float MinActivityRadius = 4f;
@@ -33,10 +33,10 @@ public sealed class NeuralSlimeMoldRunner
     private const float ActiveFoodTrailScrub = 0.10f;
     private const float EmptyFoodTrailScrub = 0.18f;
 
-    private const float FeedDurationMin = 0.35f;
-    private const float FeedDurationMax = 0.85f;
-    private const float ReturnDurationMin = 1.2f;
-    private const float ReturnDurationMax = 3.0f;
+    private const float FeedDurationMin = 0.32f;
+    private const float FeedDurationMax = 0.75f;
+    private const float ReturnDurationMin = 1.1f;
+    private const float ReturnDurationMax = 2.8f;
     private const float FeedJitterStrength = 0.025f;
 
     private const float ReturnFoodRepulsionStrength = 0.45f;
@@ -58,8 +58,8 @@ public sealed class NeuralSlimeMoldRunner
     private const float BranchSpawnAngleMaxDegrees = 68f;
     private const float BranchSpawnFrontSampleDistance = 2.3f;
     private const float BranchSpawnSideSampleDistance = 2.1f;
-    private const float ExploratoryBranchDepositScale = 0.28f;
-    private const float PromotedBranchDepositScale = 0.92f;
+    private const float ExploratoryBranchDepositScale = 0.20f;
+    private const float PromotedBranchDepositScale = 0.84f;
 
     private const float ConnectorSoftCorridorOuterMultiplier = 2.4f;
     private const float ConnectorSoftProgressSlack = 1.45f;
@@ -381,7 +381,7 @@ public sealed class NeuralSlimeMoldRunner
                     }
 
                     var returnTrail = Field.SampleBilinear(agent.position);
-                    var returnTrunkBoost = Mathf.Lerp(1.15f, 1.95f, Mathf.Clamp01(returnTrail / Mathf.Max(StrongTrailHighwayThreshold, 0.001f)));
+                    var returnTrunkBoost = Mathf.Lerp(1.25f, 2.35f, Mathf.Clamp01(returnTrail / Mathf.Max(StrongTrailHighwayThreshold, 0.001f)));
                     DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier * returnTrunkBoost);
 
                     if (useColonyHub && IsInsideHub(agent.position))
@@ -840,7 +840,7 @@ public sealed class NeuralSlimeMoldRunner
             multiplier *= Mathf.Lerp(1.0f, 1.35f, trailConfidence);
         }
 
-        multiplier *= Mathf.Lerp(1f, 1.14f, foodCommitment);
+        multiplier *= Mathf.Lerp(0.95f, 1.08f, foodCommitment);
 
         if (IsNearHub(position))
         {

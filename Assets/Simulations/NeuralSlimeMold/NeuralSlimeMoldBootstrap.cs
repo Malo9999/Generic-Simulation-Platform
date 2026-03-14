@@ -68,12 +68,12 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [Header("Colony Hub")]
     [SerializeField] private bool useColonyHub = true;
     [SerializeField] private Vector2 colonyHub = Vector2.zero;
-    [SerializeField, Min(0.25f)] private float colonyHubRadius = 2.8f;
+    [SerializeField, Min(0.25f)] private float colonyHubRadius = 2.1f;
     [SerializeField, Min(0f)] private float returnToHubWeight = 1.55f;
     [SerializeField, Range(0f, 1f)] private float returnTrailBlend = 0.68f;
-    [SerializeField, Min(0f)] private float returnDepositBoost = 2.05f;
-    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 3.1f;
-    [SerializeField, Min(0f)] private float hubInfluenceRadius = 4.4f;
+    [SerializeField, Min(0f)] private float returnDepositBoost = 2.35f;
+    [SerializeField, Min(0f)] private float successfulReturnDepositBurst = 3.6f;
+    [SerializeField, Min(0f)] private float hubInfluenceRadius = 3.0f;
 
     [Header("Loop Pruning")]
     [SerializeField, Min(0f)] private float nonUsefulLoopPruneStrength = 0.14f;
@@ -91,11 +91,11 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float returnOrbitDepositPenalty = 0.18f;
 
     [Header("Branch Remodeling")]
-    [SerializeField, Min(0f)] private float branchSpawnChance = 0.18f;
+    [SerializeField, Min(0f)] private float branchSpawnChance = 0.13f;
     [SerializeField, Min(0f)] private float branchSpawnTrailThreshold = 0.075f;
-    [SerializeField, Min(0f)] private float branchPromotionThreshold = 0.13f;
+    [SerializeField, Min(0f)] private float branchPromotionThreshold = 0.15f;
     [SerializeField, Min(0f)] private float branchRetractionBoost = 0.9f;
-    [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.42f;
+    [SerializeField, Min(0f)] private float trunkStabilityBoost = 0.56f;
     [SerializeField, Min(0f)] private float duplicateTubeSuppressionRadius = 1.35f;
 
     [Header("World Obstacles")]
@@ -116,9 +116,9 @@ public sealed class NeuralSlimeMoldBootstrap : MonoBehaviour
     [SerializeField] private bool showExplorationBranches = true;
     [SerializeField] private bool showFoodStateMarkers = true;
     [SerializeField] private bool showActivityFocus = false;
-    [SerializeField, Min(0.1f)] private float tubeExposure = 1.15f;
-    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.4f;
-    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.62f;
+    [SerializeField, Min(0.1f)] private float tubeExposure = 1.3f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.34f;
+    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.48f;
 
     [Header("Camera Framing")]
     [SerializeField] private bool autoFrameCamera = true;
