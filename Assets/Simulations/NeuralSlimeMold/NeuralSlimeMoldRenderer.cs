@@ -6,7 +6,7 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     [Header("Agent Visuals")]
     [SerializeField] private float agentScale = 0.2f;
     [SerializeField] private int maxVisibleAgents = 1500;
-    [SerializeField] private Color agentColor = new(0.62f, 0.98f, 0.78f, 0.85f);
+    [SerializeField] private Color agentColor = new(0.62f, 0.98f, 0.78f, 0.62f);
 
     [Header("Field Visuals")]
     [SerializeField] private Color fieldLowColor = new(0.06f, 0.07f, 0.05f, 1f);
@@ -23,9 +23,9 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
     //[SerializeField, Range(0f, 2f)] private float fieldBackgroundLift = 0.04f;
     [SerializeField] private bool emphasizePrimaryTubes = true;
     [SerializeField] private bool showExplorationBranches = true;
-    [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.3f;
-    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.34f;
-    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.48f;
+    [SerializeField, Range(0.6f, 2.2f)] private float tubeExposure = 1.45f;
+    [SerializeField, Range(0f, 1f)] private float staleTrailFade = 0.22f;
+    [SerializeField, Range(0f, 1f)] private float branchAlphaBias = 0.40f;
     [SerializeField, Range(0f, 1f)] private float trunkThreshold01 = 0.58f;
     [SerializeField, Range(0f, 1f)] private float branchThreshold01 = 0.3f;
 
@@ -582,8 +582,8 @@ public sealed class NeuralSlimeMoldRenderer : MonoBehaviour
                 var staleMask = Mathf.Clamp01(1f - trunkMask - branchMask) * Mathf.Clamp01(visible / Mathf.Max(0.0001f, branchThreshold01));
 
                 var trunkExposure = Mathf.Lerp(1f, tubeExposure * 1.08f, trunkMask);
-                var branchExposure = showExplorationBranches ? Mathf.Lerp(0.24f, 0.62f, branchMask) : 0f;
-                var staleExposure = showExplorationBranches ? Mathf.Lerp(0.015f, staleTrailFade * 0.28f, staleMask) : 0f;
+                var branchExposure = showExplorationBranches ? Mathf.Lerp(0.18f, 0.52f, branchMask) : 0f;
+                var staleExposure = showExplorationBranches ? Mathf.Lerp(0.006f, staleTrailFade * 0.18f, staleMask) : 0f;
                 var visualStrength = (trunkMask * trunkExposure) + (branchMask * branchExposure) + (staleMask * staleExposure);
                 visualStrength = Mathf.Clamp01(visualStrength);
 
