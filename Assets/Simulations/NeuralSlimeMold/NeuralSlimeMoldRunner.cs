@@ -72,11 +72,12 @@ public sealed class NeuralSlimeMoldRunner
     private const float FoodNearSpeedPenalty = 0.78f;
     private const float StartupOutwardMaxDuration = 7.5f;
     private const float StartupFoodCommitmentFade = 0.8f;
-    private const float TrafficReinforcementDecayPerSecond = 0.24f;
-    private const float TrafficReinforcementDepositRadius = 0.75f;
-    private const float TrafficReinforcementMax = 5.5f;
-    private const float TrafficWeakBranchScrubScale = 0.10f;
-    private const float FoodContactPulseScale = 0.24f;
+    private const float TrafficReinforcementDecayPerSecond = 0.16f;
+    private const float TrafficReinforcementDepositRadius = 1.2f;
+    private const float TrafficReinforcementMax = 8.5f;
+    private const float TrafficWeakBranchScrubScale = 0.22f;
+    private const float FoodContactPulseScale = 0.65f;
+    private const float FoodContactRoutePulseScale = 1.6f;
 
     private NeuralSlimeMoldAgent[] agents = Array.Empty<NeuralSlimeMoldAgent>();
     private NeuralFoodNodeState[] foodNodes = Array.Empty<NeuralFoodNodeState>();
@@ -405,19 +406,21 @@ public sealed class NeuralSlimeMoldRunner
                     }
 
                     var returnTrail = Field.SampleBilinear(agent.position);
-                    var returnTrunkBoost = Mathf.Lerp(1.25f, 2.35f, Mathf.Clamp01(returnTrail / Mathf.Max(StrongTrailHighwayThreshold, 0.001f)));
-                    var trafficReinforcement = Mathf.Lerp(1f, 1f + returnTrafficReinforcement, SampleRouteTraffic01(agent.position));
+                    var routeTraffic01 = SampleRouteTraffic01(agent.position);
+                    var returnTrunkBoost = Mathf.Lerp(1.35f, 3.1f, Mathf.Clamp01(returnTrail / Mathf.Max(StrongTrailHighwayThreshold, 0.001f)));
+                    var trafficReinforcement = Mathf.Lerp(1f, 1f + (returnTrafficReinforcement * 1.85f), Mathf.Pow(routeTraffic01, 0.8f));
                     DepositKernelIfOpen(agent.position, agent.depositAmount * returnDepositBoost * returnDepositMultiplier * returnTrunkBoost * trafficReinforcement);
+                    ReinforceRouteTraffic(agent.position, dt * returnTrafficReinforcement * Mathf.Lerp(1.25f, 2.4f, routeTraffic01));
 
                     if (useColonyHub && IsInsideHub(agent.position))
                     {
-                        ReinforceRouteTraffic(agent.position, successfulReturnDepositBurst * 0.75f);
+                        ReinforceRouteTraffic(agent.position, successfulReturnDepositBurst * 1.3f);
                         if (lastFoodIndex >= 0 && lastFoodIndex < foodNodes.Length)
                         {
-                            ReinforceRouteTraffic(foodNodes[lastFoodIndex].position, successfulReturnDepositBurst * 0.45f);
+                            ReinforceRouteTraffic(foodNodes[lastFoodIndex].position, successfulReturnDepositBurst * 0.9f);
                         }
 
-                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.75f, successfulReturnDepositBurst * returnDepositMultiplier * 1.1f);
+                        DepositDiscIfOpen(agent.position, colonyHubRadius * 0.95f, successfulReturnDepositBurst * returnDepositMultiplier * 1.65f);
                         Field.ScrubDisc(agent.position, colonyHubRadius * 0.75f, HubRingScrubStrength);
 
                         mode = AgentMode.ExitHub;
@@ -1062,9 +1065,12 @@ public sealed class NeuralSlimeMoldRunner
 
                 if (foodConsumerCounts[i] > 0)
                 {
-                    var contactBoost = foodContactFieldBoost * Mathf.Clamp01(foodConsumerCounts[i] / 6f);
-                    DepositDiscIfOpen(node.position, Mathf.Max(0.4f, node.consumeRadius * 0.85f), contactBoost * FoodContactPulseScale);
-                    ReinforceRouteTraffic(node.position, contactBoost * deltaTime);
+                    var crowd01 = Mathf.Clamp01(foodConsumerCounts[i] / 7f);
+                    var contactBoost = foodContactFieldBoost * Mathf.Lerp(0.9f, 2.25f, crowd01);
+                    var pulse = 0.72f + (Mathf.Sin((simulationTime * 10.5f) + (i * 0.9f)) * 0.28f);
+                    var pulseBoost = Mathf.Max(0.25f, pulse) * Mathf.Lerp(0.8f, 1.8f, crowd01);
+                    DepositDiscIfOpen(node.position, Mathf.Max(0.65f, node.consumeRadius * 1.25f), contactBoost * FoodContactPulseScale * pulseBoost);
+                    ReinforceRouteTraffic(node.position, contactBoost * deltaTime * FoodContactRoutePulseScale * pulseBoost);
                 }
 
                 if (!foodDepletionLogged[i] && previousCapacity > 0f && node.currentCapacity <= 0f)
@@ -2423,7 +2429,7 @@ public sealed class NeuralSlimeMoldRunner
                 }
 
                 var world = Field.GridToWorld(x, y);
-                Field.ScrubDisc(world, 0.45f, scrub);
+                Field.ScrubDisc(world, 0.62f, scrub);
             }
         }
     }
