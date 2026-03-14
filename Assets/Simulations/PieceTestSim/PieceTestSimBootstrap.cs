@@ -90,11 +90,29 @@ public sealed class PieceTestSimBootstrap : MonoBehaviour
 
     private void SpawnProbe(Vector2 position)
     {
+        var go = CreateProbeGameObject(position);
+        EnsureProbePhysicsComponents(go);
+
+        // Add the behaviour after required physics components exist so Awake can safely configure them.
+        var probe = go.AddComponent<PieceTestSimProbe>();
+        probe.Configure(environmentPreset == EnvironmentPreset.EarthLight ? 1f : 0.3f);
+
+        Debug.Log($"[PieceTestSim] Probe spawn path: BuildAndRun -> SpawnProbe -> EnsureProbePhysicsComponents -> Add PieceTestSimProbe ({go.name}).");
+    }
+
+    private GameObject CreateProbeGameObject(Vector2 position)
+    {
         var go = new GameObject($"Probe_{environmentPreset}");
         go.transform.position = position;
         go.transform.SetParent(transform, true);
-        var probe = go.AddComponent<PieceTestSimProbe>();
-        probe.Configure(environmentPreset == EnvironmentPreset.EarthLight ? 1f : 0.3f);
+        return go;
+    }
+
+    private static void EnsureProbePhysicsComponents(GameObject go)
+    {
+        go.GetComponent<Rigidbody2D>() ?? go.AddComponent<Rigidbody2D>();
+        go.GetComponent<CircleCollider2D>() ?? go.AddComponent<CircleCollider2D>();
+        go.GetComponent<SpriteRenderer>() ?? go.AddComponent<SpriteRenderer>();
     }
 
     private void RunMechanicsSanity()
