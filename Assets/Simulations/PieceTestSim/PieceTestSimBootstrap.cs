@@ -110,9 +110,14 @@ public sealed class PieceTestSimBootstrap : MonoBehaviour
 
     private static void EnsureProbePhysicsComponents(GameObject go)
     {
-        go.GetComponent<Rigidbody2D>() ?? go.AddComponent<Rigidbody2D>();
-        go.GetComponent<CircleCollider2D>() ?? go.AddComponent<CircleCollider2D>();
-        go.GetComponent<SpriteRenderer>() ?? go.AddComponent<SpriteRenderer>();
+        if (go.GetComponent<Rigidbody2D>() == null)
+            go.AddComponent<Rigidbody2D>();
+
+        if (go.GetComponent<CircleCollider2D>() == null)
+            go.AddComponent<CircleCollider2D>();
+
+        if (go.GetComponent<SpriteRenderer>() == null)
+            go.AddComponent<SpriteRenderer>();
     }
 
     private void RunMechanicsSanity()
