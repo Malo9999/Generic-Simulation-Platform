@@ -2,6 +2,8 @@ using UnityEngine;
 
 public sealed class SplitterTowerMachine
 {
+    private const int CollisionSegmentCapacity = 48;
+
     private readonly Transform root;
     private readonly Transform gateVisual;
     private readonly Transform flapVisual;
@@ -81,6 +83,79 @@ public sealed class SplitterTowerMachine
 
         UpdateBinFill(leftBinFillVisual, LeftBin, sensors.leftBinFill);
         UpdateBinFill(rightBinFillVisual, RightBin, sensors.rightBinFill);
+    }
+
+    public int WriteCollisionSegments(SplitterTowerConfig cfg, Vector4[] output)
+    {
+        if (output == null || output.Length == 0)
+        {
+            return 0;
+        }
+
+        var count = 0;
+
+        // Upper chamber walls.
+        AddSegment(ref count, output, new Vector2(UpperChamber.xMin, UpperChamber.yMax), new Vector2(UpperChamber.xMax, UpperChamber.yMax));
+        AddSegment(ref count, output, new Vector2(UpperChamber.xMin, UpperChamber.yMax), new Vector2(UpperChamber.xMin, UpperChamber.yMin));
+        AddSegment(ref count, output, new Vector2(UpperChamber.xMax, UpperChamber.yMax), new Vector2(UpperChamber.xMax, UpperChamber.yMin));
+
+        // Gate segment (moving actuator).
+        var gateY = 1.8f + (GateOpen * 0.55f);
+        AddSegment(ref count, output, new Vector2(-1.4f, gateY), new Vector2(1.4f, gateY));
+
+        // Lower chamber walls.
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, LowerChamber.yMax), new Vector2(LowerChamber.xMin, LowerChamber.yMin));
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMax, LowerChamber.yMax), new Vector2(LowerChamber.xMax, LowerChamber.yMin));
+
+        // Lower chamber floor has an outlet into the splitter ramps.
+        AddSegment(ref count, output, new Vector2(LowerChamber.xMin, LowerChamber.yMin), new Vector2(-2.45f, LowerChamber.yMin));
+        AddSegment(ref count, output, new Vector2(2.45f, LowerChamber.yMin), new Vector2(LowerChamber.xMax, LowerChamber.yMin));
+
+        // Diverter flap (moving actuator).
+        var flapCenter = new Vector2(0f, -0.45f);
+        var halfFlap = 1.6f;
+        var flapRot = Quaternion.Euler(0f, 0f, -FlapState * cfg.flapMaxAngle);
+        var flapDir = flapRot * Vector3.right;
+        AddSegment(ref count, output, flapCenter - ((Vector2)flapDir * halfFlap), flapCenter + ((Vector2)flapDir * halfFlap));
+
+        // Splitter ramps.
+        AddOrientedSegment(ref count, output, new Vector2(-5.9f, -3.9f), 4f, 28f);
+        AddOrientedSegment(ref count, output, new Vector2(5.9f, -3.9f), 4f, -28f);
+
+        // Bin walls.
+        AddRectWalls(ref count, output, LeftBin);
+        AddRectWalls(ref count, output, RightBin);
+
+        return count;
+    }
+
+    public int GetCollisionSegmentCapacity()
+    {
+        return CollisionSegmentCapacity;
+    }
+
+    private static void AddRectWalls(ref int count, Vector4[] output, Rect rect)
+    {
+        AddSegment(ref count, output, new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMin, rect.yMax));
+        AddSegment(ref count, output, new Vector2(rect.xMax, rect.yMin), new Vector2(rect.xMax, rect.yMax));
+        AddSegment(ref count, output, new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMax, rect.yMin));
+    }
+
+    private static void AddOrientedSegment(ref int count, Vector4[] output, Vector2 center, float length, float angleDeg)
+    {
+        var dir = Quaternion.Euler(0f, 0f, angleDeg) * Vector3.right;
+        var half = (Vector2)dir * (length * 0.5f);
+        AddSegment(ref count, output, center - half, center + half);
+    }
+
+    private static void AddSegment(ref int count, Vector4[] output, Vector2 a, Vector2 b)
+    {
+        if (count >= output.Length)
+        {
+            return;
+        }
+
+        output[count++] = new Vector4(a.x, a.y, b.x, b.y);
     }
 
     private static void UpdateBinFill(Transform fillVisual, Rect bin, float fill)
