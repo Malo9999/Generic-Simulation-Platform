@@ -1,5 +1,8 @@
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(CircleCollider2D))]
+[RequireComponent(typeof(SpriteRenderer))]
 public sealed class PieceTestSimProbe : MonoBehaviour
 {
     [SerializeField, Min(0.2f)] private float radius = 0.2f;
@@ -8,8 +11,8 @@ public sealed class PieceTestSimProbe : MonoBehaviour
     public void Configure(float gravityScaleValue)
     {
         gravityScale = gravityScaleValue;
-        var rb = GetComponent<Rigidbody2D>();
-        if (rb != null)
+
+        if (TryGetComponent<Rigidbody2D>(out var rb))
         {
             rb.gravityScale = gravityScale;
         }
@@ -17,13 +20,23 @@ public sealed class PieceTestSimProbe : MonoBehaviour
 
     private void Awake()
     {
-        var rb = gameObject.GetComponent<Rigidbody2D>() ?? gameObject.AddComponent<Rigidbody2D>();
+        if (!TryGetComponent<Rigidbody2D>(out var rb))
+        {
+            enabled = false;
+            Debug.LogError($"[PieceTestSim] {name} is missing Rigidbody2D. Disabling PieceTestSimProbe to fail safely.", this);
+            return;
+        }
+
         rb.gravityScale = gravityScale;
 
-        var col = gameObject.GetComponent<CircleCollider2D>() ?? gameObject.AddComponent<CircleCollider2D>();
-        col.radius = radius;
+        if (TryGetComponent<CircleCollider2D>(out var col))
+        {
+            col.radius = radius;
+        }
 
-        var sr = gameObject.GetComponent<SpriteRenderer>() ?? gameObject.AddComponent<SpriteRenderer>();
-        sr.color = Color.yellow;
+        if (TryGetComponent<SpriteRenderer>(out var sr))
+        {
+            sr.color = Color.yellow;
+        }
     }
 }
