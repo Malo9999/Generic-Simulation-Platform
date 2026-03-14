@@ -79,24 +79,40 @@ public static class NeuralSlimeMoldArenaPresetBuilder
 
     private static NeuralSlimeMoldArenaSetup BuildOpenPetriDish(float strength, float capacity, float radius, float rate)
     {
+        var dishRadius = 30f;
+
         return new NeuralSlimeMoldArenaSetup
         {
             mapSize = new Vector2(72f, 72f),
             colonyHub = Vector2.zero,
-            colonyHubRadius = 5.6f,
+            colonyHubRadius = 1.8f,
             manualFoodConfigs = new[]
             {
-                Food(new Vector2(0f, 28f), strength, capacity, radius, rate),
-                Food(new Vector2(-25f, -20f), strength, capacity, radius, rate),
-                Food(new Vector2(25f, -20f), strength, capacity, radius, rate)
+                Food(new Vector2(-18f, 20f), strength, capacity, radius, rate),
+                Food(new Vector2(20f, 18f), strength, capacity, radius, rate),
+                Food(new Vector2(-22f, -16f), strength, capacity, radius, rate),
+                Food(new Vector2(21f, -20f), strength, capacity, radius, rate)
             },
-            worldObstacles = System.Array.Empty<NeuralObstacle>(),
+            worldObstacles = new[]
+            {
+                RingAnchor(new Vector2(0f, dishRadius), 2.4f),
+                RingAnchor(new Vector2(21f, 21f), 2.3f),
+                RingAnchor(new Vector2(dishRadius, 0f), 2.4f),
+                RingAnchor(new Vector2(21f, -21f), 2.3f),
+                RingAnchor(new Vector2(0f, -dishRadius), 2.4f),
+                RingAnchor(new Vector2(-21f, -21f), 2.3f),
+                RingAnchor(new Vector2(-dishRadius, 0f), 2.4f),
+                RingAnchor(new Vector2(-21f, 21f), 2.3f)
+            },
             corridorBands = new[]
             {
-                Band(new Vector2(0f, 6f), new Vector2(58f, 12f), 0f, 0.18f),
-                Band(new Vector2(0f, -8f), new Vector2(58f, 12f), 0f, 0.14f)
+                Band(new Vector2(0f, 0f), new Vector2(14f, 14f), 0f, 0.95f),
+                Band(new Vector2(-10f, 11f), new Vector2(22f, 6f), 35f, 0.72f),
+                Band(new Vector2(11f, 10f), new Vector2(22f, 6f), -30f, 0.72f),
+                Band(new Vector2(-12f, -11f), new Vector2(24f, 6f), -28f, 0.67f),
+                Band(new Vector2(12f, -12f), new Vector2(24f, 6f), 30f, 0.67f)
             },
-            useWorldObstacles = false
+            useWorldObstacles = true
         };
     }
 
@@ -171,61 +187,62 @@ public static class NeuralSlimeMoldArenaPresetBuilder
         {
             mapSize = new Vector2(96f, 68f),
             colonyHub = new Vector2(-35f, 0f),
-            colonyHubRadius = 2.1f,
+            colonyHubRadius = 1.9f,
             manualFoodConfigs = new[]
             {
-                Food(new Vector2(32f, 20f), strength, capacity, radius, rate),
-                Food(new Vector2(32f, -20f), strength, capacity, radius, rate)
+                Food(new Vector2(34f, 21f), strength, capacity, radius, rate),
+                Food(new Vector2(34f, -21f), strength, capacity, radius, rate)
             },
             worldObstacles = new[]
             {
-                // Left start chamber (hub nest) walls.
-                Rect(new Vector2(-35f, 14f), new Vector2(30f, 8f)),
-                Rect(new Vector2(-35f, -14f), new Vector2(30f, 8f)),
-                Rect(new Vector2(-48f, 0f), new Vector2(4f, 36f)),
-                Rect(new Vector2(-18f, 4f), new Vector2(4f, 16f)),
-                Rect(new Vector2(-18f, -4f), new Vector2(4f, 16f)),
+                // Left start chamber shell + gate.
+                Rect(new Vector2(-36f, 19f), new Vector2(30f, 6f)),
+                Rect(new Vector2(-36f, -19f), new Vector2(30f, 6f)),
+                Rect(new Vector2(-50f, 0f), new Vector2(4f, 44f)),
+                Rect(new Vector2(-22f, 9f), new Vector2(4f, 14f)),
+                Rect(new Vector2(-22f, -9f), new Vector2(4f, 14f)),
 
-                // Corridor separators and dead-space closure around center.
-                Rect(new Vector2(-2f, 15f), new Vector2(20f, 7f)),
-                Rect(new Vector2(-2f, -15f), new Vector2(20f, 7f)),
-                Rect(new Vector2(2f, 0f), new Vector2(12f, 8f)),
-                Rect(new Vector2(16f, 0f), new Vector2(12f, 10f)),
+                // Center wall structure that forms two narrow corridor routes.
+                Rect(new Vector2(-4f, 24f), new Vector2(40f, 8f)),
+                Rect(new Vector2(-4f, -24f), new Vector2(40f, 8f)),
+                Rect(new Vector2(-2f, 0f), new Vector2(20f, 10f)),
+                Rect(new Vector2(17f, 0f), new Vector2(10f, 18f)),
 
-                // Upper-right destination chamber shell.
-                Rect(new Vector2(31f, 33f), new Vector2(34f, 6f)),
-                Rect(new Vector2(31f, 7f), new Vector2(34f, 6f)),
-                Rect(new Vector2(46f, 20f), new Vector2(4f, 32f)),
+                // Upper destination chamber shell + narrow entrance.
+                Rect(new Vector2(31f, 34f), new Vector2(34f, 6f)),
+                Rect(new Vector2(31f, 8f), new Vector2(34f, 6f)),
+                Rect(new Vector2(46f, 21f), new Vector2(4f, 32f)),
+                Rect(new Vector2(18f, 25f), new Vector2(8f, 18f)),
 
-                // Lower-right destination chamber shell.
-                Rect(new Vector2(31f, -7f), new Vector2(34f, 6f)),
-                Rect(new Vector2(31f, -33f), new Vector2(34f, 6f)),
-                Rect(new Vector2(46f, -20f), new Vector2(4f, 32f)),
+                // Lower destination chamber shell + narrow entrance.
+                Rect(new Vector2(31f, -8f), new Vector2(34f, 6f)),
+                Rect(new Vector2(31f, -34f), new Vector2(34f, 6f)),
+                Rect(new Vector2(46f, -21f), new Vector2(4f, 32f)),
+                Rect(new Vector2(18f, -25f), new Vector2(8f, 18f)),
 
-                // Hard blockers to keep pressure inside corridors/chambers.
-                Rect(new Vector2(-1f, 26f), new Vector2(24f, 8f)),
-                Rect(new Vector2(-1f, -26f), new Vector2(24f, 8f)),
-                Rect(new Vector2(24f, 0f), new Vector2(14f, 12f))
+                // Splitter islands encourage route commitment and reduce random drift.
+                Rect(new Vector2(6f, 12f), new Vector2(8f, 8f)),
+                Rect(new Vector2(6f, -12f), new Vector2(8f, 8f))
             },
             corridorBands = new[]
             {
-                // Core start-chamber lift for early emergence.
-                Band(new Vector2(-35f, 0f), new Vector2(12f, 11f), 0f, 1.1f),
+                // Start chamber lift for immediate colony emergence.
+                Band(new Vector2(-35f, 0f), new Vector2(10f, 10f), 0f, 1.2f),
 
-                // Upper trunk: hub chamber gate -> upper destination chamber.
-                Band(new Vector2(-23f, 8f), new Vector2(14f, 4.2f), 0f, 1.12f),
-                Band(new Vector2(-8f, 8f), new Vector2(14f, 4.0f), 0f, 1.08f),
-                Band(new Vector2(8f, 13.5f), new Vector2(20f, 4.2f), 0f, 1.04f),
-                Band(new Vector2(24f, 18f), new Vector2(16f, 4.6f), 0f, 0.98f),
+                // Upper route from gate to upper chamber.
+                Band(new Vector2(-24f, 9f), new Vector2(14f, 4f), 0f, 1.15f),
+                Band(new Vector2(-10f, 9f), new Vector2(14f, 4f), 0f, 1.1f),
+                Band(new Vector2(5f, 14f), new Vector2(16f, 4f), 0f, 1.04f),
+                Band(new Vector2(22f, 19f), new Vector2(18f, 4.5f), 0f, 1.0f),
 
-                // Lower trunk: hub chamber gate -> lower destination chamber.
-                Band(new Vector2(-23f, -8f), new Vector2(14f, 4.2f), 0f, 1.12f),
-                Band(new Vector2(-8f, -8f), new Vector2(14f, 4.0f), 0f, 1.08f),
-                Band(new Vector2(8f, -13.5f), new Vector2(20f, 4.2f), 0f, 1.04f),
-                Band(new Vector2(24f, -18f), new Vector2(16f, 4.6f), 0f, 0.98f),
+                // Lower route from gate to lower chamber.
+                Band(new Vector2(-24f, -9f), new Vector2(14f, 4f), 0f, 1.15f),
+                Band(new Vector2(-10f, -9f), new Vector2(14f, 4f), 0f, 1.1f),
+                Band(new Vector2(5f, -14f), new Vector2(16f, 4f), 0f, 1.04f),
+                Band(new Vector2(22f, -19f), new Vector2(18f, 4.5f), 0f, 1.0f),
 
-                // Keep cross-links possible but weaker than trunk routes.
-                Band(new Vector2(-12f, 0f), new Vector2(8f, 14f), 90f, 0.32f)
+                // Weak central crossover keeps choices possible without flattening hierarchy.
+                Band(new Vector2(-10f, 0f), new Vector2(7f, 12f), 90f, 0.28f)
             },
             useWorldObstacles = true
         };
