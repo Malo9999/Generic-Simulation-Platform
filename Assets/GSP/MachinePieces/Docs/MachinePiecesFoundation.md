@@ -69,3 +69,11 @@ Standalone bootstrap mechanics verification harness that:
 4. Add strict param constraints and deterministic buildTemplate transforms.
 5. Validate through loader/validator before runtime build.
 6. Verify in Machine Pieces Lab and Piece Test Sim.
+
+## Compound module port id convention (locked)
+Use only these port ids on CompoundPieceSpec ports and in machine recipe module connections:
+
+- Inputs: `in_top`, `in_bottom`, `in_left`, `in_right`
+- Outputs: `out_top`, `out_bottom`, `out_left`, `out_right`
+
+Non-standard ids like `entry_top`, `exit_bottom`, `entry`, `exit_left`, and `exit_right` are invalid in v1.

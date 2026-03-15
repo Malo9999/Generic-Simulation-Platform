@@ -90,15 +90,15 @@
   "moduleConnections": [
     {
       "fromModuleId": "feed_hopper",
-      "fromPortId": "exit_bottom",
+      "fromPortId": "out_bottom",
       "toModuleId": "mix_chamber",
-      "toPortId": "entry_top"
+      "toPortId": "in_top"
     },
     {
       "fromModuleId": "mix_chamber",
-      "fromPortId": "exit_bottom",
+      "fromPortId": "out_bottom",
       "toModuleId": "final_splitter",
-      "toPortId": "entry"
+      "toPortId": "in_top"
     }
   ],
   "connections": []
