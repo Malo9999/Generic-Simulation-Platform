@@ -3,38 +3,63 @@
   "version": 1,
   "displayName": "Hopper V1",
   "compoundType": "Hopper",
+
   "dimensions": {
     "width": { "min": 4.0, "max": 14.0, "defaultValue": 8.0 },
     "height": { "min": 3.0, "max": 10.0, "defaultValue": 6.0 }
   },
+
   "defaultParams": {
     "entries": [
       { "key": "width", "value": "8.0" },
-      { "key": "height", "value": "6.0" }
+      { "key": "height", "value": "6.0" },
+      { "key": "outletWidth", "value": "1.2" },
+      { "key": "wallThickness", "value": "0.2" },
+      { "key": "slopeInset", "value": "1.0" }
     ]
   },
+
   "paramConstraints": [
     { "key": "width", "min": 4.0, "max": 14.0 },
-    { "key": "height", "min": 3.0, "max": 10.0 }
+    { "key": "height", "min": 3.0, "max": 10.0 },
+    { "key": "outletWidth", "min": 0.2, "max": 3.0 },
+    { "key": "wallThickness", "min": 0.05, "max": 0.5 },
+    { "key": "slopeInset", "min": 0.2, "max": 3.0 }
   ],
+
   "ports": [
     {
-      "id": "entry_top",
-      "kind": "material_in",
-      "position": { "normalized": { "x": 0.0, "y": 0.5 }, "offset": { "x": 0.0, "y": 0.0 } },
-      "direction": { "x": 0.0, "y": -1.0 },
-      "profile": { "shape": "mouth", "width": 0.5, "height": 0.18 },
-      "semantics": "bulk_input"
+      "id": "in_top",
+      "kind": "flow_in",
+      "position": {
+        "normalized": { "x": 0.0, "y": 0.5 },
+        "offset": { "x": 0.0, "y": 0.0 }
+      },
+      "direction": { "x": 0.0, "y": 1.0 },
+      "profile": {
+        "shape": "mouth",
+        "width": 0.8,
+        "height": 0.12
+      },
+      "semantics": "granular_in"
     },
     {
-      "id": "exit_bottom",
-      "kind": "material_out",
-      "position": { "normalized": { "x": 0.0, "y": -0.5 }, "offset": { "x": 0.0, "y": 0.0 } },
+      "id": "out_bottom",
+      "kind": "flow_out",
+      "position": {
+        "normalized": { "x": 0.0, "y": -0.5 },
+        "offset": { "x": 0.0, "y": 0.0 }
+      },
       "direction": { "x": 0.0, "y": -1.0 },
-      "profile": { "shape": "slot", "width": 0.22, "height": 0.1 },
-      "semantics": "gravity_feed"
+      "profile": {
+        "shape": "slot",
+        "width": 0.2,
+        "height": 0.06
+      },
+      "semantics": "granular_out"
     }
   ],
+
   "buildTemplate": {
     "pieces": [
       {
@@ -43,7 +68,7 @@
         "positionNormalized": { "x": -0.5, "y": 0.0 },
         "positionOffset": { "x": 0.0, "y": 0.0 },
         "rotation": 90.0,
-        "scaleNormalized": { "x": 0.125, "y": 0.167 },
+        "scaleNormalized": { "x": 0.08, "y": 0.5 },
         "scaleOffset": { "x": 0.0, "y": 0.0 }
       },
       {
@@ -52,29 +77,39 @@
         "positionNormalized": { "x": 0.5, "y": 0.0 },
         "positionOffset": { "x": 0.0, "y": 0.0 },
         "rotation": 90.0,
-        "scaleNormalized": { "x": 0.125, "y": 0.167 },
+        "scaleNormalized": { "x": 0.08, "y": 0.5 },
         "scaleOffset": { "x": 0.0, "y": 0.0 }
       },
       {
         "instanceId": "left_slope",
         "pieceId": "slope_35deg_v1",
-        "positionNormalized": { "x": -0.22, "y": -0.38 },
+        "positionNormalized": { "x": -0.18, "y": -0.30 },
         "positionOffset": { "x": 0.0, "y": 0.0 },
         "rotation": 0.0,
-        "scaleNormalized": { "x": 0.16, "y": 0.12 },
+        "scaleNormalized": { "x": 0.18, "y": 0.10 },
         "scaleOffset": { "x": 0.0, "y": 0.0 }
       },
       {
         "instanceId": "right_slope",
         "pieceId": "slope_35deg_v1",
-        "positionNormalized": { "x": 0.22, "y": -0.38 },
+        "positionNormalized": { "x": 0.18, "y": -0.30 },
         "positionOffset": { "x": 0.0, "y": 0.0 },
         "rotation": 180.0,
-        "scaleNormalized": { "x": 0.16, "y": 0.12 },
+        "scaleNormalized": { "x": 0.18, "y": 0.10 },
         "scaleOffset": { "x": 0.0, "y": 0.0 }
       }
     ]
   },
-  "surfaceDefaults": { "entries": [ { "key": "primary", "value": "metal_brushed_v1" } ] },
-  "metadata": { "entries": [ { "key": "authoring", "value": "starter" } ] }
+
+  "surfaceDefaults": {
+    "entries": [
+      { "key": "primary", "value": "metal_brushed_v1" }
+    ]
+  },
+
+  "metadata": {
+    "entries": [
+      { "key": "authoring", "value": "starter" }
+    ]
+  }
 }
