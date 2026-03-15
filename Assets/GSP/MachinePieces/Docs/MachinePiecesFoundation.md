@@ -24,6 +24,7 @@ They enable reusable, dimensionable machine modules (hopper/chamber/splitter) so
 - **Anchors** belong to atomic PieceSpecs and represent local attachment points.
 - **Ports** belong to CompoundPieceSpecs and represent typed, dimension-aware interfaces.
 - Ports in v1 use locked profile shapes: `slot`, `rect`, `circle`, `tube`, `funnel`, `mouth`.
+- Compound module ports use one locked id convention only: inputs `in_top`, `in_bottom`, `in_left`, `in_right`; outputs `out_top`, `out_bottom`, `out_left`, `out_right`.
 
 ## Deterministic rebuild rule
 Given the same inputs, output is identical every rebuild:
