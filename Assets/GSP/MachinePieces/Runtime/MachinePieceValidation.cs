@@ -21,6 +21,12 @@ public static class MachinePieceValidation
         "slot", "rect", "circle", "tube", "funnel", "mouth"
     };
 
+    private static readonly HashSet<string> StandardCompoundPortIds = new(StringComparer.Ordinal)
+    {
+        "in_top", "in_bottom", "in_left", "in_right",
+        "out_top", "out_bottom", "out_left", "out_right"
+    };
+
     public static List<string> ValidatePieceSpec(PieceSpec spec)
     {
         var errors = new List<string>();
@@ -401,14 +407,14 @@ public static class MachinePieceValidation
             var fromPort = (fromSpec.ports ?? Array.Empty<CompoundPort>()).FirstOrDefault(p => p != null && string.Equals(p.id, c.fromPortId, StringComparison.Ordinal));
             if (fromPort == null)
             {
-                errors.Add($"Unknown source port id '{c.fromPortId}' on module '{c.fromModuleId}'.");
+                errors.Add(BuildMissingModulePortMessage(c.fromModuleId, c.fromPortId, fromSpec, "source"));
                 continue;
             }
 
             var toPort = (toSpec.ports ?? Array.Empty<CompoundPort>()).FirstOrDefault(p => p != null && string.Equals(p.id, c.toPortId, StringComparison.Ordinal));
             if (toPort == null)
             {
-                errors.Add($"Unknown target port id '{c.toPortId}' on module '{c.toModuleId}'.");
+                errors.Add(BuildMissingModulePortMessage(c.toModuleId, c.toPortId, toSpec, "target"));
                 continue;
             }
 
@@ -559,6 +565,10 @@ public static class MachinePieceValidation
 
             if (string.IsNullOrWhiteSpace(port.id)) errors.Add($"CompoundPieceSpec '{spec.id}' has port with empty id.");
             else if (!ids.Add(port.id)) errors.Add($"CompoundPieceSpec '{spec.id}' duplicate port id '{port.id}'.");
+            else if (!StandardCompoundPortIds.Contains(port.id))
+            {
+                errors.Add($"CompoundPieceSpec '{spec.id}' port '{port.id}' is non-standard. Allowed ids: {string.Join(", ", StandardCompoundPortIds.OrderBy(x => x, StringComparer.Ordinal))}.");
+            }
 
             if (string.IsNullOrWhiteSpace(port.kind)) errors.Add($"CompoundPieceSpec '{spec.id}' port '{port.id}' missing kind.");
             if (port.position == null) errors.Add($"CompoundPieceSpec '{spec.id}' port '{port.id}' missing position.");
@@ -593,6 +603,20 @@ public static class MachinePieceValidation
                 }
             }
         }
+    }
+
+    private static string BuildMissingModulePortMessage(string moduleId, string portId, CompoundPieceSpec spec, string side)
+    {
+        var validPortIds = (spec.ports ?? Array.Empty<CompoundPort>())
+            .Where(p => p != null && !string.IsNullOrWhiteSpace(p.id))
+            .Select(p => p.id)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
+
+        var validText = validPortIds.Length == 0 ? "none" : string.Join(", ", validPortIds);
+        var standardText = string.Join(", ", StandardCompoundPortIds.OrderBy(x => x, StringComparer.Ordinal));
+        return $"Unknown {side} port id '{portId}' on module '{moduleId}' (compound '{spec.id}'). Valid ids on this module: [{validText}]. Standard ids: [{standardText}].";
     }
 
     private static void ValidateShape(string id, PieceShape shape, List<string> errors)
