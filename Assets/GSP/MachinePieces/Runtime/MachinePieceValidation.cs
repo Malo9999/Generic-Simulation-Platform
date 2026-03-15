@@ -21,6 +21,18 @@ public static class MachinePieceValidation
         "slot", "rect", "circle", "tube", "funnel", "mouth"
     };
 
+    private static readonly HashSet<string> StandardCompoundPortIds = new(StringComparer.Ordinal)
+    {
+        "in_top",
+        "in_bottom",
+        "in_left",
+        "in_right",
+        "out_top",
+        "out_bottom",
+        "out_left",
+        "out_right"
+    };
+
     public static List<string> ValidatePieceSpec(PieceSpec spec)
     {
         var errors = new List<string>();
@@ -398,17 +410,29 @@ public static class MachinePieceValidation
                 continue;
             }
 
+            if (!StandardCompoundPortIds.Contains(c.fromPortId ?? string.Empty))
+            {
+                errors.Add($"Invalid source port id '{c.fromPortId}' on module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}'. Port ids must use the standard set: in_top, in_bottom, in_left, in_right, out_top, out_bottom, out_left, out_right.");
+                continue;
+            }
+
+            if (!StandardCompoundPortIds.Contains(c.toPortId ?? string.Empty))
+            {
+                errors.Add($"Invalid target port id '{c.toPortId}' on module connection '{c.fromModuleId}:{c.fromPortId}' -> '{c.toModuleId}:{c.toPortId}'. Port ids must use the standard set: in_top, in_bottom, in_left, in_right, out_top, out_bottom, out_left, out_right.");
+                continue;
+            }
+
             var fromPort = (fromSpec.ports ?? Array.Empty<CompoundPort>()).FirstOrDefault(p => p != null && string.Equals(p.id, c.fromPortId, StringComparison.Ordinal));
             if (fromPort == null)
             {
-                errors.Add($"Unknown source port id '{c.fromPortId}' on module '{c.fromModuleId}'.");
+                errors.Add($"Unknown source port id '{c.fromPortId}' on module '{c.fromModuleId}'. The module spec must define this standard port id.");
                 continue;
             }
 
             var toPort = (toSpec.ports ?? Array.Empty<CompoundPort>()).FirstOrDefault(p => p != null && string.Equals(p.id, c.toPortId, StringComparison.Ordinal));
             if (toPort == null)
             {
-                errors.Add($"Unknown target port id '{c.toPortId}' on module '{c.toModuleId}'.");
+                errors.Add($"Unknown target port id '{c.toPortId}' on module '{c.toModuleId}'. The module spec must define this standard port id.");
                 continue;
             }
 
@@ -557,8 +581,18 @@ public static class MachinePieceValidation
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(port.id)) errors.Add($"CompoundPieceSpec '{spec.id}' has port with empty id.");
-            else if (!ids.Add(port.id)) errors.Add($"CompoundPieceSpec '{spec.id}' duplicate port id '{port.id}'.");
+            if (string.IsNullOrWhiteSpace(port.id))
+            {
+                errors.Add($"CompoundPieceSpec '{spec.id}' has port with empty id.");
+            }
+            else
+            {
+                if (!ids.Add(port.id)) errors.Add($"CompoundPieceSpec '{spec.id}' duplicate port id '{port.id}'.");
+                if (!StandardCompoundPortIds.Contains(port.id))
+                {
+                    errors.Add($"CompoundPieceSpec '{spec.id}' port '{port.id}' must use standard ids: in_top, in_bottom, in_left, in_right, out_top, out_bottom, out_left, out_right.");
+                }
+            }
 
             if (string.IsNullOrWhiteSpace(port.kind)) errors.Add($"CompoundPieceSpec '{spec.id}' port '{port.id}' missing kind.");
             if (port.position == null) errors.Add($"CompoundPieceSpec '{spec.id}' port '{port.id}' missing position.");
